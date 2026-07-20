@@ -10,6 +10,9 @@ import { CodigoSelect } from "@/components/codigo-select";
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
 
+type CampoOrdenacao = "posicao" | "nome" | "grupo";
+type Ordenacao = { campo: CampoOrdenacao | null; direcao: "asc" | "desc" };
+
 export function EdicaoGrid({
   produtos,
   pendentes,
@@ -45,6 +48,11 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
   const [busca, setBusca] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todos" | "ativo" | "inativo">("todos");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>({ campo: null, direcao: "asc" });
+
+  function alternarOrdenacao(campo: CampoOrdenacao) {
+    setOrdenacao((o) => (o.campo !== campo ? { campo, direcao: "asc" } : { campo, direcao: o.direcao === "asc" ? "desc" : "asc" }));
+  }
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -58,6 +66,26 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
       return true;
     });
   }, [produtos, busca, filtroGrupo, filtroAtivo]);
+
+  const ordenados = useMemo(() => {
+    if (!ordenacao.campo) return filtrados;
+    const mult = ordenacao.direcao === "asc" ? 1 : -1;
+    const copia = [...filtrados];
+    copia.sort((a, b) => {
+      if (ordenacao.campo === "posicao") {
+        return ((a.posicao ?? Infinity) - (b.posicao ?? Infinity)) * mult;
+      }
+      if (ordenacao.campo === "nome") {
+        return a.nome.localeCompare(b.nome, "pt-BR") * mult;
+      }
+      // grupo: ordena o grupo na direção escolhida, mas o nome dentro do
+      // grupo é sempre A-Z, fixo, não faz parte da opção de classificação.
+      const g = a.grupo.localeCompare(b.grupo, "pt-BR") * mult;
+      if (g !== 0) return g;
+      return a.nome.localeCompare(b.nome, "pt-BR");
+    });
+    return copia;
+  }, [filtrados, ordenacao]);
 
   return (
     <div>
@@ -78,14 +106,18 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
         Células em destaque estão vazias. Edita e clica em Salvar na linha.
       </p>
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
-        <table className="w-full min-w-[1150px] text-xs">
+        <table className="w-full min-w-[1750px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th>SKU</Th>
-              <Th>Posição</Th>
+              <ThOrdenavel campo="posicao" ordenacao={ordenacao} onClick={() => alternarOrdenacao("posicao")}>
+                Posição
+              </ThOrdenavel>
               <Th>
                 <div className="flex flex-col gap-1">
-                  <span>Grupo</span>
+                  <ThOrdenavelInline campo="grupo" ordenacao={ordenacao} onClick={() => alternarOrdenacao("grupo")}>
+                    Grupo
+                  </ThOrdenavelInline>
                   <select
                     value={filtroGrupo}
                     onChange={(e) => setFiltroGrupo(e.target.value)}
@@ -100,13 +132,22 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
                   </select>
                 </div>
               </Th>
-              <Th>Nome</Th>
+              <ThOrdenavel campo="nome" ordenacao={ordenacao} onClick={() => alternarOrdenacao("nome")}>
+                Nome
+              </ThOrdenavel>
               <Th>Unidade Base</Th>
               <Th align="right">Preço</Th>
               <Th align="right">Estoque p/ semana</Th>
               <Th align="right">Estoque mínimo</Th>
+              <Th>Nome de Compra</Th>
               <Th>Und. Embalagem</Th>
               <Th align="right">Qtd. Base/Embalagem</Th>
+              <Th align="right">Preço Fornecedor</Th>
+              <Th>Fornecedor 1</Th>
+              <Th>Fornecedor 2</Th>
+              <Th>Fornecedor 3</Th>
+              <Th>Fornecedor 4</Th>
+              <Th>Observações</Th>
               <Th align="center">
                 <div className="flex flex-col items-center gap-1">
                   <span>Ativo</span>
@@ -125,12 +166,12 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
             </tr>
           </thead>
           <tbody>
-            {filtrados.map((p) => (
+            {ordenados.map((p) => (
               <LinhaProduto key={p.sku} produto={p} />
             ))}
-            {filtrados.length === 0 && (
+            {ordenados.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={19} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -151,8 +192,48 @@ function Th({
 }) {
   const alinhamento = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
   return (
-    <th className={`sticky top-0 z-20 bg-azul-petroleo px-2 py-2 font-semibold ${alinhamento}`}>
+    <th className={`sticky top-0 z-20 whitespace-nowrap bg-azul-petroleo px-2 py-2 font-semibold ${alinhamento}`}>
       {children}
+    </th>
+  );
+}
+
+function ThOrdenavelInline({
+  campo,
+  ordenacao,
+  onClick,
+  children,
+}: {
+  campo: CampoOrdenacao;
+  ordenacao: Ordenacao;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const ativo = ordenacao.campo === campo;
+  return (
+    <button type="button" onClick={onClick} className="flex items-center gap-1 hover:text-ambar">
+      <span>{children}</span>
+      <span className="text-[9px]">{ativo ? (ordenacao.direcao === "asc" ? "▲" : "▼") : "⇅"}</span>
+    </button>
+  );
+}
+
+function ThOrdenavel({
+  campo,
+  ordenacao,
+  onClick,
+  children,
+}: {
+  campo: CampoOrdenacao;
+  ordenacao: Ordenacao;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <th className="sticky top-0 z-20 whitespace-nowrap bg-azul-petroleo px-2 py-2 text-left font-semibold">
+      <ThOrdenavelInline campo={campo} ordenacao={ordenacao} onClick={onClick}>
+        {children}
+      </ThOrdenavelInline>
     </th>
   );
 }
@@ -399,6 +480,13 @@ function LinhaProduto({ produto }: { produto: Produto }) {
         />
       </td>
       <td className="px-2 py-1.5">
+        <input
+          value={editado.nomeCompra}
+          onChange={(e) => campo("nomeCompra", e.target.value)}
+          className="w-40 rounded border border-cinza-claro px-1.5 py-1"
+        />
+      </td>
+      <td className="px-2 py-1.5">
         <CodigoSelect
           value={editado.unidadeEmbalagemFornecedor}
           opcoes={UNIDADES}
@@ -418,6 +506,52 @@ function LinhaProduto({ produto }: { produto: Produto }) {
             )
           }
           className={`w-20 rounded border px-1.5 py-1 text-right ${editado.qtdUnidadeBasePorEmbalagem === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          type="number"
+          step="0.01"
+          value={editado.precoFornecedor ?? ""}
+          onChange={(e) =>
+            campo("precoFornecedor", e.target.value === "" ? null : Number(e.target.value))
+          }
+          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.precoFornecedor === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          value={editado.fornecedor1}
+          onChange={(e) => campo("fornecedor1", e.target.value)}
+          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          value={editado.fornecedor2}
+          onChange={(e) => campo("fornecedor2", e.target.value)}
+          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          value={editado.fornecedor3}
+          onChange={(e) => campo("fornecedor3", e.target.value)}
+          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          value={editado.fornecedor4}
+          onChange={(e) => campo("fornecedor4", e.target.value)}
+          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <input
+          value={editado.observacoes}
+          onChange={(e) => campo("observacoes", e.target.value)}
+          className="w-48 rounded border border-cinza-claro px-1.5 py-1"
         />
       </td>
       <td className="px-2 py-1.5 text-center">
