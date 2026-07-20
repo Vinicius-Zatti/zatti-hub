@@ -4,53 +4,63 @@ import type { Produto } from "@/lib/types";
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
 const FIRST_DATA_ROW = 3;
-const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:P`;
+const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:R`;
 
 function toNumber(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
-  const n = Number(String(v).replace(",", "."));
+  const limpo = String(v).replace(/[^\d,.-]/g, "").replace(",", ".");
+  if (limpo === "") return null;
+  const n = Number(limpo);
   return Number.isNaN(n) ? null : n;
 }
 
+// Colunas reais da planilha (A-R), reorganizada em 20/07: SKU, Posição,
+// Grupo, Nome, Unidade, Preço, Estoque semana, Estoque mínimo, Nome de
+// Compra, Unidade Embalagem Fornecedor, Qtd Und Base por Embalagem, Preço
+// Fornecedor, Fornecedor 1-4, Observações, Ativo.
 function rowToProduto(row: string[]): Produto {
   return {
     sku: row[0] ?? "",
-    grupo: row[1] ?? "",
-    nome: row[2] ?? "",
-    nomeCompra: row[3] ?? "",
+    posicao: toNumber(row[1]),
+    grupo: row[2] ?? "",
+    nome: row[3] ?? "",
     unidadeBase: row[4] ?? "",
     precoUnitario: toNumber(row[5]),
-    precoFornecedor: toNumber(row[6]),
-    estoqueNecessarioSemana: toNumber(row[7]),
-    estoqueMinimo: toNumber(row[8]),
-    fornecedor1: row[9] ?? "",
-    fornecedor2: row[10] ?? "",
-    fornecedor3: row[11] ?? "",
-    fornecedor4: row[12] ?? "",
-    observacoes: row[13] ?? "",
-    ativo: (row[14] ?? "1") === "1",
-    posicao: toNumber(row[15]),
+    estoqueNecessarioSemana: toNumber(row[6]),
+    estoqueMinimo: toNumber(row[7]),
+    nomeCompra: row[8] ?? "",
+    unidadeEmbalagemFornecedor: row[9] ?? "",
+    qtdUnidadeBasePorEmbalagem: toNumber(row[10]),
+    precoFornecedor: toNumber(row[11]),
+    fornecedor1: row[12] ?? "",
+    fornecedor2: row[13] ?? "",
+    fornecedor3: row[14] ?? "",
+    fornecedor4: row[15] ?? "",
+    observacoes: row[16] ?? "",
+    ativo: (row[17] ?? "1") === "1",
   };
 }
 
 function produtoToRow(p: Produto): (string | number)[] {
   return [
     p.sku,
+    p.posicao ?? "",
     p.grupo,
     p.nome,
-    p.nomeCompra,
     p.unidadeBase,
     p.precoUnitario ?? "",
-    p.precoFornecedor ?? "",
     p.estoqueNecessarioSemana ?? "",
     p.estoqueMinimo ?? "",
+    p.nomeCompra,
+    p.unidadeEmbalagemFornecedor,
+    p.qtdUnidadeBasePorEmbalagem ?? "",
+    p.precoFornecedor ?? "",
     p.fornecedor1,
     p.fornecedor2,
     p.fornecedor3,
     p.fornecedor4,
     p.observacoes,
     p.ativo ? 1 : 0,
-    p.posicao ?? "",
   ];
 }
 
@@ -87,7 +97,7 @@ export async function upsertProduto(
     const rowNumber = FIRST_DATA_ROW + idx;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${SHEET}'!A${rowNumber}:P${rowNumber}`,
+      range: `'${SHEET}'!A${rowNumber}:R${rowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [produtoToRow(produto)] },
     });

@@ -26,23 +26,25 @@ export async function sugerirSkuAction(
 export async function criarProdutoAction(formData: FormData) {
   const produto: Produto = {
     sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
+    posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
     grupo: String(formData.get("grupo") ?? ""),
     nome: String(formData.get("nome") ?? ""),
-    nomeCompra: String(formData.get("nomeCompra") ?? ""),
     unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
     precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
-    precoFornecedor: null,
     estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
       ? Number(formData.get("estoqueNecessarioSemana"))
       : null,
     estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
+    nomeCompra: String(formData.get("nomeCompra") ?? ""),
+    unidadeEmbalagemFornecedor: "",
+    qtdUnidadeBasePorEmbalagem: null,
+    precoFornecedor: null,
     fornecedor1: "",
     fornecedor2: "",
     fornecedor3: "",
     fornecedor4: "",
     observacoes: String(formData.get("observacoes") ?? ""),
     ativo: true,
-    posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
   };
 
   await upsertProduto(produto);

@@ -1,20 +1,22 @@
 export type Produto = {
   sku: string;
+  posicao: number | null;
   grupo: string;
   nome: string;
-  nomeCompra: string;
   unidadeBase: string;
   precoUnitario: number | null;
-  precoFornecedor: number | null;
   estoqueNecessarioSemana: number | null;
   estoqueMinimo: number | null;
+  nomeCompra: string;
+  unidadeEmbalagemFornecedor: string;
+  qtdUnidadeBasePorEmbalagem: number | null;
+  precoFornecedor: number | null;
   fornecedor1: string;
   fornecedor2: string;
   fornecedor3: string;
   fornecedor4: string;
   observacoes: string;
   ativo: boolean;
-  posicao: number | null;
 };
 
 export type ItemInventario = {

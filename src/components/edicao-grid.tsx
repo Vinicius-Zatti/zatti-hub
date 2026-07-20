@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import type { ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
-import { GRUPO_ORDEM } from "@/lib/grupos";
+import { GRUPO_OPCOES } from "@/lib/grupos";
+import { UNIDADES } from "@/lib/unidades";
+import { CodigoSelect } from "@/components/codigo-select";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -34,38 +36,124 @@ export function EdicaoGrid({
         </div>
       )}
 
-      <div>
-        <h2 className="mb-1 font-display text-xl font-bold text-azul-noite">
-          Cadastro completo ({produtos.length})
+      <CadastroSection produtos={produtos} />
+    </div>
+  );
+}
+
+function CadastroSection({ produtos }: { produtos: Produto[] }) {
+  const [busca, setBusca] = useState("");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
+  const [filtroAtivo, setFiltroAtivo] = useState<"todos" | "ativo" | "inativo">("todos");
+
+  const filtrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return produtos.filter((p) => {
+      if (termo && !p.nome.toLowerCase().includes(termo) && !p.sku.toLowerCase().includes(termo)) {
+        return false;
+      }
+      if (filtroGrupo && p.grupo !== filtroGrupo) return false;
+      if (filtroAtivo === "ativo" && !p.ativo) return false;
+      if (filtroAtivo === "inativo" && p.ativo) return false;
+      return true;
+    });
+  }, [produtos, busca, filtroGrupo, filtroAtivo]);
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-bold text-azul-noite">
+          Cadastro completo ({filtrados.length}
+          {filtrados.length !== produtos.length ? ` de ${produtos.length}` : ""})
         </h2>
-        <p className="mb-3 text-xs text-cinza-medio">
-          Células em destaque estão vazias. Edita e clica em Salvar na linha.
-        </p>
-        <div className="overflow-x-auto rounded-lg border border-cinza-claro bg-branco">
-          <table className="w-full min-w-[1150px] text-xs">
-            <thead className="bg-azul-petroleo text-branco">
+        <input
+          type="text"
+          placeholder="Buscar por nome ou SKU..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
+        />
+      </div>
+      <p className="mb-3 text-xs text-cinza-medio">
+        Células em destaque estão vazias. Edita e clica em Salvar na linha.
+      </p>
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+        <table className="w-full min-w-[1150px] text-xs">
+          <thead>
+            <tr className="bg-azul-petroleo text-branco">
+              <Th>SKU</Th>
+              <Th>Posição</Th>
+              <Th>
+                <div className="flex flex-col gap-1">
+                  <span>Grupo</span>
+                  <select
+                    value={filtroGrupo}
+                    onChange={(e) => setFiltroGrupo(e.target.value)}
+                    className="rounded border border-azul-noite bg-azul-noite px-1 py-0.5 text-[10px] font-normal text-off-white"
+                  >
+                    <option value="">Todos</option>
+                    {GRUPO_OPCOES.map((o) => (
+                      <option key={o.codigo} value={o.codigo}>
+                        {o.codigo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </Th>
+              <Th>Nome</Th>
+              <Th>Unidade Base</Th>
+              <Th align="right">Preço</Th>
+              <Th align="right">Estoque p/ semana</Th>
+              <Th align="right">Estoque mínimo</Th>
+              <Th>Und. Embalagem</Th>
+              <Th align="right">Qtd. Base/Embalagem</Th>
+              <Th align="center">
+                <div className="flex flex-col items-center gap-1">
+                  <span>Ativo</span>
+                  <select
+                    value={filtroAtivo}
+                    onChange={(e) => setFiltroAtivo(e.target.value as typeof filtroAtivo)}
+                    className="rounded border border-azul-noite bg-azul-noite px-1 py-0.5 text-[10px] font-normal text-off-white"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="ativo">Ativos</option>
+                    <option value="inativo">Inativos</option>
+                  </select>
+                </div>
+              </Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtrados.map((p) => (
+              <LinhaProduto key={p.sku} produto={p} />
+            ))}
+            {filtrados.length === 0 && (
               <tr>
-                <th className="px-2 py-2 text-left font-semibold">SKU</th>
-                <th className="px-2 py-2 text-left font-semibold">Grupo</th>
-                <th className="px-2 py-2 text-left font-semibold">Nome</th>
-                <th className="px-2 py-2 text-left font-semibold">Unidade</th>
-                <th className="px-2 py-2 text-right font-semibold">Preço</th>
-                <th className="px-2 py-2 text-right font-semibold">Estoque p/ semana</th>
-                <th className="px-2 py-2 text-right font-semibold">Estoque mínimo</th>
-                <th className="px-2 py-2 text-right font-semibold">Posição</th>
-                <th className="px-2 py-2 text-center font-semibold">Ativo</th>
-                <th className="px-2 py-2 text-center font-semibold"></th>
+                <td colSpan={12} className="px-3 py-8 text-center text-cinza-medio">
+                  Nenhum produto encontrado com esse filtro.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {produtos.map((p) => (
-                <LinhaProduto key={p.sku} produto={p} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
+  );
+}
+
+function Th({
+  children,
+  align = "left",
+}: {
+  children?: React.ReactNode;
+  align?: "left" | "right" | "center";
+}) {
+  const alinhamento = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  return (
+    <th className={`sticky top-0 z-20 bg-azul-petroleo px-2 py-2 font-semibold ${alinhamento}`}>
+      {children}
+    </th>
   );
 }
 
@@ -104,21 +192,23 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
     startTransition(async () => {
       const r = await salvarProdutoAction({
         sku: sku.toUpperCase().trim(),
+        posicao: posicao ? Number(posicao) : null,
         grupo,
         nome: pendente.nome,
-        nomeCompra: pendente.nome,
         unidadeBase: pendente.unidadeBase,
         precoUnitario: preco ? Number(preco.replace(",", ".")) : null,
-        precoFornecedor: null,
         estoqueNecessarioSemana: estNecessario ? Number(estNecessario.replace(",", ".")) : null,
         estoqueMinimo: estMinimo ? Number(estMinimo.replace(",", ".")) : null,
+        nomeCompra: pendente.nome,
+        unidadeEmbalagemFornecedor: "",
+        qtdUnidadeBasePorEmbalagem: null,
+        precoFornecedor: null,
         fornecedor1: "",
         fornecedor2: "",
         fornecedor3: "",
         fornecedor4: "",
         observacoes: "",
         ativo: true,
-        posicao: posicao ? Number(posicao) : null,
       });
       if ("erro" in r) {
         setErro(r.erro);
@@ -158,20 +248,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
         <div>
           <label className="text-[10px] font-semibold text-cinza-medio">Grupo</label>
-          <select
-            value={grupo}
-            onChange={(e) => setGrupo(e.target.value)}
-            className="mt-0.5 w-full rounded border border-cinza-claro px-1.5 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              —
-            </option>
-            {GRUPO_ORDEM.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
+          <CodigoSelect value={grupo} opcoes={GRUPO_OPCOES} onChange={setGrupo} className="mt-0.5" />
         </div>
         <div>
           <label className="text-[10px] font-semibold text-cinza-medio">SKU</label>
@@ -264,17 +341,16 @@ function LinhaProduto({ produto }: { produto: Produto }) {
     <tr className="border-t border-cinza-claro">
       <td className="px-2 py-1.5 font-mono text-cinza-medio">{produto.sku}</td>
       <td className="px-2 py-1.5">
-        <select
-          value={editado.grupo}
-          onChange={(e) => campo("grupo", e.target.value)}
-          className="w-20 rounded border border-cinza-claro px-1 py-1"
-        >
-          {GRUPO_ORDEM.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
+        <input
+          type="number"
+          step="1"
+          value={editado.posicao ?? ""}
+          onChange={(e) => campo("posicao", e.target.value === "" ? null : Number(e.target.value))}
+          className={`w-16 rounded border px-1.5 py-1 text-right ${editado.posicao === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <CodigoSelect value={editado.grupo} opcoes={GRUPO_OPCOES} onChange={(v) => campo("grupo", v)} className="w-20" />
       </td>
       <td className="px-2 py-1.5">
         <input
@@ -284,11 +360,7 @@ function LinhaProduto({ produto }: { produto: Produto }) {
         />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          value={editado.unidadeBase}
-          onChange={(e) => campo("unidadeBase", e.target.value)}
-          className="w-14 rounded border border-cinza-claro px-1.5 py-1"
-        />
+        <CodigoSelect value={editado.unidadeBase} opcoes={UNIDADES} onChange={(v) => campo("unidadeBase", v)} className="w-16" />
       </td>
       <td className="px-2 py-1.5">
         <input
@@ -327,12 +399,25 @@ function LinhaProduto({ produto }: { produto: Produto }) {
         />
       </td>
       <td className="px-2 py-1.5">
+        <CodigoSelect
+          value={editado.unidadeEmbalagemFornecedor}
+          opcoes={UNIDADES}
+          onChange={(v) => campo("unidadeEmbalagemFornecedor", v)}
+          className="w-16"
+        />
+      </td>
+      <td className="px-2 py-1.5">
         <input
           type="number"
-          step="1"
-          value={editado.posicao ?? ""}
-          onChange={(e) => campo("posicao", e.target.value === "" ? null : Number(e.target.value))}
-          className={`w-16 rounded border px-1.5 py-1 text-right ${editado.posicao === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+          step="0.01"
+          value={editado.qtdUnidadeBasePorEmbalagem ?? ""}
+          onChange={(e) =>
+            campo(
+              "qtdUnidadeBasePorEmbalagem",
+              e.target.value === "" ? null : Number(e.target.value)
+            )
+          }
+          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.qtdUnidadeBasePorEmbalagem === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
         />
       </td>
       <td className="px-2 py-1.5 text-center">

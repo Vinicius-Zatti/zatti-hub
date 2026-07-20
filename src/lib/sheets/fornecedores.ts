@@ -7,7 +7,9 @@ const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:K`;
 
 function toNumber(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
-  const n = Number(String(v).replace(",", "."));
+  const limpo = String(v).replace(/[^\d,.-]/g, "").replace(",", ".");
+  if (limpo === "") return null;
+  const n = Number(limpo);
   return Number.isNaN(n) ? null : n;
 }
 
