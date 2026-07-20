@@ -53,7 +53,14 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
   const [isPending, startTransition] = useTransition();
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
-  const ativos = produtos.filter((p) => p.ativo);
+  const ativos = produtos
+    .filter((p) => p.ativo)
+    .sort((a, b) => {
+      const gA = GRUPO_ORDEM.indexOf(a.grupo);
+      const gB = GRUPO_ORDEM.indexOf(b.grupo);
+      if (gA !== gB) return (gA === -1 ? 999 : gA) - (gB === -1 ? 999 : gB);
+      return (a.posicao ?? Infinity) - (b.posicao ?? Infinity);
+    });
   const gruposPresentes = [
     ...GRUPO_ORDEM.filter((g) => ativos.some((p) => p.grupo === g)),
     ...Array.from(new Set(ativos.map((p) => p.grupo))).filter((g) => !GRUPO_ORDEM.includes(g)),

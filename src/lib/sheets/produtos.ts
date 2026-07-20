@@ -4,7 +4,7 @@ import type { Produto } from "@/lib/types";
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
 const FIRST_DATA_ROW = 3;
-const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:O`;
+const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:P`;
 
 function toNumber(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
@@ -29,6 +29,7 @@ function rowToProduto(row: string[]): Produto {
     fornecedor4: row[12] ?? "",
     observacoes: row[13] ?? "",
     ativo: (row[14] ?? "1") === "1",
+    posicao: toNumber(row[15]),
   };
 }
 
@@ -49,6 +50,7 @@ function produtoToRow(p: Produto): (string | number)[] {
     p.fornecedor4,
     p.observacoes,
     p.ativo ? 1 : 0,
+    p.posicao ?? "",
   ];
 }
 
@@ -85,7 +87,7 @@ export async function upsertProduto(
     const rowNumber = FIRST_DATA_ROW + idx;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${SHEET}'!A${rowNumber}:O${rowNumber}`,
+      range: `'${SHEET}'!A${rowNumber}:P${rowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [produtoToRow(produto)] },
     });

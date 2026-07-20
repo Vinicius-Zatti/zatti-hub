@@ -134,11 +134,16 @@ export async function listItensPendentes(tenantId?: string): Promise<ItemPendent
     listProdutos(tenantId),
   ]);
   const skusCadastrados = new Set(produtos.map((p) => p.sku));
+  // Resolvido = já existe um produto de verdade com o mesmo nome (o SKU
+  // provisório PENDENTE- nunca vira o SKU real, por decisão de 18/07 — o
+  // histórico fica separado, só o nome muda de "pendente" pra "resolvido").
+  const nomesCadastrados = new Set(produtos.map((p) => p.nome.trim().toLowerCase()));
 
   const porNome = new Map<string, ItemPendente>();
   for (const item of inventario) {
     if (!item.sku.startsWith(PENDENTE_PREFIX)) continue;
     if (skusCadastrados.has(item.sku)) continue;
+    if (nomesCadastrados.has(item.nome.trim().toLowerCase())) continue;
     const existente = porNome.get(item.nome);
     if (!existente || item.data > existente.ultimaContagem) {
       porNome.set(item.nome, {

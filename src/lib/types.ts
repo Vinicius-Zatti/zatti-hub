@@ -14,6 +14,7 @@ export type Produto = {
   fornecedor4: string;
   observacoes: string;
   ativo: boolean;
+  posicao: number | null;
 };
 
 export type ItemInventario = {

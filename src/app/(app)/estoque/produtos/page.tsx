@@ -44,26 +44,28 @@ export default async function ProdutosPage() {
 
       {pendentes.length > 0 && (
         <div className="rounded-lg border border-ambar/60 bg-ambar/5 p-4">
-          <div className="text-sm font-bold text-ambar">
-            {pendentes.length} {pendentes.length === 1 ? "item contado" : "itens contados"}{" "}
-            sem cadastro
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold text-ambar">
+                {pendentes.length} {pendentes.length === 1 ? "item contado" : "itens contados"}{" "}
+                sem cadastro
+              </div>
+              <p className="mt-0.5 text-xs text-cinza-medio">
+                Foram lançados na contagem como avulso. Completa o cadastro na Edição de Dados
+                pra eles pararem de cair fora do Pedido de Compras.
+              </p>
+            </div>
+            <Link
+              href="/estoque/edicao"
+              className="shrink-0 rounded-md border border-ambar px-3 py-1.5 text-xs font-semibold text-ambar hover:bg-ambar/10"
+            >
+              Ir pra Edição de Dados
+            </Link>
           </div>
-          <p className="mt-0.5 text-xs text-cinza-medio">
-            Foram lançados na contagem como avulso. Cria o produto pra eles pararem de
-            cair fora do Pedido de Compras.
-          </p>
           <div className="mt-2 flex flex-col gap-1">
             {pendentes.map((p) => (
-              <div key={p.nome} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-cinza">
-                  {p.nome} <span className="text-cinza-medio">({p.unidadeBase})</span>
-                </span>
-                <Link
-                  href={`/estoque/produtos/novo?nome=${encodeURIComponent(p.nome)}&unidade=${encodeURIComponent(p.unidadeBase)}`}
-                  className="shrink-0 rounded-md border border-ambar px-2.5 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10"
-                >
-                  Cadastrar
-                </Link>
+              <div key={p.nome} className="text-sm text-cinza">
+                {p.nome} <span className="text-cinza-medio">({p.unidadeBase})</span>
               </div>
             ))}
           </div>

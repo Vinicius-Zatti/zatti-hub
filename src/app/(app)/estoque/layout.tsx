@@ -2,6 +2,7 @@ import { SubTabs } from "@/components/sub-tabs";
 
 const SUB_ITEMS = [
   { label: "Produtos", href: "/estoque/produtos" },
+  { label: "Edição de Dados", href: "/estoque/edicao" },
   { label: "Contagem", href: "/estoque/contagem" },
   { label: "Pedidos", href: "/estoque/pedidos" },
   { label: "Fornecedores", href: "/estoque/fornecedores" },
