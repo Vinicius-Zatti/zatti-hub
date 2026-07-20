@@ -1,9 +1,21 @@
 "use server";
 
 import { upsertProduto } from "@/lib/sheets/produtos";
+import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+
+export async function sugerirSkuAction(
+  grupo: string,
+  nome: string
+): Promise<{ sku: string; motivo: string } | { erro: string }> {
+  try {
+    return await sugerirSku(grupo, nome);
+  } catch (err) {
+    return { erro: (err as Error).message };
+  }
+}
 
 export async function criarProdutoAction(formData: FormData) {
   const produto: Produto = {
