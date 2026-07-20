@@ -43,3 +43,6 @@ next-env.d.ts
 # Zatti Hub
 .env.local
 .env*.local
+
+.vercel
+.env*

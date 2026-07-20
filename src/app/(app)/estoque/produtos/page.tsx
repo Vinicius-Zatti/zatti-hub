@@ -93,7 +93,7 @@ export default async function ProdutosPage() {
               <th className="px-3 py-2 text-left font-semibold">Nome</th>
               <th className="px-3 py-2 text-left font-semibold">Unidade</th>
               <th className="px-3 py-2 text-right font-semibold">Preço</th>
-              <th className="px-3 py-2 text-right font-semibold">Estoque mín.</th>
+              <th className="px-3 py-2 text-right font-semibold">Estoque Pra Semana</th>
               <th className="px-3 py-2 text-center font-semibold">Status</th>
             </tr>
           </thead>
@@ -111,7 +111,7 @@ export default async function ProdutosPage() {
                   {formatMoeda(p.precoUnitario)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
-                  {p.estoqueMinimo ?? "—"}
+                  {p.estoqueNecessarioSemana ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-center">
                   <span

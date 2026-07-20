@@ -15,12 +15,24 @@ export type LinhaAvulsa = {
   quantidade: string;
 };
 
-export async function registrarContagemAction(linhas: NovaContagemLinha[]) {
-  const hoje = new Date();
-  const data = hoje.toLocaleDateString("pt-BR");
-  const mes = `${MESES[hoje.getMonth()]} ${hoje.getFullYear()}`;
+/** dataISO no formato AAAA-MM-DD (a data escolhida na Contagem). Sem ela,
+ * cai no dia de hoje. */
+export async function registrarContagemAction(
+  linhas: NovaContagemLinha[],
+  dataISO?: string
+) {
+  let dia: Date;
+  if (dataISO) {
+    const [ano, mes, diaNum] = dataISO.split("-").map(Number);
+    dia = new Date(ano, mes - 1, diaNum);
+  } else {
+    dia = new Date();
+  }
 
-  await registrarContagem(data, mes, linhas);
+  const dataFmt = dia.toLocaleDateString("pt-BR");
+  const mesFmt = `${MESES[dia.getMonth()]} ${dia.getFullYear()}`;
+
+  await registrarContagem(dataFmt, mesFmt, linhas);
 
   revalidatePath("/estoque/contagem");
   revalidatePath("/estoque/pedidos");
