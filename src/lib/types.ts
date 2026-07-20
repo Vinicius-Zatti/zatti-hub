@@ -29,6 +29,12 @@ export type ItemInventario = {
   alerta: string;
 };
 
+export type ItemPendente = {
+  nome: string;
+  unidadeBase: string;
+  ultimaContagem: string;
+};
+
 export type Fornecedor = {
   codigo: string;
   razaoSocial: string;

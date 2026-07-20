@@ -8,6 +8,13 @@ const MESES = [
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 
+export type LinhaAvulsa = {
+  sku: string;
+  nome: string;
+  unidadeBase: string;
+  quantidade: string;
+};
+
 export async function registrarContagemAction(linhas: NovaContagemLinha[]) {
   const hoje = new Date();
   const data = hoje.toLocaleDateString("pt-BR");

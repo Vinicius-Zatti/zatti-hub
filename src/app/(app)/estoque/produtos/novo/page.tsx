@@ -4,10 +4,20 @@ const GRUPOS = [
   "PRO", "HOR", "LAT", "MER", "CON", "BEB", "BAL", "EMB", "DES", "LIM", "OPE",
 ];
 
-export default function NovoProdutoPage() {
+export default async function NovoProdutoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nome?: string; unidade?: string }>;
+}) {
+  const { nome, unidade } = await searchParams;
   return (
     <div className="mx-auto max-w-lg">
       <h1 className="font-display text-2xl font-bold text-azul-noite">Novo produto</h1>
+      {nome && (
+        <p className="mt-1 text-xs text-cinza-medio">
+          Preenchido a partir de um item contado como avulso.
+        </p>
+      )}
       <form action={criarProdutoAction} className="mt-4 flex flex-col gap-3">
         <Campo label="SKU" name="sku" required placeholder="Ex: MERPBA001" />
         <div>
@@ -24,9 +34,9 @@ export default function NovoProdutoPage() {
             ))}
           </select>
         </div>
-        <Campo label="Nome (contagem)" name="nome" required />
+        <Campo label="Nome (contagem)" name="nome" required defaultValue={nome} />
         <Campo label="Nome de compra" name="nomeCompra" />
-        <Campo label="Unidade base (KG / LT / UN)" name="unidadeBase" defaultValue="UN" />
+        <Campo label="Unidade base (KG / LT / UN)" name="unidadeBase" defaultValue={unidade || "UN"} />
         <Campo label="Preço unitário" name="precoUnitario" type="number" step="0.01" />
         <Campo label="Estoque necessário da semana" name="estoqueNecessarioSemana" type="number" step="0.01" />
         <Campo label="Estoque mínimo" name="estoqueMinimo" type="number" step="0.01" />

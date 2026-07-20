@@ -1,10 +1,12 @@
 import { getSheetsClient, getSpreadsheetId } from "./client";
-import type { ItemInventario, Produto } from "@/lib/types";
+import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
 import { listProdutos } from "./produtos";
 
 const SHEET = "Inventário";
 const FIRST_DATA_ROW = 3;
 const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:J`;
+
+export const PENDENTE_PREFIX = "PENDENTE-";
 
 function toNumber(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
@@ -62,6 +64,11 @@ function calcularAlerta(
 export type NovaContagemLinha = {
   sku: string;
   quantidade: number;
+  /** Presente quando o item foi digitado na hora da contagem e ainda não
+   * tem cadastro em Cadastro de Produtos (equivalente ao antigo "item avulso"
+   * do HTML de inventário). Quando presente, ignora o lookup por SKU. */
+  nomeAvulso?: string;
+  unidadeAvulso?: string;
 };
 
 export async function registrarContagem(
@@ -75,7 +82,22 @@ export async function registrarContagem(
   const produtos = await listProdutos(tenantId);
   const porSku = new Map(produtos.map((p) => [p.sku, p]));
 
-  const rows = linhas.map(({ sku, quantidade }) => {
+  const rows = linhas.map(({ sku, quantidade, nomeAvulso, unidadeAvulso }) => {
+    if (nomeAvulso) {
+      return [
+        data,
+        mes,
+        sku,
+        "",
+        nomeAvulso,
+        unidadeAvulso || "UN",
+        quantidade,
+        "",
+        "a calcular",
+        "Sem cadastro, falta criar produto",
+      ];
+    }
+
     const produto = porSku.get(sku);
     const precoUnitario = produto?.precoUnitario ?? null;
     const total = precoUnitario !== null ? Number((quantidade * precoUnitario).toFixed(2)) : "a calcular";
@@ -102,4 +124,29 @@ export async function registrarContagem(
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: rows },
   });
+}
+
+/** Itens contados como avulso (fora do Cadastro de Produtos) que ainda não
+ * viraram produto de verdade. Pega a ocorrência mais recente de cada nome. */
+export async function listItensPendentes(tenantId?: string): Promise<ItemPendente[]> {
+  const [inventario, produtos] = await Promise.all([
+    listInventario(tenantId),
+    listProdutos(tenantId),
+  ]);
+  const skusCadastrados = new Set(produtos.map((p) => p.sku));
+
+  const porNome = new Map<string, ItemPendente>();
+  for (const item of inventario) {
+    if (!item.sku.startsWith(PENDENTE_PREFIX)) continue;
+    if (skusCadastrados.has(item.sku)) continue;
+    const existente = porNome.get(item.nome);
+    if (!existente || item.data > existente.ultimaContagem) {
+      porNome.set(item.nome, {
+        nome: item.nome,
+        unidadeBase: item.unidadeBase,
+        ultimaContagem: item.data,
+      });
+    }
+  }
+  return Array.from(porNome.values());
 }

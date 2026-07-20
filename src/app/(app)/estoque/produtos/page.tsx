@@ -1,4 +1,5 @@
 import { listProdutos } from "@/lib/sheets/produtos";
+import { listItensPendentes } from "@/lib/sheets/inventario";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import Link from "next/link";
@@ -17,6 +18,7 @@ export default async function ProdutosPage() {
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }
+  const pendentes = await listItensPendentes();
 
   const ativos = produtos.filter((p) => p.ativo);
   const semPreco = produtos.filter((p) => p.precoUnitario === null);
@@ -39,6 +41,34 @@ export default async function ProdutosPage() {
           + Novo produto
         </Link>
       </div>
+
+      {pendentes.length > 0 && (
+        <div className="rounded-lg border border-ambar/60 bg-ambar/5 p-4">
+          <div className="text-sm font-bold text-ambar">
+            {pendentes.length} {pendentes.length === 1 ? "item contado" : "itens contados"}{" "}
+            sem cadastro
+          </div>
+          <p className="mt-0.5 text-xs text-cinza-medio">
+            Foram lançados na contagem como avulso. Cria o produto pra eles pararem de
+            cair fora do Pedido de Compras.
+          </p>
+          <div className="mt-2 flex flex-col gap-1">
+            {pendentes.map((p) => (
+              <div key={p.nome} className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-cinza">
+                  {p.nome} <span className="text-cinza-medio">({p.unidadeBase})</span>
+                </span>
+                <Link
+                  href={`/estoque/produtos/novo?nome=${encodeURIComponent(p.nome)}&unidade=${encodeURIComponent(p.unidadeBase)}`}
+                  className="shrink-0 rounded-md border border-ambar px-2.5 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10"
+                >
+                  Cadastrar
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Produtos cadastrados" value={String(produtos.length)} />
