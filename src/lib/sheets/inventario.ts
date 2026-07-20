@@ -1,0 +1,105 @@
+import { getSheetsClient, getSpreadsheetId } from "./client";
+import type { ItemInventario, Produto } from "@/lib/types";
+import { listProdutos } from "./produtos";
+
+const SHEET = "Inventário";
+const FIRST_DATA_ROW = 3;
+const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:J`;
+
+function toNumber(v: unknown): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isNaN(n) ? null : n;
+}
+
+function rowToItem(row: string[]): ItemInventario {
+  return {
+    data: row[0] ?? "",
+    mes: row[1] ?? "",
+    sku: row[2] ?? "",
+    grupo: row[3] ?? "",
+    nome: row[4] ?? "",
+    unidadeBase: row[5] ?? "",
+    quantidade: toNumber(row[6]),
+    precoUnitario: toNumber(row[7]),
+    total: toNumber(row[8]),
+    alerta: row[9] ?? "",
+  };
+}
+
+export async function listInventario(tenantId?: string): Promise<ItemInventario[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId(tenantId);
+
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
+  const rows = res.data.values ?? [];
+  return rows.filter((r) => r[2]).map(rowToItem);
+}
+
+/** Mesma regra combinada com o Vinícius em 18/07: alto = suspeita de erro de
+ * contagem; baixo (abaixo do estoque mínimo) = alerta de compra emergencial,
+ * nunca "erro" (pode legitimamente zerar). */
+function calcularAlerta(
+  quantidade: number | null,
+  precoUnitario: number | null,
+  produto: Produto | undefined
+): string {
+  if (quantidade === null) return "";
+  if (precoUnitario === null) return "Falta preço no cadastro";
+  if (!produto) return "";
+  if (
+    produto.estoqueNecessarioSemana !== null &&
+    quantidade > produto.estoqueNecessarioSemana * 2
+  ) {
+    return "Possível erro de contagem";
+  }
+  if (produto.estoqueMinimo !== null && quantidade < produto.estoqueMinimo) {
+    return "Comprar emergencial";
+  }
+  return "";
+}
+
+export type NovaContagemLinha = {
+  sku: string;
+  quantidade: number;
+};
+
+export async function registrarContagem(
+  data: string, // "DD/MM/AAAA"
+  mes: string, // "julho 2026"
+  linhas: NovaContagemLinha[],
+  tenantId?: string
+): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId(tenantId);
+  const produtos = await listProdutos(tenantId);
+  const porSku = new Map(produtos.map((p) => [p.sku, p]));
+
+  const rows = linhas.map(({ sku, quantidade }) => {
+    const produto = porSku.get(sku);
+    const precoUnitario = produto?.precoUnitario ?? null;
+    const total = precoUnitario !== null ? Number((quantidade * precoUnitario).toFixed(2)) : "a calcular";
+    const alerta = calcularAlerta(quantidade, precoUnitario, produto);
+
+    return [
+      data,
+      mes,
+      sku,
+      produto?.grupo ?? "",
+      produto?.nome ?? "",
+      produto?.unidadeBase ?? "",
+      quantidade,
+      precoUnitario ?? "",
+      total,
+      alerta,
+    ];
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: RANGE,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: rows },
+  });
+}
