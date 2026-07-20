@@ -1,5 +1,6 @@
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listItensPendentes } from "@/lib/sheets/inventario";
+import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EdicaoGrid } from "@/components/edicao-grid";
 
@@ -12,7 +13,10 @@ export default async function EdicaoDadosPage() {
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }
-  const pendentes = await listItensPendentes();
+  const [pendentes, fornecedores] = await Promise.all([
+    listItensPendentes(),
+    listFornecedores(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -20,10 +24,10 @@ export default async function EdicaoDadosPage() {
         <h1 className="font-display text-3xl font-bold text-azul-noite">Edição de Dados</h1>
         <p className="text-sm text-cinza-medio">
           O cadastro inteiro, como na planilha. Células destacadas estão vazias ou incompletas —
-          edita direto aqui e salva linha por linha.
+          edita direto aqui e salva linha por linha ou tudo de uma vez.
         </p>
       </div>
-      <EdicaoGrid produtos={produtos} pendentes={pendentes} />
+      <EdicaoGrid produtos={produtos} pendentes={pendentes} fornecedores={fornecedores} />
     </div>
   );
 }

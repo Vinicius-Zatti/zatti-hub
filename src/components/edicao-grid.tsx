@@ -1,24 +1,28 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import type { ItemPendente, Produto } from "@/lib/types";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES } from "@/lib/unidades";
-import { CodigoSelect } from "@/components/codigo-select";
+import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
+import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
 
 type CampoOrdenacao = "posicao" | "nome" | "grupo";
 type Ordenacao = { campo: CampoOrdenacao | null; direcao: "asc" | "desc" };
+type StatusLinha = { tipo: "salvando" | "ok" | "erro"; msg?: string } | undefined;
 
 export function EdicaoGrid({
   produtos,
   pendentes,
+  fornecedores,
 }: {
   produtos: Produto[];
   pendentes: ItemPendente[];
+  fornecedores: Fornecedor[];
 }) {
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -39,53 +43,113 @@ export function EdicaoGrid({
         </div>
       )}
 
-      <CadastroSection produtos={produtos} />
+      <CadastroSection produtos={produtos} fornecedores={fornecedores} />
     </div>
   );
 }
 
-function CadastroSection({ produtos }: { produtos: Produto[] }) {
+function CadastroSection({
+  produtos,
+  fornecedores,
+}: {
+  produtos: Produto[];
+  fornecedores: Fornecedor[];
+}) {
   const [busca, setBusca] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todos" | "ativo" | "inativo">("todos");
   const [ordenacao, setOrdenacao] = useState<Ordenacao>({ campo: null, direcao: "asc" });
 
-  function alternarOrdenacao(campo: CampoOrdenacao) {
-    setOrdenacao((o) => (o.campo !== campo ? { campo, direcao: "asc" } : { campo, direcao: o.direcao === "asc" ? "desc" : "asc" }));
+  const [baseline, setBaseline] = useState<Record<string, Produto>>(() =>
+    Object.fromEntries(produtos.map((p) => [p.sku, p]))
+  );
+  const [estado, setEstado] = useState<Record<string, Produto>>(() =>
+    Object.fromEntries(produtos.map((p) => [p.sku, p]))
+  );
+  const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
+  const [salvandoTodos, setSalvandoTodos] = useState(false);
+
+  const fornecedorOpcoes: OpcaoCodigo[] = useMemo(
+    () => [
+      { codigo: "", descricao: "(nenhum)" },
+      ...fornecedores.map((f) => ({
+        codigo: f.nomeFantasia || f.razaoSocial,
+        descricao: f.razaoSocial && f.razaoSocial !== f.nomeFantasia ? f.razaoSocial : "",
+      })),
+    ],
+    [fornecedores]
+  );
+
+  const alterados = useMemo(
+    () => Object.keys(estado).filter((sku) => JSON.stringify(estado[sku]) !== JSON.stringify(baseline[sku])),
+    [estado, baseline]
+  );
+
+  const campo = useCallback(<K extends keyof Produto>(sku: string, key: K, value: Produto[K]) => {
+    setEstado((e) => ({ ...e, [sku]: { ...e[sku], [key]: value } }));
+    setStatusPorSku((s) => ({ ...s, [sku]: undefined }));
+  }, []);
+
+  const salvarUm = useCallback(
+    async (sku: string) => {
+      setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "salvando" } }));
+      const r = await salvarProdutoAction(estado[sku]);
+      if ("erro" in r) {
+        setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "erro", msg: r.erro } }));
+        return false;
+      }
+      setBaseline((b) => ({ ...b, [sku]: estado[sku] }));
+      setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok" } }));
+      return true;
+    },
+    [estado]
+  );
+
+  async function salvarTodos() {
+    setSalvandoTodos(true);
+    await Promise.all(alterados.map((sku) => salvarUm(sku)));
+    setSalvandoTodos(false);
   }
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return produtos.filter((p) => {
-      if (termo && !p.nome.toLowerCase().includes(termo) && !p.sku.toLowerCase().includes(termo)) {
+      const atual = estado[p.sku] ?? p;
+      if (termo && !atual.nome.toLowerCase().includes(termo) && !atual.sku.toLowerCase().includes(termo)) {
         return false;
       }
-      if (filtroGrupo && p.grupo !== filtroGrupo) return false;
-      if (filtroAtivo === "ativo" && !p.ativo) return false;
-      if (filtroAtivo === "inativo" && p.ativo) return false;
+      if (filtroGrupo && atual.grupo !== filtroGrupo) return false;
+      if (filtroAtivo === "ativo" && !atual.ativo) return false;
+      if (filtroAtivo === "inativo" && atual.ativo) return false;
       return true;
     });
-  }, [produtos, busca, filtroGrupo, filtroAtivo]);
+  }, [produtos, estado, busca, filtroGrupo, filtroAtivo]);
 
   const ordenados = useMemo(() => {
     if (!ordenacao.campo) return filtrados;
     const mult = ordenacao.direcao === "asc" ? 1 : -1;
     const copia = [...filtrados];
     copia.sort((a, b) => {
+      const ea = estado[a.sku] ?? a;
+      const eb = estado[b.sku] ?? b;
       if (ordenacao.campo === "posicao") {
-        return ((a.posicao ?? Infinity) - (b.posicao ?? Infinity)) * mult;
+        return ((ea.posicao ?? Infinity) - (eb.posicao ?? Infinity)) * mult;
       }
       if (ordenacao.campo === "nome") {
-        return a.nome.localeCompare(b.nome, "pt-BR") * mult;
+        return ea.nome.localeCompare(eb.nome, "pt-BR") * mult;
       }
-      // grupo: ordena o grupo na direção escolhida, mas o nome dentro do
-      // grupo é sempre A-Z, fixo, não faz parte da opção de classificação.
-      const g = a.grupo.localeCompare(b.grupo, "pt-BR") * mult;
+      const g = ea.grupo.localeCompare(eb.grupo, "pt-BR") * mult;
       if (g !== 0) return g;
-      return a.nome.localeCompare(b.nome, "pt-BR");
+      return ea.nome.localeCompare(eb.nome, "pt-BR");
     });
     return copia;
-  }, [filtrados, ordenacao]);
+  }, [filtrados, estado, ordenacao]);
+
+  function alternarOrdenacao(campoOrd: CampoOrdenacao) {
+    setOrdenacao((o) => (o.campo !== campoOrd ? { campo: campoOrd, direcao: "asc" } : { campo: campoOrd, direcao: o.direcao === "asc" ? "desc" : "asc" }));
+  }
+
+  const { scrollRef, handlers, arrastando, espacoPressionado } = useArrastarParaRolar<HTMLDivElement>();
 
   return (
     <div>
@@ -94,18 +158,35 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
           Cadastro completo ({filtrados.length}
           {filtrados.length !== produtos.length ? ` de ${produtos.length}` : ""})
         </h2>
-        <input
-          type="text"
-          placeholder="Buscar por nome ou SKU..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            placeholder="Buscar por nome ou SKU..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={salvarTodos}
+            disabled={alterados.length === 0 || salvandoTodos}
+            className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
+          >
+            {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
+          </button>
+        </div>
       </div>
       <p className="mb-3 text-xs text-cinza-medio">
-        Células em destaque estão vazias. Edita e clica em Salvar na linha.
+        Células em destaque estão vazias. Segura o fundo da tabela (ou a barra de espaço, fora de
+        um campo) pra arrastar e rolar.
       </p>
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+      <div
+        ref={scrollRef}
+        {...handlers}
+        className={`max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
+          arrastando ? "cursor-grabbing" : espacoPressionado ? "cursor-grab" : ""
+        }`}
+      >
         <table className="w-full min-w-[1750px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -167,7 +248,16 @@ function CadastroSection({ produtos }: { produtos: Produto[] }) {
           </thead>
           <tbody>
             {ordenados.map((p) => (
-              <LinhaProduto key={p.sku} produto={p} />
+              <LinhaProduto
+                key={p.sku}
+                sku={p.sku}
+                editado={estado[p.sku]}
+                mudou={JSON.stringify(estado[p.sku]) !== JSON.stringify(baseline[p.sku])}
+                status={statusPorSku[p.sku]}
+                fornecedorOpcoes={fornecedorOpcoes}
+                onChange={campo}
+                onSalvar={salvarUm}
+              />
             ))}
             {ordenados.length === 0 && (
               <tr>
@@ -248,12 +338,13 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
   const [posicao, setPosicao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvo, setSalvo] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
   function sugerir() {
     setErro(null);
-    startTransition(async () => {
-      const r = await sugerirSkuAction(pendente.nome);
+    setPending(true);
+    sugerirSkuAction(pendente.nome).then((r) => {
+      setPending(false);
       if ("erro" in r) {
         setErro(r.erro);
         return;
@@ -270,27 +361,28 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
       return;
     }
     setErro(null);
-    startTransition(async () => {
-      const r = await salvarProdutoAction({
-        sku: sku.toUpperCase().trim(),
-        posicao: posicao ? Number(posicao) : null,
-        grupo,
-        nome: pendente.nome,
-        unidadeBase: pendente.unidadeBase,
-        precoUnitario: preco ? Number(preco.replace(",", ".")) : null,
-        estoqueNecessarioSemana: estNecessario ? Number(estNecessario.replace(",", ".")) : null,
-        estoqueMinimo: estMinimo ? Number(estMinimo.replace(",", ".")) : null,
-        nomeCompra: pendente.nome,
-        unidadeEmbalagemFornecedor: "",
-        qtdUnidadeBasePorEmbalagem: null,
-        precoFornecedor: null,
-        fornecedor1: "",
-        fornecedor2: "",
-        fornecedor3: "",
-        fornecedor4: "",
-        observacoes: "",
-        ativo: true,
-      });
+    setPending(true);
+    salvarProdutoAction({
+      sku: sku.toUpperCase().trim(),
+      posicao: posicao ? Number(posicao) : null,
+      grupo,
+      nome: pendente.nome,
+      unidadeBase: pendente.unidadeBase,
+      precoUnitario: preco ? Number(preco.replace(",", ".")) : null,
+      estoqueNecessarioSemana: estNecessario ? Number(estNecessario.replace(",", ".")) : null,
+      estoqueMinimo: estMinimo ? Number(estMinimo.replace(",", ".")) : null,
+      nomeCompra: pendente.nome,
+      unidadeEmbalagemFornecedor: "",
+      qtdUnidadeBasePorEmbalagem: null,
+      precoFornecedor: null,
+      fornecedor1: "",
+      fornecedor2: "",
+      fornecedor3: "",
+      fornecedor4: "",
+      observacoes: "",
+      ativo: true,
+    }).then((r) => {
+      setPending(false);
       if ("erro" in r) {
         setErro(r.erro);
         return;
@@ -393,34 +485,32 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
   );
 }
 
-function LinhaProduto({ produto }: { produto: Produto }) {
-  const [editado, setEditado] = useState(produto);
-  const [pending, startTransition] = useTransition();
-  const [erro, setErro] = useState<string | null>(null);
-  const [salvoOk, setSalvoOk] = useState(false);
-
-  const mudou = JSON.stringify(editado) !== JSON.stringify(produto);
+const LinhaProduto = memo(function LinhaProduto({
+  sku,
+  editado,
+  mudou,
+  status,
+  fornecedorOpcoes,
+  onChange,
+  onSalvar,
+}: {
+  sku: string;
+  editado: Produto;
+  mudou: boolean;
+  status: StatusLinha;
+  fornecedorOpcoes: OpcaoCodigo[];
+  onChange: <K extends keyof Produto>(sku: string, key: K, value: Produto[K]) => void;
+  onSalvar: (sku: string) => void;
+}) {
+  const pending = status?.tipo === "salvando";
 
   function campo<K extends keyof Produto>(key: K, value: Produto[K]) {
-    setEditado((e) => ({ ...e, [key]: value }));
-    setSalvoOk(false);
-  }
-
-  function salvar() {
-    setErro(null);
-    startTransition(async () => {
-      const r = await salvarProdutoAction(editado);
-      if ("erro" in r) {
-        setErro(r.erro);
-        return;
-      }
-      setSalvoOk(true);
-    });
+    onChange(sku, key, value);
   }
 
   return (
     <tr className="border-t border-cinza-claro">
-      <td className="px-2 py-1.5 font-mono text-cinza-medio">{produto.sku}</td>
+      <td className="px-2 py-1.5 font-mono text-cinza-medio">{sku}</td>
       <td className="px-2 py-1.5">
         <input
           type="number"
@@ -520,32 +610,16 @@ function LinhaProduto({ produto }: { produto: Produto }) {
         />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          value={editado.fornecedor1}
-          onChange={(e) => campo("fornecedor1", e.target.value)}
-          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
-        />
+        <CodigoSelect value={editado.fornecedor1} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor1", v)} className="w-28" />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          value={editado.fornecedor2}
-          onChange={(e) => campo("fornecedor2", e.target.value)}
-          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
-        />
+        <CodigoSelect value={editado.fornecedor2} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor2", v)} className="w-28" />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          value={editado.fornecedor3}
-          onChange={(e) => campo("fornecedor3", e.target.value)}
-          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
-        />
+        <CodigoSelect value={editado.fornecedor3} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor3", v)} className="w-28" />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          value={editado.fornecedor4}
-          onChange={(e) => campo("fornecedor4", e.target.value)}
-          className="w-28 rounded border border-cinza-claro px-1.5 py-1"
-        />
+        <CodigoSelect value={editado.fornecedor4} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor4", v)} className="w-28" />
       </td>
       <td className="px-2 py-1.5">
         <input
@@ -565,16 +639,16 @@ function LinhaProduto({ produto }: { produto: Produto }) {
         {mudou && !pending && (
           <button
             type="button"
-            onClick={salvar}
+            onClick={() => onSalvar(sku)}
             className="rounded bg-azul-noite px-2 py-1 text-[10px] font-bold text-branco hover:bg-azul-petroleo"
           >
             Salvar
           </button>
         )}
         {pending && <span className="text-[10px] text-cinza-medio">Salvando...</span>}
-        {salvoOk && !mudou && <span className="text-[10px] font-semibold text-verde">Salvo ✓</span>}
-        {erro && <span className="block text-[10px] text-vermelho">{erro}</span>}
+        {status?.tipo === "ok" && !mudou && <span className="text-[10px] font-semibold text-verde">Salvo ✓</span>}
+        {status?.tipo === "erro" && <span className="block text-[10px] text-vermelho">{status.msg}</span>}
       </td>
     </tr>
   );
-}
+});
