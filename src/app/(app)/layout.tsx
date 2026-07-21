@@ -23,13 +23,8 @@ export default function AppLayout({
       <div className="flex min-h-full flex-col">
         <header className="bg-azul-noite text-branco">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-            <Link href="/estoque/produtos" className="flex items-baseline gap-2">
-              <span className="font-display text-xl font-bold tracking-wide">
-                ZATTI
-              </span>
-              <span className="text-xs font-semibold tracking-widest text-ambar">
-                HUB
-              </span>
+            <Link href="/estoque/produtos" className="flex items-center">
+              <img src="/brand/zatti-logo-invertida.svg" alt="Zatti Hub" className="h-7 w-auto" />
             </Link>
             <div className="flex items-center gap-3 text-sm">
               <span className="hidden text-cinza-claro sm:inline">
