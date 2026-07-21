@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 
 function revalidarTudo() {
   revalidatePath("/estoque/produtos");
-  revalidatePath("/estoque/edicao");
+  revalidatePath("/estoque/produtos/edicao");
   revalidatePath("/estoque/pedidos");
   revalidatePath("/estoque/contagem");
 }

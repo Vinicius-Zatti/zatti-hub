@@ -50,7 +50,14 @@ export async function listFornecedores(tenantId?: string): Promise<Fornecedor[]>
   return rows.filter((r) => r[1] || r[2]).map(rowToFornecedor);
 }
 
+/** Atualiza/insere um fornecedor. Exige `codigo` preenchido pra saber qual
+ * linha é qual - fornecedor sem código ainda (cadastro antigo, direto na
+ * planilha) precisa passar por `garantirCodigos` antes. */
 export async function upsertFornecedor(fornecedor: Fornecedor, tenantId?: string): Promise<void> {
+  if (!fornecedor.codigo) {
+    throw new Error("Fornecedor sem código - não dá pra saber qual linha atualizar.");
+  }
+
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId(tenantId);
 
@@ -86,4 +93,46 @@ export function proximoCodigo(fornecedores: Fornecedor[]): string {
     .filter((n) => !Number.isNaN(n));
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
   return `FOR${String(next).padStart(3, "0")}`;
+}
+
+/** Fornecedores cadastrados direto na planilha (antes do app existir) não
+ * têm Código - e sem um código estável, `upsertFornecedor` não sabe achar a
+ * linha certa pra salvar uma correção. Dá um código pra quem ainda não tem
+ * (casando pela linha com Código vazio + mesmo Nome Fantasia, a única coisa
+ * estável que sobra). Depois da primeira vez que cada fornecedor passa por
+ * aqui isso vira no-op pra ele. */
+export async function garantirCodigos(tenantId?: string): Promise<Fornecedor[]> {
+  const fornecedores = await listFornecedores(tenantId);
+  const semCodigo = fornecedores.filter((f) => !f.codigo);
+  if (semCodigo.length === 0) return fornecedores;
+
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId(tenantId);
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${SHEET}'!A${FIRST_DATA_ROW}:C`,
+  });
+  const linhas = res.data.values ?? [];
+
+  let proximoNum =
+    Math.max(
+      0,
+      ...fornecedores.map((f) => Number(f.codigo.replace(/\D/g, ""))).filter((n) => !Number.isNaN(n))
+    ) + 1;
+
+  for (const f of semCodigo) {
+    const idx = linhas.findIndex((r) => !r[0] && r[2] === f.nomeFantasia);
+    if (idx === -1) continue;
+    const codigo = `FOR${String(proximoNum).padStart(3, "0")}`;
+    proximoNum += 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${SHEET}'!A${FIRST_DATA_ROW + idx}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[codigo]] },
+    });
+    f.codigo = codigo;
+  }
+
+  return fornecedores;
 }

@@ -57,7 +57,7 @@ export default async function ProdutosPage() {
               </p>
             </div>
             <Link
-              href="/estoque/edicao"
+              href="/estoque/produtos/edicao"
               className="shrink-0 rounded-md border border-ambar px-3 py-1.5 text-xs font-semibold text-ambar hover:bg-ambar/10"
             >
               Ir pra Edição de Dados
