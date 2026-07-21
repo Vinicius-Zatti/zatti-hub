@@ -121,6 +121,45 @@ export async function registrarContagem(
   });
 }
 
+/** Corrige a quantidade de um item já registrado (só a última contagem pode
+ * ser corrigida, decisão de 21/07 — contagens antigas ficam intactas como
+ * histórico). Recalcula total e alerta a partir do preço que já estava
+ * gravado naquela linha — não busca preço novo do cadastro, pra não mudar o
+ * valor da contagem por conta de um reajuste de preço posterior. */
+export async function atualizarQuantidadeInventario(
+  data: string,
+  sku: string,
+  quantidade: number,
+  tenantId?: string
+): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId(tenantId);
+
+  const [res, produtos] = await Promise.all([
+    sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE }),
+    listProdutos(tenantId),
+  ]);
+  const rows = res.data.values ?? [];
+  const idx = rows.findIndex((r) => r[0] === data && r[2] === sku);
+  if (idx === -1) {
+    throw new Error("Não achei essa contagem pra corrigir - pode ter sido alterada por outra pessoa.");
+  }
+  const linha = rows[idx];
+  const rowNumber = FIRST_DATA_ROW + idx;
+
+  const precoUnitario = toNumber(linha[7]);
+  const produto = produtos.find((p) => p.sku === sku);
+  const total = precoUnitario !== null ? Number((quantidade * precoUnitario).toFixed(2)) : "a calcular";
+  const alerta = calcularAlerta(quantidade, precoUnitario, produto);
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${SHEET}'!G${rowNumber}:J${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: [[quantidade, linha[7] ?? "", total, alerta]] },
+  });
+}
+
 /** Itens contados como avulso (fora do Cadastro de Produtos) que ainda não
  * viraram produto de verdade. Pega a ocorrência mais recente de cada nome. */
 export async function listItensPendentes(tenantId?: string): Promise<ItemPendente[]> {

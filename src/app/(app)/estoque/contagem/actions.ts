@@ -1,6 +1,10 @@
 "use server";
 
-import { registrarContagem, type NovaContagemLinha } from "@/lib/sheets/inventario";
+import {
+  registrarContagem,
+  atualizarQuantidadeInventario,
+  type NovaContagemLinha,
+} from "@/lib/sheets/inventario";
 import { revalidatePath } from "next/cache";
 
 const MESES = [
@@ -36,4 +40,23 @@ export async function registrarContagemAction(
 
   revalidatePath("/estoque/contagem");
   revalidatePath("/estoque/pedidos");
+}
+
+/** Corrige a quantidade de um item da última contagem (única que ainda pode
+ * ser corrigida). Recalcula total/alerta na planilha e devolve, pra tela
+ * atualizar com o valor de verdade em vez de confiar em conta feita no
+ * navegador. */
+export async function atualizarQuantidadeContagemAction(
+  data: string,
+  sku: string,
+  quantidade: number
+): Promise<{ ok: true } | { erro: string }> {
+  try {
+    await atualizarQuantidadeInventario(data, sku, quantidade);
+  } catch (err) {
+    return { erro: (err as Error).message };
+  }
+  revalidatePath("/estoque/contagem/visualizacao");
+  revalidatePath("/estoque/pedidos");
+  return { ok: true };
 }

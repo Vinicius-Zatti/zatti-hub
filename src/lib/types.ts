@@ -54,10 +54,15 @@ export type Fornecedor = {
 
 export type SugestaoCompra = {
   sku: string;
+  grupo: string;
   nome: string;
   unidadeBase: string;
-  estoqueAtual: number;
+  precoUnitario: number | null;
+  /** null = produto ativo mas sem contagem na data escolhida (não dá pra
+   * saber o estoque atual, não confundir com estoque zerado). */
+  estoqueAtual: number | null;
   estoqueNecessario: number;
   quantidadeSugerida: number;
+  precisaComprar: boolean;
   fornecedores: string[];
 };
