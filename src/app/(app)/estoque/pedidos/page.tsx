@@ -29,6 +29,7 @@ export default async function PedidosPage({
       dataUsada={resultado.dataUsada}
       datasDisponiveis={datas}
       gruposSelecionados={grupos}
+      gruposContadosNoDia={resultado.gruposContadosNoDia}
     />
   );
 }

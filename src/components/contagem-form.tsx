@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { Produto } from "@/lib/types";
 import { registrarContagemAction } from "@/app/(app)/estoque/contagem/actions";
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
+import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -82,6 +83,34 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
   const [ano, mesNum] = dataISO.split("-");
   const mesDisplay = dataISO ? `${MESES[Number(mesNum) - 1]} ${ano}` : "";
   const escopoLabel = grupos.length === 0 ? "Contagem completa" : grupos.map(nomeGrupo).join(", ");
+
+  const { ativar, desativar } = useGuardaContagem();
+
+  // Enquanto o inventário está em andamento, o progresso só existe aqui na
+  // memória - sair sem avisar (clicando em outra aba, por exemplo) perde
+  // tudo. A guarda intercepta qualquer navegação nesse período.
+  useEffect(() => {
+    if (tela === "inventario" && !enviado) ativar();
+    else desativar();
+    return () => desativar();
+  }, [tela, enviado, ativar, desativar]);
+
+  useEffect(() => {
+    function focarPrimeiroPendente() {
+      for (const item of todos) {
+        if (confirmados[item.sku] === undefined) {
+          const el = inputRefs.current.get(item.sku);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            setTimeout(() => el.focus(), 250);
+          }
+          break;
+        }
+      }
+    }
+    window.addEventListener(EVENTO_CONTINUAR_CONTAGEM, focarPrimeiroPendente);
+    return () => window.removeEventListener(EVENTO_CONTINUAR_CONTAGEM, focarPrimeiroPendente);
+  }, [todos, confirmados]);
 
   function confirmarData() {
     if (!dataISO) return;

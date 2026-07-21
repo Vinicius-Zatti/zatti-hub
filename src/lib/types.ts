@@ -68,4 +68,10 @@ export type SugestaoCompra = {
   quantidadeSugerida: number;
   precisaComprar: boolean;
   fornecedores: string[];
+  /** Pra visualização "Nome de Compra" em Pedidos: nome que o fornecedor
+   * usa, unidade de embalagem dele (CX, FD, PCT...) e quantas unidades base
+   * cabem numa embalagem - pra converter "15 latas" em "2 fardos". */
+  nomeCompra: string;
+  unidadeEmbalagemFornecedor: string;
+  qtdUnidadeBasePorEmbalagem: number | null;
 };

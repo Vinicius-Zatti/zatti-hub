@@ -1,5 +1,6 @@
 import { listProdutos } from "./produtos";
 import { listInventario } from "./inventario";
+import { ordenarGrupos } from "@/lib/pedido";
 import type { SugestaoCompra } from "@/lib/types";
 
 function parseDataBr(d: string): number {
@@ -17,15 +18,19 @@ export async function datasDisponiveis(tenantId?: string): Promise<string[]> {
   return Array.from(datas).sort((a, b) => parseDataBr(b) - parseDataBr(a));
 }
 
-/** Gera a lista completa de produtos ativos (dentro do escopo escolhido) com
- * o que falta pra bater o estoque necessário da semana. Traz TODO MUNDO do
- * escopo, não só quem precisa comprar - a tabela de Pedidos usa isso pra
- * conferência ("os pedidos foram montados certo?"), não só pra lista de
- * compra. */
+/** Gera a lista de produtos ativos com o que falta pra bater o estoque
+ * necessário da semana. Traz todo mundo do escopo, não só quem precisa
+ * comprar - a tabela de Pedidos usa isso pra conferência.
+ *
+ * O escopo é sempre limitado aos grupos que foram DE VERDADE contados na
+ * data escolhida (`gruposContadosNoDia`) - se no dia 21/07 só rolou contagem
+ * de Limpeza, Pedidos não mostra Proteínas/Hortifrúti/etc como "não
+ * contado", porque isso nunca fez parte daquela contagem. `opcoes.grupos`
+ * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar. */
 export async function gerarPedido(
   opcoes: { data?: string; grupos?: string[] } = {},
   tenantId?: string
-): Promise<{ itens: SugestaoCompra[]; dataUsada: string }> {
+): Promise<{ itens: SugestaoCompra[]; dataUsada: string; gruposContadosNoDia: string[] }> {
   const [produtos, inventario] = await Promise.all([
     listProdutos(tenantId),
     listInventario(tenantId),
@@ -33,19 +38,35 @@ export async function gerarPedido(
 
   const dataUsada = opcoes.data || datasMaisRecente(inventario);
 
+  const skusContadosNoDia = new Set<string>();
   const contagemPorSku = new Map<string, number>();
   for (const item of inventario) {
-    if (item.data !== dataUsada || item.quantidade === null) continue;
+    if (item.data !== dataUsada) continue;
+    skusContadosNoDia.add(item.sku);
+    if (item.quantidade === null) continue;
     contagemPorSku.set(item.sku, item.quantidade);
   }
 
-  const grupos = opcoes.grupos && opcoes.grupos.length > 0 ? new Set(opcoes.grupos) : null;
+  // Deriva o grupo contado a partir do Cadastro de Produtos (sempre com
+  // código certo: PRO, HOR...), não da coluna Grupo gravada na hora da
+  // contagem - contagens antigas (de antes do app) às vezes gravaram o
+  // grupo por extenso ("Proteínas") em vez do código, e comparar direto
+  // contra isso zerava a lista inteira pra essas datas.
+  const gruposContados = new Set<string>();
+  for (const produto of produtos) {
+    if (skusContadosNoDia.has(produto.sku)) gruposContados.add(produto.grupo);
+  }
+  const gruposContadosNoDia = ordenarGrupos(Array.from(gruposContados));
+
+  const gruposEscolhidos =
+    opcoes.grupos && opcoes.grupos.length > 0 ? new Set(opcoes.grupos) : null;
 
   const itens: SugestaoCompra[] = [];
   for (const produto of produtos) {
     if (!produto.ativo) continue;
     if (produto.estoqueNecessarioSemana === null) continue;
-    if (grupos && !grupos.has(produto.grupo)) continue;
+    if (!gruposContados.has(produto.grupo)) continue;
+    if (gruposEscolhidos && !gruposEscolhidos.has(produto.grupo)) continue;
 
     const estoqueAtual = contagemPorSku.get(produto.sku) ?? null;
     const quantidadeSugerida =
@@ -64,10 +85,13 @@ export async function gerarPedido(
       fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4].filter(
         (f) => f && f.trim() !== ""
       ),
+      nomeCompra: produto.nomeCompra,
+      unidadeEmbalagemFornecedor: produto.unidadeEmbalagemFornecedor,
+      qtdUnidadeBasePorEmbalagem: produto.qtdUnidadeBasePorEmbalagem,
     });
   }
 
-  return { itens, dataUsada };
+  return { itens, dataUsada, gruposContadosNoDia };
 }
 
 function datasMaisRecente(inventario: { data: string }[]): string {
