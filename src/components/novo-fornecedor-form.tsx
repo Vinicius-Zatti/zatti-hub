@@ -1,11 +1,28 @@
 "use client";
 
 import { criarFornecedorAction } from "@/app/(app)/estoque/fornecedores/actions";
+import { GRUPO_OPCOES } from "@/lib/grupos";
 
 export function NovoFornecedorForm() {
   return (
     <form action={criarFornecedorAction} className="mt-4 flex flex-col gap-3">
       <Campo label="Nome Fantasia *" name="nomeFantasia" required />
+      <div>
+        <label className="text-xs font-semibold text-cinza-medio">
+          Grupos que atende (opcional, pode marcar mais de um)
+        </label>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {GRUPO_OPCOES.map((g) => (
+            <label
+              key={g.codigo}
+              className="flex items-center gap-1.5 rounded-md border border-cinza-claro px-2.5 py-1.5 text-xs text-cinza has-checked:border-ambar has-checked:bg-ambar/10 has-checked:text-ambar"
+            >
+              <input type="checkbox" name="grupos" value={g.codigo} className="accent-ambar" />
+              {g.descricao}
+            </label>
+          ))}
+        </div>
+      </div>
       <Campo label="Nome do Vendedor *" name="nomeVendedor" required />
       <Campo label="WhatsApp *" name="whatsapp" required placeholder="Ex: 11999999999" />
       <Campo label="Razão Social" name="razaoSocial" />

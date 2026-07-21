@@ -2,14 +2,23 @@
 
 import { useState } from "react";
 import type { SugestaoCompra } from "@/lib/types";
-import { agruparPorFornecedor } from "@/lib/pedido";
+import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
+import { NOME_CLIENTE } from "@/lib/config";
 import { Th } from "@/components/tabela";
-import { gerarImagemCotacao, copiarImagemParaAreaDeTransferencia, baixarImagem } from "@/lib/canvas-tabela";
+import { gerarImagemCotacao, compartilharOuCopiarImagem, CompartilharCancelado } from "@/lib/canvas-tabela";
+
+const LEGENDA = `${NOME_CLIENTE} · Pedido de Cotação`;
+
+const MENSAGENS: Record<string, string> = {
+  compartilhado: "Compartilhado.",
+  copiado: "Copiado - cola no WhatsApp.",
+  baixado: "Esse navegador não copia/compartilha direto - baixei a imagem.",
+};
 
 export function CotacoesSemana({ itens }: { itens: SugestaoCompra[] }) {
   const precisamComprar = itens.filter((i) => i.precisaComprar);
   const porFornecedor = agruparPorFornecedor(precisamComprar);
-  const fornecedores = Object.keys(porFornecedor).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
   const [statusPorFornecedor, setStatusPorFornecedor] = useState<Record<string, string>>({});
 
@@ -21,18 +30,15 @@ export function CotacoesSemana({ itens }: { itens: SugestaoCompra[] }) {
     }));
     setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: "Gerando..." }));
     try {
-      const blob = await gerarImagemCotacao(fornecedor, linhas);
-      try {
-        await copiarImagemParaAreaDeTransferencia(blob);
-        setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: "Copiado - cola no WhatsApp." }));
-      } catch {
-        baixarImagem(blob, `cotacao-${fornecedor.toLowerCase().replace(/\s+/g, "-")}.png`);
-        setStatusPorFornecedor((s) => ({
-          ...s,
-          [fornecedor]: "Esse navegador não copia direto - baixei a imagem.",
-        }));
-      }
+      const blob = await gerarImagemCotacao(fornecedor, linhas, LEGENDA);
+      const nomeArquivo = `cotacao-${fornecedor.toLowerCase().replace(/\s+/g, "-")}.png`;
+      const resultado = await compartilharOuCopiarImagem(blob, nomeArquivo, `Cotação ${fornecedor}`);
+      setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: MENSAGENS[resultado] }));
     } catch (err) {
+      if (err instanceof CompartilharCancelado) {
+        setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: "" }));
+        return;
+      }
       setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: (err as Error).message }));
     }
     setTimeout(() => setStatusPorFornecedor((s) => ({ ...s, [fornecedor]: "" })), 5000);
@@ -43,8 +49,8 @@ export function CotacoesSemana({ itens }: { itens: SugestaoCompra[] }) {
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Cotações da Semana</h1>
         <p className="text-sm text-cinza-medio">
-          Item, unidade e quantidade pra pedir cotação - sem preço. Clica em Copiar e cola a imagem
-          direto na conversa do fornecedor.
+          Item, unidade e quantidade pra pedir cotação - sem preço. Clica em Copiar pra compartilhar
+          a imagem direto com o fornecedor.
         </p>
       </div>
 

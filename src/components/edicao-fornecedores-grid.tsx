@@ -7,6 +7,7 @@ import { salvarFornecedorAction } from "@/app/(app)/estoque/fornecedores/actions
 import { StatCard } from "@/components/stat-card";
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
+import { GRUPO_OPCOES } from "@/lib/grupos";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -16,6 +17,11 @@ type StatusLinha = { tipo: "salvando" | "ok" | "erro"; msg?: string } | undefine
 export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornecedor[] }) {
   const [busca, setBusca] = useState("");
   const [somenteIncompletos, setSomenteIncompletos] = useState(false);
+  const [filtroGrupos, setFiltroGrupos] = useState<string[]>([]);
+
+  function alternarFiltroGrupo(codigo: string) {
+    setFiltroGrupos((g) => (g.includes(codigo) ? g.filter((c) => c !== codigo) : [...g, codigo]));
+  }
 
   const [baseline, setBaseline] = useState<Record<string, Fornecedor>>(() =>
     Object.fromEntries(fornecedores.map((f) => [f.codigo, f]))
@@ -74,9 +80,10 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
         return false;
       }
       if (somenteIncompletos && !fornecedorIncompleto(atual)) return false;
+      if (filtroGrupos.length > 0 && !filtroGrupos.some((g) => atual.grupos.includes(g))) return false;
       return true;
     });
-  }, [fornecedores, estado, busca, somenteIncompletos]);
+  }, [fornecedores, estado, busca, somenteIncompletos, filtroGrupos]);
 
   return (
     <div>
@@ -122,17 +129,46 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
           </button>
         </div>
       </div>
-      <p className="mb-3 text-xs text-cinza-medio">
+      <p className="mb-2 text-xs text-cinza-medio">
         Células em destaque estão vazias e são obrigatórias (Nome Fantasia, Vendedor, WhatsApp).
       </p>
 
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setFiltroGrupos([])}
+          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+            filtroGrupos.length === 0
+              ? "border-azul-noite bg-azul-noite text-branco"
+              : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
+          }`}
+        >
+          Todos
+        </button>
+        {GRUPO_OPCOES.map((g) => (
+          <button
+            key={g.codigo}
+            type="button"
+            onClick={() => alternarFiltroGrupo(g.codigo)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              filtroGrupos.includes(g.codigo)
+                ? "border-ambar bg-ambar/10 text-ambar"
+                : "border-cinza-claro text-cinza-medio hover:border-ambar"
+            }`}
+          >
+            {g.descricao}
+          </button>
+        ))}
+      </div>
+
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
-        <table className="w-full min-w-[1450px] text-xs">
+        <table className="w-full min-w-[1600px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th>Código</Th>
               <Th>Razão Social</Th>
               <Th>Nome Fantasia</Th>
+              <Th>Grupos</Th>
               <Th>Vendedor</Th>
               <Th>WhatsApp</Th>
               <Th>Condições Pagamento</Th>
@@ -158,7 +194,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
             ))}
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={13} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum fornecedor encontrado com esse filtro.
                 </td>
               </tr>
@@ -207,6 +243,31 @@ const LinhaFornecedor = ({
           onChange={(e) => campo("nomeFantasia", e.target.value)}
           className={`w-36 rounded border px-1.5 py-1 ${!editado.nomeFantasia.trim() ? VAZIO_CLASSE : NORMAL_CLASSE}`}
         />
+      </td>
+      <td className="px-2 py-1.5">
+        <div className="flex w-40 flex-wrap gap-1">
+          {GRUPO_OPCOES.map((g) => {
+            const ativo = editado.grupos.includes(g.codigo);
+            return (
+              <button
+                key={g.codigo}
+                type="button"
+                title={g.descricao}
+                onClick={() =>
+                  campo(
+                    "grupos",
+                    ativo ? editado.grupos.filter((c) => c !== g.codigo) : [...editado.grupos, g.codigo]
+                  )
+                }
+                className={`rounded px-1 py-0.5 font-mono text-[9px] font-bold ${
+                  ativo ? "bg-ambar text-branco" : "bg-off-white text-cinza-medio hover:bg-cinza-claro"
+                }`}
+              >
+                {g.codigo}
+              </button>
+            );
+          })}
+        </div>
       </td>
       <td className="px-2 py-1.5">
         <input

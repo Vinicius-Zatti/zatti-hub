@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra } from "@/lib/types";
-import { GRUPO_OPCOES } from "@/lib/grupos";
-import { agruparPorFornecedor } from "@/lib/pedido";
+import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
+import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
 
 function formatMoeda(v: number): string {
@@ -41,7 +41,9 @@ export function PedidoCompras({
 
   // Correção manual da quantidade sugerida - só ajusta a tela/cotação, não
   // grava em lugar nenhum (a sugestão de verdade continua vindo da conta
-  // estoque necessário - estoque contado).
+  // estoque necessário - estoque contado). Compartilhada entre a tabela de
+  // conferência por Grupo e as tabelas por Fornecedor: o mesmo SKU pode
+  // aparecer nas duas, e o ajuste tem que valer nos dois lugares.
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [editando, setEditando] = useState<Record<string, string>>({});
 
@@ -66,9 +68,11 @@ export function PedidoCompras({
     });
   }
 
-  const porFornecedor = useMemo(() => agruparPorFornecedor(itens), [itens]);
+  const porGrupo = useMemo(() => agruparPorGrupo(itens), [itens]);
+  const grupos = ordenarGrupos(Object.keys(porGrupo));
 
-  const fornecedores = Object.keys(porFornecedor).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const porFornecedor = useMemo(() => agruparPorFornecedor(itens), [itens]);
+  const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
   const totalGeral = itens.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
@@ -81,7 +85,7 @@ export function PedidoCompras({
         <h1 className="font-display text-3xl font-bold text-azul-noite">Pedido de Compras</h1>
         <p className="text-sm text-cinza-medio">
           Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
-          não precisa comprar. Agrupado por fornecedor pra cotação.
+          não precisa comprar.
         </p>
       </div>
 
@@ -144,109 +148,165 @@ export function PedidoCompras({
         </div>
       )}
 
-      {fornecedores.map((fornecedor) => {
-        const linhas = porFornecedor[fornecedor];
-        const subtotal = linhas.reduce((soma, item) => {
-          if (item.precoUnitario === null) return soma;
-          return soma + valorAtual(item) * item.precoUnitario;
-        }, 0);
-
-        return (
-          <div key={fornecedor} className="rounded-lg border border-cinza-claro bg-branco">
-            <div className="flex items-center justify-between border-b border-cinza-claro bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco">
-              <span>{fornecedor}</span>
-              <span className="text-xs font-semibold text-cinza-claro">{formatMoeda(subtotal)}</span>
-            </div>
-            <div className="max-h-[50vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-off-white text-cinza-medio">
-                    <Th>Item</Th>
-                    <Th align="right">Estoque atual</Th>
-                    <Th align="right">Necessário</Th>
-                    <Th align="right">Comprar</Th>
-                    <Th align="right">Valor</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {linhas.map((item) => {
-                    const qtd = valorAtual(item);
-                    const emEdicao = editando[item.sku] !== undefined;
-                    const valor = item.precoUnitario !== null ? qtd * item.precoUnitario : null;
-                    const precisa = qtd > 0;
-
-                    return (
-                      <tr
-                        key={item.sku}
-                        className={`border-t border-cinza-claro ${precisa ? "bg-ambar/5" : ""}`}
-                      >
-                        <td className={`px-3 py-2 font-medium ${precisa ? "text-cinza" : "text-cinza-medio"}`}>
-                          {item.nome}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                          {item.estoqueAtual !== null ? `${item.estoqueAtual} ${item.unidadeBase}` : "não contado"}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                          {item.estoqueNecessario} {item.unidadeBase}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {emEdicao ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                autoFocus
-                                value={editando[item.sku]}
-                                onChange={(e) =>
-                                  setEditando((ed) => ({ ...ed, [item.sku]: e.target.value }))
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    confirmarEdicao(item.sku);
-                                  }
-                                }}
-                                className="w-16 rounded border border-ambar px-1.5 py-1 text-right focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => confirmarEdicao(item.sku)}
-                                className="rounded bg-ambar px-2 py-1 text-[10px] font-bold text-azul-noite hover:bg-[#b07720]"
-                              >
-                                Confirmar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1.5">
-                              {precisa ? (
-                                <span className="font-bold tabular-nums text-ambar">
-                                  {qtd} {item.unidadeBase}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-cinza-medio">não precisa comprar</span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => iniciarEdicao(item)}
-                                className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                              >
-                                Editar
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                          {valor !== null ? formatMoeda(valor) : "a calcular"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+      {itens.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-display text-xl font-bold text-azul-noite">Conferência por Grupo</h2>
           </div>
-        );
-      })}
+          <p className="mb-3 rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
+            Antes de enviar as cotações para os fornecedores, lembre-se de fazer a conferência - e
+            edite na coluna Comprar se for necessário.
+          </p>
+          <div className="flex flex-col gap-4">
+            {grupos.map((grupo) => (
+              <TabelaItens
+                key={grupo}
+                titulo={nomeGrupo(grupo)}
+                linhas={porGrupo[grupo]}
+                valorAtual={valorAtual}
+                editando={editando}
+                onIniciarEdicao={iniciarEdicao}
+                onConfirmarEdicao={confirmarEdicao}
+                onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {itens.length > 0 && (
+        <div>
+          <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">Por Fornecedor</h2>
+          <div className="flex flex-col gap-4">
+            {fornecedores.map((fornecedor) => (
+              <TabelaItens
+                key={fornecedor}
+                titulo={fornecedor}
+                linhas={porFornecedor[fornecedor]}
+                valorAtual={valorAtual}
+                editando={editando}
+                onIniciarEdicao={iniciarEdicao}
+                onConfirmarEdicao={confirmarEdicao}
+                onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabelaItens({
+  titulo,
+  linhas,
+  valorAtual,
+  editando,
+  onIniciarEdicao,
+  onConfirmarEdicao,
+  onChangeEditando,
+}: {
+  titulo: string;
+  linhas: SugestaoCompra[];
+  valorAtual: (item: SugestaoCompra) => number;
+  editando: Record<string, string>;
+  onIniciarEdicao: (item: SugestaoCompra) => void;
+  onConfirmarEdicao: (sku: string) => void;
+  onChangeEditando: (sku: string, valor: string) => void;
+}) {
+  const subtotal = linhas.reduce((soma, item) => {
+    if (item.precoUnitario === null) return soma;
+    return soma + valorAtual(item) * item.precoUnitario;
+  }, 0);
+
+  return (
+    <div className="rounded-lg border border-cinza-claro bg-branco">
+      <div className="flex items-center justify-between border-b border-cinza-claro bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco">
+        <span>{titulo}</span>
+        <span className="text-xs font-semibold text-cinza-claro">{formatMoeda(subtotal)}</span>
+      </div>
+      <div className="max-h-[50vh] overflow-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-off-white text-cinza-medio">
+              <Th>Item</Th>
+              <Th align="right">Estoque atual</Th>
+              <Th align="right">Necessário</Th>
+              <Th align="right">Comprar</Th>
+              <Th align="right">Valor</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((item) => {
+              const qtd = valorAtual(item);
+              const emEdicao = editando[item.sku] !== undefined;
+              const valor = item.precoUnitario !== null ? qtd * item.precoUnitario : null;
+              const precisa = qtd > 0;
+
+              return (
+                <tr key={item.sku} className={`border-t border-cinza-claro ${precisa ? "bg-ambar/5" : ""}`}>
+                  <td className={`px-3 py-2 font-medium ${precisa ? "text-cinza" : "text-cinza-medio"}`}>
+                    {item.nome}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                    {item.estoqueAtual !== null ? `${item.estoqueAtual} ${item.unidadeBase}` : "não contado"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                    {item.estoqueNecessario} {item.unidadeBase}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {emEdicao ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          autoFocus
+                          value={editando[item.sku]}
+                          onChange={(e) => onChangeEditando(item.sku, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              onConfirmarEdicao(item.sku);
+                            }
+                          }}
+                          className="w-16 rounded border border-ambar px-1.5 py-1 text-right focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => onConfirmarEdicao(item.sku)}
+                          className="rounded bg-ambar px-2 py-1 text-[10px] font-bold text-azul-noite hover:bg-[#b07720]"
+                        >
+                          Confirmar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {precisa ? (
+                          <span className="font-bold tabular-nums text-ambar">
+                            {qtd} {item.unidadeBase}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-cinza-medio">não precisa comprar</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onIniciarEdicao(item)}
+                          className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                        >
+                          Editar
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                    {valor !== null ? formatMoeda(valor) : "a calcular"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -4,21 +4,37 @@ import type { Fornecedor } from "@/lib/types";
 
 const SHEET = "Fornecedores";
 const FIRST_DATA_ROW = 3;
-const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:K`;
+// Colunas reais da planilha (A-L), com "Grupos" inserida em 21/07 logo
+// depois de Nome Fantasia: Código, Razão Social, Nome Fantasia, Grupos,
+// Nome do Vendedor, WhatsApp, Condições de Pagamento, Prazo do Boleto,
+// Limite de Crédito, Pedido Mínimo, Dias de Entrega, Observações.
+const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:L`;
+
+function gruposFromCell(v: string | undefined): string[] {
+  return (v ?? "")
+    .split(",")
+    .map((g) => g.trim())
+    .filter(Boolean);
+}
+
+function gruposToCell(grupos: string[]): string {
+  return grupos.join(",");
+}
 
 function rowToFornecedor(row: string[]): Fornecedor {
   return {
     codigo: row[0] ?? "",
     razaoSocial: row[1] ?? "",
     nomeFantasia: row[2] ?? "",
-    nomeVendedor: row[3] ?? "",
-    whatsapp: row[4] ?? "",
-    condicoesPagamento: row[5] ?? "",
-    prazoBoleto: row[6] ?? "",
-    limiteCredito: toNumber(row[7]),
-    pedidoMinimo: toNumber(row[8]),
-    diasEntrega: row[9] ?? "",
-    observacoes: row[10] ?? "",
+    grupos: gruposFromCell(row[3]),
+    nomeVendedor: row[4] ?? "",
+    whatsapp: row[5] ?? "",
+    condicoesPagamento: row[6] ?? "",
+    prazoBoleto: row[7] ?? "",
+    limiteCredito: toNumber(row[8]),
+    pedidoMinimo: toNumber(row[9]),
+    diasEntrega: row[10] ?? "",
+    observacoes: row[11] ?? "",
   };
 }
 
@@ -27,6 +43,7 @@ function fornecedorToRow(f: Fornecedor): (string | number)[] {
     f.codigo,
     f.razaoSocial,
     f.nomeFantasia,
+    gruposToCell(f.grupos),
     f.nomeVendedor,
     f.whatsapp,
     f.condicoesPagamento,
@@ -72,7 +89,7 @@ export async function upsertFornecedor(fornecedor: Fornecedor, tenantId?: string
     const rowNumber = FIRST_DATA_ROW + idx;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `'${SHEET}'!A${rowNumber}:K${rowNumber}`,
+      range: `'${SHEET}'!A${rowNumber}:L${rowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [fornecedorToRow(fornecedor)] },
     });

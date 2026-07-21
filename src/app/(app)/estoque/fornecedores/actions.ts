@@ -19,6 +19,7 @@ export async function criarFornecedorAction(formData: FormData) {
     codigo: proximoCodigo(existentes),
     razaoSocial: String(formData.get("razaoSocial") ?? ""),
     nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
+    grupos: formData.getAll("grupos").map(String),
     nomeVendedor: String(formData.get("nomeVendedor") ?? ""),
     whatsapp: String(formData.get("whatsapp") ?? ""),
     condicoesPagamento: String(formData.get("condicoesPagamento") ?? ""),

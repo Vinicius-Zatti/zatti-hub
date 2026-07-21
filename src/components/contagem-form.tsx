@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import type { Produto } from "@/lib/types";
 import { registrarContagemAction } from "@/app/(app)/estoque/contagem/actions";
-import { GRUPO_ORDEM, nomeGrupo } from "@/lib/grupos";
+import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -43,6 +43,7 @@ function hojeISO(): string {
 export function ContagemForm({ produtos }: { produtos: Produto[] }) {
   const [tela, setTela] = useState<"data" | "aviso" | "inventario">("data");
   const [dataISO, setDataISO] = useState(hojeISO());
+  const [grupos, setGrupos] = useState<string[]>([]);
   const [customItens, setCustomItens] = useState<ItemCustom[]>([]);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [confirmados, setConfirmados] = useState<Record<string, number>>({});
@@ -55,6 +56,7 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
 
   const ativos = produtos
     .filter((p) => p.ativo)
+    .filter((p) => grupos.length === 0 || grupos.includes(p.grupo))
     .sort((a, b) => {
       const gA = GRUPO_ORDEM.indexOf(a.grupo);
       const gB = GRUPO_ORDEM.indexOf(b.grupo);
@@ -79,10 +81,15 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
 
   const [ano, mesNum] = dataISO.split("-");
   const mesDisplay = dataISO ? `${MESES[Number(mesNum) - 1]} ${ano}` : "";
+  const escopoLabel = grupos.length === 0 ? "Contagem completa" : grupos.map(nomeGrupo).join(", ");
 
   function confirmarData() {
     if (!dataISO) return;
     setTela("aviso");
+  }
+
+  function alternarGrupo(codigo: string) {
+    setGrupos((g) => (g.includes(codigo) ? g.filter((c) => c !== codigo) : [...g, codigo]));
   }
 
   function focarProximo(skuAtual: string) {
@@ -218,13 +225,53 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
             className="w-full border-none bg-transparent text-xl font-bold text-cinza outline-none"
           />
         </div>
+        <div className="mt-4 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
+          <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
+            O que vamos contar hoje?
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setGrupos([])}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                grupos.length === 0
+                  ? "border-azul-noite bg-azul-noite text-branco"
+                  : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
+              }`}
+            >
+              Contagem completa
+            </button>
+            {GRUPO_OPCOES.map((g) => (
+              <button
+                key={g.codigo}
+                type="button"
+                onClick={() => alternarGrupo(g.codigo)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  grupos.includes(g.codigo)
+                    ? "border-ambar bg-ambar/10 text-ambar"
+                    : "border-cinza-claro text-cinza-medio hover:border-ambar"
+                }`}
+              >
+                {g.descricao}
+              </button>
+            ))}
+          </div>
+          {grupos.length > 0 && (
+            <p className="mt-2 text-xs text-cinza-medio">
+              Só os grupos marcados entram nessa contagem - o resto do cadastro fica de fora.
+            </p>
+          )}
+        </div>
         <button
           onClick={confirmarData}
-          disabled={!dataISO}
+          disabled={!dataISO || ativos.length === 0}
           className="mt-6 w-full rounded-lg bg-ambar px-4 py-3.5 text-sm font-bold text-azul-noite disabled:opacity-40"
         >
           Confirmar data
         </button>
+        {ativos.length === 0 && (
+          <p className="mt-2 text-xs text-vermelho">Nenhum produto ativo nesse grupo.</p>
+        )}
       </div>
     );
   }
@@ -234,7 +281,9 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
     return (
       <div className="mx-auto max-w-md pb-10">
         <h1 className="font-display text-2xl font-bold text-azul-noite">Inventário Dom Quixote</h1>
-        <p className="mt-1 text-sm text-cinza-medio capitalize">{mesDisplay}</p>
+        <p className="mt-1 text-sm text-cinza-medio capitalize">
+          {mesDisplay} · {escopoLabel}
+        </p>
         <div className="mt-6 rounded-xl border border-ambar/60 bg-ambar/10 p-5">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ambar">
             Atenção antes de começar
@@ -275,7 +324,9 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
           Zatti Consultoria · M.E.G.A.
         </div>
         <div className="font-display text-base font-bold text-off-white">Inventário Dom Quixote</div>
-        <div className="text-[11px] text-cinza-claro capitalize">{mesDisplay}</div>
+        <div className="text-[11px] text-cinza-claro capitalize">
+          {mesDisplay} · {escopoLabel}
+        </div>
         <div className="mt-2 h-[3px] overflow-hidden rounded bg-azul-petroleo">
           <div className="h-full rounded bg-ambar transition-all" style={{ width: `${pct}%` }} />
         </div>

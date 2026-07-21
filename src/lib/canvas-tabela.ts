@@ -26,7 +26,11 @@ function truncar(ctx: CanvasRenderingContext2D, texto: string, maxLargura: numbe
   return `${t}…`;
 }
 
-export async function gerarImagemCotacao(titulo: string, linhas: LinhaCotacao[]): Promise<Blob> {
+export async function gerarImagemCotacao(
+  titulo: string,
+  linhas: LinhaCotacao[],
+  legenda: string
+): Promise<Blob> {
   const escala = 2;
   const largura = 480;
   const alturaTopo = 56;
@@ -48,7 +52,7 @@ export async function gerarImagemCotacao(titulo: string, linhas: LinhaCotacao[])
   ctx.fillRect(0, 0, largura, alturaTopo);
   ctx.fillStyle = CORES.ambar;
   ctx.font = "bold 10px Arial, sans-serif";
-  ctx.fillText("ZATTI CONSULTORIA · PEDIDO DE COTAÇÃO", 16, 20);
+  ctx.fillText(legenda.toUpperCase(), 16, 20);
   ctx.fillStyle = CORES.branco;
   ctx.font = "bold 19px Arial, sans-serif";
   ctx.fillText(truncar(ctx, titulo, largura - 32), 16, 43);
@@ -113,4 +117,36 @@ export function baixarImagem(blob: Blob, nomeArquivo: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export class CompartilharCancelado extends Error {}
+
+/** No celular, abrir direto o menu nativo de compartilhar (Web Share API)
+ * evita a pré-visualização estranha do "copiar imagem" e manda a pessoa
+ * direto pro WhatsApp sem sair do app. Só cai pra copiar/baixar quando o
+ * navegador não suporta compartilhar arquivo (a maioria dos desktops). */
+export async function compartilharOuCopiarImagem(
+  blob: Blob,
+  nomeArquivo: string,
+  titulo: string
+): Promise<"compartilhado" | "copiado" | "baixado"> {
+  const arquivo = new File([blob], nomeArquivo, { type: "image/png" });
+
+  if (navigator.canShare?.({ files: [arquivo] })) {
+    try {
+      await navigator.share({ files: [arquivo], title: titulo });
+      return "compartilhado";
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") throw new CompartilharCancelado();
+      // outro erro no compartilhar: tenta os fallbacks abaixo em vez de falhar
+    }
+  }
+
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    return "copiado";
+  }
+
+  baixarImagem(blob, nomeArquivo);
+  return "baixado";
 }

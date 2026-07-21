@@ -42,6 +42,9 @@ export type Fornecedor = {
   codigo: string;
   razaoSocial: string;
   nomeFantasia: string;
+  /** Códigos de grupo (PRO, HOR, BEB...) que esse fornecedor atende. Um
+   * fornecedor pode atender mais de um grupo. */
+  grupos: string[];
   nomeVendedor: string;
   whatsapp: string;
   condicoesPagamento: string;

@@ -2,7 +2,7 @@ import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { fornecedorIncompleto } from "@/lib/fornecedor";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { Th } from "@/components/tabela";
+import { TabelaFornecedores } from "@/components/tabela-fornecedores";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -43,38 +43,7 @@ export default async function FornecedoresPage() {
         />
       </div>
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="bg-azul-petroleo text-branco">
-              <Th>Nome Fantasia</Th>
-              <Th>Vendedor</Th>
-              <Th>WhatsApp</Th>
-              <Th>Dias de Entrega</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {fornecedores.map((f, i) => (
-              <tr
-                key={f.codigo || f.nomeFantasia || i}
-                className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}
-              >
-                <td className="px-3 py-2 font-medium text-cinza">{f.nomeFantasia || f.razaoSocial}</td>
-                <td className="px-3 py-2">{f.nomeVendedor || "—"}</td>
-                <td className="px-3 py-2">{f.whatsapp || "—"}</td>
-                <td className="px-3 py-2">{f.diasEntrega || "—"}</td>
-              </tr>
-            ))}
-            {fornecedores.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-3 py-8 text-center text-cinza-medio">
-                  Nenhum fornecedor cadastrado ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <TabelaFornecedores fornecedores={fornecedores} />
     </div>
   );
 }
