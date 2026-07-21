@@ -51,7 +51,10 @@ export async function listFornecedores(tenantId?: string): Promise<Fornecedor[]>
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
   const rows = res.data.values ?? [];
-  return rows.filter((r) => r[0]).map(rowToFornecedor);
+  // Filtra por Razão Social/Nome Fantasia, não por Código: na planilha real
+  // o Código fica em branco na maioria das linhas cadastradas na mão, então
+  // filtrar pela coluna A jogava fora todo o cadastro de fornecedores.
+  return rows.filter((r) => r[1] || r[2]).map(rowToFornecedor);
 }
 
 export async function upsertFornecedor(fornecedor: Fornecedor, tenantId?: string): Promise<void> {

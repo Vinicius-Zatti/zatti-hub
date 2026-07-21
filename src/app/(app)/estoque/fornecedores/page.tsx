@@ -28,8 +28,11 @@ export default async function FornecedoresPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {fornecedores.map((f) => (
-          <div key={f.codigo} className="rounded-lg border border-cinza-claro bg-branco p-4">
+        {fornecedores.map((f, i) => (
+          <div
+            key={f.codigo || f.nomeFantasia || `${f.razaoSocial}-${i}`}
+            className="rounded-lg border border-cinza-claro bg-branco p-4"
+          >
             <div className="flex items-start justify-between">
               <div>
                 <div className="font-display text-lg font-bold text-azul-noite">
@@ -39,9 +42,11 @@ export default async function FornecedoresPage() {
                   <div className="text-xs text-cinza-medio">Contato: {f.nomeVendedor}</div>
                 )}
               </div>
-              <span className="rounded bg-off-white px-1.5 py-0.5 font-mono text-[10px] text-cinza-medio">
-                {f.codigo}
-              </span>
+              {f.codigo && (
+                <span className="rounded bg-off-white px-1.5 py-0.5 font-mono text-[10px] text-cinza-medio">
+                  {f.codigo}
+                </span>
+              )}
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-y-1 text-sm">
               <dt className="text-cinza-medio">WhatsApp</dt>

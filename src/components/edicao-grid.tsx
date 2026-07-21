@@ -1,12 +1,15 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
-import { UNIDADES } from "@/lib/unidades";
+import { UNIDADES, UNIDADES_EMBALAGEM } from "@/lib/unidades";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
+import { StatCard } from "@/components/stat-card";
+import { InfoIcon } from "@/components/info-icon";
+import { CampoNumero } from "@/components/campo-numero";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -14,6 +17,22 @@ const NORMAL_CLASSE = "border-cinza-claro bg-branco";
 type CampoOrdenacao = "posicao" | "nome" | "grupo";
 type Ordenacao = { campo: CampoOrdenacao | null; direcao: "asc" | "desc" };
 type StatusLinha = { tipo: "salvando" | "ok" | "erro"; msg?: string } | undefined;
+
+// Cadastro mínimo pra um produto não cair fora do Pedido de Compras: SKU,
+// Grupo, Nome, Unidade Base, Preço, Estoque p/ semana, Estoque mínimo e
+// Fornecedor 1 (colunas A, C, D, E, F, G, H, M da planilha).
+function produtoIncompleto(p: Produto): boolean {
+  return (
+    !p.sku.trim() ||
+    !p.grupo.trim() ||
+    !p.nome.trim() ||
+    !p.unidadeBase.trim() ||
+    p.precoUnitario === null ||
+    p.estoqueNecessarioSemana === null ||
+    p.estoqueMinimo === null ||
+    !p.fornecedor1.trim()
+  );
+}
 
 export function EdicaoGrid({
   produtos,
@@ -58,6 +77,7 @@ function CadastroSection({
   const [busca, setBusca] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todos" | "ativo" | "inativo">("todos");
+  const [somenteIncompletos, setSomenteIncompletos] = useState(false);
   const [ordenacao, setOrdenacao] = useState<Ordenacao>({ campo: null, direcao: "asc" });
 
   const [baseline, setBaseline] = useState<Record<string, Produto>>(() =>
@@ -83,6 +103,15 @@ function CadastroSection({
   const alterados = useMemo(
     () => Object.keys(estado).filter((sku) => JSON.stringify(estado[sku]) !== JSON.stringify(baseline[sku])),
     [estado, baseline]
+  );
+
+  const incompletos = useMemo(
+    () => produtos.filter((p) => produtoIncompleto(estado[p.sku] ?? p)),
+    [produtos, estado]
+  );
+  const ativosCount = useMemo(
+    () => produtos.filter((p) => (estado[p.sku] ?? p).ativo).length,
+    [produtos, estado]
   );
 
   const campo = useCallback(<K extends keyof Produto>(sku: string, key: K, value: Produto[K]) => {
@@ -121,9 +150,10 @@ function CadastroSection({
       if (filtroGrupo && atual.grupo !== filtroGrupo) return false;
       if (filtroAtivo === "ativo" && !atual.ativo) return false;
       if (filtroAtivo === "inativo" && atual.ativo) return false;
+      if (somenteIncompletos && !produtoIncompleto(atual)) return false;
       return true;
     });
-  }, [produtos, estado, busca, filtroGrupo, filtroAtivo]);
+  }, [produtos, estado, busca, filtroGrupo, filtroAtivo, somenteIncompletos]);
 
   const ordenados = useMemo(() => {
     if (!ordenacao.campo) return filtrados;
@@ -153,6 +183,26 @@ function CadastroSection({
 
   return (
     <div>
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Produtos cadastrados" value={String(produtos.length)} />
+        <StatCard label="Ativos" value={String(ativosCount)} />
+        <button
+          type="button"
+          onClick={() => setSomenteIncompletos((v) => !v)}
+          className={`text-left ${somenteIncompletos ? "rounded-lg ring-2 ring-ambar" : ""}`}
+        >
+          <StatCard
+            label={
+              somenteIncompletos
+                ? "Cadastro incompleto (filtrando — clique p/ ver todos)"
+                : "Cadastro incompleto (clique p/ filtrar)"
+            }
+            value={String(incompletos.length)}
+            tone={incompletos.length > 0 ? "alerta" : "neutral"}
+          />
+        </button>
+        <StatCard label="Grupos" value={String(new Set(produtos.map((p) => p.grupo)).size)} />
+      </div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-xl font-bold text-azul-noite">
           Cadastro completo ({filtrados.length}
@@ -216,14 +266,29 @@ function CadastroSection({
               <ThOrdenavel campo="nome" ordenacao={ordenacao} onClick={() => alternarOrdenacao("nome")}>
                 Nome
               </ThOrdenavel>
-              <Th>Unidade Base</Th>
-              <Th align="right">Preço</Th>
-              <Th align="right">Estoque p/ semana</Th>
-              <Th align="right">Estoque mínimo</Th>
-              <Th>Nome de Compra</Th>
-              <Th>Und. Embalagem</Th>
-              <Th align="right">Qtd. Base/Embalagem</Th>
-              <Th align="right">Preço Fornecedor</Th>
+              <Th estreito>Unidade Base</Th>
+              <Th align="right" estreito>Preço</Th>
+              <Th align="right" estreito>
+                <span className="inline-flex items-center gap-1">
+                  Estoque p/ semana
+                  <InfoIcon texto="Valor em Unidade Base (a mesma coluna Unidade Base do produto)." />
+                </span>
+              </Th>
+              <Th align="right" estreito>
+                <span className="inline-flex items-center gap-1">
+                  Estoque mínimo
+                  <InfoIcon texto="Valor em Unidade Base (a mesma coluna Unidade Base do produto)." />
+                </span>
+              </Th>
+              <Th>
+                <span className="inline-flex items-center gap-1">
+                  Nome de Compra
+                  <InfoIcon texto="Nome do produto do jeito que o fornecedor chama - preenche quando for diferente do Nome do cadastro." />
+                </span>
+              </Th>
+              <Th estreito>Und. Embalagem</Th>
+              <Th align="right" estreito>Qtd. Base/Embalagem</Th>
+              <Th align="right" estreito>Preço Fornecedor</Th>
               <Th>Fornecedor 1</Th>
               <Th>Fornecedor 2</Th>
               <Th>Fornecedor 3</Th>
@@ -276,13 +341,17 @@ function CadastroSection({
 function Th({
   children,
   align = "left",
+  estreito = false,
 }: {
   children?: React.ReactNode;
   align?: "left" | "right" | "center";
+  /** Cabeçalho de unidade/número: quebra linha e reduz a largura da coluna. */
+  estreito?: boolean;
 }) {
   const alinhamento = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  const largura = estreito ? "max-w-[64px] whitespace-normal" : "whitespace-nowrap";
   return (
-    <th className={`sticky top-0 z-20 whitespace-nowrap bg-azul-petroleo px-2 py-2 font-semibold ${alinhamento}`}>
+    <th className={`sticky top-0 z-20 ${largura} bg-azul-petroleo px-2 py-2 font-semibold ${alinhamento}`}>
       {children}
     </th>
   );
@@ -526,87 +595,63 @@ const LinhaProduto = memo(function LinhaProduto({
       <td className="px-2 py-1.5">
         <input
           value={editado.nome}
+          title={editado.nome}
           onChange={(e) => campo("nome", e.target.value)}
-          className="w-40 rounded border border-cinza-claro px-1.5 py-1"
+          className="w-40 truncate rounded border border-cinza-claro px-1.5 py-1"
         />
       </td>
       <td className="px-2 py-1.5">
-        <CodigoSelect value={editado.unidadeBase} opcoes={UNIDADES} onChange={(v) => campo("unidadeBase", v)} className="w-16" />
+        <CodigoSelect value={editado.unidadeBase} opcoes={UNIDADES} onChange={(v) => campo("unidadeBase", v)} className="w-14" />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          type="number"
-          step="0.01"
-          value={editado.precoUnitario ?? ""}
-          onChange={(e) =>
-            campo("precoUnitario", e.target.value === "" ? null : Number(e.target.value))
-          }
-          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.precoUnitario === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        <CampoNumero
+          value={editado.precoUnitario}
+          onChange={(v) => campo("precoUnitario", v)}
+          className="w-16"
         />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          type="number"
-          step="0.01"
-          value={editado.estoqueNecessarioSemana ?? ""}
-          onChange={(e) =>
-            campo(
-              "estoqueNecessarioSemana",
-              e.target.value === "" ? null : Number(e.target.value)
-            )
-          }
-          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.estoqueNecessarioSemana === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        <CampoNumero
+          value={editado.estoqueNecessarioSemana}
+          onChange={(v) => campo("estoqueNecessarioSemana", v)}
+          className="w-16"
         />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          type="number"
-          step="0.01"
-          value={editado.estoqueMinimo ?? ""}
-          onChange={(e) =>
-            campo("estoqueMinimo", e.target.value === "" ? null : Number(e.target.value))
-          }
-          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.estoqueMinimo === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          value={editado.nomeCompra}
-          onChange={(e) => campo("nomeCompra", e.target.value)}
-          className="w-40 rounded border border-cinza-claro px-1.5 py-1"
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <CodigoSelect
-          value={editado.unidadeEmbalagemFornecedor}
-          opcoes={UNIDADES}
-          onChange={(v) => campo("unidadeEmbalagemFornecedor", v)}
+        <CampoNumero
+          value={editado.estoqueMinimo}
+          onChange={(v) => campo("estoqueMinimo", v)}
           className="w-16"
         />
       </td>
       <td className="px-2 py-1.5">
         <input
-          type="number"
-          step="0.01"
-          value={editado.qtdUnidadeBasePorEmbalagem ?? ""}
-          onChange={(e) =>
-            campo(
-              "qtdUnidadeBasePorEmbalagem",
-              e.target.value === "" ? null : Number(e.target.value)
-            )
-          }
-          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.qtdUnidadeBasePorEmbalagem === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+          value={editado.nomeCompra}
+          title={editado.nomeCompra}
+          onChange={(e) => campo("nomeCompra", e.target.value)}
+          className="w-40 truncate rounded border border-cinza-claro px-1.5 py-1"
         />
       </td>
       <td className="px-2 py-1.5">
-        <input
-          type="number"
-          step="0.01"
-          value={editado.precoFornecedor ?? ""}
-          onChange={(e) =>
-            campo("precoFornecedor", e.target.value === "" ? null : Number(e.target.value))
-          }
-          className={`w-20 rounded border px-1.5 py-1 text-right ${editado.precoFornecedor === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
+        <CodigoSelect
+          value={editado.unidadeEmbalagemFornecedor}
+          opcoes={UNIDADES_EMBALAGEM}
+          onChange={(v) => campo("unidadeEmbalagemFornecedor", v)}
+          className="w-14"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <CampoNumero
+          value={editado.qtdUnidadeBasePorEmbalagem}
+          onChange={(v) => campo("qtdUnidadeBasePorEmbalagem", v)}
+          className="w-16"
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <CampoNumero
+          value={editado.precoFornecedor}
+          onChange={(v) => campo("precoFornecedor", v)}
+          className="w-16"
         />
       </td>
       <td className="px-2 py-1.5">
