@@ -1,18 +1,11 @@
 import { getSheetsClient, getSpreadsheetId } from "./client";
+import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
 const FIRST_DATA_ROW = 3;
 const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:R`;
-
-function toNumber(v: unknown): number | null {
-  if (v === undefined || v === null || v === "") return null;
-  const limpo = String(v).replace(/[^\d,.-]/g, "").replace(",", ".");
-  if (limpo === "") return null;
-  const n = Number(limpo);
-  return Number.isNaN(n) ? null : n;
-}
 
 // Colunas reais da planilha (A-R), reorganizada em 20/07: SKU, Posição,
 // Grupo, Nome, Unidade, Preço, Estoque semana, Estoque mínimo, Nome de

@@ -2,6 +2,7 @@ import { listProdutos } from "@/lib/sheets/produtos";
 import { listItensPendentes } from "@/lib/sheets/inventario";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
+import { Th } from "@/components/tabela";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -86,17 +87,17 @@ export default async function ProdutosPage() {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-cinza-claro bg-branco">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
         <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-azul-petroleo text-branco">
-            <tr>
-              <th className="px-3 py-2 text-left font-semibold">SKU</th>
-              <th className="px-3 py-2 text-left font-semibold">Grupo</th>
-              <th className="px-3 py-2 text-left font-semibold">Nome</th>
-              <th className="px-3 py-2 text-left font-semibold">Unidade</th>
-              <th className="px-3 py-2 text-right font-semibold">Preço</th>
-              <th className="px-3 py-2 text-right font-semibold">Estoque Pra Semana</th>
-              <th className="px-3 py-2 text-center font-semibold">Status</th>
+          <thead>
+            <tr className="bg-azul-petroleo text-branco">
+              <Th>SKU</Th>
+              <Th>Grupo</Th>
+              <Th>Nome</Th>
+              <Th>Unidade</Th>
+              <Th align="right">Preço</Th>
+              <Th align="right">Estoque Pra Semana</Th>
+              <Th align="center">Status</Th>
             </tr>
           </thead>
           <tbody>

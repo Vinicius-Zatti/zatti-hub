@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { ItemInventario } from "@/lib/types";
+import { Th } from "@/components/tabela";
 
 const ABREV_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
@@ -102,18 +103,18 @@ export function VisualizacaoContagens({ itens }: { itens: ItemInventario[] }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-cinza-claro bg-branco">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
         <table className="w-full min-w-[820px] text-sm">
-          <thead className="bg-azul-petroleo text-branco">
-            <tr>
-              <th className="px-3 py-2 text-left font-semibold">Data</th>
-              <th className="px-3 py-2 text-left font-semibold">Grupo</th>
-              <th className="px-3 py-2 text-left font-semibold">Nome</th>
-              <th className="px-3 py-2 text-left font-semibold">Unidade</th>
-              <th className="px-3 py-2 text-right font-semibold">Quantidade</th>
-              <th className="px-3 py-2 text-right font-semibold">Preço Unitário</th>
-              <th className="px-3 py-2 text-right font-semibold">Total</th>
-              <th className="px-3 py-2 text-left font-semibold">Alerta</th>
+          <thead>
+            <tr className="bg-azul-petroleo text-branco">
+              <Th>Data</Th>
+              <Th>Grupo</Th>
+              <Th>Nome</Th>
+              <Th>Unidade</Th>
+              <Th align="right">Quantidade</Th>
+              <Th align="right">Preço Unitário</Th>
+              <Th align="right">Total</Th>
+              <Th>Alerta</Th>
             </tr>
           </thead>
           <tbody>

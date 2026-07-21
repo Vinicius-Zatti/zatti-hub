@@ -1,4 +1,5 @@
 import { getSheetsClient, getSpreadsheetId } from "./client";
+import { toNumeroBR as toNumber } from "./numero";
 import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
 import { listProdutos } from "./produtos";
 
@@ -7,14 +8,6 @@ const FIRST_DATA_ROW = 3;
 const RANGE = `'${SHEET}'!A${FIRST_DATA_ROW}:J`;
 
 export const PENDENTE_PREFIX = "PENDENTE-";
-
-function toNumber(v: unknown): number | null {
-  if (v === undefined || v === null || v === "") return null;
-  const limpo = String(v).replace(/[^\d,.-]/g, "").replace(",", ".");
-  if (limpo === "") return null;
-  const n = Number(limpo);
-  return Number.isNaN(n) ? null : n;
-}
 
 function rowToItem(row: string[]): ItemInventario {
   return {
