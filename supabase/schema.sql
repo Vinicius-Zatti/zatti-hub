@@ -39,7 +39,11 @@ create table if not exists vinculos (
   -- nulo = acesso a todas as unidades ativas dessa organização (dono de
   -- rede, ex. cliente com mais de uma loja).
   unidade_id text references unidades(id),
-  role text not null check (role in ('gestao', 'operacional')),
+  -- master = enxerga toda organização ativa da plataforma automaticamente
+  -- (equipe Zatti), sem precisar de um vínculo por cliente. organizacao_id
+  -- nesse caso é só uma âncora pra satisfazer a foreign key, não limita o
+  -- acesso - ver RLS de organizacoes/unidades abaixo e getAcessoAtual().
+  role text not null check (role in ('gestao', 'operacional', 'master')),
   status text not null default 'ativo' check (status in ('convidado', 'ativo', 'revogado')),
   created_at timestamptz not null default now()
 );
@@ -71,27 +75,34 @@ create policy "perfis_select_own" on perfis
 create policy "vinculos_select_own" on vinculos
   for select using (user_id = auth.uid());
 
--- Unidades: só quem tem vínculo ativo (direto, ou via unidade_id nulo =
--- organização inteira) enxerga a linha.
+-- Unidades: quem tem vínculo ativo (direto, ou via unidade_id nulo =
+-- organização inteira) enxerga a linha - ou quem tem qualquer vínculo
+-- "master", que enxerga toda unidade de toda organização.
 create policy "unidades_select_por_vinculo" on unidades
   for select using (
     exists (
       select 1 from vinculos v
       where v.user_id = auth.uid()
         and v.status = 'ativo'
-        and v.organizacao_id = unidades.organizacao_id
-        and (v.unidade_id is null or v.unidade_id = unidades.id)
+        and (
+          v.role = 'master'
+          or (
+            v.organizacao_id = unidades.organizacao_id
+            and (v.unidade_id is null or v.unidade_id = unidades.id)
+          )
+        )
     )
   );
 
--- Organizações: só quem tem vínculo ativo naquela organização.
+-- Organizações: quem tem vínculo ativo naquela organização, ou qualquer
+-- vínculo "master" (enxerga todas).
 create policy "organizacoes_select_por_vinculo" on organizacoes
   for select using (
     exists (
       select 1 from vinculos v
       where v.user_id = auth.uid()
         and v.status = 'ativo'
-        and v.organizacao_id = organizacoes.id
+        and (v.role = 'master' or v.organizacao_id = organizacoes.id)
     )
   );
 

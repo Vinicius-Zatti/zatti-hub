@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NavTabs } from "@/components/nav-tabs";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
+import { OrgSwitcher } from "@/components/org-switcher";
 import { getAcessoAtual } from "@/lib/acesso";
 import { signOutAction } from "@/lib/supabase/actions";
 
@@ -28,9 +29,16 @@ export default async function AppLayout({
               <img src="/brand/zatti-logo-invertida.svg" alt="Zatti Hub" className="h-7 w-auto" />
             </Link>
             <div className="flex items-center gap-3 text-sm">
-              <span className="hidden text-cinza-claro sm:inline">
-                {acesso.organizacaoNome}
-              </span>
+              {acesso.organizacoesDisponiveis.length > 1 ? (
+                <OrgSwitcher
+                  organizacoes={acesso.organizacoesDisponiveis}
+                  atual={acesso.organizacaoId}
+                />
+              ) : (
+                <span className="hidden text-cinza-claro sm:inline">
+                  {acesso.organizacaoNome}
+                </span>
+              )}
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ambar text-sm font-bold text-azul-noite">
                 {acesso.organizacaoNome.charAt(0).toUpperCase() || "?"}
               </div>
