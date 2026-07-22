@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { SugestaoCompra } from "@/lib/types";
 import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
-import { NOME_CLIENTE } from "@/lib/config";
 import { Th } from "@/components/tabela";
 import {
   gerarImagemCotacao,
@@ -12,15 +11,20 @@ import {
   type LinhaCotacao,
 } from "@/lib/canvas-tabela";
 
-const LEGENDA = `${NOME_CLIENTE} · Pedido de Cotação`;
-
 type Modo = "padrao" | "nomeCompra";
 
 function itemIncompleto(item: SugestaoCompra): boolean {
   return !item.nomeCompra.trim() || !item.unidadeEmbalagemFornecedor.trim() || !item.qtdUnidadeBasePorEmbalagem;
 }
 
-export function CotacoesSemana({ itens }: { itens: SugestaoCompra[] }) {
+export function CotacoesSemana({
+  itens,
+  organizacaoNome,
+}: {
+  itens: SugestaoCompra[];
+  organizacaoNome: string;
+}) {
+  const legenda = `${organizacaoNome} · Pedido de Cotação`;
   const precisamComprar = itens.filter((i) => i.precisaComprar);
   const porFornecedor = agruparPorFornecedor(precisamComprar);
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
@@ -84,7 +88,7 @@ export function CotacoesSemana({ itens }: { itens: SugestaoCompra[] }) {
     }));
 
     try {
-      const blob = await gerarImagemCotacao(fornecedor, dadosImagem, LEGENDA);
+      const blob = await gerarImagemCotacao(fornecedor, dadosImagem, legenda);
       const nomeArquivo = `cotacao-${fornecedor.toLowerCase().replace(/\s+/g, "-")}.png`;
       const resultado = await compartilharOuCopiarImagem(blob, nomeArquivo, `Cotação ${fornecedor}`);
       setStatusPorFornecedor((s) => ({

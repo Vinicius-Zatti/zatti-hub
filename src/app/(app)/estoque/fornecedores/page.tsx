@@ -3,14 +3,16 @@ import { fornecedorIncompleto } from "@/lib/fornecedor";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { TabelaFornecedores } from "@/components/tabela-fornecedores";
+import { getAcessoAtual } from "@/lib/acesso";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function FornecedoresPage() {
+  const acesso = await getAcessoAtual();
   let fornecedores;
   try {
-    fornecedores = await listFornecedores();
+    fornecedores = await listFornecedores(acesso.spreadsheetId);
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }

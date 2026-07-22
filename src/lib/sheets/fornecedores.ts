@@ -1,4 +1,4 @@
-import { getSheetsClient, getSpreadsheetId } from "./client";
+import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Fornecedor } from "@/lib/types";
 
@@ -55,9 +55,8 @@ function fornecedorToRow(f: Fornecedor): (string | number)[] {
   ];
 }
 
-export async function listFornecedores(tenantId?: string): Promise<Fornecedor[]> {
+export async function listFornecedores(spreadsheetId: string): Promise<Fornecedor[]> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
   const rows = res.data.values ?? [];
@@ -70,13 +69,12 @@ export async function listFornecedores(tenantId?: string): Promise<Fornecedor[]>
 /** Atualiza/insere um fornecedor. Exige `codigo` preenchido pra saber qual
  * linha é qual - fornecedor sem código ainda (cadastro antigo, direto na
  * planilha) precisa passar por `garantirCodigos` antes. */
-export async function upsertFornecedor(fornecedor: Fornecedor, tenantId?: string): Promise<void> {
+export async function upsertFornecedor(fornecedor: Fornecedor, spreadsheetId: string): Promise<void> {
   if (!fornecedor.codigo) {
     throw new Error("Fornecedor sem código - não dá pra saber qual linha atualizar.");
   }
 
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -118,13 +116,12 @@ export function proximoCodigo(fornecedores: Fornecedor[]): string {
  * (casando pela linha com Código vazio + mesmo Nome Fantasia, a única coisa
  * estável que sobra). Depois da primeira vez que cada fornecedor passa por
  * aqui isso vira no-op pra ele. */
-export async function garantirCodigos(tenantId?: string): Promise<Fornecedor[]> {
-  const fornecedores = await listFornecedores(tenantId);
+export async function garantirCodigos(spreadsheetId: string): Promise<Fornecedor[]> {
+  const fornecedores = await listFornecedores(spreadsheetId);
   const semCodigo = fornecedores.filter((f) => !f.codigo);
   if (semCodigo.length === 0) return fornecedores;
 
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `'${SHEET}'!A${FIRST_DATA_ROW}:C`,

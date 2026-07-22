@@ -3,6 +3,7 @@
 import { upsertProduto } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
+import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -16,14 +17,17 @@ function revalidarTudo() {
 export async function sugerirSkuAction(
   nome: string
 ): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
+  const acesso = await requireGestao();
   try {
-    return await sugerirSku(nome);
+    return await sugerirSku(nome, acesso.spreadsheetId);
   } catch (err) {
     return { erro: (err as Error).message };
   }
 }
 
 export async function criarProdutoAction(formData: FormData) {
+  const acesso = await requireGestao();
+
   const produto: Produto = {
     sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
     posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
@@ -47,7 +51,14 @@ export async function criarProdutoAction(formData: FormData) {
     ativo: true,
   };
 
-  await upsertProduto(produto);
+  await upsertProduto(produto, acesso.spreadsheetId);
+  await registrarAuditoria({
+    acesso,
+    acao: "criar",
+    entidade: "produto",
+    entidadeId: produto.sku,
+    dadosNovos: produto,
+  });
   revalidarTudo();
   redirect("/estoque/produtos");
 }
@@ -56,8 +67,16 @@ export async function criarProdutoAction(formData: FormData) {
 export async function salvarProdutoAction(
   produto: Produto
 ): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await requireGestao();
   try {
-    await upsertProduto(produto);
+    await upsertProduto(produto, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "produto",
+      entidadeId: produto.sku,
+      dadosNovos: produto,
+    });
     revalidarTudo();
     return { ok: true };
   } catch (err) {

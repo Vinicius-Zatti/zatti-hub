@@ -5,6 +5,7 @@ import {
   atualizarQuantidadeInventario,
   type NovaContagemLinha,
 } from "@/lib/sheets/inventario";
+import { getAcessoAtual, registrarAuditoria } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 
 const MESES = [
@@ -19,12 +20,17 @@ export type LinhaAvulsa = {
   quantidade: string;
 };
 
+/** Contagem é o único módulo aberto pros dois papéis (Gestão e
+ * Operacional) - por isso usa `getAcessoAtual`, não `requireGestao`. */
+
 /** dataISO no formato AAAA-MM-DD (a data escolhida na Contagem). Sem ela,
  * cai no dia de hoje. */
 export async function registrarContagemAction(
   linhas: NovaContagemLinha[],
   dataISO?: string
 ) {
+  const acesso = await getAcessoAtual();
+
   let dia: Date;
   if (dataISO) {
     const [ano, mes, diaNum] = dataISO.split("-").map(Number);
@@ -36,7 +42,14 @@ export async function registrarContagemAction(
   const dataFmt = dia.toLocaleDateString("pt-BR");
   const mesFmt = `${MESES[dia.getMonth()]} ${dia.getFullYear()}`;
 
-  await registrarContagem(dataFmt, mesFmt, linhas);
+  await registrarContagem(dataFmt, mesFmt, linhas, acesso.spreadsheetId);
+  await registrarAuditoria({
+    acesso,
+    acao: "registrar",
+    entidade: "contagem",
+    entidadeId: dataFmt,
+    dadosNovos: linhas,
+  });
 
   revalidatePath("/estoque/contagem");
   revalidatePath("/estoque/pedidos");
@@ -51,11 +64,19 @@ export async function atualizarQuantidadeContagemAction(
   sku: string,
   quantidade: number
 ): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await getAcessoAtual();
   try {
-    await atualizarQuantidadeInventario(data, sku, quantidade);
+    await atualizarQuantidadeInventario(data, sku, quantidade, acesso.spreadsheetId);
   } catch (err) {
     return { erro: (err as Error).message };
   }
+  await registrarAuditoria({
+    acesso,
+    acao: "corrigir_quantidade",
+    entidade: "contagem_item",
+    entidadeId: `${data}:${sku}`,
+    dadosNovos: { quantidade },
+  });
   revalidatePath("/estoque/contagem/visualizacao");
   revalidatePath("/estoque/pedidos");
   return { ok: true };

@@ -3,19 +3,21 @@ import { listItensPendentes } from "@/lib/sheets/inventario";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EdicaoGrid } from "@/components/edicao-grid";
+import { getAcessoAtual } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
 export default async function EdicaoDadosPage() {
+  const acesso = await getAcessoAtual();
   let produtos;
   try {
-    produtos = await listProdutos();
+    produtos = await listProdutos(acesso.spreadsheetId);
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }
   const [pendentes, fornecedores] = await Promise.all([
-    listItensPendentes(),
-    listFornecedores(),
+    listItensPendentes(acesso.spreadsheetId),
+    listFornecedores(acesso.spreadsheetId),
   ]);
 
   return (

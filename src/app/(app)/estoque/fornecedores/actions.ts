@@ -2,6 +2,7 @@
 
 import { listFornecedores, upsertFornecedor, proximoCodigo } from "@/lib/sheets/fornecedores";
 import type { Fornecedor } from "@/lib/types";
+import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -13,7 +14,8 @@ function revalidarTudo() {
 }
 
 export async function criarFornecedorAction(formData: FormData) {
-  const existentes = await listFornecedores();
+  const acesso = await requireGestao();
+  const existentes = await listFornecedores(acesso.spreadsheetId);
 
   const fornecedor: Fornecedor = {
     codigo: proximoCodigo(existentes),
@@ -30,7 +32,14 @@ export async function criarFornecedorAction(formData: FormData) {
     observacoes: String(formData.get("observacoes") ?? ""),
   };
 
-  await upsertFornecedor(fornecedor);
+  await upsertFornecedor(fornecedor, acesso.spreadsheetId);
+  await registrarAuditoria({
+    acesso,
+    acao: "criar",
+    entidade: "fornecedor",
+    entidadeId: fornecedor.codigo,
+    dadosNovos: fornecedor,
+  });
   revalidarTudo();
   redirect("/estoque/fornecedores");
 }
@@ -40,8 +49,16 @@ export async function criarFornecedorAction(formData: FormData) {
 export async function salvarFornecedorAction(
   fornecedor: Fornecedor
 ): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await requireGestao();
   try {
-    await upsertFornecedor(fornecedor);
+    await upsertFornecedor(fornecedor, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "fornecedor",
+      entidadeId: fornecedor.codigo,
+      dadosNovos: fornecedor,
+    });
     revalidarTudo();
     return { ok: true };
   } catch (err) {

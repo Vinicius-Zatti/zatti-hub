@@ -3,6 +3,7 @@ import { listItensPendentes } from "@/lib/sheets/inventario";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { Th } from "@/components/tabela";
+import { getAcessoAtual } from "@/lib/acesso";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +14,14 @@ function formatMoeda(v: number | null): string {
 }
 
 export default async function ProdutosPage() {
+  const acesso = await getAcessoAtual();
   let produtos;
   try {
-    produtos = await listProdutos();
+    produtos = await listProdutos(acesso.spreadsheetId);
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }
-  const pendentes = await listItensPendentes();
+  const pendentes = await listItensPendentes(acesso.spreadsheetId);
 
   const ativos = produtos.filter((p) => p.ativo);
   const semPreco = produtos.filter((p) => p.precoUnitario === null);

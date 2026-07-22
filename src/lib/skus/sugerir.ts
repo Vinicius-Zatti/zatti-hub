@@ -52,7 +52,7 @@ type SugestaoSku = { sku: string; grupo: string; motivo: string };
 
 const GRUPOS_VALIDOS = ["PRO", "HOR", "LAT", "MER", "CON", "BEB", "BAL", "EMB", "DES", "LIM", "OPE"];
 
-export async function sugerirSku(nome: string, tenantId?: string): Promise<SugestaoSku> {
+export async function sugerirSku(nome: string, spreadsheetId: string): Promise<SugestaoSku> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("Falta ANTHROPIC_API_KEY no .env.local");
@@ -61,7 +61,7 @@ export async function sugerirSku(nome: string, tenantId?: string): Promise<Suges
     throw new Error("Preencha o nome antes de sugerir o SKU.");
   }
 
-  const produtos = await listProdutos(tenantId);
+  const produtos = await listProdutos(spreadsheetId);
   const cadastro = produtos.length
     ? produtos.map((p) => `${p.sku} (${p.grupo}) — ${p.nome}`).join("\n")
     : "(nenhum produto cadastrado ainda)";

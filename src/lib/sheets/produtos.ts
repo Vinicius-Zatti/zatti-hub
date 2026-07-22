@@ -1,4 +1,4 @@
-import { getSheetsClient, getSpreadsheetId } from "./client";
+import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 
@@ -57,9 +57,8 @@ function produtoToRow(p: Produto): (string | number)[] {
   ];
 }
 
-export async function listProdutos(tenantId?: string): Promise<Produto[]> {
+export async function listProdutos(spreadsheetId: string): Promise<Produto[]> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -74,10 +73,9 @@ export async function listProdutos(tenantId?: string): Promise<Produto[]> {
 
 export async function upsertProduto(
   produto: Produto,
-  tenantId?: string
+  spreadsheetId: string
 ): Promise<void> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,

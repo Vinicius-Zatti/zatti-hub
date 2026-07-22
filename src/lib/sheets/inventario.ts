@@ -1,4 +1,4 @@
-import { getSheetsClient, getSpreadsheetId } from "./client";
+import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
 import { listProdutos } from "./produtos";
@@ -24,9 +24,8 @@ function rowToItem(row: string[]): ItemInventario {
   };
 }
 
-export async function listInventario(tenantId?: string): Promise<ItemInventario[]> {
+export async function listInventario(spreadsheetId: string): Promise<ItemInventario[]> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
   const rows = res.data.values ?? [];
@@ -70,11 +69,10 @@ export async function registrarContagem(
   data: string, // "DD/MM/AAAA"
   mes: string, // "julho 2026"
   linhas: NovaContagemLinha[],
-  tenantId?: string
+  spreadsheetId: string
 ): Promise<void> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
-  const produtos = await listProdutos(tenantId);
+  const produtos = await listProdutos(spreadsheetId);
   const porSku = new Map(produtos.map((p) => [p.sku, p]));
 
   const rows = linhas.map(({ sku, quantidade, nomeAvulso, unidadeAvulso }) => {
@@ -130,14 +128,13 @@ export async function atualizarQuantidadeInventario(
   data: string,
   sku: string,
   quantidade: number,
-  tenantId?: string
+  spreadsheetId: string
 ): Promise<void> {
   const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId(tenantId);
 
   const [res, produtos] = await Promise.all([
     sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE }),
-    listProdutos(tenantId),
+    listProdutos(spreadsheetId),
   ]);
   const rows = res.data.values ?? [];
   const idx = rows.findIndex((r) => r[0] === data && r[2] === sku);
@@ -162,10 +159,10 @@ export async function atualizarQuantidadeInventario(
 
 /** Itens contados como avulso (fora do Cadastro de Produtos) que ainda não
  * viraram produto de verdade. Pega a ocorrência mais recente de cada nome. */
-export async function listItensPendentes(tenantId?: string): Promise<ItemPendente[]> {
+export async function listItensPendentes(spreadsheetId: string): Promise<ItemPendente[]> {
   const [inventario, produtos] = await Promise.all([
-    listInventario(tenantId),
-    listProdutos(tenantId),
+    listInventario(spreadsheetId),
+    listProdutos(spreadsheetId),
   ]);
   const skusCadastrados = new Set(produtos.map((p) => p.sku));
   // Resolvido = já existe um produto de verdade com o mesmo nome (o SKU

@@ -51,7 +51,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
   cadastrados é tratado como cadastro incompleto: bloqueia compartilhar e
   aponta pra Produtos → Edição de Dados, nunca deixa mandar pro fornecedor
   um pedido com conta errada.
-- **Nome do cliente hardcoded**: o app ainda é mono-tenant (Dom Quixote).
-  Nome usado em textos voltados pro fornecedor/cliente vem de `NOME_CLIENTE`
-  em `src/lib/config.ts`, nunca hardcoded solto em outro arquivo — facilita
-  trocar quando virar multi-tenant de verdade.
+- **Multiempresa de verdade (login, 22/07)**: o app deixou de ser mono-tenant.
+  Toda página/Server Action que precisa saber qual planilha ler chama
+  `getAcessoAtual()` de `src/lib/acesso.ts` primeiro — ela resolve
+  organização/unidade/papel direto da sessão logada (Supabase) e devolve
+  `spreadsheetId` já certo. Nunca aceitar um id de unidade/planilha vindo de
+  formulário, `searchParams` ou qualquer input do usuário. Toda action que só
+  Gestão pode chamar usa `requireGestao()` em vez de `getAcessoAtual()` — ela
+  redireciona quem não é Gestão, e é a barreira que vale de verdade (o
+  layout que esconde a aba do menu é só UX, não segurança). Mutações
+  relevantes (criar/editar produto, fornecedor, contagem) chamam
+  `registrarAuditoria()` depois de gravar. Nome de cliente pra textos
+  voltados ao fornecedor vem de `acesso.organizacaoNome`, nunca mais
+  hardcoded.

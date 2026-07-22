@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { NavTabs } from "@/components/nav-tabs";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
+import { getAcessoAtual } from "@/lib/acesso";
+import { signOutAction } from "@/lib/supabase/actions";
 
 const NAV_ITEMS = [
   { label: "Estoque", href: "/estoque/produtos", disabled: false },
@@ -10,13 +12,12 @@ const NAV_ITEMS = [
   { label: "Marketing", href: "#", disabled: true },
 ];
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // TODO: trocar por tenant real assim que a autenticação (Supabase) estiver ligada
-  const tenantName = "Dom Quixote Hamburgueria";
+  const acesso = await getAcessoAtual();
 
   return (
     <GuardaContagemProvider>
@@ -28,11 +29,19 @@ export default function AppLayout({
             </Link>
             <div className="flex items-center gap-3 text-sm">
               <span className="hidden text-cinza-claro sm:inline">
-                {tenantName}
+                {acesso.organizacaoNome}
               </span>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ambar text-sm font-bold text-azul-noite">
-                V
+                {acesso.organizacaoNome.charAt(0).toUpperCase() || "?"}
               </div>
+              <form action={signOutAction}>
+                <button
+                  type="submit"
+                  className="text-xs text-cinza-claro underline-offset-2 hover:text-branco hover:underline"
+                >
+                  Sair
+                </button>
+              </form>
             </div>
           </div>
           <NavTabs items={NAV_ITEMS} />

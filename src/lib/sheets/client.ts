@@ -4,6 +4,11 @@ import { google } from "googleapis";
 // que já existe hoje ("Sistema M.E.G.A. - Template Zatti"). Quando validarmos
 // o modelo de dados com uso real, essa é a única camada que muda pra Postgres —
 // as páginas e componentes não precisam saber de onde o dado vem.
+//
+// Qual planilha usar não é mais fixo por variável de ambiente: cada unidade
+// (cliente) tem seu próprio `spreadsheet_id` cadastrado no Supabase, e o
+// valor certo já vem resolvido de `getAcessoAtual()` (src/lib/acesso.ts) -
+// nunca de um id vindo de formulário ou da URL.
 
 function getAuth() {
   const email = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
@@ -24,15 +29,4 @@ function getAuth() {
 
 export function getSheetsClient() {
   return google.sheets({ version: "v4", auth: getAuth() });
-}
-
-// Por enquanto, um único tenant (Dom Quixote) aponta pra uma planilha fixa.
-// Quando tiver mais de um cliente, isso vira uma consulta a uma tabela de
-// tenants (Supabase) que devolve o spreadsheetId de cada um.
-export function getSpreadsheetId(_tenantId: string = "dom-quixote"): string {
-  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  if (!id) {
-    throw new Error("Falta GOOGLE_SHEETS_SPREADSHEET_ID no .env.local");
-  }
-  return id;
 }

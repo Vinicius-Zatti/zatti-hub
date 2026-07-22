@@ -1,13 +1,15 @@
 import { garantirCodigos } from "@/lib/sheets/fornecedores";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EdicaoFornecedoresGrid } from "@/components/edicao-fornecedores-grid";
+import { getAcessoAtual } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
 export default async function EdicaoFornecedoresPage() {
+  const acesso = await getAcessoAtual();
   let fornecedores;
   try {
-    fornecedores = await garantirCodigos();
+    fornecedores = await garantirCodigos(acesso.spreadsheetId);
   } catch (err) {
     return <ConectarPlanilha erro={(err as Error).message} />;
   }

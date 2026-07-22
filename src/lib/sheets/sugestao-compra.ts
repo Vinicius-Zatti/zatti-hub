@@ -12,8 +12,8 @@ function parseDataBr(d: string): number {
 
 /** Datas de contagem já registradas, mais recente primeiro - base pro
  * seletor "de qual contagem" em Pedidos. */
-export async function datasDisponiveis(tenantId?: string): Promise<string[]> {
-  const inventario = await listInventario(tenantId);
+export async function datasDisponiveis(spreadsheetId: string): Promise<string[]> {
+  const inventario = await listInventario(spreadsheetId);
   const datas = new Set(inventario.map((it) => it.data).filter(Boolean));
   return Array.from(datas).sort((a, b) => parseDataBr(b) - parseDataBr(a));
 }
@@ -29,11 +29,11 @@ export async function datasDisponiveis(tenantId?: string): Promise<string[]> {
  * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar. */
 export async function gerarPedido(
   opcoes: { data?: string; grupos?: string[] } = {},
-  tenantId?: string
+  spreadsheetId: string
 ): Promise<{ itens: SugestaoCompra[]; dataUsada: string; gruposContadosNoDia: string[] }> {
   const [produtos, inventario] = await Promise.all([
-    listProdutos(tenantId),
-    listInventario(tenantId),
+    listProdutos(spreadsheetId),
+    listInventario(spreadsheetId),
   ]);
 
   const dataUsada = opcoes.data || datasMaisRecente(inventario);
