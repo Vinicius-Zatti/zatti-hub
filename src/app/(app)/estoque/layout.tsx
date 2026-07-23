@@ -11,7 +11,7 @@ const SUB_ITEMS = [
 export default async function EstoqueLayout({ children }: { children: React.ReactNode }) {
   const acesso = await getAcessoAtual();
   const items =
-    acesso.role === "gestao"
+    acesso.role === "gestao" || acesso.role === "master"
       ? SUB_ITEMS
       : SUB_ITEMS.filter((item) => item.href === "/estoque/contagem");
 
