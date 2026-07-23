@@ -1,44 +1,40 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
-  const [estado, setEstado] = useState<"idle" | "enviando" | "enviado" | "erro">("idle");
+  const [senha, setSenha] = useState("");
+  const [estado, setEstado] = useState<"idle" | "entrando" | "erro">("idle");
   const [erro, setErro] = useState("");
 
-  async function enviarLink(e: React.FormEvent) {
+  async function entrar(e: React.FormEvent) {
     e.preventDefault();
-    setEstado("enviando");
+    setEstado("entrando");
     setErro("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
 
     if (error) {
       setEstado("erro");
-      setErro(error.message);
+      setErro(
+        error.message === "Invalid login credentials"
+          ? "Email ou senha incorretos."
+          : error.message,
+      );
       return;
     }
-    setEstado("enviado");
-  }
 
-  if (estado === "enviado") {
-    return (
-      <p className="text-sm text-cinza">
-        Link enviado pra <strong>{email}</strong>. Abre o email e clica no link pra entrar.
-      </p>
-    );
+    // Recarga completa (não router.push) pra garantir que o servidor já
+    // enxerga o cookie de sessão novo na primeira renderização.
+    window.location.href = "/";
   }
 
   return (
-    <form onSubmit={enviarLink} className="flex flex-col gap-3">
+    <form onSubmit={entrar} className="flex flex-col gap-3">
       <label className="text-sm font-medium text-cinza">
         Email
         <input
@@ -50,14 +46,28 @@ export function LoginForm() {
           placeholder="voce@exemplo.com"
         />
       </label>
+      <label className="text-sm font-medium text-cinza">
+        Senha
+        <input
+          type="password"
+          required
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          className="mt-1 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm"
+          placeholder="••••••••"
+        />
+      </label>
       {estado === "erro" && <p className="text-sm text-vermelho">{erro}</p>}
       <button
         type="submit"
-        disabled={estado === "enviando"}
+        disabled={estado === "entrando"}
         className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo disabled:opacity-60"
       >
-        {estado === "enviando" ? "Enviando..." : "Receber link de acesso"}
+        {estado === "entrando" ? "Entrando..." : "Entrar"}
       </button>
+      <Link href="/esqueci-senha" className="text-center text-sm text-azul-petroleo underline">
+        Esqueci minha senha
+      </Link>
     </form>
   );
 }

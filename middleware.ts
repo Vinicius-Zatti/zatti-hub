@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const ROTAS_PUBLICAS = ["/login", "/auth/callback", "/sem-acesso"];
+const ROTAS_PUBLICAS = ["/login", "/auth/callback", "/sem-acesso", "/esqueci-senha"];
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
  * antes de qualquer página renderizar - primeira camada, não a única (cada
