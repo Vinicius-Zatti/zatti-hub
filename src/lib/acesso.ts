@@ -82,9 +82,33 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
       .order("nome");
     organizacoesDisponiveis = (todasOrgs as unknown as OrganizacaoRow[] | null) ?? [];
     if (organizacoesDisponiveis.length === 0) redirect("/sem-acesso");
-    organizacaoId =
-      organizacoesDisponiveis.find((o) => o.id === orgEscolhida)?.id ??
-      organizacoesDisponiveis[0].id;
+
+    if (organizacoesDisponiveis.some((o) => o.id === orgEscolhida)) {
+      organizacaoId = orgEscolhida!;
+    } else {
+      // Sem preferência salva ainda: não pode cair na primeira organização
+      // em ordem alfabética sem checar se ela já tem dado configurado, senão
+      // master fica preso na tela de "planilha pendente" de um cliente novo
+      // (sem seletor pra sair de lá) mesmo tendo outras organizações prontas.
+      const { data: unidadesProntas } = await supabase
+        .from("unidades")
+        .select("organizacao_id")
+        .in(
+          "organizacao_id",
+          organizacoesDisponiveis.map((o) => o.id),
+        )
+        .eq("ativo", true)
+        .not("spreadsheet_id", "is", null);
+
+      const orgsComDados = new Set(
+        (unidadesProntas as { organizacao_id: string }[] | null)?.map(
+          (u) => u.organizacao_id,
+        ) ?? [],
+      );
+      organizacaoId =
+        organizacoesDisponiveis.find((o) => orgsComDados.has(o.id))?.id ??
+        organizacoesDisponiveis[0].id;
+    }
     role = "master";
   } else {
     organizacoesDisponiveis = vinculos.map((v) => ({
