@@ -74,4 +74,8 @@ export type SugestaoCompra = {
   nomeCompra: string;
   unidadeEmbalagemFornecedor: string;
   qtdUnidadeBasePorEmbalagem: number | null;
+  /** Mesmo alerta calculado na Contagem ("Comprar emergencial" etc), pro
+   * comprador ver isso também em Criar Cotação sem ter que ir conferir em
+   * outra aba. */
+  alerta: string;
 };

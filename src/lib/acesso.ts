@@ -171,6 +171,14 @@ export async function requireGestao(): Promise<AcessoAtual> {
   return acesso;
 }
 
+/** Barreira pra telas ainda em construção, visíveis só pro Vinícius
+ * (master) enquanto não são validadas pra virar acesso real de cliente. */
+export async function requireMaster(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (acesso.role !== "master") redirect("/estoque/pedidos");
+  return acesso;
+}
+
 /** Log mínimo de auditoria: quem mudou o quê, quando, em qual unidade. Uma
  * falha aqui nunca deve derrubar a ação de verdade do usuário, por isso
  * engole o erro (só loga no servidor). */

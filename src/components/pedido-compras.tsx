@@ -6,6 +6,7 @@ import type { SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
+import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -17,15 +18,20 @@ export function PedidoCompras({
   datasDisponiveis,
   gruposSelecionados,
   gruposContadosNoDia,
+  organizacaoNome,
+  pedidoMinimoPorFornecedor,
 }: {
   itens: SugestaoCompra[];
   dataUsada: string;
   datasDisponiveis: string[];
   gruposSelecionados: string[];
   gruposContadosNoDia: string[];
+  organizacaoNome: string;
+  pedidoMinimoPorFornecedor: Record<string, number | null>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const legenda = `${organizacaoNome} · Pedido de Cotação`;
 
   function atualizarUrl(novaData: string, novosGrupos: string[]) {
     const params = new URLSearchParams();
@@ -43,7 +49,7 @@ export function PedidoCompras({
 
   // Correção manual da quantidade sugerida - só ajusta a tela/cotação, não
   // grava em lugar nenhum. Compartilhada entre a tabela de conferência por
-  // Grupo e as tabelas por Fornecedor: o mesmo SKU pode aparecer nas duas.
+  // Grupo e os blocos por Fornecedor: o mesmo SKU pode aparecer nas duas.
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [editando, setEditando] = useState<Record<string, string>>({});
 
@@ -82,10 +88,10 @@ export function PedidoCompras({
   return (
     <div className="flex flex-col gap-5 pb-10">
       <div>
-        <h1 className="font-display text-3xl font-bold text-azul-noite">Pedido de Compras</h1>
+        <h1 className="font-display text-3xl font-bold text-azul-noite">Criar Cotação</h1>
         <p className="text-sm text-cinza-medio">
           Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
-          não precisa comprar.
+          não precisa comprar. Depois, compartilha a cotação de cada fornecedor lá embaixo.
         </p>
       </div>
 
@@ -186,18 +192,19 @@ export function PedidoCompras({
 
       {itens.length > 0 && (
         <div>
-          <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">Por Fornecedor</h2>
+          <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">
+            Por Fornecedor - cotação e compartilhamento
+          </h2>
           <div className="flex flex-col gap-4">
             {fornecedores.map((fornecedor) => (
-              <TabelaItens
+              <BlocoFornecedorCotacao
                 key={fornecedor}
-                titulo={fornecedor}
+                fornecedor={fornecedor}
                 linhas={porFornecedor[fornecedor]}
+                pedidoMinimo={pedidoMinimoPorFornecedor[fornecedor] ?? null}
+                legenda={legenda}
                 valorAtual={valorAtual}
-                editando={editando}
-                onIniciarEdicao={iniciarEdicao}
-                onConfirmarEdicao={confirmarEdicao}
-                onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
+                onConfirmarValor={(sku, valor) => setOverrides((o) => ({ ...o, [sku]: valor }))}
               />
             ))}
           </div>
@@ -244,6 +251,7 @@ function TabelaItens({
               <Th align="right">Necessário</Th>
               <Th align="right">Comprar</Th>
               <Th align="right">Valor</Th>
+              <Th>Alerta</Th>
             </tr>
           </thead>
           <tbody>
@@ -303,13 +311,26 @@ function TabelaItens({
                           onClick={() => onIniciarEdicao(item)}
                           className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
                         >
-                          Editar
+                          {precisa ? "Editar" : "Adicionar"}
                         </button>
                       </div>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
                     {valor !== null ? formatMoeda(valor) : "a calcular"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {item.alerta && (
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          item.alerta === "Comprar emergencial"
+                            ? "bg-vermelho/10 text-vermelho"
+                            : "bg-ambar/10 text-ambar"
+                        }`}
+                      >
+                        {item.alerta}
+                      </span>
+                    )}
                   </td>
                 </tr>
               );

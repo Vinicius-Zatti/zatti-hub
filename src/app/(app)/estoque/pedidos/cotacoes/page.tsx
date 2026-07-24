@@ -1,18 +1,24 @@
-import { gerarPedido } from "@/lib/sheets/sugestao-compra";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { CotacoesSemana } from "@/components/cotacoes-semana";
-import { getAcessoAtual } from "@/lib/acesso";
+import { requireMaster } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
-export default async function CotacoesSemanaPage() {
-  const acesso = await getAcessoAtual();
-  let resultado;
-  try {
-    resultado = await gerarPedido({}, acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
-  }
+/** Placeholder - Editor de Espelhos de Compras ainda não foi construído.
+ * Vai substituir a antiga "Cotações da Semana": confirmar quantidade
+ * comprada, confirmar fornecedor vencedor, editar preço com diferença,
+ * previsão de entrega por fornecedor. Guardado atrás de requireMaster()
+ * até validar com o Vinícius. */
+export default async function EditorEspelhosPage() {
+  await requireMaster();
 
-  return <CotacoesSemana itens={resultado.itens} organizacaoNome={acesso.organizacaoNome} />;
+  return (
+    <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
+      <h1 className="font-display text-2xl font-bold text-azul-noite">
+        Editor de Espelhos de Compras
+      </h1>
+      <p className="mt-2 text-sm">
+        Em breve. Aqui você vai confirmar o que foi comprado de fato (quantidade, fornecedor
+        vencedor, preço) e definir a previsão de entrega de cada fornecedor.
+      </p>
+    </div>
+  );
 }

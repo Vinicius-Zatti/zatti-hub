@@ -126,7 +126,7 @@ export function VisualizacaoContagens({ itens }: { itens: ItemInventario[] }) {
   return (
     <div className="flex flex-col gap-4 pb-10">
       <div>
-        <h1 className="font-display text-3xl font-bold text-azul-noite">Visualização de Contagens</h1>
+        <h1 className="font-display text-3xl font-bold text-azul-noite">Conferência de Contagem</h1>
         <p className="text-sm text-cinza-medio">Histórico dos inventários já registrados.</p>
       </div>
 

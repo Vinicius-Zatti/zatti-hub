@@ -1,16 +1,22 @@
 import { SubTabs } from "@/components/sub-tabs";
 import { requireGestao } from "@/lib/acesso";
 
-const ITEMS = [
-  { label: "Pedido de Compras", href: "/estoque/pedidos" },
-  { label: "Cotações da Semana", href: "/estoque/pedidos/cotacoes" },
-];
-
 export default async function PedidosLayout({ children }: { children: React.ReactNode }) {
-  await requireGestao();
+  const acesso = await requireGestao();
+
+  const items = [
+    { label: "Criar Cotação", href: "/estoque/pedidos" },
+    ...(acesso.role === "master"
+      ? [
+          { label: "Editor de Espelhos de Compras (em breve)", href: "/estoque/pedidos/cotacoes" },
+          { label: "Pedidos Feitos (em breve)", href: "/estoque/pedidos/feitos" },
+        ]
+      : []),
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <SubTabs items={ITEMS} />
+      <SubTabs items={items} />
       {children}
     </div>
   );

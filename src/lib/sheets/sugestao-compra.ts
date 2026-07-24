@@ -40,9 +40,11 @@ export async function gerarPedido(
 
   const skusContadosNoDia = new Set<string>();
   const contagemPorSku = new Map<string, number>();
+  const alertaPorSku = new Map<string, string>();
   for (const item of inventario) {
     if (item.data !== dataUsada) continue;
     skusContadosNoDia.add(item.sku);
+    if (item.alerta) alertaPorSku.set(item.sku, item.alerta);
     if (item.quantidade === null) continue;
     contagemPorSku.set(item.sku, item.quantidade);
   }
@@ -88,6 +90,7 @@ export async function gerarPedido(
       nomeCompra: produto.nomeCompra,
       unidadeEmbalagemFornecedor: produto.unidadeEmbalagemFornecedor,
       qtdUnidadeBasePorEmbalagem: produto.qtdUnidadeBasePorEmbalagem,
+      alerta: alertaPorSku.get(produto.sku) ?? "",
     });
   }
 
