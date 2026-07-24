@@ -37,12 +37,14 @@ export default async function ProdutosPage() {
             Todos os insumos do restaurante — o que você compra, contagem e regra.
           </p>
         </div>
-        <Link
-          href="/estoque/produtos/novo"
-          className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo"
-        >
-          + Novo produto
-        </Link>
+        {acesso.role !== "operacional" && (
+          <Link
+            href="/estoque/produtos/novo"
+            className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo"
+          >
+            + Novo produto
+          </Link>
+        )}
       </div>
 
       {pendentes.length > 0 && (
@@ -54,16 +56,20 @@ export default async function ProdutosPage() {
                 sem cadastro
               </div>
               <p className="mt-0.5 text-xs text-cinza-medio">
-                Foram lançados na contagem como avulso. Completa o cadastro na Edição de Dados
-                pra eles pararem de cair fora do Pedido de Compras.
+                Foram lançados na contagem como avulso.{" "}
+                {acesso.role === "operacional"
+                  ? "A Gestão precisa completar o cadastro pra eles pararem de cair fora do Pedido de Compras."
+                  : "Completa o cadastro na Edição de Dados pra eles pararem de cair fora do Pedido de Compras."}
               </p>
             </div>
-            <Link
-              href="/estoque/produtos/edicao"
-              className="shrink-0 rounded-md border border-ambar px-3 py-1.5 text-xs font-semibold text-ambar hover:bg-ambar/10"
-            >
-              Ir pra Edição de Dados
-            </Link>
+            {acesso.role !== "operacional" && (
+              <Link
+                href="/estoque/produtos/edicao"
+                className="shrink-0 rounded-md border border-ambar px-3 py-1.5 text-xs font-semibold text-ambar hover:bg-ambar/10"
+              >
+                Ir pra Edição de Dados
+              </Link>
+            )}
           </div>
           <div className="mt-2 flex flex-col gap-1">
             {pendentes.map((p) => (

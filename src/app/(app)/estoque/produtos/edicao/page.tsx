@@ -3,12 +3,14 @@ import { listItensPendentes } from "@/lib/sheets/inventario";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EdicaoGrid } from "@/components/edicao-grid";
+import { AreaRestrita } from "@/components/area-restrita";
 import { getAcessoAtual } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
 export default async function EdicaoDadosPage() {
   const acesso = await getAcessoAtual();
+  if (acesso.role === "operacional") return <AreaRestrita />;
   let produtos;
   try {
     produtos = await listProdutos(acesso.spreadsheetId);

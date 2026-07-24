@@ -1,10 +1,14 @@
 import { NovoProdutoForm } from "@/components/novo-produto-form";
+import { AreaRestrita } from "@/components/area-restrita";
+import { getAcessoAtual } from "@/lib/acesso";
 
 export default async function NovoProdutoPage({
   searchParams,
 }: {
   searchParams: Promise<{ nome?: string; unidade?: string }>;
 }) {
+  const acesso = await getAcessoAtual();
+  if (acesso.role === "operacional") return <AreaRestrita />;
   const { nome, unidade } = await searchParams;
   return (
     <div className="mx-auto max-w-lg">

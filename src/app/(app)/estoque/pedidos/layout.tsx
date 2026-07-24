@@ -1,8 +1,12 @@
 import { SubTabs } from "@/components/sub-tabs";
-import { requireGestao } from "@/lib/acesso";
+import { getAcessoAtual } from "@/lib/acesso";
 
 export default async function PedidosLayout({ children }: { children: React.ReactNode }) {
-  const acesso = await requireGestao();
+  // Criar Cotação é só visualização (a página não grava nada na planilha),
+  // por isso Operacional entra aqui também - Editor de Espelhos e Pedidos
+  // Feitos continuam só pro master, Fase 2 ainda não desenhada com o
+  // Vinícius pra decidir o recorte de permissão deles.
+  const acesso = await getAcessoAtual();
 
   const items = [
     { label: "Criar Cotação", href: "/estoque/pedidos" },

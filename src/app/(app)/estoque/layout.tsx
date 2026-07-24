@@ -10,10 +10,13 @@ const SUB_ITEMS = [
 
 export default async function EstoqueLayout({ children }: { children: React.ReactNode }) {
   const acesso = await getAcessoAtual();
+  // Operacional enxerga tudo, menos Fornecedores (só Gestão/master mexem em
+  // cadastro de fornecedor). Dentro de cada aba liberada, a granularidade
+  // "só visualizar" x "edita de verdade" é decidida pelo layout/página dela.
   const items =
-    acesso.role === "gestao" || acesso.role === "master"
-      ? SUB_ITEMS
-      : SUB_ITEMS.filter((item) => item.href === "/estoque/contagem");
+    acesso.role === "operacional"
+      ? SUB_ITEMS.filter((item) => item.href !== "/estoque/fornecedores")
+      : SUB_ITEMS;
 
   return (
     <div className="flex flex-col gap-5">

@@ -1,5 +1,5 @@
 import { SubTabs } from "@/components/sub-tabs";
-import { requireGestao } from "@/lib/acesso";
+import { getAcessoAtual } from "@/lib/acesso";
 
 const ITEMS = [
   { label: "Produtos", href: "/estoque/produtos" },
@@ -7,10 +7,16 @@ const ITEMS = [
 ];
 
 export default async function ProdutosLayout({ children }: { children: React.ReactNode }) {
-  await requireGestao();
+  const acesso = await getAcessoAtual();
+  // Operacional só visualiza o cadastro - a aba de edição nem aparece pra
+  // ele (a barreira de verdade fica na própria página e nas Server Actions).
+  const items =
+    acesso.role === "operacional"
+      ? ITEMS.filter((item) => item.href === "/estoque/produtos")
+      : ITEMS;
   return (
     <div className="flex flex-col gap-4">
-      <SubTabs items={ITEMS} />
+      <SubTabs items={items} />
       {children}
     </div>
   );
