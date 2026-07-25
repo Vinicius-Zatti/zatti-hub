@@ -11,9 +11,14 @@ import {
   CompartilharCancelado,
   type LinhaPedido,
 } from "@/lib/canvas-tabela";
+import { toNumeroBR } from "@/lib/sheets/numero";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatNumero(v: number): string {
+  return String(v).replace(".", ",");
 }
 
 /** Editor de Espelhos: a partir da mesma cotação calculada de Criar
@@ -68,35 +73,51 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  const [quantidades, setQuantidades] = useState<Record<string, number>>(() => {
-    const inicial: Record<string, number> = {};
+  // Guarda o texto exatamente como a pessoa digita (não o número já
+  // convertido) - se o valor exibido fosse o número, digitar "6,59" some
+  // com a vírgula no meio (o "6," vira 6 assim que converte, o campo
+  // controlado redesenha só "6" e a vírgula desaparece). `toNumeroBR`
+  // (mesmo parser de pt-BR usado em `src/lib/sheets/*`) só entra na hora de
+  // calcular subtotal/salvar/compartilhar.
+  const [quantidadesTexto, setQuantidadesTexto] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[item.sku] = item.quantidadePedida;
+        inicial[item.sku] = formatNumero(item.quantidadePedida);
       }
     }
     for (const fornecedor of fornecedores) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
-        if (!(item.sku in inicial)) inicial[item.sku] = item.quantidadeSugerida;
+        if (!(item.sku in inicial)) inicial[item.sku] = formatNumero(item.quantidadeSugerida);
       }
     }
     return inicial;
   });
 
-  const [precos, setPrecos] = useState<Record<string, number | null>>(() => {
-    const inicial: Record<string, number | null> = {};
+  const [precosTexto, setPrecosTexto] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[item.sku] = item.precoAtualizado;
+        inicial[item.sku] = item.precoAtualizado !== null ? formatNumero(item.precoAtualizado) : "";
       }
     }
     for (const fornecedor of fornecedores) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
-        if (!(item.sku in inicial)) inicial[item.sku] = item.precoUnitario;
+        if (!(item.sku in inicial)) {
+          inicial[item.sku] = item.precoUnitario !== null ? formatNumero(item.precoUnitario) : "";
+        }
       }
     }
     return inicial;
   });
+
+  function quantidadeDe(sku: string): number {
+    return toNumeroBR(quantidadesTexto[sku]) ?? 0;
+  }
+
+  function precoDe(sku: string): number | null {
+    return toNumeroBR(precosTexto[sku]);
+  }
 
   const [previsaoEntrega, setPrevisaoEntrega] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
@@ -126,7 +147,7 @@ export function EditorEspelhos({
   }
 
   async function salvar(fornecedor: string) {
-    const itens = itensVisiveisDoFornecedor(fornecedor).filter((item) => (quantidades[item.sku] ?? 0) > 0);
+    const itens = itensVisiveisDoFornecedor(fornecedor).filter((item) => quantidadeDe(item.sku) > 0);
     setSalvando((s) => ({ ...s, [fornecedor]: true }));
     const resultado = await salvarPedidoAction({
       fornecedor,
@@ -136,9 +157,9 @@ export function EditorEspelhos({
         sku: item.sku,
         nome: item.nome,
         unidadeBase: item.unidadeBase,
-        quantidadePedida: quantidades[item.sku] ?? 0,
+        quantidadePedida: quantidadeDe(item.sku),
         precoAntigo: item.precoUnitario,
-        precoAtualizado: precos[item.sku] ?? null,
+        precoAtualizado: precoDe(item.sku),
       })),
     });
     setSalvando((s) => ({ ...s, [fornecedor]: false }));
@@ -158,25 +179,25 @@ export function EditorEspelhos({
   }
 
   async function compartilhar(fornecedor: string) {
-    const itens = itensVisiveisDoFornecedor(fornecedor).filter((item) => (quantidades[item.sku] ?? 0) > 0);
+    const itens = itensVisiveisDoFornecedor(fornecedor).filter((item) => quantidadeDe(item.sku) > 0);
     if (itens.length === 0) {
       setStatus((s) => ({ ...s, [fornecedor]: "Nenhum item pra compartilhar." }));
       return;
     }
     setCompartilhando((c) => ({ ...c, [fornecedor]: true }));
-    const linhas: LinhaPedido[] = itens.map((item) => ({
-      item: item.nome,
-      und: item.unidadeBase,
-      qtd: String(quantidades[item.sku] ?? 0),
-      valor:
-        precos[item.sku] !== null
-          ? formatMoeda((quantidades[item.sku] ?? 0) * (precos[item.sku] as number))
-          : "a calcular",
-    }));
+    const linhas: LinhaPedido[] = itens.map((item) => {
+      const preco = precoDe(item.sku);
+      return {
+        item: item.nome,
+        und: item.unidadeBase,
+        qtd: formatNumero(quantidadeDe(item.sku)),
+        valor: preco !== null ? formatMoeda(quantidadeDe(item.sku) * preco) : "a calcular",
+      };
+    });
     const total = itens.reduce((soma, item) => {
-      const preco = precos[item.sku];
+      const preco = precoDe(item.sku);
       if (preco === null) return soma;
-      return soma + (quantidades[item.sku] ?? 0) * preco;
+      return soma + quantidadeDe(item.sku) * preco;
     }, 0);
     try {
       const blob = await gerarImagemPedido(
@@ -242,9 +263,9 @@ export function EditorEspelhos({
         {fornecedores.map((fornecedor) => {
           const itens = itensVisiveisDoFornecedor(fornecedor);
           const subtotal = itens.reduce((soma, item) => {
-            const preco = precos[item.sku];
+            const preco = precoDe(item.sku);
             if (preco === null) return soma;
-            return soma + (quantidades[item.sku] ?? 0) * preco;
+            return soma + quantidadeDe(item.sku) * preco;
           }, 0);
           const pedidoMinimo = pedidoMinimoPorFornecedor[fornecedor] ?? null;
           const bateuMinimo = pedidoMinimo === null || subtotal >= pedidoMinimo;
@@ -309,13 +330,10 @@ export function EditorEspelhos({
                             <input
                               type="text"
                               inputMode="decimal"
-                              value={quantidades[item.sku] ?? 0}
-                              onChange={(e) => {
-                                const num = Number(e.target.value.replace(",", "."));
-                                if (!Number.isNaN(num)) {
-                                  setQuantidades((q) => ({ ...q, [item.sku]: num }));
-                                }
-                              }}
+                              value={quantidadesTexto[item.sku] ?? ""}
+                              onChange={(e) =>
+                                setQuantidadesTexto((q) => ({ ...q, [item.sku]: e.target.value }))
+                              }
                               className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
                             />{" "}
                             <span className="text-xs text-cinza-medio">{item.unidadeBase}</span>
@@ -327,14 +345,8 @@ export function EditorEspelhos({
                             <input
                               type="text"
                               inputMode="decimal"
-                              value={precos[item.sku] ?? ""}
-                              onChange={(e) => {
-                                const raw = e.target.value.replace(",", ".");
-                                const num = raw === "" ? null : Number(raw);
-                                if (num === null || !Number.isNaN(num)) {
-                                  setPrecos((p) => ({ ...p, [item.sku]: num }));
-                                }
-                              }}
+                              value={precosTexto[item.sku] ?? ""}
+                              onChange={(e) => setPrecosTexto((p) => ({ ...p, [item.sku]: e.target.value }))}
                               className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
                             />
                           </td>
