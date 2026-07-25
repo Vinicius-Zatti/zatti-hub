@@ -138,6 +138,7 @@ export function EditorEspelhos({
   const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [compartilhando, setCompartilhando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [modo, setModo] = useState<Record<string, "interno" | "fornecedor">>({});
 
   function itensVisiveisDoFornecedor(fornecedor: string): SugestaoCompra[] {
     return (itensPorFornecedor[fornecedor] ?? []).filter((item) => {
@@ -156,6 +157,7 @@ export function EditorEspelhos({
       itens: itens.map((item) => ({
         sku: item.sku,
         nome: item.nome,
+        nomeCompra: item.nomeCompra,
         unidadeBase: item.unidadeBase,
         quantidadePedida: quantidadeDe(item.sku),
         precoAntigo: item.precoUnitario,
@@ -185,10 +187,11 @@ export function EditorEspelhos({
       return;
     }
     setCompartilhando((c) => ({ ...c, [fornecedor]: true }));
+    const nomeMostrado = modo[fornecedor] === "fornecedor" ? (item: SugestaoCompra) => item.nomeCompra || item.nome : (item: SugestaoCompra) => item.nome;
     const linhas: LinhaPedido[] = itens.map((item) => {
       const preco = precoDe(item.sku);
       return {
-        item: item.nome,
+        item: nomeMostrado(item),
         und: item.unidadeBase,
         qtd: formatNumero(quantidadeDe(item.sku)),
         valor: preco !== null ? formatMoeda(quantidadeDe(item.sku) * preco) : "a calcular",
@@ -270,6 +273,9 @@ export function EditorEspelhos({
           const pedidoMinimo = pedidoMinimoPorFornecedor[fornecedor] ?? null;
           const bateuMinimo = pedidoMinimo === null || subtotal >= pedidoMinimo;
 
+          const modoAtual = modo[fornecedor] ?? "interno";
+          const totalVolumes = itens.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
+
           return (
             <div key={fornecedor} className="rounded-lg border border-cinza-claro bg-branco">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cinza-claro bg-azul-noite px-4 py-2.5">
@@ -284,10 +290,11 @@ export function EditorEspelhos({
                       className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
                     />
                   </label>
-                  <span className={`text-xs font-semibold ${bateuMinimo ? "text-cinza-claro" : "text-ambar"}`}>
-                    {formatMoeda(subtotal)}
-                    {pedidoMinimo !== null && ` de ${formatMoeda(pedidoMinimo)} mínimo`}
-                  </span>
+                  {!bateuMinimo && (
+                    <span className="text-xs font-semibold text-ambar">
+                      abaixo do pedido mínimo ({formatMoeda(pedidoMinimo as number)})
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => salvar(fornecedor)}
@@ -308,14 +315,40 @@ export function EditorEspelhos({
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-cinza-claro px-4 py-2">
+                <button
+                  type="button"
+                  onClick={() => setModo((m) => ({ ...m, [fornecedor]: "interno" }))}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                    modoAtual === "interno"
+                      ? "border-azul-noite bg-azul-noite text-branco"
+                      : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
+                  }`}
+                >
+                  Nome Interno
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModo((m) => ({ ...m, [fornecedor]: "fornecedor" }))}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                    modoAtual === "fornecedor"
+                      ? "border-azul-noite bg-azul-noite text-branco"
+                      : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
+                  }`}
+                >
+                  Nome Fornecedor
+                </button>
+              </div>
+
               <div className="max-h-[55vh] overflow-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-off-white text-cinza-medio">
-                      <Th>Item</Th>
+                      <Th>{modoAtual === "interno" ? "Item" : "Nome de Compra"}</Th>
                       <Th align="right">Qtd. pedida</Th>
                       <Th align="right">Preço antigo</Th>
                       <Th align="right">Preço atualizado</Th>
+                      <Th align="right">Preço total</Th>
                       <Th>Fornecedor</Th>
                     </tr>
                   </thead>
@@ -323,9 +356,13 @@ export function EditorEspelhos({
                     {itens.map((item) => {
                       const disputado = (fornecedoresPorSku[item.sku] ?? []).length > 1;
                       const jaVencido = vencedor[item.sku] === fornecedor;
+                      const preco = precoDe(item.sku);
+                      const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
+                      const nomeExibido =
+                        modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
                       return (
                         <tr key={item.sku} className="border-t border-cinza-claro">
-                          <td className="px-3 py-2 font-medium text-cinza">{item.nome}</td>
+                          <td className="px-3 py-2 font-medium text-cinza">{nomeExibido}</td>
                           <td className="px-3 py-2 text-right">
                             <input
                               type="text"
@@ -350,6 +387,9 @@ export function EditorEspelhos({
                               className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
                             />
                           </td>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-azul-noite">
+                            {precoTotal !== null ? formatMoeda(precoTotal) : "a calcular"}
+                          </td>
                           <td className="px-3 py-2">
                             {!disputado ? (
                               <span className="text-xs text-cinza-medio">único fornecedor</span>
@@ -371,6 +411,16 @@ export function EditorEspelhos({
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-azul-noite bg-off-white font-semibold text-cinza">
+                      <td className="px-3 py-2">{itens.length} itens</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatNumero(totalVolumes)} volumes</td>
+                      <td className="px-3 py-2" />
+                      <td className="px-3 py-2 text-right text-xs text-cinza-medio">Valor total do pedido</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-ambar">{formatMoeda(subtotal)}</td>
+                      <td className="px-3 py-2" />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
               {status[fornecedor] && (

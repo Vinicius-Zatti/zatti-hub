@@ -15,6 +15,7 @@ type PedidoRow = {
 type PedidoItemRow = {
   sku: string;
   nome: string;
+  nome_compra: string | null;
   unidade_base: string;
   quantidade_pedida: number;
   quantidade_recebida: number | null;
@@ -36,6 +37,7 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
       (it): PedidoItem => ({
         sku: it.sku,
         nome: it.nome,
+        nomeCompra: it.nome_compra ?? "",
         unidadeBase: it.unidade_base,
         quantidadePedida: Number(it.quantidade_pedida),
         quantidadeRecebida: it.quantidade_recebida === null ? null : Number(it.quantidade_recebida),
@@ -82,7 +84,10 @@ export async function salvarPedido(params: {
   fornecedor: string;
   dataContagemBase: string;
   previsaoEntrega: string | null;
-  itens: Pick<PedidoItem, "sku" | "nome" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado">[];
+  itens: Pick<
+    PedidoItem,
+    "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
+  >[];
   criadoPor: string;
 }): Promise<Pedido> {
   const supabase = await createClient();
@@ -128,6 +133,7 @@ export async function salvarPedido(params: {
         pedido_id: pedidoId,
         sku: it.sku,
         nome: it.nome,
+        nome_compra: it.nomeCompra || null,
         unidade_base: it.unidadeBase,
         quantidade_pedida: it.quantidadePedida,
         preco_antigo: it.precoAntigo,

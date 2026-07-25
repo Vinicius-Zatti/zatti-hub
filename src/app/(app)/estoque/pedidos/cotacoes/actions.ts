@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 
 type ItemSalvar = Pick<
   PedidoItem,
-  "sku" | "nome" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
+  "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
 >;
 
 /** Salva o Editor de Espelhos de um fornecedor - primeira vez cria o

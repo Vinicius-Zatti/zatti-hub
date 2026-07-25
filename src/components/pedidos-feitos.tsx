@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Pedido } from "@/lib/types";
+import type { Pedido, PedidoItem } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { marcarRecebidoAction } from "@/app/(app)/estoque/pedidos/feitos/actions";
+import { toNumeroBR } from "@/lib/sheets/numero";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatNumero(v: number): string {
+  return String(v).replace(".", ",");
 }
 
 function formatData(iso: string): string {
@@ -14,11 +19,23 @@ function formatData(iso: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-/** Histórico dos Pedidos de Compra já salvos no Editor de Espelhos. Gestão
- * edita a quantidade recebida item a item (pode vir diferente do pedido);
- * Operacional só marca recebido e escreve a observação - nunca mexe em
- * quantidade, fornecedor ou preço (`podeEditarQuantidade=false` some com os
- * campos, e a Server Action por trás também não aceita mais que isso). */
+function precoUnitarioDe(item: PedidoItem): number | null {
+  return item.precoAtualizado ?? item.precoAntigo;
+}
+
+function precoTotalDe(item: PedidoItem): number | null {
+  const preco = precoUnitarioDe(item);
+  return preco !== null ? item.quantidadePedida * preco : null;
+}
+
+/** Histórico dos Pedidos de Compra já salvos no Editor de Espelhos. Item
+ * sempre aparece pelo Nome de Compra (nunca o interno) - é o nome que bate
+ * com a nota física que chega, pro funcionário conferir contra o que
+ * recebeu. Gestão edita a quantidade recebida item a item (pode vir
+ * diferente do pedido); Operacional só marca recebido e escreve a
+ * observação - nunca mexe em quantidade, fornecedor ou preço
+ * (`podeEditarQuantidade=false` some com os campos, e a Server Action por
+ * trás também não aceita mais que isso). */
 export function PedidosFeitos({
   pedidos,
   podeEditarQuantidade,
@@ -26,12 +43,17 @@ export function PedidosFeitos({
   pedidos: Pedido[];
   podeEditarQuantidade: boolean;
 }) {
-  const [quantidadesRecebidas, setQuantidadesRecebidas] = useState<Record<string, Record<string, number | null>>>(
+  // Texto exatamente como digitado (não o número já convertido) - mesmo
+  // motivo do Editor de Espelhos: campo controlado pelo número redesenha e
+  // apaga a vírgula no meio da digitação.
+  const [quantidadesRecebidasTexto, setQuantidadesRecebidasTexto] = useState<Record<string, Record<string, string>>>(
     () =>
       Object.fromEntries(
         pedidos.map((p) => [
           p.id,
-          Object.fromEntries(p.itens.map((it) => [it.sku, it.quantidadeRecebida ?? it.quantidadePedida])),
+          Object.fromEntries(
+            p.itens.map((it) => [it.sku, formatNumero(it.quantidadeRecebida ?? it.quantidadePedida)])
+          ),
         ])
       )
   );
@@ -53,7 +75,7 @@ export function PedidosFeitos({
       itensRecebidos: podeEditarQuantidade
         ? pedido.itens.map((it) => ({
             sku: it.sku,
-            quantidadeRecebida: quantidadesRecebidas[pedido.id]?.[it.sku] ?? null,
+            quantidadeRecebida: toNumeroBR(quantidadesRecebidasTexto[pedido.id]?.[it.sku]),
           }))
         : [],
     });
@@ -73,10 +95,8 @@ export function PedidosFeitos({
   return (
     <div className="flex flex-col gap-4 pb-10">
       {pedidos.map((pedido) => {
-        const total = pedido.itens.reduce((soma, it) => {
-          if (it.precoAtualizado === null) return soma;
-          return soma + it.quantidadePedida * it.precoAtualizado;
-        }, 0);
+        const totalVolumes = pedido.itens.reduce((soma, it) => soma + it.quantidadePedida, 0);
+        const totalPedido = pedido.itens.reduce((soma, it) => soma + (precoTotalDe(it) ?? 0), 0);
 
         return (
           <div key={pedido.id} className="rounded-lg border border-cinza-claro bg-branco">
@@ -88,7 +108,6 @@ export function PedidosFeitos({
                   {pedido.previsaoEntrega && ` · entrega prevista ${formatData(pedido.previsaoEntrega)}`}
                 </span>
               </div>
-              <span className="text-xs font-semibold text-cinza-claro">{formatMoeda(total)}</span>
             </div>
 
             <div className="max-h-[45vh] overflow-auto">
@@ -98,42 +117,58 @@ export function PedidosFeitos({
                     <Th>Item</Th>
                     <Th align="right">Qtd. pedida</Th>
                     <Th align="right">Qtd. recebida</Th>
+                    <Th align="right">Preço unitário</Th>
+                    <Th align="right">Preço total</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pedido.itens.map((item) => (
-                    <tr key={item.sku} className="border-t border-cinza-claro">
-                      <td className="px-3 py-2 font-medium text-cinza">{item.nome}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                        {item.quantidadePedida} {item.unidadeBase}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {podeEditarQuantidade ? (
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={quantidadesRecebidas[pedido.id]?.[item.sku] ?? ""}
-                            onChange={(e) => {
-                              const raw = e.target.value.replace(",", ".");
-                              const num = raw === "" ? null : Number(raw);
-                              if (num === null || !Number.isNaN(num)) {
-                                setQuantidadesRecebidas((q) => ({
+                  {pedido.itens.map((item) => {
+                    const precoTotal = precoTotalDe(item);
+                    return (
+                      <tr key={item.sku} className="border-t border-cinza-claro">
+                        <td className="px-3 py-2 font-medium text-cinza">{item.nomeCompra || item.nome}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                          {formatNumero(item.quantidadePedida)} {item.unidadeBase}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {podeEditarQuantidade ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={quantidadesRecebidasTexto[pedido.id]?.[item.sku] ?? ""}
+                              onChange={(e) =>
+                                setQuantidadesRecebidasTexto((q) => ({
                                   ...q,
-                                  [pedido.id]: { ...q[pedido.id], [item.sku]: num },
-                                }));
+                                  [pedido.id]: { ...q[pedido.id], [item.sku]: e.target.value },
+                                }))
                               }
-                            }}
-                            className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                          />
-                        ) : (
-                          <span className="tabular-nums text-cinza-medio">
-                            {item.quantidadeRecebida ?? "—"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                              className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
+                            />
+                          ) : (
+                            <span className="tabular-nums text-cinza-medio">
+                              {item.quantidadeRecebida !== null ? formatNumero(item.quantidadeRecebida) : "—"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                          {precoUnitarioDe(item) !== null ? formatMoeda(precoUnitarioDe(item) as number) : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-azul-noite">
+                          {precoTotal !== null ? formatMoeda(precoTotal) : "a calcular"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-azul-noite bg-off-white font-semibold text-cinza">
+                    <td className="px-3 py-2">{pedido.itens.length} itens</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatNumero(totalVolumes)} volumes</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right text-xs text-cinza-medio">Valor total do pedido</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ambar">{formatMoeda(totalPedido)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
 

@@ -83,6 +83,11 @@ export type SugestaoCompra = {
 export type PedidoItem = {
   sku: string;
   nome: string;
+  /** Nome de Compra (como o fornecedor chama) - Pedidos Feitos sempre
+   * mostra esse, é o que bate com a nota física que chega pro funcionário
+   * conferir. Pode ficar vazio se o produto nunca teve isso preenchido no
+   * Cadastro; nesse caso cai pro nome interno. */
+  nomeCompra: string;
   unidadeBase: string;
   quantidadePedida: number;
   /** null = ainda não confirmado o recebimento - preenchido em Pedidos

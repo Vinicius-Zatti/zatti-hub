@@ -140,6 +140,10 @@ create table if not exists pedido_itens (
   pedido_id uuid not null references pedidos(id) on delete cascade,
   sku text not null,
   nome text not null,
+  -- Nome de Compra (como o fornecedor chama o item) - Pedidos Feitos sempre
+  -- mostra esse, nunca o nome interno: é o nome que bate com a nota que
+  -- chega fisicamente, pro funcionário conferir contra o que recebeu.
+  nome_compra text,
   unidade_base text not null,
   quantidade_pedida numeric not null,
   quantidade_recebida numeric,
