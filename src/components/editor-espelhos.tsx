@@ -119,6 +119,61 @@ export function EditorEspelhos({
     return toNumeroBR(precosTexto[sku]);
   }
 
+  // Modo "Nome Fornecedor" não é só o nome - a quantidade e o preço também
+  // precisam virar embalagem (qtd de FD/CX/PCT em vez de kg/un, preço da
+  // embalagem em vez de preço por kg/un). Guarda um texto próprio nessa
+  // unidade (mesmo motivo dos outros: campo controlado por número apaga
+  // vírgula digitada) e, a cada edição aqui, deriva e atualiza o texto em
+  // unidade base (`quantidadesTexto`/`precosTexto`) - que continua sendo a
+  // fonte de verdade pra total/salvar, o modo só muda como edita.
+  const [quantidadesTextoEmbalagem, setQuantidadesTextoEmbalagem] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {};
+    for (const fornecedor of fornecedores) {
+      for (const item of itensPorFornecedor[fornecedor] ?? []) {
+        if (item.sku in inicial) continue;
+        const base = toNumeroBR(quantidadesTexto[item.sku]) ?? 0;
+        inicial[item.sku] = item.qtdUnidadeBasePorEmbalagem
+          ? formatNumero(Math.ceil(base / item.qtdUnidadeBasePorEmbalagem))
+          : "";
+      }
+    }
+    return inicial;
+  });
+
+  const [precosTextoEmbalagem, setPrecosTextoEmbalagem] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {};
+    for (const fornecedor of fornecedores) {
+      for (const item of itensPorFornecedor[fornecedor] ?? []) {
+        if (item.sku in inicial) continue;
+        const precoBase = toNumeroBR(precosTexto[item.sku]);
+        inicial[item.sku] =
+          precoBase !== null && item.qtdUnidadeBasePorEmbalagem
+            ? formatNumero(precoBase * item.qtdUnidadeBasePorEmbalagem)
+            : "";
+      }
+    }
+    return inicial;
+  });
+
+  function editarQuantidadeEmbalagem(sku: string, texto: string, qtdPorEmbalagem: number) {
+    setQuantidadesTextoEmbalagem((q) => ({ ...q, [sku]: texto }));
+    const embalagens = toNumeroBR(texto) ?? 0;
+    setQuantidadesTexto((q) => ({ ...q, [sku]: formatNumero(embalagens * qtdPorEmbalagem) }));
+  }
+
+  function editarPrecoEmbalagem(sku: string, texto: string, qtdPorEmbalagem: number) {
+    setPrecosTextoEmbalagem((p) => ({ ...p, [sku]: texto }));
+    const precoEmbalagem = toNumeroBR(texto);
+    setPrecosTexto((p) => ({
+      ...p,
+      [sku]: precoEmbalagem !== null ? formatNumero(precoEmbalagem / qtdPorEmbalagem) : "",
+    }));
+  }
+
+  function itemSemEmbalagem(item: SugestaoCompra): boolean {
+    return !item.nomeCompra.trim() || !item.unidadeEmbalagemFornecedor.trim() || !item.qtdUnidadeBasePorEmbalagem;
+  }
+
   const [previsaoEntrega, setPrevisaoEntrega] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -187,14 +242,23 @@ export function EditorEspelhos({
       return;
     }
     setCompartilhando((c) => ({ ...c, [fornecedor]: true }));
-    const nomeMostrado = modo[fornecedor] === "fornecedor" ? (item: SugestaoCompra) => item.nomeCompra || item.nome : (item: SugestaoCompra) => item.nome;
+    const modoCompartilhar = modo[fornecedor] ?? "interno";
     const linhas: LinhaPedido[] = itens.map((item) => {
       const preco = precoDe(item.sku);
+      const valorTotal = preco !== null ? formatMoeda(quantidadeDe(item.sku) * preco) : "a calcular";
+      if (modoCompartilhar === "interno" || itemSemEmbalagem(item)) {
+        return {
+          item: item.nome,
+          und: item.unidadeBase,
+          qtd: formatNumero(quantidadeDe(item.sku)),
+          valor: valorTotal,
+        };
+      }
       return {
-        item: nomeMostrado(item),
-        und: item.unidadeBase,
-        qtd: formatNumero(quantidadeDe(item.sku)),
-        valor: preco !== null ? formatMoeda(quantidadeDe(item.sku) * preco) : "a calcular",
+        item: item.nomeCompra || item.nome,
+        und: item.unidadeEmbalagemFornecedor,
+        qtd: quantidadesTextoEmbalagem[item.sku] ?? "",
+        valor: valorTotal,
       };
     });
     const total = itens.reduce((soma, item) => {
@@ -340,6 +404,16 @@ export function EditorEspelhos({
                 </button>
               </div>
 
+              {modoAtual === "fornecedor" && itens.some(itemSemEmbalagem) && (
+                <div className="border-b border-vermelho/30 bg-vermelho/5 px-4 py-2 text-xs text-vermelho">
+                  Tem item sem Nome de Compra, Und. Embalagem ou Qtd. Base/Embalagem cadastrados. Completa em{" "}
+                  <a href="/estoque/produtos/edicao" className="font-semibold underline">
+                    Produtos → Edição de Dados
+                  </a>{" "}
+                  pra editar quantidade/preço dele nesse modo.
+                </div>
+              )}
+
               <div className="max-h-[55vh] overflow-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -358,35 +432,77 @@ export function EditorEspelhos({
                       const jaVencido = vencedor[item.sku] === fornecedor;
                       const preco = precoDe(item.sku);
                       const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
-                      const nomeExibido =
-                        modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
+                      const nomeExibido = modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
+                      const unidadeExibida = modoAtual === "interno" ? item.unidadeBase : item.unidadeEmbalagemFornecedor;
+                      const semEmbalagem = modoAtual === "fornecedor" && itemSemEmbalagem(item);
+                      const qtdPorEmbalagem = item.qtdUnidadeBasePorEmbalagem;
+                      const precoAntigoExibido =
+                        modoAtual === "interno" || !qtdPorEmbalagem
+                          ? item.precoUnitario
+                          : item.precoUnitario !== null
+                            ? item.precoUnitario * qtdPorEmbalagem
+                            : null;
+
                       return (
-                        <tr key={item.sku} className="border-t border-cinza-claro">
-                          <td className="px-3 py-2 font-medium text-cinza">{nomeExibido}</td>
-                          <td className="px-3 py-2 text-right">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={quantidadesTexto[item.sku] ?? ""}
-                              onChange={(e) =>
-                                setQuantidadesTexto((q) => ({ ...q, [item.sku]: e.target.value }))
-                              }
-                              className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                            />{" "}
-                            <span className="text-xs text-cinza-medio">{item.unidadeBase}</span>
+                        <tr key={item.sku} className={`border-t border-cinza-claro ${semEmbalagem ? "bg-vermelho/5" : ""}`}>
+                          <td className={`px-3 py-2 font-medium ${semEmbalagem ? "text-vermelho" : "text-cinza"}`}>
+                            {nomeExibido}
+                            {semEmbalagem && (
+                              <span className="ml-1 text-[10px] font-bold">(cadastro incompleto)</span>
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                            {item.precoUnitario !== null ? formatMoeda(item.precoUnitario) : "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={precosTexto[item.sku] ?? ""}
-                              onChange={(e) => setPrecosTexto((p) => ({ ...p, [item.sku]: e.target.value }))}
-                              className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                            />
-                          </td>
+                          {semEmbalagem ? (
+                            <>
+                              <td className="px-3 py-2 text-right text-xs font-semibold text-vermelho">
+                                sem embalagem
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">—</td>
+                              <td className="px-3 py-2 text-right text-xs font-semibold text-vermelho">
+                                sem embalagem
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={
+                                    modoAtual === "interno"
+                                      ? (quantidadesTexto[item.sku] ?? "")
+                                      : (quantidadesTextoEmbalagem[item.sku] ?? "")
+                                  }
+                                  onChange={(e) =>
+                                    modoAtual === "interno"
+                                      ? setQuantidadesTexto((q) => ({ ...q, [item.sku]: e.target.value }))
+                                      : editarQuantidadeEmbalagem(item.sku, e.target.value, qtdPorEmbalagem as number)
+                                  }
+                                  className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
+                                />{" "}
+                                <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
+                                {precoAntigoExibido !== null ? formatMoeda(precoAntigoExibido) : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={
+                                    modoAtual === "interno"
+                                      ? (precosTexto[item.sku] ?? "")
+                                      : (precosTextoEmbalagem[item.sku] ?? "")
+                                  }
+                                  onChange={(e) =>
+                                    modoAtual === "interno"
+                                      ? setPrecosTexto((p) => ({ ...p, [item.sku]: e.target.value }))
+                                      : editarPrecoEmbalagem(item.sku, e.target.value, qtdPorEmbalagem as number)
+                                  }
+                                  className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
+                                />
+                              </td>
+                            </>
+                          )}
                           <td className="px-3 py-2 text-right tabular-nums font-semibold text-azul-noite">
                             {precoTotal !== null ? formatMoeda(precoTotal) : "a calcular"}
                           </td>
