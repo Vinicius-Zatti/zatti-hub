@@ -1,24 +1,53 @@
-import { requireMaster } from "@/lib/acesso";
+import { requireGestao } from "@/lib/acesso";
+import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
+import { listFornecedores } from "@/lib/sheets/fornecedores";
+import { getPedidoSalvo } from "@/lib/pedidos";
+import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
+import { ConectarPlanilha } from "@/components/conectar-planilha";
+import { EditorEspelhos } from "@/components/editor-espelhos";
 
 export const dynamic = "force-dynamic";
 
-/** Placeholder - Editor de Espelhos de Compras ainda não foi construído.
- * Vai substituir a antiga "Cotações da Semana": confirmar quantidade
- * comprada, confirmar fornecedor vencedor, editar preço com diferença,
- * previsão de entrega por fornecedor. Guardado atrás de requireMaster()
- * até validar com o Vinícius. */
-export default async function EditorEspelhosPage() {
-  await requireMaster();
+export default async function EditorEspelhosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ data?: string }>;
+}) {
+  const acesso = await requireGestao();
+  const params = await searchParams;
+
+  let resultado, datas, fornecedoresCadastro;
+  try {
+    [resultado, datas, fornecedoresCadastro] = await Promise.all([
+      gerarPedido({ data: params.data }, acesso.spreadsheetId),
+      datasDisponiveis(acesso.spreadsheetId),
+      listFornecedores(acesso.spreadsheetId),
+    ]);
+  } catch (err) {
+    return <ConectarPlanilha erro={(err as Error).message} />;
+  }
+
+  const itensPorFornecedor = agruparPorFornecedor(resultado.itens);
+  const fornecedores = ordenarFornecedores(Object.keys(itensPorFornecedor));
+
+  const pedidosSalvos = await Promise.all(
+    fornecedores.map((f) => getPedidoSalvo(acesso.unidadeId, f, resultado.dataUsada))
+  );
+  const pedidoSalvoPorFornecedor = Object.fromEntries(fornecedores.map((f, i) => [f, pedidosSalvos[i]]));
+
+  const pedidoMinimoPorFornecedor = Object.fromEntries(
+    fornecedoresCadastro.filter((f) => f.nomeFantasia).map((f) => [f.nomeFantasia, f.pedidoMinimo])
+  );
 
   return (
-    <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
-      <h1 className="font-display text-2xl font-bold text-azul-noite">
-        Editor de Espelhos de Compras
-      </h1>
-      <p className="mt-2 text-sm">
-        Em breve. Aqui você vai confirmar o que foi comprado de fato (quantidade, fornecedor
-        vencedor, preço) e definir a previsão de entrega de cada fornecedor.
-      </p>
-    </div>
+    <EditorEspelhos
+      itensPorFornecedor={itensPorFornecedor}
+      fornecedores={fornecedores}
+      dataUsada={resultado.dataUsada}
+      datasDisponiveis={datas}
+      pedidoSalvoPorFornecedor={pedidoSalvoPorFornecedor}
+      pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
+      organizacaoNome={acesso.organizacaoNome}
+    />
   );
 }

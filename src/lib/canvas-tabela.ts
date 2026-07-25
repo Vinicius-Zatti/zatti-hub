@@ -101,6 +101,101 @@ export async function gerarImagemCotacao(
   });
 }
 
+export type LinhaPedido = { item: string; und: string; qtd: string; valor: string };
+
+/** Mesma ideia de `gerarImagemCotacao`, mas pro Pedido de Compra fechado no
+ * Editor de Espelhos: tem coluna de Valor e um rodapé de Total, porque nesse
+ * ponto a quantidade e o preço já foram confirmados pelo comprador - não é
+ * mais só uma cotação informal. */
+export async function gerarImagemPedido(
+  titulo: string,
+  linhas: LinhaPedido[],
+  legenda: string,
+  total: string
+): Promise<Blob> {
+  const escala = 2;
+  const largura = 480;
+  const alturaTopo = 56;
+  const alturaCabecalhoTabela = 32;
+  const alturaLinha = 34;
+  const alturaTotal = 36;
+  const altura = alturaTopo + alturaCabecalhoTabela + linhas.length * alturaLinha + alturaTotal + 12;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = largura * escala;
+  canvas.height = altura * escala;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Esse navegador não sabe desenhar imagem (canvas indisponível).");
+  ctx.scale(escala, escala);
+
+  ctx.fillStyle = CORES.branco;
+  ctx.fillRect(0, 0, largura, altura);
+
+  ctx.fillStyle = CORES.azulNoite;
+  ctx.fillRect(0, 0, largura, alturaTopo);
+  ctx.fillStyle = CORES.ambar;
+  ctx.font = "bold 10px Arial, sans-serif";
+  ctx.fillText(legenda.toUpperCase(), 16, 20);
+  ctx.fillStyle = CORES.branco;
+  ctx.font = "bold 19px Arial, sans-serif";
+  ctx.fillText(truncar(ctx, titulo, largura - 32), 16, 43);
+
+  let y = alturaTopo;
+  ctx.fillStyle = CORES.azulPetroleo;
+  ctx.fillRect(0, y, largura, alturaCabecalhoTabela);
+  ctx.fillStyle = CORES.branco;
+  ctx.font = "bold 12px Arial, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Item", 16, y + 21);
+  ctx.textAlign = "right";
+  ctx.fillText("Qtd", largura - 148, y + 21);
+  ctx.fillText("Valor", largura - 16, y + 21);
+  y += alturaCabecalhoTabela;
+
+  linhas.forEach((linha, i) => {
+    ctx.fillStyle = i % 2 === 1 ? CORES.offWhite : CORES.branco;
+    ctx.fillRect(0, y, largura, alturaLinha);
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = CORES.cinza;
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillText(truncar(ctx, linha.item, largura - 230), 16, y + 22);
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = CORES.cinzaMedio;
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillText(`${linha.qtd} ${linha.und}`, largura - 148, y + 22);
+
+    ctx.fillStyle = CORES.azulNoite;
+    ctx.font = "bold 13px Arial, sans-serif";
+    ctx.fillText(linha.valor, largura - 16, y + 22);
+
+    y += alturaLinha;
+  });
+
+  ctx.fillStyle = CORES.azulNoite;
+  ctx.fillRect(0, y, largura, alturaTotal);
+  ctx.fillStyle = CORES.branco;
+  ctx.textAlign = "left";
+  ctx.font = "bold 13px Arial, sans-serif";
+  ctx.fillText("TOTAL DO PEDIDO", 16, y + 23);
+  ctx.fillStyle = CORES.ambar;
+  ctx.textAlign = "right";
+  ctx.font = "bold 15px Arial, sans-serif";
+  ctx.fillText(total, largura - 16, y + 23);
+
+  ctx.strokeStyle = CORES.cinzaClaro;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, largura - 1, altura - 1);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Não deu pra gerar a imagem."));
+    }, "image/png");
+  });
+}
+
 export async function copiarImagemParaAreaDeTransferencia(blob: Blob): Promise<void> {
   if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
     throw new Error("Esse navegador não deixa copiar imagem direto - baixei o arquivo em vez disso.");

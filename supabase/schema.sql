@@ -115,3 +115,117 @@ create policy "logs_auditoria_insert_own" on logs_auditoria
 -- Sem policy de escrita em organizacoes/unidades/perfis/vinculos: inserts,
 -- convites e revogações são feitos direto no painel do Supabase (Table
 -- Editor ou SQL editor), nunca pelo app.
+
+-- Pedidos de Compra (Editor de Espelhos / Pedidos Feitos, adicionado 24/07).
+-- Criar Cotação continua 100% calculado na hora a partir da planilha - só
+-- vira registro de verdade quando o comprador salva no Editor de Espelhos.
+-- Chave natural (unidade, fornecedor, data da contagem base) permite editar
+-- e resalvar o mesmo pedido depois.
+create table if not exists pedidos (
+  id uuid primary key default gen_random_uuid(),
+  unidade_id text not null references unidades(id),
+  fornecedor text not null,
+  data_contagem_base text not null,
+  previsao_entrega date,
+  observacao_entrega text,
+  recebido boolean not null default false,
+  criado_por uuid not null references auth.users(id),
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (unidade_id, fornecedor, data_contagem_base)
+);
+
+create table if not exists pedido_itens (
+  id uuid primary key default gen_random_uuid(),
+  pedido_id uuid not null references pedidos(id) on delete cascade,
+  sku text not null,
+  nome text not null,
+  unidade_base text not null,
+  quantidade_pedida numeric not null,
+  quantidade_recebida numeric,
+  preco_antigo numeric,
+  preco_atualizado numeric
+);
+
+alter table pedidos enable row level security;
+alter table pedido_itens enable row level security;
+
+-- Pedidos/pedido_itens: qualquer vínculo ativo (Gestão, Operacional ou
+-- master) que alcance a unidade pode ler/gravar - o recorte real de quem
+-- pode editar o quê (preço e quantidade pedida só Gestão/master; recebido e
+-- observação também Operacional) é decidido nas Server Actions
+-- (`requireGestao()` em salvar pedido, `atualizarRecebimento` só mexe em
+-- recebido/observação/quantidade recebida em qualquer chamada), não aqui.
+create policy "pedidos_select_por_vinculo" on pedidos
+  for select using (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = pedidos.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+create policy "pedidos_insert_por_vinculo" on pedidos
+  for insert with check (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = pedidos.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+create policy "pedidos_update_por_vinculo" on pedidos
+  for update using (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = pedidos.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+create policy "pedido_itens_select_por_vinculo" on pedido_itens
+  for select using (
+    exists (
+      select 1 from pedidos p
+      join unidades u on u.id = p.unidade_id
+      join vinculos v on v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+      where p.id = pedido_itens.pedido_id
+    )
+  );
+
+create policy "pedido_itens_insert_por_vinculo" on pedido_itens
+  for insert with check (
+    exists (
+      select 1 from pedidos p
+      join unidades u on u.id = p.unidade_id
+      join vinculos v on v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+      where p.id = pedido_itens.pedido_id
+    )
+  );
+
+create policy "pedido_itens_update_por_vinculo" on pedido_itens
+  for update using (
+    exists (
+      select 1 from pedidos p
+      join unidades u on u.id = p.unidade_id
+      join vinculos v on v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+      where p.id = pedido_itens.pedido_id
+    )
+  );
+
+create policy "pedido_itens_delete_por_vinculo" on pedido_itens
+  for delete using (
+    exists (
+      select 1 from pedidos p
+      join unidades u on u.id = p.unidade_id
+      join vinculos v on v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+      where p.id = pedido_itens.pedido_id
+    )
+  );
