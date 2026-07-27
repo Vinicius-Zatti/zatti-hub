@@ -314,7 +314,7 @@ function CadastroSection({
                   </select>
                 </div>
               </Th>
-              <ThOrdenavel campo="nome" ordenacao={ordenacao} onClick={() => alternarOrdenacao("nome")}>
+              <ThOrdenavel campo="nome" ordenacao={ordenacao} onClick={() => alternarOrdenacao("nome")} fixo>
                 Nome
               </ThOrdenavel>
               <Th estreito>Unidade Base</Th>
@@ -446,14 +446,19 @@ function ThOrdenavel({
   ordenacao,
   onClick,
   children,
+  fixo = false,
 }: {
   campo: CampoOrdenacao;
   ordenacao: Ordenacao;
   onClick: () => void;
   children: React.ReactNode;
+  /** Congela a coluna também na horizontal - ver `Th` de `@/components/tabela`. */
+  fixo?: boolean;
 }) {
   return (
-    <th className="sticky top-0 z-20 whitespace-nowrap bg-azul-petroleo px-2 py-2 text-left font-semibold">
+    <th
+      className={`sticky top-0 ${fixo ? "left-0 z-30" : "z-20"} whitespace-nowrap bg-azul-petroleo px-2 py-2 text-left font-semibold`}
+    >
       <ThOrdenavelInline campo={campo} ordenacao={ordenacao} onClick={onClick}>
         {children}
       </ThOrdenavelInline>
@@ -658,7 +663,7 @@ const LinhaProduto = memo(function LinhaProduto({
       <td className="px-2 py-1.5">
         <CodigoSelect value={editado.grupo} opcoes={GRUPO_OPCOES} onChange={(v) => campo("grupo", v)} className="w-20" />
       </td>
-      <td className="px-2 py-1.5">
+      <td className="sticky left-0 z-10 bg-branco px-2 py-1.5">
         <input
           value={editado.nome}
           title={editado.nome}

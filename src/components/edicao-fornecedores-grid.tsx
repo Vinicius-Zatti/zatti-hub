@@ -222,7 +222,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
             <tr className="bg-azul-petroleo text-branco">
               <Th>Código</Th>
               <Th>Razão Social</Th>
-              <Th>Nome Fantasia</Th>
+              <Th fixo>Nome Fantasia</Th>
               <Th>Grupos</Th>
               <Th>Vendedor</Th>
               <Th>WhatsApp</Th>
@@ -303,7 +303,7 @@ const LinhaFornecedor = ({
           className="w-36 rounded border border-cinza-claro px-1.5 py-1"
         />
       </td>
-      <td className="px-2 py-1.5">
+      <td className="sticky left-0 z-10 bg-branco px-2 py-1.5">
         <input
           value={editado.nomeFantasia}
           onChange={(e) => campo("nomeFantasia", e.target.value)}

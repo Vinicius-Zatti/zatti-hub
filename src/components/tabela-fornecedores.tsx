@@ -51,7 +51,7 @@ export function TabelaFornecedores({ fornecedores }: { fornecedores: Fornecedor[
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th>Nome Fantasia</Th>
+              <Th fixo>Nome Fantasia</Th>
               <Th>Grupos</Th>
               <Th>Vendedor</Th>
               <Th>WhatsApp</Th>
@@ -64,7 +64,13 @@ export function TabelaFornecedores({ fornecedores }: { fornecedores: Fornecedor[
                 key={f.codigo || f.nomeFantasia || i}
                 className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}
               >
-                <td className="px-3 py-2 font-medium text-cinza">{f.nomeFantasia || f.razaoSocial}</td>
+                <td
+                  className={`sticky left-0 z-10 px-3 py-2 font-medium text-cinza ${
+                    i % 2 === 1 ? "bg-off-white" : "bg-branco"
+                  }`}
+                >
+                  {f.nomeFantasia || f.razaoSocial}
+                </td>
                 <td className="px-3 py-2 text-xs text-cinza-medio">
                   {f.grupos.length > 0 ? f.grupos.map(nomeGrupo).join(", ") : "—"}
                 </td>
