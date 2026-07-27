@@ -1,6 +1,6 @@
 "use server";
 
-import { upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
+import { listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
@@ -76,6 +76,38 @@ export async function salvarProdutoAction(
       entidade: "produto",
       entidadeId: produto.sku,
       dadosNovos: produto,
+    });
+    revalidarTudo();
+    return { ok: true };
+  } catch (err) {
+    return { erro: (err as Error).message };
+  }
+}
+
+/** Atribui o Fornecedor 1 de um produto que ainda não tinha nenhum
+ * fornecedor cadastrado - usado no bloco "Sem fornecedor cadastrado" de
+ * Criar Cotação, pra completar o cadastro sem precisar ir em Produtos >
+ * Edição de Dados. Busca o produto inteiro antes de gravar (a Server
+ * Action só recebe o SKU + fornecedor escolhido, não o resto dos campos). */
+export async function definirFornecedor1Action(
+  sku: string,
+  fornecedor1: string
+): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await requireGestao();
+  try {
+    const produtos = await listProdutos(acesso.spreadsheetId);
+    const produto = produtos.find((p) => p.sku === sku);
+    if (!produto) return { erro: "Produto não encontrado - a lista pode ter mudado, recarrega a página." };
+
+    const atualizado: Produto = { ...produto, fornecedor1 };
+    await upsertProduto(atualizado, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "definir_fornecedor_via_cotacao",
+      entidade: "produto",
+      entidadeId: sku,
+      dadosAntigos: { fornecedor1: produto.fornecedor1 },
+      dadosNovos: { fornecedor1 },
     });
     revalidarTudo();
     return { ok: true };

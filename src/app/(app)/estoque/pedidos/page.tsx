@@ -58,6 +58,7 @@ export default async function PedidosPage({
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
       previsaoEntregaPorFornecedor={previsaoEntregaPorFornecedor}
       podeSalvar={acesso.role === "gestao" || acesso.role === "master"}
+      fornecedoresCadastro={fornecedores}
     />
   );
 }

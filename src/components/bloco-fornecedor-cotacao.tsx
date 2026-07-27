@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { SugestaoCompra } from "@/lib/types";
+import type { Fornecedor, SugestaoCompra } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
+import { SEM_FORNECEDOR } from "@/lib/pedido";
+import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
+import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
+import { definirFornecedor1Action } from "@/app/(app)/estoque/produtos/actions";
 import {
   gerarImagemCotacao,
   compartilharOuCopiarImagem,
@@ -40,6 +44,8 @@ export function BlocoFornecedorCotacao({
   salvando,
   statusSalvar,
   onSalvar,
+  fornecedoresCadastro,
+  onFornecedorAtribuido,
 }: {
   fornecedor: string;
   linhas: SugestaoCompra[];
@@ -51,11 +57,38 @@ export function BlocoFornecedorCotacao({
   salvando: boolean;
   statusSalvar: string;
   onSalvar: () => void;
+  fornecedoresCadastro: Fornecedor[];
+  onFornecedorAtribuido: (sku: string, fornecedor: string) => void;
 }) {
   const [modo, setModo] = useState<Modo>("interno");
   const [editando, setEditando] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
   const [compartilhando, setCompartilhando] = useState(false);
+
+  // Só o bloco "Sem fornecedor cadastrado" mostra a coluna de atribuir
+  // fornecedor - os outros já têm pelo menos Fornecedor 1 preenchido.
+  const ehSemFornecedor = fornecedor === SEM_FORNECEDOR;
+  const [fornecedoresLocais, setFornecedoresLocais] = useState<Fornecedor[]>(fornecedoresCadastro);
+  const [atribuindo, setAtribuindo] = useState<Record<string, boolean>>({});
+  const [erroAtribuir, setErroAtribuir] = useState<Record<string, string>>({});
+  const [novoFornecedorParaSku, setNovoFornecedorParaSku] = useState<string | null>(null);
+
+  const opcoesFornecedor: OpcaoCodigo[] = fornecedoresLocais.map((f) => ({
+    codigo: f.nomeFantasia || f.razaoSocial,
+    descricao: f.razaoSocial && f.razaoSocial !== f.nomeFantasia ? f.razaoSocial : "",
+  }));
+
+  async function atribuirFornecedor(sku: string, nomeFornecedor: string) {
+    setAtribuindo((a) => ({ ...a, [sku]: true }));
+    setErroAtribuir((e) => ({ ...e, [sku]: "" }));
+    const r = await definirFornecedor1Action(sku, nomeFornecedor);
+    setAtribuindo((a) => ({ ...a, [sku]: false }));
+    if ("erro" in r) {
+      setErroAtribuir((e) => ({ ...e, [sku]: r.erro }));
+      return;
+    }
+    onFornecedorAtribuido(sku, nomeFornecedor);
+  }
 
   function valorExibido(item: SugestaoCompra): number | null {
     const base = valorAtual(item);
@@ -206,6 +239,7 @@ export function BlocoFornecedorCotacao({
               <Th>{modo === "interno" ? "Und" : "Embalagem"}</Th>
               <Th align="right">Qtd</Th>
               <Th>Alerta</Th>
+              {ehSemFornecedor && <Th>Fornecedor</Th>}
             </tr>
           </thead>
           <tbody>
@@ -288,6 +322,21 @@ export function BlocoFornecedorCotacao({
                       </span>
                     )}
                   </td>
+                  {ehSemFornecedor && (
+                    <td className="px-3 py-1.5">
+                      <CodigoSelect
+                        value=""
+                        placeholder={atribuindo[item.sku] ? "Salvando..." : "Escolher"}
+                        opcoes={opcoesFornecedor}
+                        onChange={(v) => atribuirFornecedor(item.sku, v)}
+                        extra={{ label: "+ Adicionar fornecedor", onClick: () => setNovoFornecedorParaSku(item.sku) }}
+                        className="w-32"
+                      />
+                      {erroAtribuir[item.sku] && (
+                        <p className="mt-1 text-[10px] text-vermelho">{erroAtribuir[item.sku]}</p>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -297,6 +346,18 @@ export function BlocoFornecedorCotacao({
       {status && <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{status}</div>}
       {statusSalvar && (
         <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{statusSalvar}</div>
+      )}
+      {ehSemFornecedor && (
+        <NovoFornecedorModal
+          aberto={novoFornecedorParaSku !== null}
+          onFechar={() => setNovoFornecedorParaSku(null)}
+          onCriado={(novoFornecedor) => {
+            setFornecedoresLocais((fs) => [...fs, novoFornecedor]);
+            const sku = novoFornecedorParaSku;
+            setNovoFornecedorParaSku(null);
+            if (sku) atribuirFornecedor(sku, novoFornecedor.nomeFantasia || novoFornecedor.razaoSocial);
+          }}
+        />
       )}
     </div>
   );

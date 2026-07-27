@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { SugestaoCompra } from "@/lib/types";
+import type { Fornecedor, SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
@@ -25,6 +25,7 @@ export function PedidoCompras({
   pedidoMinimoPorFornecedor,
   previsaoEntregaPorFornecedor,
   podeSalvar,
+  fornecedoresCadastro,
 }: {
   itens: SugestaoCompra[];
   dataUsada: string;
@@ -35,6 +36,7 @@ export function PedidoCompras({
   pedidoMinimoPorFornecedor: Record<string, number | null>;
   previsaoEntregaPorFornecedor: Record<string, string | null>;
   podeSalvar: boolean;
+  fornecedoresCadastro: Fornecedor[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -83,10 +85,24 @@ export function PedidoCompras({
     });
   }
 
-  const porGrupo = useMemo(() => agruparPorGrupo(itens), [itens]);
+  // Atribuir um Fornecedor 1 pra item "Sem fornecedor cadastrado" (feito
+  // dentro do próprio bloco por fornecedor) precisa recalcular os grupos na
+  // hora, sem esperar reload - sobrepõe o fornecedor escolhido em cima do
+  // item antes de agrupar, então ele já cai no bloco certo.
+  const [fornecedorOverrides, setFornecedorOverrides] = useState<Record<string, string>>({});
+
+  const itensEfetivos = useMemo(
+    () =>
+      itens.map((item) =>
+        fornecedorOverrides[item.sku] ? { ...item, fornecedores: [fornecedorOverrides[item.sku]] } : item
+      ),
+    [itens, fornecedorOverrides]
+  );
+
+  const porGrupo = useMemo(() => agruparPorGrupo(itensEfetivos), [itensEfetivos]);
   const grupos = ordenarGrupos(Object.keys(porGrupo));
 
-  const porFornecedor = useMemo(() => agruparPorFornecedor(itens), [itens]);
+  const porFornecedor = useMemo(() => agruparPorFornecedor(itensEfetivos), [itensEfetivos]);
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
   // Salva a cotação de um fornecedor no mesmo Pedido que o Editor de
@@ -287,6 +303,10 @@ export function PedidoCompras({
                 salvando={salvandoFornecedor[fornecedor] ?? false}
                 statusSalvar={statusFornecedor[fornecedor] ?? ""}
                 onSalvar={() => salvarFornecedor(fornecedor)}
+                fornecedoresCadastro={fornecedoresCadastro}
+                onFornecedorAtribuido={(sku, nome) =>
+                  setFornecedorOverrides((f) => ({ ...f, [sku]: nome }))
+                }
               />
             ))}
           </div>

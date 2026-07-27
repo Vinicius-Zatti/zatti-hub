@@ -25,12 +25,13 @@ export function agruparPorFornecedor(itens: SugestaoCompra[]): Record<string, Su
 }
 
 /** Fornecedores em ordem alfabética, com "Sem fornecedor cadastrado" sempre
- * por último (é o balde de exceção, não faz sentido competir com nome real
- * na ordenação). */
+ * primeiro - é o bloco que precisa de atenção antes dos outros (item sem
+ * fornecedor não entra em cotação nenhuma até alguém escolher um), por
+ * isso vem na frente em vez de disputar ordem alfabética com nome real. */
 export function ordenarFornecedores(nomes: string[]): string[] {
   const semFornecedor = nomes.includes(SEM_FORNECEDOR);
   const resto = nomes.filter((n) => n !== SEM_FORNECEDOR).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  return semFornecedor ? [...resto, SEM_FORNECEDOR] : resto;
+  return semFornecedor ? [SEM_FORNECEDOR, ...resto] : resto;
 }
 
 /** Agrupa por Grupo de produto (Proteínas, Hortifrúti...), na mesma ordem

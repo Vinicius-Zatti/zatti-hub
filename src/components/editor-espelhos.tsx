@@ -196,11 +196,25 @@ export function EditorEspelhos({
   const [status, setStatus] = useState<Record<string, string>>({});
   const [modo, setModo] = useState<Record<string, "interno" | "fornecedor">>({});
 
+  // Clicar em "vencedor aqui" pede confirmação antes de desfazer - trocar
+  // sem querer faz o item sumir desse bloco e reaparecer pra escolher de
+  // novo em todos os fornecedores concorrentes.
+  const [confirmarTroca, setConfirmarTroca] = useState<{ sku: string; fornecedor: string } | null>(null);
+
   function itensVisiveisDoFornecedor(fornecedor: string): SugestaoCompra[] {
     return (itensPorFornecedor[fornecedor] ?? []).filter((item) => {
       const v = vencedor[item.sku];
       return v === undefined || v === null || v === fornecedor;
     });
+  }
+
+  function desfazerVencedor(sku: string) {
+    setVencedor((v) => {
+      const novo = { ...v };
+      delete novo[sku];
+      return novo;
+    });
+    setConfirmarTroca(null);
   }
 
   async function salvar(fornecedor: string) {
@@ -511,9 +525,14 @@ export function EditorEspelhos({
                             {!disputado ? (
                               <span className="text-xs text-cinza-medio">único fornecedor</span>
                             ) : jaVencido ? (
-                              <span className="rounded-full bg-verde/10 px-2 py-0.5 text-xs font-semibold text-verde">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmarTroca({ sku: item.sku, fornecedor })}
+                                title="Clica pra trocar o vencedor"
+                                className="rounded-full bg-verde/10 px-2 py-0.5 text-xs font-semibold text-verde hover:bg-verde/20"
+                              >
                                 vencedor aqui
-                              </span>
+                              </button>
                             ) : (
                               <button
                                 type="button"
@@ -551,6 +570,42 @@ export function EditorEspelhos({
           );
         })}
       </div>
+
+      {confirmarTroca && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-azul-noite/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-branco p-5 shadow-xl">
+            <h2 className="font-display text-lg font-bold text-azul-noite">Trocar o vencedor?</h2>
+            <p className="mt-2 text-sm leading-relaxed text-cinza">
+              Esse item volta a aparecer pra escolher de novo em todos os fornecedores que também
+              cotam ele.
+              {salvo[confirmarTroca.fornecedor] && (
+                <>
+                  {" "}
+                  <strong>{confirmarTroca.fornecedor}</strong> já foi salvo com esse item - depois de
+                  escolher o vencedor certo, salva {confirmarTroca.fornecedor} de novo pra tirar o
+                  item de lá.
+                </>
+              )}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => desfazerVencedor(confirmarTroca.sku)}
+                className="flex-1 rounded-md bg-azul-noite px-3 py-2.5 text-sm font-bold text-branco hover:bg-azul-petroleo"
+              >
+                Sim, trocar
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmarTroca(null)}
+                className="flex-1 rounded-md border border-cinza-claro px-3 py-2.5 text-sm font-semibold text-cinza-medio hover:bg-off-white"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
