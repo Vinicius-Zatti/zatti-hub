@@ -70,8 +70,20 @@ export async function listFornecedores(spreadsheetId: string): Promise<Fornecedo
  * linha é qual - fornecedor sem código ainda (cadastro antigo, direto na
  * planilha) precisa passar por `garantirCodigos` antes. */
 export async function upsertFornecedor(fornecedor: Fornecedor, spreadsheetId: string): Promise<void> {
-  if (!fornecedor.codigo) {
-    throw new Error("Fornecedor sem código - não dá pra saber qual linha atualizar.");
+  await upsertFornecedoresBatch([fornecedor], spreadsheetId);
+}
+
+/** Salva vários fornecedores de uma vez - mesma lógica de
+ * `upsertProdutosBatch`, uma leitura + um `batchUpdate` em vez de N pares
+ * leitura/escrita em paralelo (que a partir de ~10 itens esbarrava em
+ * limite de taxa da API do Sheets). */
+export async function upsertFornecedoresBatch(
+  fornecedores: Fornecedor[],
+  spreadsheetId: string
+): Promise<void> {
+  if (fornecedores.length === 0) return;
+  for (const f of fornecedores) {
+    if (!f.codigo) throw new Error("Fornecedor sem código - não dá pra saber qual linha atualizar.");
   }
 
   const sheets = getSheetsClient();
@@ -81,17 +93,31 @@ export async function upsertFornecedor(fornecedor: Fornecedor, spreadsheetId: st
     range: `'${SHEET}'!A${FIRST_DATA_ROW}:A`,
   });
   const codigos = (res.data.values ?? []).map((r) => r[0]);
-  const idx = codigos.findIndex((c) => c === fornecedor.codigo);
 
-  if (idx >= 0) {
-    const rowNumber = FIRST_DATA_ROW + idx;
-    await sheets.spreadsheets.values.update({
+  const atualizacoes: { range: string; values: (string | number)[][] }[] = [];
+  const novos: Fornecedor[] = [];
+
+  for (const fornecedor of fornecedores) {
+    const idx = codigos.findIndex((c) => c === fornecedor.codigo);
+    if (idx >= 0) {
+      const rowNumber = FIRST_DATA_ROW + idx;
+      atualizacoes.push({
+        range: `'${SHEET}'!A${rowNumber}:L${rowNumber}`,
+        values: [fornecedorToRow(fornecedor)],
+      });
+    } else {
+      novos.push(fornecedor);
+    }
+  }
+
+  if (atualizacoes.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
-      range: `'${SHEET}'!A${rowNumber}:L${rowNumber}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [fornecedorToRow(fornecedor)] },
+      requestBody: { valueInputOption: "USER_ENTERED", data: atualizacoes },
     });
-  } else {
+  }
+
+  for (const fornecedor of novos) {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: RANGE,

@@ -190,17 +190,36 @@ export async function registrarAuditoria(params: {
   dadosAntigos?: unknown;
   dadosNovos?: unknown;
 }): Promise<void> {
+  await registrarAuditoriaBatch([params]);
+}
+
+/** Mesmo log, várias linhas num único insert - usado pelo "Salvar todos"
+ * das grades de edição, que antes gravava auditoria uma chamada por linha
+ * junto com o resto do save em paralelo. */
+export async function registrarAuditoriaBatch(
+  entradas: {
+    acesso: AcessoAtual;
+    acao: string;
+    entidade: string;
+    entidadeId: string;
+    dadosAntigos?: unknown;
+    dadosNovos?: unknown;
+  }[]
+): Promise<void> {
+  if (entradas.length === 0) return;
   try {
     const supabase = await createClient();
-    await supabase.from("logs_auditoria").insert({
-      unidade_id: params.acesso.unidadeId,
-      user_id: params.acesso.userId,
-      acao: params.acao,
-      entidade: params.entidade,
-      entidade_id: params.entidadeId,
-      dados_antigos: params.dadosAntigos ?? null,
-      dados_novos: params.dadosNovos ?? null,
-    });
+    await supabase.from("logs_auditoria").insert(
+      entradas.map((params) => ({
+        unidade_id: params.acesso.unidadeId,
+        user_id: params.acesso.userId,
+        acao: params.acao,
+        entidade: params.entidade,
+        entidade_id: params.entidadeId,
+        dados_antigos: params.dadosAntigos ?? null,
+        dados_novos: params.dadosNovos ?? null,
+      }))
+    );
   } catch (err) {
     console.error("Falha ao gravar log de auditoria:", err);
   }

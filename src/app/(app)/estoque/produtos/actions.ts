@@ -1,9 +1,9 @@
 "use server";
 
-import { upsertProduto } from "@/lib/sheets/produtos";
+import { upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
-import { requireGestao, registrarAuditoria } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -77,6 +77,34 @@ export async function salvarProdutoAction(
       entidadeId: produto.sku,
       dadosNovos: produto,
     });
+    revalidarTudo();
+    return { ok: true };
+  } catch (err) {
+    return { erro: (err as Error).message };
+  }
+}
+
+/** Versão em lote de `salvarProdutoAction` - "Salvar todos" da grade de
+ * Edição de Dados chamava a versão individual uma vez por linha alterada
+ * em paralelo (2 idas ao Sheets cada + 1 auditoria cada); com mais de ~10
+ * linhas isso esbarrava em limite de taxa da API e ficava visivelmente
+ * lento. Aqui é 1 leitura + 1 escrita em lote + 1 auditoria em lote,
+ * não importa quantas linhas mudaram. */
+export async function salvarProdutosAction(
+  produtos: Produto[]
+): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await requireGestao();
+  try {
+    await upsertProdutosBatch(produtos, acesso.spreadsheetId);
+    await registrarAuditoriaBatch(
+      produtos.map((produto) => ({
+        acesso,
+        acao: "salvar",
+        entidade: "produto",
+        entidadeId: produto.sku,
+        dadosNovos: produto,
+      }))
+    );
     revalidarTudo();
     return { ok: true };
   } catch (err) {

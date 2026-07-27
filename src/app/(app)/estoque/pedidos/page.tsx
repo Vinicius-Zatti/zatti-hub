@@ -1,5 +1,7 @@
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
+import { getPedidoSalvo } from "@/lib/pedidos";
+import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { getAcessoAtual } from "@/lib/acesso";
@@ -34,6 +36,17 @@ export default async function PedidosPage({
       .map((f) => [f.nomeFantasia, f.pedidoMinimo]),
   );
 
+  // Previsão de entrega já combinada no Editor de Espelhos (se existir) -
+  // salvar daqui não pode zerar isso sem querer.
+  const porFornecedor = agruparPorFornecedor(resultado.itens);
+  const fornecedoresDoPedido = ordenarFornecedores(Object.keys(porFornecedor));
+  const pedidosSalvos = await Promise.all(
+    fornecedoresDoPedido.map((f) => getPedidoSalvo(acesso.unidadeId, f, resultado.dataUsada)),
+  );
+  const previsaoEntregaPorFornecedor = Object.fromEntries(
+    fornecedoresDoPedido.map((f, i) => [f, pedidosSalvos[i]?.previsaoEntrega ?? null]),
+  );
+
   return (
     <PedidoCompras
       itens={resultado.itens}
@@ -43,6 +56,8 @@ export default async function PedidosPage({
       gruposContadosNoDia={resultado.gruposContadosNoDia}
       organizacaoNome={acesso.organizacaoNome}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
+      previsaoEntregaPorFornecedor={previsaoEntregaPorFornecedor}
+      podeSalvar={acesso.role === "gestao" || acesso.role === "master"}
     />
   );
 }

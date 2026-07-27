@@ -5,6 +5,7 @@ import type { Pedido, PedidoItem } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { marcarRecebidoAction } from "@/app/(app)/estoque/pedidos/feitos/actions";
 import { toNumeroBR } from "@/lib/sheets/numero";
+import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -52,7 +53,7 @@ export function PedidosFeitos({
         pedidos.map((p) => [
           p.id,
           Object.fromEntries(
-            p.itens.map((it) => [it.sku, formatNumero(it.quantidadeRecebida ?? it.quantidadePedida)])
+            p.itens.map((it) => [it.sku, textoEdicaoQuantidade(it.quantidadeRecebida ?? it.quantidadePedida, it.unidadeBase)])
           ),
         ])
       )
@@ -128,7 +129,7 @@ export function PedidosFeitos({
                       <tr key={item.sku} className="border-t border-cinza-claro">
                         <td className="px-3 py-2 font-medium text-cinza">{item.nomeCompra || item.nome}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                          {formatNumero(item.quantidadePedida)} {item.unidadeBase}
+                          {formatarQuantidade(item.quantidadePedida, item.unidadeBase)} {item.unidadeBase}
                         </td>
                         <td className="px-3 py-2 text-right">
                           {podeEditarQuantidade ? (
@@ -146,7 +147,9 @@ export function PedidosFeitos({
                             />
                           ) : (
                             <span className="tabular-nums text-cinza-medio">
-                              {item.quantidadeRecebida !== null ? formatNumero(item.quantidadeRecebida) : "—"}
+                              {item.quantidadeRecebida !== null
+                                ? formatarQuantidade(item.quantidadeRecebida, item.unidadeBase)
+                                : "—"}
                             </span>
                           )}
                         </td>
@@ -163,7 +166,9 @@ export function PedidosFeitos({
                 <tfoot>
                   <tr className="border-t-2 border-azul-noite bg-off-white font-semibold text-cinza">
                     <td className="px-3 py-2">{pedido.itens.length} itens</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatNumero(totalVolumes)} volumes</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatNumero(Math.round(totalVolumes * 100) / 100)} volumes
+                    </td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2 text-right text-xs text-cinza-medio">Valor total do pedido</td>
                     <td className="px-3 py-2 text-right tabular-nums text-ambar">{formatMoeda(totalPedido)}</td>

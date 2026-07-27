@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
+import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
+import { salvarPedidoAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
+import { useGuardaEdicao } from "@/components/guarda-edicao";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -20,6 +23,8 @@ export function PedidoCompras({
   gruposContadosNoDia,
   organizacaoNome,
   pedidoMinimoPorFornecedor,
+  previsaoEntregaPorFornecedor,
+  podeSalvar,
 }: {
   itens: SugestaoCompra[];
   dataUsada: string;
@@ -28,6 +33,8 @@ export function PedidoCompras({
   gruposContadosNoDia: string[];
   organizacaoNome: string;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
+  previsaoEntregaPorFornecedor: Record<string, string | null>;
+  podeSalvar: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -52,13 +59,14 @@ export function PedidoCompras({
   // Grupo e os blocos por Fornecedor: o mesmo SKU pode aparecer nas duas.
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [editando, setEditando] = useState<Record<string, string>>({});
+  const [naoSalvo, setNaoSalvo] = useState(false);
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
   }
 
   function iniciarEdicao(item: SugestaoCompra) {
-    setEditando((e) => ({ ...e, [item.sku]: String(valorAtual(item)) }));
+    setEditando((e) => ({ ...e, [item.sku]: textoEdicaoQuantidade(valorAtual(item), item.unidadeBase) }));
   }
 
   function confirmarEdicao(sku: string) {
@@ -66,6 +74,7 @@ export function PedidoCompras({
     const num = Number(raw);
     if (raw !== "" && !Number.isNaN(num) && num >= 0) {
       setOverrides((o) => ({ ...o, [sku]: num }));
+      setNaoSalvo(true);
     }
     setEditando((e) => {
       const novo = { ...e };
@@ -79,6 +88,61 @@ export function PedidoCompras({
 
   const porFornecedor = useMemo(() => agruparPorFornecedor(itens), [itens]);
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
+
+  // Salva a cotação de um fornecedor no mesmo Pedido que o Editor de
+  // Espelhos usa (por unidade + fornecedor + contagem base) - reaproveita a
+  // mesma Server Action, é a mesma tabela. "Salvar tudo" (na Conferência
+  // por Grupo) chama isso pra cada fornecedor de uma vez, senão salvar só
+  // o grupo visível sobrescreveria o resto do pedido daquele fornecedor
+  // (o save reescreve os itens inteiros do fornecedor, não só um recorte).
+  const [salvandoFornecedor, setSalvandoFornecedor] = useState<Record<string, boolean>>({});
+  const [statusFornecedor, setStatusFornecedor] = useState<Record<string, string>>({});
+  const [salvandoTudo, setSalvandoTudo] = useState(false);
+
+  async function salvarFornecedor(fornecedor: string): Promise<boolean> {
+    const itensDoFornecedor = (porFornecedor[fornecedor] ?? []).filter((item) => valorAtual(item) > 0);
+    setSalvandoFornecedor((s) => ({ ...s, [fornecedor]: true }));
+    const resultado = await salvarPedidoAction({
+      fornecedor,
+      dataContagemBase: dataUsada,
+      previsaoEntrega: previsaoEntregaPorFornecedor[fornecedor] ?? null,
+      itens: itensDoFornecedor.map((item) => ({
+        sku: item.sku,
+        nome: item.nome,
+        nomeCompra: item.nomeCompra,
+        unidadeBase: item.unidadeBase,
+        quantidadePedida: valorAtual(item),
+        precoAntigo: item.precoUnitario,
+        precoAtualizado: item.precoUnitario,
+      })),
+    });
+    setSalvandoFornecedor((s) => ({ ...s, [fornecedor]: false }));
+    const ok = !("erro" in resultado);
+    if (ok) setNaoSalvo(false);
+    setStatusFornecedor((s) => ({
+      ...s,
+      [fornecedor]: "erro" in resultado ? resultado.erro : "Salvo - já aparece no Editor de Espelhos.",
+    }));
+    setTimeout(() => setStatusFornecedor((s) => ({ ...s, [fornecedor]: "" })), 5000);
+    return ok;
+  }
+
+  async function salvarTudo() {
+    setSalvandoTudo(true);
+    await Promise.all(fornecedores.map((f) => salvarFornecedor(f)));
+    setSalvandoTudo(false);
+    setNaoSalvo(false);
+  }
+
+  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  useEffect(() => {
+    if (podeSalvar && naoSalvo) {
+      ativarGuarda("Você ajustou quantidades da cotação que ainda não foram salvas. Se sair agora, esses ajustes se perdem.");
+    } else {
+      desativarGuarda();
+    }
+  }, [podeSalvar, naoSalvo, ativarGuarda, desativarGuarda]);
+  useEffect(() => () => desativarGuarda(), [desativarGuarda]);
 
   const totalGeral = itens.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
@@ -166,8 +230,19 @@ export function PedidoCompras({
 
       {itens.length > 0 && (
         <div>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-xl font-bold text-azul-noite">Conferência por Grupo</h2>
+            {podeSalvar && (
+              <button
+                type="button"
+                onClick={salvarTudo}
+                disabled={salvandoTudo}
+                title="Salva a cotação de todos os fornecedores de uma vez"
+                className="shrink-0 rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-xs font-bold text-azul-noite hover:bg-off-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {salvandoTudo ? "Salvando tudo..." : "Salvar tudo"}
+              </button>
+            )}
           </div>
           <p className="mb-3 rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
             Antes de enviar as cotações para os fornecedores, lembre-se de fazer a conferência - e
@@ -204,7 +279,14 @@ export function PedidoCompras({
                 pedidoMinimo={pedidoMinimoPorFornecedor[fornecedor] ?? null}
                 legenda={legenda}
                 valorAtual={valorAtual}
-                onConfirmarValor={(sku, valor) => setOverrides((o) => ({ ...o, [sku]: valor }))}
+                onConfirmarValor={(sku, valor) => {
+                  setOverrides((o) => ({ ...o, [sku]: valor }));
+                  setNaoSalvo(true);
+                }}
+                podeSalvar={podeSalvar}
+                salvando={salvandoFornecedor[fornecedor] ?? false}
+                statusSalvar={statusFornecedor[fornecedor] ?? ""}
+                onSalvar={() => salvarFornecedor(fornecedor)}
               />
             ))}
           </div>
@@ -267,10 +349,12 @@ function TabelaItens({
                     {item.nome}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                    {item.estoqueAtual !== null ? `${item.estoqueAtual} ${item.unidadeBase}` : "não contado"}
+                    {item.estoqueAtual !== null
+                      ? `${formatarQuantidade(item.estoqueAtual, item.unidadeBase)} ${item.unidadeBase}`
+                      : "não contado"}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                    {item.estoqueNecessario} {item.unidadeBase}
+                    {formatarQuantidade(item.estoqueNecessario, item.unidadeBase)} {item.unidadeBase}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {emEdicao ? (
@@ -301,7 +385,7 @@ function TabelaItens({
                       <div className="flex items-center justify-end gap-1.5">
                         {precisa ? (
                           <span className="font-bold tabular-nums text-ambar">
-                            {qtd} {item.unidadeBase}
+                            {formatarQuantidade(qtd, item.unidadeBase)} {item.unidadeBase}
                           </span>
                         ) : (
                           <span className="text-xs text-cinza-medio">não precisa comprar</span>

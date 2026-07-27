@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NavTabs } from "@/components/nav-tabs";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
+import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { getAcessoAtual } from "@/lib/acesso";
 import { signOutAction } from "@/lib/supabase/actions";
@@ -22,6 +23,7 @@ export default async function AppLayout({
 
   return (
     <GuardaContagemProvider>
+    <GuardaEdicaoProvider>
       <div className="flex min-h-full flex-col">
         <header className="bg-azul-noite text-branco">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
@@ -63,6 +65,7 @@ export default async function AppLayout({
           Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
         </footer>
       </div>
+    </GuardaEdicaoProvider>
     </GuardaContagemProvider>
   );
 }

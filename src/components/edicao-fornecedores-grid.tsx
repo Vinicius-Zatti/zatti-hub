@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Fornecedor } from "@/lib/types";
 import { fornecedorIncompleto } from "@/lib/fornecedor";
-import { salvarFornecedorAction } from "@/app/(app)/estoque/fornecedores/actions";
+import { salvarFornecedorAction, salvarFornecedoresAction } from "@/app/(app)/estoque/fornecedores/actions";
 import { StatCard } from "@/components/stat-card";
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
 import { GRUPO_OPCOES } from "@/lib/grupos";
+import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
+import { BotaoExpandir } from "@/components/botao-expandir";
+import { useGuardaEdicao } from "@/components/guarda-edicao";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -63,8 +66,33 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   );
 
   async function salvarTodos() {
+    const codigos = alterados;
+    if (codigos.length === 0) return;
     setSalvandoTodos(true);
-    await Promise.all(alterados.map((codigo) => salvarUm(codigo)));
+    setStatusPorCodigo((s) => {
+      const novo = { ...s };
+      for (const codigo of codigos) novo[codigo] = { tipo: "salvando" };
+      return novo;
+    });
+    const r = await salvarFornecedoresAction(codigos.map((codigo) => estado[codigo]));
+    if ("erro" in r) {
+      setStatusPorCodigo((s) => {
+        const novo = { ...s };
+        for (const codigo of codigos) novo[codigo] = { tipo: "erro", msg: r.erro };
+        return novo;
+      });
+    } else {
+      setBaseline((b) => {
+        const novo = { ...b };
+        for (const codigo of codigos) novo[codigo] = estado[codigo];
+        return novo;
+      });
+      setStatusPorCodigo((s) => {
+        const novo = { ...s };
+        for (const codigo of codigos) novo[codigo] = { tipo: "ok" };
+        return novo;
+      });
+    }
     setSalvandoTodos(false);
   }
 
@@ -84,6 +112,18 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
       return true;
     });
   }, [fornecedores, estado, busca, somenteIncompletos, filtroGrupos]);
+
+  const { expandido, alternar } = useTabelaExpansivel();
+
+  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  useEffect(() => {
+    if (alterados.length > 0) {
+      ativarGuarda("Você editou fornecedores que ainda não foram salvos. Se sair agora, essas alterações se perdem.");
+    } else {
+      desativarGuarda();
+    }
+  }, [alterados.length, ativarGuarda, desativarGuarda]);
+  useEffect(() => () => desativarGuarda(), [desativarGuarda]);
 
   return (
     <div>
@@ -106,62 +146,64 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
         </button>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-xl font-bold text-azul-noite">
-          Cadastro completo ({filtrados.length}
-          {filtrados.length !== fornecedores.length ? ` de ${fornecedores.length}` : ""})
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            placeholder="Buscar por nome fantasia ou vendedor..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={salvarTodos}
-            disabled={alterados.length === 0 || salvandoTodos}
-            className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
-          >
-            {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
-          </button>
+      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-xl font-bold text-azul-noite">
+            Cadastro completo ({filtrados.length}
+            {filtrados.length !== fornecedores.length ? ` de ${fornecedores.length}` : ""})
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por nome fantasia ou vendedor..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={salvarTodos}
+              disabled={alterados.length === 0 || salvandoTodos}
+              className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
+            >
+              {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
+            </button>
+            <BotaoExpandir expandido={expandido} onClick={alternar} />
+          </div>
         </div>
-      </div>
-      <p className="mb-2 text-xs text-cinza-medio">
-        Células em destaque estão vazias e são obrigatórias (Nome Fantasia, Vendedor, WhatsApp).
-      </p>
+        <p className="text-xs text-cinza-medio">
+          Células em destaque estão vazias e são obrigatórias (Nome Fantasia, Vendedor, WhatsApp).
+        </p>
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setFiltroGrupos([])}
-          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-            filtroGrupos.length === 0
-              ? "border-azul-noite bg-azul-noite text-branco"
-              : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
-          }`}
-        >
-          Todos
-        </button>
-        {GRUPO_OPCOES.map((g) => (
+        <div className="flex flex-wrap gap-1.5">
           <button
-            key={g.codigo}
             type="button"
-            onClick={() => alternarFiltroGrupo(g.codigo)}
+            onClick={() => setFiltroGrupos([])}
             className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-              filtroGrupos.includes(g.codigo)
-                ? "border-ambar bg-ambar/10 text-ambar"
-                : "border-cinza-claro text-cinza-medio hover:border-ambar"
+              filtroGrupos.length === 0
+                ? "border-azul-noite bg-azul-noite text-branco"
+                : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
             }`}
           >
-            {g.descricao}
+            Todos
           </button>
-        ))}
-      </div>
+          {GRUPO_OPCOES.map((g) => (
+            <button
+              key={g.codigo}
+              type="button"
+              onClick={() => alternarFiltroGrupo(g.codigo)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                filtroGrupos.includes(g.codigo)
+                  ? "border-ambar bg-ambar/10 text-ambar"
+                  : "border-cinza-claro text-cinza-medio hover:border-ambar"
+              }`}
+            >
+              {g.descricao}
+            </button>
+          ))}
+        </div>
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+        <div className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco`}>
         <table className="w-full min-w-[1600px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -201,6 +243,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

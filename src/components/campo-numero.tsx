@@ -55,5 +55,8 @@ export function CampoNumero({
 
 function formatar(value: number | null, decimais: number): string {
   if (value === null) return "";
-  return value.toLocaleString("pt-BR", { maximumFractionDigits: decimais });
+  // minimum = maximum: sem isso, um valor sem parte fracionária (ex: 1300)
+  // aparece sem decimal nenhum enquanto outro com fração (ex: 1,1) aparece
+  // com decimal variável - mesma coluna mostrando formatos diferentes.
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: decimais, maximumFractionDigits: decimais });
 }

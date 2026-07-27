@@ -75,6 +75,19 @@ export async function upsertProduto(
   produto: Produto,
   spreadsheetId: string
 ): Promise<void> {
+  await upsertProdutosBatch([produto], spreadsheetId);
+}
+
+/** Salva vários produtos de uma vez - uma única leitura da coluna de SKU
+ * pra achar as linhas, um único `batchUpdate` pra gravar todas. Usada pelo
+ * "Salvar todos" da grade de Edição de Dados: salvar item por item (1
+ * leitura + 1 escrita cada, em paralelo) esbarrava em limite de taxa da
+ * API do Sheets a partir de ~10 itens de uma vez. */
+export async function upsertProdutosBatch(
+  produtos: Produto[],
+  spreadsheetId: string
+): Promise<void> {
+  if (produtos.length === 0) return;
   const sheets = getSheetsClient();
 
   const res = await sheets.spreadsheets.values.get({
@@ -82,17 +95,34 @@ export async function upsertProduto(
     range: `'${SHEET}'!A${FIRST_DATA_ROW}:A`,
   });
   const skus = (res.data.values ?? []).map((r) => r[0]);
-  const idx = skus.findIndex((s) => s === produto.sku);
 
-  if (idx >= 0) {
-    const rowNumber = FIRST_DATA_ROW + idx;
-    await sheets.spreadsheets.values.update({
+  const atualizacoes: { range: string; values: (string | number)[][] }[] = [];
+  const novos: Produto[] = [];
+
+  for (const produto of produtos) {
+    const idx = skus.findIndex((s) => s === produto.sku);
+    if (idx >= 0) {
+      const rowNumber = FIRST_DATA_ROW + idx;
+      atualizacoes.push({
+        range: `'${SHEET}'!A${rowNumber}:R${rowNumber}`,
+        values: [produtoToRow(produto)],
+      });
+    } else {
+      novos.push(produto);
+    }
+  }
+
+  if (atualizacoes.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
-      range: `'${SHEET}'!A${rowNumber}:R${rowNumber}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [produtoToRow(produto)] },
+      requestBody: { valueInputOption: "USER_ENTERED", data: atualizacoes },
     });
-  } else {
+  }
+
+  // SKU novo (não existia na planilha ainda) não tem linha pra mirar num
+  // batchUpdate - segue append individual, caso raro no "Salvar todos" (que
+  // só edita produtos já carregados da planilha).
+  for (const produto of novos) {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: RANGE,

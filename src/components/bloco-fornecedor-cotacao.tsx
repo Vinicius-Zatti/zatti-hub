@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SugestaoCompra } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import {
   gerarImagemCotacao,
   compartilharOuCopiarImagem,
@@ -35,6 +36,10 @@ export function BlocoFornecedorCotacao({
   legenda,
   valorAtual,
   onConfirmarValor,
+  podeSalvar,
+  salvando,
+  statusSalvar,
+  onSalvar,
 }: {
   fornecedor: string;
   linhas: SugestaoCompra[];
@@ -42,6 +47,10 @@ export function BlocoFornecedorCotacao({
   legenda: string;
   valorAtual: (item: SugestaoCompra) => number;
   onConfirmarValor: (sku: string, valorBase: number) => void;
+  podeSalvar: boolean;
+  salvando: boolean;
+  statusSalvar: string;
+  onSalvar: () => void;
 }) {
   const [modo, setModo] = useState<Modo>("interno");
   const [editando, setEditando] = useState<Record<string, string>>({});
@@ -57,7 +66,8 @@ export function BlocoFornecedorCotacao({
 
   function iniciarEdicao(item: SugestaoCompra) {
     const exibido = valorExibido(item);
-    setEditando((e) => ({ ...e, [item.sku]: exibido !== null ? String(exibido) : "" }));
+    const unidade = modo === "interno" ? item.unidadeBase : "UN";
+    setEditando((e) => ({ ...e, [item.sku]: exibido !== null ? textoEdicaoQuantidade(exibido, unidade) : "" }));
   }
 
   function confirmarEdicao(item: SugestaoCompra) {
@@ -132,6 +142,16 @@ export function BlocoFornecedorCotacao({
             {formatMoeda(subtotal)}
             {pedidoMinimo !== null && ` de ${formatMoeda(pedidoMinimo)} mínimo`}
           </span>
+          {podeSalvar && (
+            <button
+              type="button"
+              onClick={onSalvar}
+              disabled={salvando}
+              className="shrink-0 rounded-md border border-branco/30 px-2.5 py-1 text-[11px] font-bold text-branco hover:bg-branco/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {salvando ? "Salvando..." : "Salvar"}
+            </button>
+          )}
           <button
             type="button"
             onClick={compartilhar}
@@ -239,7 +259,9 @@ export function BlocoFornecedorCotacao({
                     ) : (
                       <div className="flex items-center justify-end gap-1.5">
                         {precisa ? (
-                          <span className="font-bold tabular-nums text-ambar">{qtdExibida}</span>
+                          <span className="font-bold tabular-nums text-ambar">
+                            {formatarQuantidade(qtdExibida, modo === "interno" ? item.unidadeBase : "UN")}
+                          </span>
                         ) : (
                           <span className="text-xs text-cinza-medio">não precisa comprar</span>
                         )}
@@ -273,6 +295,9 @@ export function BlocoFornecedorCotacao({
         </table>
       </div>
       {status && <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{status}</div>}
+      {statusSalvar && (
+        <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{statusSalvar}</div>
+      )}
     </div>
   );
 }

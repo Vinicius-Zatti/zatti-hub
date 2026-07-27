@@ -12,6 +12,7 @@ import {
   type LinhaPedido,
 } from "@/lib/canvas-tabela";
 import { toNumeroBR } from "@/lib/sheets/numero";
+import { textoEdicaoQuantidade } from "@/lib/unidades";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -83,12 +84,12 @@ export function EditorEspelhos({
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[item.sku] = formatNumero(item.quantidadePedida);
+        inicial[item.sku] = textoEdicaoQuantidade(item.quantidadePedida, item.unidadeBase);
       }
     }
     for (const fornecedor of fornecedores) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
-        if (!(item.sku in inicial)) inicial[item.sku] = formatNumero(item.quantidadeSugerida);
+        if (!(item.sku in inicial)) inicial[item.sku] = textoEdicaoQuantidade(item.quantidadeSugerida, item.unidadeBase);
       }
     }
     return inicial;
@@ -530,7 +531,9 @@ export function EditorEspelhos({
                   <tfoot>
                     <tr className="border-t-2 border-azul-noite bg-off-white font-semibold text-cinza">
                       <td className="px-3 py-2">{itens.length} itens</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatNumero(totalVolumes)} volumes</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatNumero(Math.round(totalVolumes * 100) / 100)} volumes
+                      </td>
                       <td className="px-3 py-2" />
                       <td className="px-3 py-2 text-right text-xs text-cinza-medio">Valor total do pedido</td>
                       <td className="px-3 py-2 text-right tabular-nums text-ambar">{formatMoeda(subtotal)}</td>

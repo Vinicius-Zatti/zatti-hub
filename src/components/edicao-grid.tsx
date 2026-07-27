@@ -1,15 +1,19 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
-import { salvarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
+import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
-import { UNIDADES, UNIDADES_EMBALAGEM } from "@/lib/unidades";
+import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
+import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
+import { BotaoExpandir } from "@/components/botao-expandir";
 import { StatCard } from "@/components/stat-card";
 import { InfoIcon } from "@/components/info-icon";
 import { CampoNumero } from "@/components/campo-numero";
+import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
+import { useGuardaEdicao } from "@/components/guarda-edicao";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -89,21 +93,41 @@ function CadastroSection({
   const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
 
+  // Cópia local pra poder inserir um fornecedor criado na hora (modal "+
+  // Adicionar fornecedor") sem esperar o Server Component recarregar.
+  const [fornecedoresLocais, setFornecedoresLocais] = useState<Fornecedor[]>(fornecedores);
+  const [novoFornecedorPara, setNovoFornecedorPara] = useState<{
+    sku: string;
+    campo: "fornecedor1" | "fornecedor2" | "fornecedor3" | "fornecedor4";
+  } | null>(null);
+
   const fornecedorOpcoes: OpcaoCodigo[] = useMemo(
     () => [
       { codigo: "", descricao: "(nenhum)" },
-      ...fornecedores.map((f) => ({
+      ...fornecedoresLocais.map((f) => ({
         codigo: f.nomeFantasia || f.razaoSocial,
         descricao: f.razaoSocial && f.razaoSocial !== f.nomeFantasia ? f.razaoSocial : "",
       })),
     ],
-    [fornecedores]
+    [fornecedoresLocais]
   );
+
+  const { expandido, alternar } = useTabelaExpansivel();
 
   const alterados = useMemo(
     () => Object.keys(estado).filter((sku) => JSON.stringify(estado[sku]) !== JSON.stringify(baseline[sku])),
     [estado, baseline]
   );
+
+  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  useEffect(() => {
+    if (alterados.length > 0) {
+      ativarGuarda("Você editou produtos que ainda não foram salvos. Se sair agora, essas alterações se perdem.");
+    } else {
+      desativarGuarda();
+    }
+  }, [alterados.length, ativarGuarda, desativarGuarda]);
+  useEffect(() => () => desativarGuarda(), [desativarGuarda]);
 
   const incompletos = useMemo(
     () => produtos.filter((p) => produtoIncompleto(estado[p.sku] ?? p)),
@@ -135,8 +159,33 @@ function CadastroSection({
   );
 
   async function salvarTodos() {
+    const skus = alterados;
+    if (skus.length === 0) return;
     setSalvandoTodos(true);
-    await Promise.all(alterados.map((sku) => salvarUm(sku)));
+    setStatusPorSku((s) => {
+      const novo = { ...s };
+      for (const sku of skus) novo[sku] = { tipo: "salvando" };
+      return novo;
+    });
+    const r = await salvarProdutosAction(skus.map((sku) => estado[sku]));
+    if ("erro" in r) {
+      setStatusPorSku((s) => {
+        const novo = { ...s };
+        for (const sku of skus) novo[sku] = { tipo: "erro", msg: r.erro };
+        return novo;
+      });
+    } else {
+      setBaseline((b) => {
+        const novo = { ...b };
+        for (const sku of skus) novo[sku] = estado[sku];
+        return novo;
+      });
+      setStatusPorSku((s) => {
+        const novo = { ...s };
+        for (const sku of skus) novo[sku] = { tipo: "ok" };
+        return novo;
+      });
+    }
     setSalvandoTodos(false);
   }
 
@@ -203,40 +252,42 @@ function CadastroSection({
         </button>
         <StatCard label="Grupos" value={String(new Set(produtos.map((p) => p.grupo)).size)} />
       </div>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-xl font-bold text-azul-noite">
-          Cadastro completo ({filtrados.length}
-          {filtrados.length !== produtos.length ? ` de ${produtos.length}` : ""})
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            placeholder="Buscar por nome ou SKU..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={salvarTodos}
-            disabled={alterados.length === 0 || salvandoTodos}
-            className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
-          >
-            {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
-          </button>
+      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-xl font-bold text-azul-noite">
+            Cadastro completo ({filtrados.length}
+            {filtrados.length !== produtos.length ? ` de ${produtos.length}` : ""})
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por nome ou SKU..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={salvarTodos}
+              disabled={alterados.length === 0 || salvandoTodos}
+              className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
+            >
+              {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
+            </button>
+            <BotaoExpandir expandido={expandido} onClick={alternar} />
+          </div>
         </div>
-      </div>
-      <p className="mb-3 text-xs text-cinza-medio">
-        Células em destaque estão vazias. Segura o fundo da tabela (ou a barra de espaço, fora de
-        um campo) pra arrastar e rolar.
-      </p>
-      <div
-        ref={scrollRef}
-        {...handlers}
-        className={`max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
-          arrastando ? "cursor-grabbing" : espacoPressionado ? "cursor-grab" : ""
-        }`}
-      >
+        <p className="text-xs text-cinza-medio">
+          Células em destaque estão vazias. Segura o fundo da tabela (ou a barra de espaço, fora de
+          um campo) pra arrastar e rolar.
+        </p>
+        <div
+          ref={scrollRef}
+          {...handlers}
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
+            arrastando ? "cursor-grabbing" : espacoPressionado ? "cursor-grab" : ""
+          }`}
+        >
         <table className="w-full min-w-[1750px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -322,6 +373,7 @@ function CadastroSection({
                 fornecedorOpcoes={fornecedorOpcoes}
                 onChange={campo}
                 onSalvar={salvarUm}
+                onPedirNovoFornecedor={(campoFornecedor) => setNovoFornecedorPara({ sku: p.sku, campo: campoFornecedor })}
               />
             ))}
             {ordenados.length === 0 && (
@@ -333,7 +385,19 @@ function CadastroSection({
             )}
           </tbody>
         </table>
+        </div>
       </div>
+      <NovoFornecedorModal
+        aberto={novoFornecedorPara !== null}
+        onFechar={() => setNovoFornecedorPara(null)}
+        onCriado={(fornecedor) => {
+          setFornecedoresLocais((fs) => [...fs, fornecedor]);
+          if (novoFornecedorPara) {
+            campo(novoFornecedorPara.sku, novoFornecedorPara.campo, fornecedor.nomeFantasia || fornecedor.razaoSocial);
+          }
+          setNovoFornecedorPara(null);
+        }}
+      />
     </div>
   );
 }
@@ -562,6 +626,7 @@ const LinhaProduto = memo(function LinhaProduto({
   fornecedorOpcoes,
   onChange,
   onSalvar,
+  onPedirNovoFornecedor,
 }: {
   sku: string;
   editado: Produto;
@@ -570,6 +635,7 @@ const LinhaProduto = memo(function LinhaProduto({
   fornecedorOpcoes: OpcaoCodigo[];
   onChange: <K extends keyof Produto>(sku: string, key: K, value: Produto[K]) => void;
   onSalvar: (sku: string) => void;
+  onPedirNovoFornecedor: (campo: "fornecedor1" | "fornecedor2" | "fornecedor3" | "fornecedor4") => void;
 }) {
   const pending = status?.tipo === "salvando";
 
@@ -614,6 +680,7 @@ const LinhaProduto = memo(function LinhaProduto({
         <CampoNumero
           value={editado.estoqueNecessarioSemana}
           onChange={(v) => campo("estoqueNecessarioSemana", v)}
+          decimais={decimaisQuantidade(editado.unidadeBase)}
           className="w-16"
         />
       </td>
@@ -621,6 +688,7 @@ const LinhaProduto = memo(function LinhaProduto({
         <CampoNumero
           value={editado.estoqueMinimo}
           onChange={(v) => campo("estoqueMinimo", v)}
+          decimais={decimaisQuantidade(editado.unidadeBase)}
           className="w-16"
         />
       </td>
@@ -644,6 +712,7 @@ const LinhaProduto = memo(function LinhaProduto({
         <CampoNumero
           value={editado.qtdUnidadeBasePorEmbalagem}
           onChange={(v) => campo("qtdUnidadeBasePorEmbalagem", v)}
+          decimais={decimaisQuantidade(editado.unidadeBase)}
           className="w-16"
         />
       </td>
@@ -655,16 +724,40 @@ const LinhaProduto = memo(function LinhaProduto({
         />
       </td>
       <td className="px-2 py-1.5">
-        <CodigoSelect value={editado.fornecedor1} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor1", v)} className="w-28" />
+        <CodigoSelect
+          value={editado.fornecedor1}
+          opcoes={fornecedorOpcoes}
+          onChange={(v) => campo("fornecedor1", v)}
+          extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor1") }}
+          className="w-28"
+        />
       </td>
       <td className="px-2 py-1.5">
-        <CodigoSelect value={editado.fornecedor2} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor2", v)} className="w-28" />
+        <CodigoSelect
+          value={editado.fornecedor2}
+          opcoes={fornecedorOpcoes}
+          onChange={(v) => campo("fornecedor2", v)}
+          extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor2") }}
+          className="w-28"
+        />
       </td>
       <td className="px-2 py-1.5">
-        <CodigoSelect value={editado.fornecedor3} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor3", v)} className="w-28" />
+        <CodigoSelect
+          value={editado.fornecedor3}
+          opcoes={fornecedorOpcoes}
+          onChange={(v) => campo("fornecedor3", v)}
+          extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor3") }}
+          className="w-28"
+        />
       </td>
       <td className="px-2 py-1.5">
-        <CodigoSelect value={editado.fornecedor4} opcoes={fornecedorOpcoes} onChange={(v) => campo("fornecedor4", v)} className="w-28" />
+        <CodigoSelect
+          value={editado.fornecedor4}
+          opcoes={fornecedorOpcoes}
+          onChange={(v) => campo("fornecedor4", v)}
+          extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor4") }}
+          className="w-28"
+        />
       </td>
       <td className="px-2 py-1.5">
         <input
