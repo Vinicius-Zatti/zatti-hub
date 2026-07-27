@@ -17,6 +17,11 @@ const cormorant = Cormorant_Garamond({
 export const metadata: Metadata = {
   title: "Zatti Hub",
   description: "Plataforma Zatti Consultoria",
+  appleWebApp: {
+    capable: true,
+    title: "Zatti Hub",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({
