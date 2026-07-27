@@ -18,6 +18,21 @@ async function criarFornecedor(
   acesso: Awaited<ReturnType<typeof requireGestao>>
 ): Promise<Fornecedor> {
   const existentes = await listFornecedores(acesso.spreadsheetId);
+
+  // Achado real em produção (Dom Quixote, 27/07): clique repetido em "Novo
+  // Fornecedor" pro mesmo nome criou 54 linhas duplicadas de "Mart Minas"
+  // (algumas com "M"/"m" trocado) - nenhuma delas vinculada a produto
+  // nenhum, só lixo de cadastro. Bloqueia nome igual (sem diferenciar
+  // maiúscula/minúscula ou espaço nas pontas) em vez de deixar acontecer
+  // de novo.
+  const nomeNormalizado = dados.nomeFantasia.trim().toLowerCase();
+  const duplicado = existentes.find((f) => f.nomeFantasia.trim().toLowerCase() === nomeNormalizado);
+  if (duplicado) {
+    throw new Error(
+      `Já existe um fornecedor "${duplicado.nomeFantasia}" cadastrado (código ${duplicado.codigo}) - escolhe ele na lista em vez de criar de novo.`
+    );
+  }
+
   const fornecedor: Fornecedor = { codigo: proximoCodigo(existentes), ...dados };
 
   await upsertFornecedor(fornecedor, acesso.spreadsheetId);
@@ -35,22 +50,26 @@ async function criarFornecedor(
 export async function criarFornecedorAction(formData: FormData) {
   const acesso = await requireGestao();
 
-  await criarFornecedor(
-    {
-      razaoSocial: String(formData.get("razaoSocial") ?? ""),
-      nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
-      grupos: formData.getAll("grupos").map(String),
-      nomeVendedor: String(formData.get("nomeVendedor") ?? ""),
-      whatsapp: String(formData.get("whatsapp") ?? ""),
-      condicoesPagamento: String(formData.get("condicoesPagamento") ?? ""),
-      prazoBoleto: String(formData.get("prazoBoleto") ?? ""),
-      limiteCredito: formData.get("limiteCredito") ? Number(formData.get("limiteCredito")) : null,
-      pedidoMinimo: formData.get("pedidoMinimo") ? Number(formData.get("pedidoMinimo")) : null,
-      diasEntrega: String(formData.get("diasEntrega") ?? ""),
-      observacoes: String(formData.get("observacoes") ?? ""),
-    },
-    acesso
-  );
+  try {
+    await criarFornecedor(
+      {
+        razaoSocial: String(formData.get("razaoSocial") ?? ""),
+        nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
+        grupos: formData.getAll("grupos").map(String),
+        nomeVendedor: String(formData.get("nomeVendedor") ?? ""),
+        whatsapp: String(formData.get("whatsapp") ?? ""),
+        condicoesPagamento: String(formData.get("condicoesPagamento") ?? ""),
+        prazoBoleto: String(formData.get("prazoBoleto") ?? ""),
+        limiteCredito: formData.get("limiteCredito") ? Number(formData.get("limiteCredito")) : null,
+        pedidoMinimo: formData.get("pedidoMinimo") ? Number(formData.get("pedidoMinimo")) : null,
+        diasEntrega: String(formData.get("diasEntrega") ?? ""),
+        observacoes: String(formData.get("observacoes") ?? ""),
+      },
+      acesso
+    );
+  } catch (err) {
+    redirect(`/estoque/fornecedores/novo?erro=${encodeURIComponent((err as Error).message)}`);
+  }
   redirect("/estoque/fornecedores");
 }
 
