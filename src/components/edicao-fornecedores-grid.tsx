@@ -11,6 +11,7 @@ import { GRUPO_OPCOES } from "@/lib/grupos";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { BotaoExpandir } from "@/components/botao-expandir";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
+import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -35,14 +36,19 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   const [statusPorCodigo, setStatusPorCodigo] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
 
+  // Cópia local pra poder inserir um fornecedor criado na hora (modal "+
+  // Novo Fornecedor") sem esperar o Server Component recarregar.
+  const [fornecedoresLocais, setFornecedoresLocais] = useState<Fornecedor[]>(fornecedores);
+  const [novoFornecedorAberto, setNovoFornecedorAberto] = useState(false);
+
   const alterados = useMemo(
     () => Object.keys(estado).filter((cod) => JSON.stringify(estado[cod]) !== JSON.stringify(baseline[cod])),
     [estado, baseline]
   );
 
   const incompletos = useMemo(
-    () => fornecedores.filter((f) => fornecedorIncompleto(estado[f.codigo] ?? f)),
-    [fornecedores, estado]
+    () => fornecedoresLocais.filter((f) => fornecedorIncompleto(estado[f.codigo] ?? f)),
+    [fornecedoresLocais, estado]
   );
 
   const campo = useCallback(<K extends keyof Fornecedor>(codigo: string, key: K, value: Fornecedor[K]) => {
@@ -98,7 +104,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return fornecedores.filter((f) => {
+    return fornecedoresLocais.filter((f) => {
       const atual = estado[f.codigo] ?? f;
       if (
         termo &&
@@ -111,7 +117,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
       if (filtroGrupos.length > 0 && !filtroGrupos.some((g) => atual.grupos.includes(g))) return false;
       return true;
     });
-  }, [fornecedores, estado, busca, somenteIncompletos, filtroGrupos]);
+  }, [fornecedoresLocais, estado, busca, somenteIncompletos, filtroGrupos]);
 
   const { expandido, alternar } = useTabelaExpansivel();
 
@@ -128,7 +134,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   return (
     <div>
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard label="Fornecedores cadastrados" value={String(fornecedores.length)} />
+        <StatCard label="Fornecedores cadastrados" value={String(fornecedoresLocais.length)} />
         <button
           type="button"
           onClick={() => setSomenteIncompletos((v) => !v)}
@@ -150,7 +156,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-xl font-bold text-azul-noite">
             Cadastro completo ({filtrados.length}
-            {filtrados.length !== fornecedores.length ? ` de ${fornecedores.length}` : ""})
+            {filtrados.length !== fornecedoresLocais.length ? ` de ${fornecedoresLocais.length}` : ""})
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -160,6 +166,13 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
               onChange={(e) => setBusca(e.target.value)}
               className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
             />
+            <button
+              type="button"
+              onClick={() => setNovoFornecedorAberto(true)}
+              className="shrink-0 rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm font-semibold text-azul-noite hover:bg-off-white"
+            >
+              + Novo Fornecedor
+            </button>
             <button
               type="button"
               onClick={salvarTodos}
@@ -245,6 +258,16 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
         </table>
         </div>
       </div>
+      <NovoFornecedorModal
+        aberto={novoFornecedorAberto}
+        onFechar={() => setNovoFornecedorAberto(false)}
+        onCriado={(fornecedor) => {
+          setFornecedoresLocais((fs) => [...fs, fornecedor]);
+          setBaseline((b) => ({ ...b, [fornecedor.codigo]: fornecedor }));
+          setEstado((e) => ({ ...e, [fornecedor.codigo]: fornecedor }));
+          setNovoFornecedorAberto(false);
+        }}
+      />
     </div>
   );
 }

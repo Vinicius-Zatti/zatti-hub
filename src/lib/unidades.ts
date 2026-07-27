@@ -4,10 +4,12 @@ export const UNIDADES = [
   { codigo: "LT", descricao: "Litro" },
 ];
 
-/** Casas decimais padrão pra exibir/editar uma quantidade nessa unidade -
- * UN é sempre contagem inteira, KG/LT admitem fração (ex: 2,50kg). */
-export function decimaisQuantidade(unidadeBase: string): number {
-  return unidadeBase === "UN" ? 0 : 2;
+/** Casas decimais padrão pra exibir/editar uma quantidade (UN, KG, LT ou
+ * qualquer outra unidade de contagem/embalagem) - sempre 3, decisão
+ * explícita do Vinícius (27/07), diferente de valor em dinheiro (sempre 2,
+ * ver `CampoNumero`/`formatMoeda`) que não passa por aqui. */
+export function decimaisQuantidade(_unidadeBase: string): number {
+  return 3;
 }
 
 /** Texto pronto pra exibir uma quantidade (com separador de milhar),
