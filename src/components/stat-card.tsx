@@ -15,7 +15,7 @@ export function StatCard({
 
   return (
     <div className={`rounded-lg border px-4 py-3 ${toneClasses}`}>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="break-words text-xl font-bold sm:text-2xl">{value}</div>
       <div className="text-xs font-medium uppercase tracking-wide text-cinza-medio">
         {label}
       </div>

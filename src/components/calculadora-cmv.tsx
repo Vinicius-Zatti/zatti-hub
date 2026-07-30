@@ -50,13 +50,13 @@ export function CalculadoraCmv({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-4">
+      <div className="flex flex-col gap-4 rounded-lg border border-cinza-claro bg-branco p-4 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Contagem inicial (início do período)
           <select
             value={dataInicial}
             onChange={(e) => setDataInicial(e.target.value)}
-            className="rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
+            className="w-full rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none sm:w-auto"
           >
             {datas.map((d) => (
               <option key={d} value={d}>
@@ -70,7 +70,7 @@ export function CalculadoraCmv({
           <select
             value={dataFinal}
             onChange={(e) => setDataFinal(e.target.value)}
-            className="rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
+            className="w-full rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none sm:w-auto"
           >
             {datas.map((d) => (
               <option key={d} value={d}>
@@ -81,11 +81,11 @@ export function CalculadoraCmv({
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Faturamento do período (R$)
-          <CampoNumero value={faturamento} onChange={setFaturamento} className="w-36" />
+          <CampoNumero value={faturamento} onChange={setFaturamento} className="w-full sm:w-36" />
         </label>
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Compras reais do período, se diferente (R$)
-          <CampoNumero value={comprasManual} onChange={setComprasManual} className="w-36" />
+          <CampoNumero value={comprasManual} onChange={setComprasManual} className="w-full sm:w-36" />
         </label>
       </div>
 
