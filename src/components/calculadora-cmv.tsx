@@ -22,11 +22,12 @@ export function CalculadoraCmv({
   const [dataInicial, setDataInicial] = useState(datas[1] ?? datas[0] ?? "");
   const [dataFinal, setDataFinal] = useState(datas[0] ?? "");
   const [faturamento, setFaturamento] = useState<number | null>(null);
+  const [comprasManual, setComprasManual] = useState<number | null>(null);
 
   const resultado = useMemo(() => {
     if (!dataInicial || !dataFinal) return null;
-    return calcularCmv({ itensInventario, pedidos, dataInicial, dataFinal, faturamento });
-  }, [itensInventario, pedidos, dataInicial, dataFinal, faturamento]);
+    return calcularCmv({ itensInventario, pedidos, dataInicial, dataFinal, faturamento, comprasManual });
+  }, [itensInventario, pedidos, dataInicial, dataFinal, faturamento, comprasManual]);
 
   if (datas.length < 2) {
     return (
@@ -82,13 +83,26 @@ export function CalculadoraCmv({
           Faturamento do período (R$)
           <CampoNumero value={faturamento} onChange={setFaturamento} className="w-36" />
         </label>
+        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+          Compras reais do período, se diferente (R$)
+          <CampoNumero value={comprasManual} onChange={setComprasManual} className="w-36" />
+        </label>
       </div>
 
       {resultado && (
         <>
+          <p className="-mt-2 text-xs text-cinza-medio">
+            Compras calculadas a partir dos pedidos marcados como recebidos no sistema:{" "}
+            <span className="font-semibold text-cinza">{formatMoeda(resultado.valorComprasCalculado)}</span>.
+            Se nem toda compra do período foi lançada em Pedidos Feitos, preencha &quot;Compras reais&quot;
+            acima (nota fiscal, extrato) para usar esse valor no lugar do calculado.
+          </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Estoque inicial" value={formatMoeda(resultado.valorEstoqueInicial)} />
-            <StatCard label="Compras recebidas no período" value={formatMoeda(resultado.valorCompras)} />
+            <StatCard
+              label={resultado.usouComprasManual ? "Compras (valor real informado)" : "Compras recebidas no sistema"}
+              value={formatMoeda(resultado.valorCompras)}
+            />
             <StatCard label="Estoque final" value={formatMoeda(resultado.valorEstoqueFinal)} />
             <StatCard label="Custo consumido" value={formatMoeda(resultado.custoConsumido)} tone="ambar" />
             <StatCard label="Faturamento informado" value={formatMoeda(resultado.faturamento)} />
@@ -99,9 +113,8 @@ export function CalculadoraCmv({
             />
           </div>
           <p className="text-xs text-cinza-medio">
-            Custo consumido = estoque inicial + compras recebidas no período − estoque final. CMV real =
-            custo consumido ÷ faturamento informado. Compras recebidas consideram a data em que o pedido
-            foi marcado como recebido em Pedidos Feitos.
+            Custo consumido = estoque inicial + compras do período − estoque final. CMV real = custo
+            consumido ÷ faturamento informado.
           </p>
         </>
       )}

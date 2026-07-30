@@ -51,29 +51,55 @@ export function valorComprasRecebidas(pedidos: Pedido[], dataInicial: string, da
 export type ResultadoCmv = {
   valorEstoqueInicial: number;
   valorEstoqueFinal: number;
+  /** Valor de compras calculado a partir dos pedidos marcados como recebidos
+   * no sistema - sempre exposto, mesmo quando `comprasManual` for usado no
+   * lugar, pra quem está calculando ver a diferença entre os dois. */
+  valorComprasCalculado: number;
+  /** Valor de compras efetivamente usado no cálculo: `comprasManual` quando
+   * informado, senão `valorComprasCalculado`. */
   valorCompras: number;
+  usouComprasManual: boolean;
   custoConsumido: number;
   faturamento: number;
   cmvPercentual: number | null;
 };
 
-/** CMV real do período = (estoque inicial + compras recebidas − estoque
+/** CMV real do período = (estoque inicial + compras do período − estoque
  * final) ÷ faturamento informado. Faturamento não existe no Zatti Hub hoje
  * (é sistema de estoque/compras, não de vendas) - por isso entra sempre por
- * input manual, não é buscado de nenhuma planilha/tabela. */
+ * input manual, não é buscado de nenhuma planilha/tabela.
+ *
+ * Compras: por padrão soma os pedidos marcados como recebidos no sistema
+ * (`valorComprasRecebidas`), mas isso só é confiável se o cliente lançou
+ * TODA compra do período em Pedidos Feitos. Quando `comprasManual` é
+ * informado, ele substitui o valor calculado - cobre o caso real de cliente
+ * que ainda compra fora do fluxo do Zatti Hub (fornecedor direto, feira,
+ * mercado) e sabe o total gasto de outra forma (nota fiscal, extrato). */
 export function calcularCmv(params: {
   itensInventario: ItemInventario[];
   pedidos: Pedido[];
   dataInicial: string;
   dataFinal: string;
   faturamento: number | null;
+  comprasManual?: number | null;
 }): ResultadoCmv {
   const valorEstoqueInicial = valorContagem(params.itensInventario, params.dataInicial);
   const valorEstoqueFinal = valorContagem(params.itensInventario, params.dataFinal);
-  const valorCompras = valorComprasRecebidas(params.pedidos, params.dataInicial, params.dataFinal);
+  const valorComprasCalculado = valorComprasRecebidas(params.pedidos, params.dataInicial, params.dataFinal);
+  const usouComprasManual = params.comprasManual !== null && params.comprasManual !== undefined;
+  const valorCompras = usouComprasManual ? (params.comprasManual as number) : valorComprasCalculado;
   const custoConsumido = valorEstoqueInicial + valorCompras - valorEstoqueFinal;
   const faturamento = params.faturamento ?? 0;
   const cmvPercentual = faturamento > 0 ? (custoConsumido / faturamento) * 100 : null;
 
-  return { valorEstoqueInicial, valorEstoqueFinal, valorCompras, custoConsumido, faturamento, cmvPercentual };
+  return {
+    valorEstoqueInicial,
+    valorEstoqueFinal,
+    valorComprasCalculado,
+    valorCompras,
+    usouComprasManual,
+    custoConsumido,
+    faturamento,
+    cmvPercentual,
+  };
 }
