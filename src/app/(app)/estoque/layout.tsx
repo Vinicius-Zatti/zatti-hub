@@ -20,7 +20,13 @@ export default async function EstoqueLayout({ children }: { children: React.Reac
   // é decidida pelo layout/página dela.
   const items =
     acesso.role === "operacional"
-      ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href))
+      ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)).map((item) =>
+          // Bare "/estoque/pedidos" é Criar Cotação, agora só Gestão/master
+          // (ver `estoque/pedidos/layout.tsx`) - Operacional que clicar em
+          // "Pedidos" cai direto em Pedidos Feitos, não numa tela que vai
+          // barrar ele.
+          item.href === "/estoque/pedidos" ? { ...item, href: "/estoque/pedidos/feitos" } : item
+        )
       : SUB_ITEMS;
 
   return (

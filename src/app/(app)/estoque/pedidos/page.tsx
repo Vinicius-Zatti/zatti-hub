@@ -4,7 +4,7 @@ import { getPedidoSalvo } from "@/lib/pedidos";
 import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { PedidoCompras } from "@/components/pedido-compras";
-import { getAcessoAtual } from "@/lib/acesso";
+import { requireGestao } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export default async function PedidosPage({
 }: {
   searchParams: Promise<{ data?: string; grupos?: string }>;
 }) {
-  const acesso = await getAcessoAtual();
+  const acesso = await requireGestao();
   const params = await searchParams;
   const grupos = params.grupos ? params.grupos.split(",").filter(Boolean) : [];
 
