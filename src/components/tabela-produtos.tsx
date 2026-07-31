@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { Produto } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
@@ -11,8 +12,38 @@ function formatMoeda(v: number | null): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+type Coluna = "grupo" | "nome";
+type Direcao = "asc" | "desc";
+
+function Seta({ ativa, direcao }: { ativa: boolean; direcao: Direcao }) {
+  if (!ativa) return null;
+  return <span className="ml-1">{direcao === "asc" ? "▲" : "▼"}</span>;
+}
+
 export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
   const { expandido, alternar } = useTabelaExpansivel();
+  const [coluna, setColuna] = useState<Coluna | null>(null);
+  const [direcao, setDirecao] = useState<Direcao>("asc");
+
+  function ordenarPor(c: Coluna) {
+    if (coluna === c) {
+      setDirecao((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setColuna(c);
+      setDirecao("asc");
+    }
+  }
+
+  const linhas = useMemo(() => {
+    if (!coluna) return produtos;
+    const sinal = direcao === "asc" ? 1 : -1;
+    return [...produtos].sort((a, b) => {
+      if (coluna === "grupo") {
+        return sinal * (a.grupo.localeCompare(b.grupo, "pt-BR") || a.nome.localeCompare(b.nome, "pt-BR"));
+      }
+      return sinal * a.nome.localeCompare(b.nome, "pt-BR");
+    });
+  }, [produtos, coluna, direcao]);
 
   return (
     <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
@@ -26,16 +57,27 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th>SKU</Th>
-              <Th>Grupo</Th>
-              <Th fixo>Nome</Th>
+              <Th>
+                <button type="button" onClick={() => ordenarPor("grupo")} className="cursor-pointer hover:underline">
+                  Grupo
+                  <Seta ativa={coluna === "grupo"} direcao={direcao} />
+                </button>
+              </Th>
+              <Th fixo>
+                <button type="button" onClick={() => ordenarPor("nome")} className="cursor-pointer hover:underline">
+                  Nome
+                  <Seta ativa={coluna === "nome"} direcao={direcao} />
+                </button>
+              </Th>
               <Th>Unidade</Th>
               <Th align="right">Preço</Th>
               <Th align="right">Estoque Pra Semana</Th>
+              <Th align="right">Estoque Mínimo</Th>
               <Th align="center">Status</Th>
             </tr>
           </thead>
           <tbody>
-            {produtos.map((p, i) => (
+            {linhas.map((p, i) => (
               <tr
                 key={p.sku}
                 className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}
@@ -54,6 +96,9 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
                 <td className="px-3 py-2 text-right tabular-nums">
                   {formatarQuantidade(p.estoqueNecessarioSemana, p.unidadeBase)}
                 </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {formatarQuantidade(p.estoqueMinimo, p.unidadeBase)}
+                </td>
                 <td className="px-3 py-2 text-center">
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -67,7 +112,7 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
             ))}
             {produtos.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={8} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum produto cadastrado ainda.
                 </td>
               </tr>
