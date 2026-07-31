@@ -91,12 +91,24 @@ export function PedidoCompras({
   // item antes de agrupar, então ele já cai no bloco certo.
   const [fornecedorOverrides, setFornecedorOverrides] = useState<Record<string, string>>({});
 
+  // Sem isso, um item marcado manualmente aqui (que nasceu "não precisa
+  // comprar") não cai em bloco de fornecedor nenhum - `agruparPorFornecedor`
+  // só bota em "Sem fornecedor cadastrado" quem tem `precisaComprar` true, e
+  // esse campo vem fixo do cálculo do servidor, não muda sozinho com o
+  // ajuste manual. Sem entrar num bloco, o item nunca é salvo por "Salvar
+  // tudo"/"Salvar" e some quando abre o Editor de Espelhos.
   const itensEfetivos = useMemo(
     () =>
-      itens.map((item) =>
-        fornecedorOverrides[item.sku] ? { ...item, fornecedores: [fornecedorOverrides[item.sku]] } : item
-      ),
-    [itens, fornecedorOverrides]
+      itens.map((item) => {
+        const fornecedorOverride = fornecedorOverrides[item.sku];
+        const quantidadeOverride = overrides[item.sku];
+        return {
+          ...item,
+          ...(fornecedorOverride ? { fornecedores: [fornecedorOverride] } : {}),
+          ...(quantidadeOverride !== undefined ? { precisaComprar: quantidadeOverride > 0 } : {}),
+        };
+      }),
+    [itens, fornecedorOverrides, overrides]
   );
 
   const porGrupo = useMemo(() => agruparPorGrupo(itensEfetivos), [itensEfetivos]);

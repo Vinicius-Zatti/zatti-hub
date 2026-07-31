@@ -147,6 +147,42 @@ export async function salvarPedido(params: {
   return salvo;
 }
 
+/** Todos os pedidos já salvos (de qualquer fornecedor) pra uma contagem base
+ * específica - usado pelo Editor de Espelhos pra garantir que um fornecedor
+ * com pedido salvo continue aparecendo mesmo se o recálculo fresco não
+ * indicar mais necessidade de compra pra nenhum item dele (ex: item sem
+ * fornecedor cadastrado que foi adicionado manualmente em Criar Cotação -
+ * sem isso, o pedido salvo fica invisível na tela, embora exista no banco). */
+export async function listPedidosPorContagemBase(unidadeId: string, dataContagemBase: string): Promise<Pedido[]> {
+  const supabase = await createClient();
+
+  const { data: pedidos } = await supabase
+    .from("pedidos")
+    .select("*")
+    .eq("unidade_id", unidadeId)
+    .eq("data_contagem_base", dataContagemBase);
+
+  const rows = (pedidos as PedidoRow[] | null) ?? [];
+  if (rows.length === 0) return [];
+
+  const { data: todosItens } = await supabase
+    .from("pedido_itens")
+    .select("*")
+    .in(
+      "pedido_id",
+      rows.map((r) => r.id)
+    );
+
+  const itensPorPedido = new Map<string, PedidoItemRow[]>();
+  for (const it of (todosItens as (PedidoItemRow & { pedido_id: string })[] | null) ?? []) {
+    const lista = itensPorPedido.get(it.pedido_id) ?? [];
+    lista.push(it);
+    itensPorPedido.set(it.pedido_id, lista);
+  }
+
+  return rows.map((row) => rowToPedido(row, itensPorPedido.get(row.id) ?? []));
+}
+
 /** Todos os pedidos já salvos de uma unidade, mais recente primeiro - base
  * da tela Pedidos Feitos. */
 export async function listPedidosFeitos(unidadeId: string): Promise<Pedido[]> {
