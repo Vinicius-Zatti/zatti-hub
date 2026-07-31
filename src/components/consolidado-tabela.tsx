@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ConsolidadoVenda } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { FiltroPeriodo, type PeriodoAplicado } from "@/components/filtro-periodo";
 
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -20,9 +21,9 @@ function dataHoraBR(iso: string): string {
 
 type FiltroStatus = "todos" | "conferido" | "divergente";
 
-/** Histórico de fechamentos diários, com filtro por período e status - mesmo
- * padrão de tabela de `visualizacao-contagens.tsx` (busca tudo uma vez do
- * servidor, filtra em memória no cliente). */
+/** Histórico de fechamentos diários, com filtro por período (De/Até ou
+ * atalho de período corrente, só filtra ao clicar "Aplicar") e status (esse
+ * sim já filtra na hora). */
 export function ConsolidadoTabela({
   lancamentos,
   podeEditar,
@@ -33,21 +34,21 @@ export function ConsolidadoTabela({
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusInicial = searchParams.get("status");
-  const [de, setDe] = useState("");
-  const [ate, setAte] = useState("");
+  const [periodo, setPeriodo] = useState<PeriodoAplicado>({ de: "", ate: "" });
   const [status, setStatus] = useState<FiltroStatus>(
     statusInicial === "conferido" || statusInicial === "divergente" ? statusInicial : "todos"
   );
 
   const filtrados = useMemo(() => {
     return lancamentos
-      .filter((l) => !de || l.data >= de)
-      .filter((l) => !ate || l.data <= ate)
+      .filter((l) => !periodo.de || l.data >= periodo.de)
+      .filter((l) => !periodo.ate || l.data <= periodo.ate)
       .filter((l) => status === "todos" || l.status === status)
       .sort((a, b) => (a.data < b.data ? 1 : -1));
-  }, [lancamentos, de, ate, status]);
+  }, [lancamentos, periodo, status]);
 
   const divergentesNoFiltro = filtrados.filter((l) => l.status === "divergente").length;
+  const totalColunas = podeEditar ? 10 : 9;
 
   return (
     <div className="flex flex-col gap-4 pb-10">
@@ -56,25 +57,9 @@ export function ConsolidadoTabela({
         <p className="text-sm text-cinza-medio">Histórico dos fechamentos diários já registrados.</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-          De
-          <input
-            type="date"
-            value={de}
-            onChange={(e) => setDe(e.target.value)}
-            className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm focus:border-ambar focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-          Até
-          <input
-            type="date"
-            value={ate}
-            onChange={(e) => setAte(e.target.value)}
-            className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm focus:border-ambar focus:outline-none"
-          />
-        </label>
+      <FiltroPeriodo lancamentos={lancamentos} onAplicar={setPeriodo} />
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
         <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
           Status
           <select
@@ -98,7 +83,7 @@ export function ConsolidadoTabela({
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1020px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th>Data</Th>
@@ -108,49 +93,47 @@ export function ConsolidadoTabela({
               <Th align="right">Total canais</Th>
               <Th align="right">Diferença</Th>
               <Th>Status</Th>
+              {podeEditar && <Th align="center">Edição</Th>}
               <Th>Responsável</Th>
               <Th>Última atualização</Th>
             </tr>
           </thead>
           <tbody>
-            {filtrados.map((l, i) => {
-              const linhaClasse = `border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""} ${
-                podeEditar ? "cursor-pointer hover:bg-ambar/5" : ""
-              }`;
-
-              return (
-                <tr
-                  key={l.id}
-                  className={linhaClasse}
-                  onClick={podeEditar ? () => router.push(`/financeiro/consolidado/${l.id}/editar`) : undefined}
-                >
-                  <td className="px-3 py-2 whitespace-nowrap font-medium text-cinza">{dataBR(l.data)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalFormasPagamento)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(l.salao)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(l.deliveryProprio)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalCanais)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {l.diferenca > 0 ? brl(l.diferenca) : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        l.status === "divergente" ? "bg-vermelho/10 text-vermelho" : "bg-verde/10 text-verde"
-                      }`}
+            {filtrados.map((l, i) => (
+              <tr key={l.id} className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}>
+                <td className="px-3 py-2 whitespace-nowrap font-medium text-cinza">{dataBR(l.data)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalFormasPagamento)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.salao)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.deliveryProprio)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalCanais)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{l.diferenca > 0 ? brl(l.diferenca) : "—"}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      l.status === "divergente" ? "bg-vermelho/10 text-vermelho" : "bg-verde/10 text-verde"
+                    }`}
+                  >
+                    {l.status === "divergente" ? "Com divergência" : "Conferido"}
+                  </span>
+                </td>
+                {podeEditar && (
+                  <td className="px-3 py-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/financeiro/consolidado/${l.id}/editar`)}
+                      className="cursor-pointer rounded bg-azul-noite px-2.5 py-1 text-[10px] font-bold text-branco hover:bg-azul-petroleo"
                     >
-                      {l.status === "divergente" ? "Com divergência" : "Conferido"}
-                    </span>
+                      Editar
+                    </button>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{l.atualizadoPorNome ?? l.criadoPorNome}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs text-cinza-medio">
-                    {dataHoraBR(l.atualizadoEm)}
-                  </td>
-                </tr>
-              );
-            })}
+                )}
+                <td className="px-3 py-2 whitespace-nowrap">{l.atualizadoPorNome ?? l.criadoPorNome}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs text-cinza-medio">{dataHoraBR(l.atualizadoEm)}</td>
+              </tr>
+            ))}
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={totalColunas} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum lançamento com esse filtro.
                 </td>
               </tr>

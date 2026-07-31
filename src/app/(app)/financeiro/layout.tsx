@@ -3,8 +3,8 @@ import { SubTabs } from "@/components/sub-tabs";
 import { getAcessoAtual } from "@/lib/acesso";
 
 const SUB_ITEMS = [
-  { label: "Histórico", href: "/financeiro/consolidado" },
   { label: "Novo Lançamento", href: "/financeiro/consolidado/novo" },
+  { label: "Histórico", href: "/financeiro/consolidado" },
   { label: "Dashboard", href: "/financeiro/consolidado/dashboard" },
 ];
 

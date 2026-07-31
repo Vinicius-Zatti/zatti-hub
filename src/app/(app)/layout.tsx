@@ -17,7 +17,7 @@ export default async function AppLayout({
   // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
   const NAV_ITEMS = [
     { label: "Estoque", href: "/estoque/produtos", disabled: false },
-    { label: "Financeiro", href: "/financeiro/consolidado", disabled: !acesso.consolidadoVendasHabilitado },
+    { label: "Financeiro", href: "/financeiro/consolidado/novo", disabled: !acesso.consolidadoVendasHabilitado },
     { label: "Fichas Técnicas", href: "#", disabled: true },
     { label: "Tarefas", href: "#", disabled: true },
     { label: "Marketing", href: "#", disabled: true },
