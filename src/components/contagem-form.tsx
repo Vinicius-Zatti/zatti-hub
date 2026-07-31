@@ -59,14 +59,24 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
     .filter((p) => p.ativo)
     .filter((p) => grupos.length === 0 || grupos.includes(p.grupo))
     .sort((a, b) => {
+      // Posição é a ordem física de caminhada da contagem - cruza grupo (um
+      // item de Hortifrúti que fisicamente fica entre dois de Congelados
+      // aparece entre eles, não puxado pra uma seção à parte). Só cai pro
+      // agrupamento por grupo quando nenhum dos dois tem posição definida
+      // ainda (produto novo, por exemplo).
+      if (a.posicao !== null && b.posicao !== null) return a.posicao - b.posicao;
+      if (a.posicao !== null) return -1;
+      if (b.posicao !== null) return 1;
       const gA = GRUPO_ORDEM.indexOf(a.grupo);
       const gB = GRUPO_ORDEM.indexOf(b.grupo);
       if (gA !== gB) return (gA === -1 ? 999 : gA) - (gB === -1 ? 999 : gB);
-      return (a.posicao ?? Infinity) - (b.posicao ?? Infinity);
+      return a.nome.localeCompare(b.nome, "pt-BR");
     });
+  const comPosicao = ativos.filter((p) => p.posicao !== null);
+  const semPosicao = ativos.filter((p) => p.posicao === null);
   const gruposPresentes = [
-    ...GRUPO_ORDEM.filter((g) => ativos.some((p) => p.grupo === g)),
-    ...Array.from(new Set(ativos.map((p) => p.grupo))).filter((g) => !GRUPO_ORDEM.includes(g)),
+    ...GRUPO_ORDEM.filter((g) => semPosicao.some((p) => p.grupo === g)),
+    ...Array.from(new Set(semPosicao.map((p) => p.grupo))).filter((g) => !GRUPO_ORDEM.includes(g)),
   ];
   const todos = [...ativos, ...customItens];
   const totalItens = todos.length;
@@ -365,13 +375,46 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
       </div>
 
       <div className="mt-2 flex flex-col gap-4">
+        {comPosicao.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
+            <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
+              <span>Ordem de contagem</span>
+              <span className="font-normal text-cinza-claro">
+                {comPosicao.length} {comPosicao.length === 1 ? "item" : "itens"}
+              </span>
+            </div>
+            <div className="divide-y divide-cinza-claro">
+              {comPosicao.map((p) => (
+                <ItemRow
+                  key={p.sku}
+                  sku={p.sku}
+                  nome={p.nome}
+                  unidadeBase={p.unidadeBase}
+                  precoUnitario={p.precoUnitario}
+                  valor={valores[p.sku] ?? ""}
+                  confirmado={confirmados[p.sku]}
+                  onChangeValor={(v) => setValores((s) => ({ ...s, [p.sku]: v }))}
+                  onConfirmar={() => confirmarItem(p.sku)}
+                  onEditar={() => editarItem(p.sku)}
+                  registerRef={(el) => {
+                    if (el) inputRefs.current.set(p.sku, el);
+                    else inputRefs.current.delete(p.sku);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {gruposPresentes.map((g) => {
-          const itens = ativos.filter((p) => p.grupo === g);
+          const itens = semPosicao.filter((p) => p.grupo === g);
           if (itens.length === 0) return null;
           return (
             <div key={g} className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
               <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
-                <span>{nomeGrupo(g)}</span>
+                <span>
+                  {nomeGrupo(g)} <span className="font-normal normal-case opacity-70">(sem posição)</span>
+                </span>
                 <span className="font-normal text-cinza-claro">
                   {itens.length} {itens.length === 1 ? "item" : "itens"}
                 </span>
