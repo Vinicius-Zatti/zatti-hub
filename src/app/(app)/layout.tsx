@@ -6,20 +6,22 @@ import { OrgSwitcher } from "@/components/org-switcher";
 import { getAcessoAtual } from "@/lib/acesso";
 import { signOutAction } from "@/lib/supabase/actions";
 
-const NAV_ITEMS = [
-  { label: "Estoque", href: "/estoque/produtos", disabled: false },
-  { label: "Financeiro", href: "#", disabled: true },
-  { label: "Fichas Técnicas", href: "#", disabled: true },
-  { label: "Tarefas", href: "#", disabled: true },
-  { label: "Marketing", href: "#", disabled: true },
-];
-
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const acesso = await getAcessoAtual();
+
+  // Financeiro só sai de "em breve" pra unidade com a flag ligada
+  // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
+  const NAV_ITEMS = [
+    { label: "Estoque", href: "/estoque/produtos", disabled: false },
+    { label: "Financeiro", href: "/financeiro/consolidado", disabled: !acesso.consolidadoVendasHabilitado },
+    { label: "Fichas Técnicas", href: "#", disabled: true },
+    { label: "Tarefas", href: "#", disabled: true },
+    { label: "Marketing", href: "#", disabled: true },
+  ];
 
   return (
     <GuardaContagemProvider>

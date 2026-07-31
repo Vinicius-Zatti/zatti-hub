@@ -233,3 +233,91 @@ create policy "pedido_itens_delete_por_vinculo" on pedido_itens
       where p.id = pedido_itens.pedido_id
     )
   );
+
+-- Consolidado de Vendas (fechamento diário) - substitui a planilha solta que a
+-- Ana usava pra somar formas de pagamento contra canal de venda. Liberado por
+-- unidade via `unidades.consolidado_vendas_habilitado` (edição direta no
+-- Supabase, mesma convenção de `spreadsheet_id`/`ativo` - sem tela de admin).
+alter table unidades add column if not exists consolidado_vendas_habilitado boolean not null default false;
+
+-- Totais/diferença/status nunca são geradas pelo Postgres: a Server Action
+-- sempre recalcula os três a partir dos 7 valores brutos antes de gravar
+-- (criar e editar), pra nunca confiar em total calculado no navegador - mesmo
+-- princípio de `ItemInventario.total`/`alerta` na camada de Sheets.
+create table if not exists consolidados_vendas (
+  id uuid primary key default gen_random_uuid(),
+  unidade_id text not null references unidades(id),
+  data date not null,
+  credito numeric(10,2) not null default 0,
+  debito numeric(10,2) not null default 0,
+  pix numeric(10,2) not null default 0,
+  dinheiro numeric(10,2) not null default 0,
+  vale_alimentacao numeric(10,2) not null default 0,
+  salao numeric(10,2) not null default 0,
+  delivery_proprio numeric(10,2) not null default 0,
+  total_formas_pagamento numeric(10,2) not null,
+  total_canais numeric(10,2) not null,
+  diferenca numeric(10,2) not null,
+  status text not null check (status in ('conferido', 'divergente')),
+  criado_por uuid not null references auth.users(id),
+  criado_em timestamptz not null default now(),
+  atualizado_por uuid references auth.users(id),
+  atualizado_em timestamptz not null default now(),
+  unique (unidade_id, data)
+);
+
+alter table consolidados_vendas enable row level security;
+
+-- Select/insert/update liberados pra qualquer vínculo ativo que alcance a
+-- unidade (Gestão, Operacional ou master) - o recorte fino de quem pode
+-- editar depois de salvo (só Gestão/master) é decidido na Server Action
+-- (`requireGestao()`), não aqui - mesmo padrão de `pedidos`/`pedido_itens`.
+create policy "consolidados_vendas_select_por_vinculo" on consolidados_vendas
+  for select using (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = consolidados_vendas.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+create policy "consolidados_vendas_insert_por_vinculo" on consolidados_vendas
+  for insert with check (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = consolidados_vendas.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+create policy "consolidados_vendas_update_por_vinculo" on consolidados_vendas
+  for update using (
+    exists (
+      select 1 from vinculos v
+      join unidades u on u.id = consolidados_vendas.unidade_id
+      where v.user_id = auth.uid() and v.status = 'ativo'
+        and (v.role = 'master' or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id)))
+    )
+  );
+
+-- Perfis: além do próprio (policy original acima), também enxerga o nome de
+-- quem tem vínculo ativo na mesma organização/unidade, ou é master - precisa
+-- disso pra mostrar "Responsável" no Histórico do Consolidado de Vendas sem
+-- expor nome de gente de cliente nenhum fora do alcance de quem está vendo.
+create policy "perfis_select_mesma_unidade" on perfis
+  for select using (
+    exists (
+      select 1 from vinculos v1
+      join vinculos v2 on v2.user_id = perfis.id and v2.status = 'ativo'
+      where v1.user_id = auth.uid() and v1.status = 'ativo'
+        and (
+          v1.role = 'master'
+          or (
+            v1.organizacao_id = v2.organizacao_id
+            and (v1.unidade_id is null or v2.unidade_id is null or v1.unidade_id = v2.unidade_id)
+          )
+        )
+    )
+  );

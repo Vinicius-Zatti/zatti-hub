@@ -19,6 +19,10 @@ export type AcessoAtual = {
   unidadeId: string;
   unidadeNome: string;
   spreadsheetId: string;
+  /** Liga o menu Financeiro > Consolidado de Vendas pra essa unidade -
+   * configurável por cliente, editado direto no Supabase (sem tela de
+   * admin), mesma convenção de `spreadsheet_id`/`ativo`. */
+  consolidadoVendasHabilitado: boolean;
   role: Role;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
@@ -40,6 +44,7 @@ type UnidadeRow = {
   id: string;
   nome: string;
   spreadsheet_id: string | null;
+  consolidado_vendas_habilitado: boolean;
 };
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
@@ -131,13 +136,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id")
+        .select("id, nome, spreadsheet_id, consolidado_vendas_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id")
+        .select("id, nome, spreadsheet_id, consolidado_vendas_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -156,6 +161,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     unidadeId: unidade.id,
     unidadeNome: unidade.nome,
     spreadsheetId: unidade.spreadsheet_id,
+    consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
     role,
     organizacoesDisponiveis,
   };

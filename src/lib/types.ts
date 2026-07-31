@@ -117,3 +117,26 @@ export type Pedido = {
   atualizadoEm: string;
   itens: PedidoItem[];
 };
+
+/** Fechamento diário de vendas (Financeiro > Consolidado de Vendas) - só
+ * existe em Postgres, sem camada de Sheets por baixo (dado 100% novo, sem
+ * planilha legada pra manter compatível). */
+export type ConsolidadoVenda = {
+  id: string;
+  data: string;
+  credito: number;
+  debito: number;
+  pix: number;
+  dinheiro: number;
+  valeAlimentacao: number;
+  salao: number;
+  deliveryProprio: number;
+  totalFormasPagamento: number;
+  totalCanais: number;
+  diferenca: number;
+  status: "conferido" | "divergente";
+  criadoPorNome: string;
+  criadoEm: string;
+  atualizadoPorNome: string | null;
+  atualizadoEm: string;
+};
