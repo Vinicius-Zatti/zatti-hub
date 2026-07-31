@@ -47,7 +47,10 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
   const divergentes = dados.filter((l) => l.status === "divergente").length;
 
   const evolucao = useMemo(
-    () => [...dados].sort((a, b) => (a.data < b.data ? -1 : 1)).map((l) => ({ data: l.data, valor: l.totalFormasPagamento })),
+    () =>
+      [...dados]
+        .sort((a, b) => (a.data < b.data ? -1 : 1))
+        .map((l) => ({ data: l.data, total: l.totalFormasPagamento, salao: l.salao, delivery: l.deliveryProprio })),
     [dados]
   );
 
@@ -213,30 +216,108 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
   );
 }
 
-function GraficoLinha({ pontos }: { pontos: { data: string; valor: number }[] }) {
+function tooltip(serie: string, data: string, valor: number): string {
+  const abrev = DIA_ABREV_MIN[new Date(`${data}T00:00:00`).getDay()];
+  return `${serie}; ${abrev}; ${dataBR(data)}; ${brl(valor)}`;
+}
+
+/** 3 linhas (Total das formas de pagamento, Salão, Delivery próprio) - cor
+ * repete a mesma associação do bloco "Salão x Delivery" (azul-noite = Salão,
+ * âmbar = Delivery), com azul-petróleo sobrando pro Total. Salão ganha
+ * traço tracejado: o validador da skill `dataviz` aponta azul-noite e
+ * azul-petróleo como próximos demais pra distinguir só pela cor (ΔE 10.7,
+ * abaixo do piso de 15 mesmo pra visão normal) - tracejado é a
+ * "codificação secundária" que o método pede nesse caso, já que a paleta
+ * fica presa às 3 cores do manual de marca. Eixo de baixo marca a data de
+ * cada segunda-feira, pra dar pra ver onde cada semana começa. */
+function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao: number; delivery: number }[] }) {
   if (pontos.length === 0) return <p className="text-sm text-cinza-medio">Sem lançamentos no período.</p>;
 
   const W = 600;
-  const H = 160;
-  const PAD = 20;
-  const max = Math.max(1, ...pontos.map((p) => p.valor));
-  const step = pontos.length > 1 ? (W - PAD * 2) / (pontos.length - 1) : 0;
-  const coords = pontos.map((p, i) => ({
-    x: PAD + i * step,
-    y: H - PAD - (p.valor / max) * (H - PAD * 2),
-    ...p,
-  }));
-  const linha = coords.map((c) => `${c.x},${c.y}`).join(" ");
+  const H = 190;
+  const PAD_ESQ = 20;
+  const PAD_DIR = 20;
+  const PAD_TOPO = 10;
+  const PAD_BASE = 34;
+  const alturaUtil = H - PAD_TOPO - PAD_BASE;
+  const max = Math.max(1, ...pontos.flatMap((p) => [p.total, p.salao, p.delivery]));
+  const step = pontos.length > 1 ? (W - PAD_ESQ - PAD_DIR) / (pontos.length - 1) : 0;
+
+  function y(v: number): number {
+    return PAD_TOPO + alturaUtil - (v / max) * alturaUtil;
+  }
+
+  const coords = pontos.map((p, i) => ({ x: PAD_ESQ + i * step, ...p }));
+  const segundas = coords.filter((c) => new Date(`${c.data}T00:00:00`).getDay() === 1);
+  const linhaTotal = coords.map((c) => `${c.x},${y(c.total)}`).join(" ");
+  const linhaSalao = coords.map((c) => `${c.x},${y(c.salao)}`).join(" ");
+  const linhaDelivery = coords.map((c) => `${c.x},${y(c.delivery)}`).join(" ");
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-40 w-full" preserveAspectRatio="none">
-      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} className="stroke-cinza-claro" strokeWidth={1} />
-      <polyline points={linha} fill="none" className="stroke-azul-petroleo" strokeWidth={2} />
-      {coords.map((c) => (
-        <circle key={c.data} cx={c.x} cy={c.y} r={3} className="fill-azul-petroleo">
-          <title>{`${DIA_ABREV_MIN[new Date(`${c.data}T00:00:00`).getDay()]}; ${dataBR(c.data)}; ${brl(c.valor)}`}</title>
-        </circle>
-      ))}
-    </svg>
+    <div className="flex flex-col gap-2">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-48 w-full" preserveAspectRatio="none">
+        <line
+          x1={PAD_ESQ}
+          y1={PAD_TOPO + alturaUtil}
+          x2={W - PAD_DIR}
+          y2={PAD_TOPO + alturaUtil}
+          className="stroke-cinza-claro"
+          strokeWidth={1}
+        />
+        {segundas.map((c) => (
+          <line
+            key={`marca-${c.data}`}
+            x1={c.x}
+            y1={PAD_TOPO}
+            x2={c.x}
+            y2={PAD_TOPO + alturaUtil}
+            className="stroke-cinza-claro"
+            strokeWidth={1}
+            strokeDasharray="2,2"
+          />
+        ))}
+
+        <polyline points={linhaSalao} fill="none" className="stroke-azul-noite" strokeWidth={2} strokeDasharray="6,3" />
+        <polyline points={linhaDelivery} fill="none" className="stroke-ambar" strokeWidth={2} />
+        <polyline points={linhaTotal} fill="none" className="stroke-azul-petroleo" strokeWidth={2.5} />
+
+        {coords.map((c) => (
+          <g key={c.data}>
+            <circle cx={c.x} cy={y(c.salao)} r={2.5} className="fill-azul-noite">
+              <title>{tooltip("Salão", c.data, c.salao)}</title>
+            </circle>
+            <circle cx={c.x} cy={y(c.delivery)} r={2.5} className="fill-ambar">
+              <title>{tooltip("Delivery próprio", c.data, c.delivery)}</title>
+            </circle>
+            <circle cx={c.x} cy={y(c.total)} r={3} className="fill-azul-petroleo">
+              <title>{tooltip("Total formas de pagamento", c.data, c.total)}</title>
+            </circle>
+          </g>
+        ))}
+
+        {segundas.map((c) => (
+          <text
+            key={`data-${c.data}`}
+            x={c.x}
+            y={H - 8}
+            textAnchor="middle"
+            className="fill-cinza-medio text-[9px] font-semibold"
+          >
+            {dataBR(c.data)}
+          </text>
+        ))}
+      </svg>
+      <div className="flex flex-wrap gap-4 text-xs text-cinza">
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 bg-azul-petroleo" /> Total formas de pagamento
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0 w-4 border-t-2 border-dashed border-azul-noite" /> Salão
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 bg-ambar" /> Delivery próprio
+        </span>
+      </div>
+    </div>
   );
 }
