@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { Fornecedor, SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
-import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos } from "@/lib/pedido";
+import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos, SEM_FORNECEDOR } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
-import { salvarPedidoAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
-import { useGuardaEdicao } from "@/components/guarda-edicao";
+import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -23,8 +22,7 @@ export function PedidoCompras({
   gruposContadosNoDia,
   organizacaoNome,
   pedidoMinimoPorFornecedor,
-  previsaoEntregaPorFornecedor,
-  podeSalvar,
+  podeEditar,
   fornecedoresCadastro,
   quantidadesSalvas,
 }: {
@@ -35,8 +33,7 @@ export function PedidoCompras({
   gruposContadosNoDia: string[];
   organizacaoNome: string;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
-  previsaoEntregaPorFornecedor: Record<string, string | null>;
-  podeSalvar: boolean;
+  podeEditar: boolean;
   fornecedoresCadastro: Fornecedor[];
   quantidadesSalvas: Record<string, number>;
 }) {
@@ -58,36 +55,68 @@ export function PedidoCompras({
     atualizarUrl(dataUsada, novos);
   }
 
-  // Correção manual da quantidade sugerida - só ajusta a tela/cotação, não
-  // grava em lugar nenhum (a não ser clicando Salvar). Compartilhada entre a
-  // tabela de conferência por Grupo e os blocos por Fornecedor: o mesmo SKU
-  // pode aparecer nas duas. Começa pré-carregada com o que já foi salvo pra
-  // essa contagem base - sem isso, toda vez que a página recarrega ela volta
-  // a mostrar a sugestão crua calculada em cima do estoque, mesmo que o
-  // Salvar tenha funcionado certinho (o valor combinado com o fornecedor
-  // "sumia" da tela, só reaparecia no Editor de Espelhos).
+  // Correção manual da quantidade sugerida - compartilhada entre a tabela de
+  // conferência por Grupo e os blocos por Fornecedor: o mesmo SKU pode
+  // aparecer nas duas. Começa pré-carregada com o que já foi confirmado pra
+  // essa contagem base (sem isso, toda vez que a página recarrega ela volta
+  // a mostrar a sugestão crua calculada em cima do estoque).
   const [overrides, setOverrides] = useState<Record<string, number>>(() => ({ ...quantidadesSalvas }));
   const [editando, setEditando] = useState<Record<string, string>>({});
-  const [naoSalvo, setNaoSalvo] = useState(false);
+  const [confirmando, setConfirmando] = useState<Record<string, boolean>>({});
+  const [erroConfirmar, setErroConfirmar] = useState<Record<string, string>>({});
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
+  }
+
+  // Confirmar já grava na hora - não existe mais botão Salvar/Salvar tudo.
+  // Um item pode ser vendido por mais de um fornecedor (Fornecedor 1-4 do
+  // Cadastro); a quantidade confirmada vale igual pra todos eles, então
+  // grava em cada um. Item sem fornecedor cadastrado nenhum entra no bloco
+  // avulso "Sem fornecedor cadastrado" (mesmo comportamento de sempre).
+  async function confirmarValor(item: SugestaoCompra, valorBase: number) {
+    setOverrides((o) => ({ ...o, [item.sku]: valorBase }));
+    if (!podeEditar) return;
+
+    setConfirmando((c) => ({ ...c, [item.sku]: true }));
+    setErroConfirmar((e) => ({ ...e, [item.sku]: "" }));
+
+    const fornecedoresDoItem = item.fornecedores.length ? item.fornecedores : valorBase > 0 ? [SEM_FORNECEDOR] : [];
+    const resultados = await Promise.all(
+      fornecedoresDoItem.map((fornecedor) =>
+        confirmarItemAction({
+          fornecedor,
+          dataContagemBase: dataUsada,
+          item: {
+            sku: item.sku,
+            nome: item.nome,
+            nomeCompra: item.nomeCompra,
+            unidadeBase: item.unidadeBase,
+            quantidadePedida: valorBase,
+            precoAntigo: item.precoUnitario,
+            precoAtualizado: item.precoUnitario,
+          },
+        })
+      )
+    );
+    setConfirmando((c) => ({ ...c, [item.sku]: false }));
+    const comErro = resultados.find((r) => "erro" in r);
+    setErroConfirmar((e) => ({ ...e, [item.sku]: comErro && "erro" in comErro ? comErro.erro : "" }));
   }
 
   function iniciarEdicao(item: SugestaoCompra) {
     setEditando((e) => ({ ...e, [item.sku]: textoEdicaoQuantidade(valorAtual(item), item.unidadeBase) }));
   }
 
-  function confirmarEdicao(sku: string) {
-    const raw = (editando[sku] ?? "").trim().replace(",", ".");
+  function confirmarEdicaoGrupo(item: SugestaoCompra) {
+    const raw = (editando[item.sku] ?? "").trim().replace(",", ".");
     const num = Number(raw);
     if (raw !== "" && !Number.isNaN(num) && num >= 0) {
-      setOverrides((o) => ({ ...o, [sku]: num }));
-      setNaoSalvo(true);
+      confirmarValor(item, num);
     }
     setEditando((e) => {
       const novo = { ...e };
-      delete novo[sku];
+      delete novo[item.sku];
       return novo;
     });
   }
@@ -98,12 +127,6 @@ export function PedidoCompras({
   // item antes de agrupar, então ele já cai no bloco certo.
   const [fornecedorOverrides, setFornecedorOverrides] = useState<Record<string, string>>({});
 
-  // Sem isso, um item marcado manualmente aqui (que nasceu "não precisa
-  // comprar") não cai em bloco de fornecedor nenhum - `agruparPorFornecedor`
-  // só bota em "Sem fornecedor cadastrado" quem tem `precisaComprar` true, e
-  // esse campo vem fixo do cálculo do servidor, não muda sozinho com o
-  // ajuste manual. Sem entrar num bloco, o item nunca é salvo por "Salvar
-  // tudo"/"Salvar" e some quando abre o Editor de Espelhos.
   const itensEfetivos = useMemo(
     () =>
       itens.map((item) => {
@@ -124,61 +147,6 @@ export function PedidoCompras({
   const porFornecedor = useMemo(() => agruparPorFornecedor(itensEfetivos), [itensEfetivos]);
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
-  // Salva a cotação de um fornecedor no mesmo Pedido que o Editor de
-  // Espelhos usa (por unidade + fornecedor + contagem base) - reaproveita a
-  // mesma Server Action, é a mesma tabela. "Salvar tudo" (na Conferência
-  // por Grupo) chama isso pra cada fornecedor de uma vez, senão salvar só
-  // o grupo visível sobrescreveria o resto do pedido daquele fornecedor
-  // (o save reescreve os itens inteiros do fornecedor, não só um recorte).
-  const [salvandoFornecedor, setSalvandoFornecedor] = useState<Record<string, boolean>>({});
-  const [statusFornecedor, setStatusFornecedor] = useState<Record<string, string>>({});
-  const [salvandoTudo, setSalvandoTudo] = useState(false);
-
-  async function salvarFornecedor(fornecedor: string): Promise<boolean> {
-    const itensDoFornecedor = (porFornecedor[fornecedor] ?? []).filter((item) => valorAtual(item) > 0);
-    setSalvandoFornecedor((s) => ({ ...s, [fornecedor]: true }));
-    const resultado = await salvarPedidoAction({
-      fornecedor,
-      dataContagemBase: dataUsada,
-      previsaoEntrega: previsaoEntregaPorFornecedor[fornecedor] ?? null,
-      itens: itensDoFornecedor.map((item) => ({
-        sku: item.sku,
-        nome: item.nome,
-        nomeCompra: item.nomeCompra,
-        unidadeBase: item.unidadeBase,
-        quantidadePedida: valorAtual(item),
-        precoAntigo: item.precoUnitario,
-        precoAtualizado: item.precoUnitario,
-      })),
-    });
-    setSalvandoFornecedor((s) => ({ ...s, [fornecedor]: false }));
-    const ok = !("erro" in resultado);
-    if (ok) setNaoSalvo(false);
-    setStatusFornecedor((s) => ({
-      ...s,
-      [fornecedor]: "erro" in resultado ? resultado.erro : "Salvo - já aparece no Editor de Espelhos.",
-    }));
-    setTimeout(() => setStatusFornecedor((s) => ({ ...s, [fornecedor]: "" })), 5000);
-    return ok;
-  }
-
-  async function salvarTudo() {
-    setSalvandoTudo(true);
-    await Promise.all(fornecedores.map((f) => salvarFornecedor(f)));
-    setSalvandoTudo(false);
-    setNaoSalvo(false);
-  }
-
-  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
-  useEffect(() => {
-    if (podeSalvar && naoSalvo) {
-      ativarGuarda("Você ajustou quantidades da cotação que ainda não foram salvas. Se sair agora, esses ajustes se perdem.");
-    } else {
-      desativarGuarda();
-    }
-  }, [podeSalvar, naoSalvo, ativarGuarda, desativarGuarda]);
-  useEffect(() => () => desativarGuarda(), [desativarGuarda]);
-
   const totalGeral = itens.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
     return soma + valorAtual(item) * item.precoUnitario;
@@ -190,7 +158,8 @@ export function PedidoCompras({
         <h1 className="font-display text-3xl font-bold text-azul-noite">Criar Cotação</h1>
         <p className="text-sm text-cinza-medio">
           Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
-          não precisa comprar. Depois, compartilha a cotação de cada fornecedor lá embaixo.
+          não precisa comprar. Confirmar já grava na hora. Depois, compartilha a cotação de cada
+          fornecedor lá embaixo.
         </p>
       </div>
 
@@ -265,20 +234,7 @@ export function PedidoCompras({
 
       {itens.length > 0 && (
         <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-xl font-bold text-azul-noite">Conferência por Grupo</h2>
-            {podeSalvar && (
-              <button
-                type="button"
-                onClick={salvarTudo}
-                disabled={salvandoTudo}
-                title="Salva a cotação de todos os fornecedores de uma vez"
-                className="shrink-0 rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-xs font-bold text-azul-noite hover:bg-off-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {salvandoTudo ? "Salvando tudo..." : "Salvar tudo"}
-              </button>
-            )}
-          </div>
+          <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">Conferência por Grupo</h2>
           <p className="mb-3 rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
             Antes de enviar as cotações para os fornecedores, lembre-se de fazer a conferência - e
             edite na coluna Comprar se for necessário.
@@ -291,8 +247,11 @@ export function PedidoCompras({
                 linhas={porGrupo[grupo]}
                 valorAtual={valorAtual}
                 editando={editando}
+                confirmando={confirmando}
+                erroConfirmar={erroConfirmar}
+                podeEditar={podeEditar}
                 onIniciarEdicao={iniciarEdicao}
-                onConfirmarEdicao={confirmarEdicao}
+                onConfirmarEdicao={confirmarEdicaoGrupo}
                 onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
               />
             ))}
@@ -314,14 +273,8 @@ export function PedidoCompras({
                 pedidoMinimo={pedidoMinimoPorFornecedor[fornecedor] ?? null}
                 legenda={legenda}
                 valorAtual={valorAtual}
-                onConfirmarValor={(sku, valor) => {
-                  setOverrides((o) => ({ ...o, [sku]: valor }));
-                  setNaoSalvo(true);
-                }}
-                podeSalvar={podeSalvar}
-                salvando={salvandoFornecedor[fornecedor] ?? false}
-                statusSalvar={statusFornecedor[fornecedor] ?? ""}
-                onSalvar={() => salvarFornecedor(fornecedor)}
+                onConfirmarValor={confirmarValor}
+                podeEditar={podeEditar}
                 fornecedoresCadastro={fornecedoresCadastro}
                 onFornecedorAtribuido={(sku, nome) =>
                   setFornecedorOverrides((f) => ({ ...f, [sku]: nome }))
@@ -340,6 +293,9 @@ function TabelaItens({
   linhas,
   valorAtual,
   editando,
+  confirmando,
+  erroConfirmar,
+  podeEditar,
   onIniciarEdicao,
   onConfirmarEdicao,
   onChangeEditando,
@@ -348,8 +304,11 @@ function TabelaItens({
   linhas: SugestaoCompra[];
   valorAtual: (item: SugestaoCompra) => number;
   editando: Record<string, string>;
+  confirmando: Record<string, boolean>;
+  erroConfirmar: Record<string, string>;
+  podeEditar: boolean;
   onIniciarEdicao: (item: SugestaoCompra) => void;
-  onConfirmarEdicao: (sku: string) => void;
+  onConfirmarEdicao: (item: SugestaoCompra) => void;
   onChangeEditando: (sku: string, valor: string) => void;
 }) {
   const subtotal = linhas.reduce((soma, item) => {
@@ -407,35 +366,44 @@ function TabelaItens({
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              onConfirmarEdicao(item.sku);
+                              onConfirmarEdicao(item);
                             }
                           }}
                           className="w-16 rounded border border-ambar px-1.5 py-1 text-right focus:outline-none"
                         />
                         <button
                           type="button"
-                          onClick={() => onConfirmarEdicao(item.sku)}
+                          onClick={() => onConfirmarEdicao(item)}
                           className="rounded bg-ambar px-2 py-1 text-[10px] font-bold text-azul-noite hover:bg-[#b07720]"
                         >
                           Confirmar
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-end gap-1.5">
-                        {precisa ? (
-                          <span className="font-bold tabular-nums text-ambar">
-                            {formatarQuantidade(qtd, item.unidadeBase)} {item.unidadeBase}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-cinza-medio">não precisa comprar</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {confirmando[item.sku] ? (
+                            <span className="text-xs text-cinza-medio">salvando...</span>
+                          ) : precisa ? (
+                            <span className="font-bold tabular-nums text-ambar">
+                              {formatarQuantidade(qtd, item.unidadeBase)} {item.unidadeBase}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-cinza-medio">não precisa comprar</span>
+                          )}
+                          {podeEditar && (
+                            <button
+                              type="button"
+                              onClick={() => onIniciarEdicao(item)}
+                              className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                            >
+                              {precisa ? "Editar" : "Adicionar"}
+                            </button>
+                          )}
+                        </div>
+                        {erroConfirmar[item.sku] && (
+                          <span className="text-[10px] text-vermelho">{erroConfirmar[item.sku]}</span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => onIniciarEdicao(item)}
-                          className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                        >
-                          {precisa ? "Editar" : "Adicionar"}
-                        </button>
                       </div>
                     )}
                   </td>

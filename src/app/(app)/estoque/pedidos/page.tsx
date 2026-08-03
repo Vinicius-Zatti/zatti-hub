@@ -1,7 +1,6 @@
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
-import { getPedidoSalvo } from "@/lib/pedidos";
-import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
+import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
@@ -36,26 +35,15 @@ export default async function PedidosPage({
       .map((f) => [f.nomeFantasia, f.pedidoMinimo]),
   );
 
-  // Previsão de entrega já combinada no Editor de Espelhos (se existir) -
-  // salvar daqui não pode zerar isso sem querer.
-  const porFornecedor = agruparPorFornecedor(resultado.itens);
-  const fornecedoresDoPedido = ordenarFornecedores(Object.keys(porFornecedor));
-  const pedidosSalvos = await Promise.all(
-    fornecedoresDoPedido.map((f) => getPedidoSalvo(acesso.unidadeId, f, resultado.dataUsada)),
-  );
-  const previsaoEntregaPorFornecedor = Object.fromEntries(
-    fornecedoresDoPedido.map((f, i) => [f, pedidosSalvos[i]?.previsaoEntrega ?? null]),
-  );
-
-  // Quantidade que já foi salva (Salvar/Salvar tudo) pra essa contagem base -
-  // sem isso, toda vez que a página recarrega ela recalcula a sugestão do
-  // zero e o que foi combinado com o fornecedor "some" da tela, mesmo tendo
-  // sido salvo certinho (o Editor de Espelhos continua mostrando certo,
-  // porque só ele lia esse dado - Criar Cotação nunca lia). Uma linha por SKU
-  // basta: o override já é global por SKU aqui, igual o resto da tela.
+  // Quantidade já confirmada pra essa contagem base - sem isso, toda vez que
+  // a página recarrega ela recalcula a sugestão do zero e o que foi
+  // combinado com o fornecedor "some" da tela, mesmo tendo sido gravado
+  // certinho. Uma linha por SKU basta: o override é global por SKU aqui,
+  // igual o resto da tela (quantidade é a mesma não importa qual fornecedor
+  // acaba fornecendo).
+  const pedidosSalvos = await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada);
   const quantidadesSalvas: Record<string, number> = {};
   for (const pedido of pedidosSalvos) {
-    if (!pedido) continue;
     for (const item of pedido.itens) {
       quantidadesSalvas[item.sku] = item.quantidadePedida;
     }
@@ -70,8 +58,7 @@ export default async function PedidosPage({
       gruposContadosNoDia={resultado.gruposContadosNoDia}
       organizacaoNome={acesso.organizacaoNome}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
-      previsaoEntregaPorFornecedor={previsaoEntregaPorFornecedor}
-      podeSalvar={acesso.role === "gestao" || acesso.role === "master"}
+      podeEditar={acesso.role === "gestao" || acesso.role === "master"}
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
     />

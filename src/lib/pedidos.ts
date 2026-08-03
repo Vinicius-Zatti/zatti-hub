@@ -48,138 +48,190 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
   };
 }
 
-/** Pedido já salvo pra esse fornecedor + contagem base, se existir - o
- * Editor de Espelhos carrega daqui em vez de recalcular quando já foi
- * salvo antes (permite editar depois de salvo). */
-export async function getPedidoSalvo(
+/** Acha o pedido de um fornecedor (unidade + contagem base) ou cria vazio -
+ * nunca apaga itens existentes, diferente do antigo `salvarPedido`. Base de
+ * toda gravação item-a-item abaixo. */
+async function garantirPedido(
+  supabase: Awaited<ReturnType<typeof createClient>>,
   unidadeId: string,
   fornecedor: string,
-  dataContagemBase: string
-): Promise<Pedido | null> {
-  const supabase = await createClient();
-
-  const { data: pedido } = await supabase
+  dataContagemBase: string,
+  criadoPor: string
+): Promise<string> {
+  const { data: existente } = await supabase
     .from("pedidos")
-    .select("*")
+    .select("id")
     .eq("unidade_id", unidadeId)
     .eq("fornecedor", fornecedor)
     .eq("data_contagem_base", dataContagemBase)
     .maybeSingle();
+  if (existente) return existente.id;
 
-  if (!pedido) return null;
-
-  const { data: itens } = await supabase
-    .from("pedido_itens")
-    .select("*")
-    .eq("pedido_id", pedido.id);
-
-  return rowToPedido(pedido as PedidoRow, (itens as PedidoItemRow[] | null) ?? []);
+  const { data: novo, error } = await supabase
+    .from("pedidos")
+    .insert({
+      unidade_id: unidadeId,
+      fornecedor,
+      data_contagem_base: dataContagemBase,
+      criado_por: criadoPor,
+    })
+    .select("id")
+    .single();
+  if (error || !novo) throw new Error(error?.message ?? "Falha ao criar pedido");
+  return novo.id;
 }
 
-/** Salva (cria ou atualiza) o pedido de um fornecedor - chave natural é
- * (unidade, fornecedor, data da contagem base). Reescreve os itens inteiros
- * a cada save, mais simples que tentar diff - o volume por pedido é baixo. */
-export async function salvarPedido(params: {
+type ItemParaConfirmar = Pick<
+  PedidoItem,
+  "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
+>;
+
+/** Confirma (cria ou atualiza) UM item do pedido de um fornecedor - nunca
+ * mexe nos outros itens dele. Substitui o antigo modelo de "Salvar" (que
+ * reescrevia a lista inteira do fornecedor a cada clique): confirmar dois
+ * campos diferentes em sequência rápida não corre mais risco de o primeiro
+ * terminar depois do segundo e apagar a edição mais nova por cima (o
+ * problema real do modelo antigo).
+ *
+ * Quantidade pedida é a mesma necessidade não importa qual fornecedor acaba
+ * fornecendo - por isso, depois de gravar no fornecedor confirmado, o mesmo
+ * valor é copiado pra qualquer OUTRO pedido (mesma unidade + contagem base)
+ * que já tenha esse SKU salvo. Não cria o item em fornecedor que nunca teve
+ * ele - só mantém quem já disputa o item em dia. Preço nunca sincroniza -
+ * cada fornecedor cota o próprio valor, é o que dá pra comparar. */
+export async function confirmarItem(params: {
+  unidadeId: string;
+  fornecedor: string;
+  dataContagemBase: string;
+  item: ItemParaConfirmar;
+  criadoPor: string;
+}): Promise<void> {
+  const supabase = await createClient();
+  const pedidoId = await garantirPedido(
+    supabase,
+    params.unidadeId,
+    params.fornecedor,
+    params.dataContagemBase,
+    params.criadoPor
+  );
+
+  const linha = {
+    nome: params.item.nome,
+    nome_compra: params.item.nomeCompra || null,
+    unidade_base: params.item.unidadeBase,
+    quantidade_pedida: params.item.quantidadePedida,
+    preco_antigo: params.item.precoAntigo,
+    preco_atualizado: params.item.precoAtualizado,
+  };
+
+  const { data: existente } = await supabase
+    .from("pedido_itens")
+    .select("id")
+    .eq("pedido_id", pedidoId)
+    .eq("sku", params.item.sku)
+    .maybeSingle();
+
+  if (existente) {
+    await supabase.from("pedido_itens").update(linha).eq("id", existente.id);
+  } else {
+    await supabase.from("pedido_itens").insert({ pedido_id: pedidoId, sku: params.item.sku, ...linha });
+  }
+
+  const { data: outrosPedidos } = await supabase
+    .from("pedidos")
+    .select("id")
+    .eq("unidade_id", params.unidadeId)
+    .eq("data_contagem_base", params.dataContagemBase)
+    .neq("fornecedor", params.fornecedor);
+
+  const outrosIds = (outrosPedidos ?? []).map((p) => p.id);
+  if (outrosIds.length > 0) {
+    await supabase
+      .from("pedido_itens")
+      .update({ quantidade_pedida: params.item.quantidadePedida })
+      .eq("sku", params.item.sku)
+      .in("pedido_id", outrosIds);
+  }
+}
+
+/** Escolhe o fornecedor vencedor de um item disputado: confirma o item nele
+ * (cria/atualiza) e remove o mesmo SKU dos concorrentes que perderam - eles
+ * deixam de ter esse item no próprio pedido a partir de agora. */
+export async function confirmarVencedor(params: {
+  unidadeId: string;
+  dataContagemBase: string;
+  fornecedorVencedor: string;
+  outrosFornecedores: string[];
+  item: ItemParaConfirmar;
+  criadoPor: string;
+}): Promise<void> {
+  await confirmarItem({
+    unidadeId: params.unidadeId,
+    fornecedor: params.fornecedorVencedor,
+    dataContagemBase: params.dataContagemBase,
+    item: params.item,
+    criadoPor: params.criadoPor,
+  });
+
+  if (params.outrosFornecedores.length === 0) return;
+  const supabase = await createClient();
+  const { data: pedidosPerdedores } = await supabase
+    .from("pedidos")
+    .select("id")
+    .eq("unidade_id", params.unidadeId)
+    .eq("data_contagem_base", params.dataContagemBase)
+    .in("fornecedor", params.outrosFornecedores);
+
+  const ids = (pedidosPerdedores ?? []).map((p) => p.id);
+  if (ids.length > 0) {
+    await supabase.from("pedido_itens").delete().eq("sku", params.item.sku).in("pedido_id", ids);
+  }
+}
+
+/** Desfaz a escolha de vencedor: recria o item (mesma quantidade, preço em
+ * branco pra reconferir) em cada fornecedor que tinha perdido a disputa. O
+ * vencedor atual não é mexido - continua com o que já tinha. */
+export async function desfazerVencedor(params: {
+  unidadeId: string;
+  dataContagemBase: string;
+  fornecedoresParaRecriar: string[];
+  item: Omit<ItemParaConfirmar, "precoAtualizado">;
+  criadoPor: string;
+}): Promise<void> {
+  await Promise.all(
+    params.fornecedoresParaRecriar.map((fornecedor) =>
+      confirmarItem({
+        unidadeId: params.unidadeId,
+        fornecedor,
+        dataContagemBase: params.dataContagemBase,
+        item: { ...params.item, precoAtualizado: null },
+        criadoPor: params.criadoPor,
+      })
+    )
+  );
+}
+
+/** Atualiza só a previsão de entrega de um fornecedor - campo isolado, sem
+ * depender de nenhum item pra existir. */
+export async function atualizarPrevisaoEntrega(params: {
   unidadeId: string;
   fornecedor: string;
   dataContagemBase: string;
   previsaoEntrega: string | null;
-  itens: Pick<
-    PedidoItem,
-    "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
-  >[];
   criadoPor: string;
-}): Promise<Pedido> {
+}): Promise<void> {
   const supabase = await createClient();
-
-  const { data: existente } = await supabase
+  const pedidoId = await garantirPedido(
+    supabase,
+    params.unidadeId,
+    params.fornecedor,
+    params.dataContagemBase,
+    params.criadoPor
+  );
+  await supabase
     .from("pedidos")
-    .select("id")
-    .eq("unidade_id", params.unidadeId)
-    .eq("fornecedor", params.fornecedor)
-    .eq("data_contagem_base", params.dataContagemBase)
-    .maybeSingle();
-
-  let pedidoId: string;
-  if (existente) {
-    pedidoId = existente.id;
-    await supabase
-      .from("pedidos")
-      .update({
-        previsao_entrega: params.previsaoEntrega,
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq("id", pedidoId);
-    await supabase.from("pedido_itens").delete().eq("pedido_id", pedidoId);
-  } else {
-    const { data: novo, error } = await supabase
-      .from("pedidos")
-      .insert({
-        unidade_id: params.unidadeId,
-        fornecedor: params.fornecedor,
-        data_contagem_base: params.dataContagemBase,
-        previsao_entrega: params.previsaoEntrega,
-        criado_por: params.criadoPor,
-      })
-      .select("id")
-      .single();
-    if (error || !novo) throw new Error(error?.message ?? "Falha ao criar pedido");
-    pedidoId = novo.id;
-  }
-
-  if (params.itens.length > 0) {
-    await supabase.from("pedido_itens").insert(
-      params.itens.map((it) => ({
-        pedido_id: pedidoId,
-        sku: it.sku,
-        nome: it.nome,
-        nome_compra: it.nomeCompra || null,
-        unidade_base: it.unidadeBase,
-        quantidade_pedida: it.quantidadePedida,
-        preco_antigo: it.precoAntigo,
-        preco_atualizado: it.precoAtualizado,
-      }))
-    );
-  }
-
-  // Quantidade pedida é a mesma necessidade não importa qual fornecedor
-  // acaba fornecendo - quando o mesmo SKU é cotado com mais de um (ainda sem
-  // vencedor escolhido), os pedidos concorrentes já salvos da mesma unidade+
-  // contagem base têm que ficar com a MESMA quantidade dali pra frente.
-  // Sem isso, editar e salvar só o bloco de um fornecedor deixava a
-  // quantidade divergente entre concorrentes, e qual delas aparecia em Criar
-  // Cotação/Editor de Espelhos dependia da ordem de leitura, não de qual foi
-  // editado por último (bug real reportado 03/08). Preço não sincroniza -
-  // cada fornecedor cota o próprio valor, é exatamente o que dá pra comparar.
-  if (params.itens.length > 0) {
-    const { data: outrosPedidos } = await supabase
-      .from("pedidos")
-      .select("id")
-      .eq("unidade_id", params.unidadeId)
-      .eq("data_contagem_base", params.dataContagemBase)
-      .neq("fornecedor", params.fornecedor);
-
-    // Em paralelo, não em série - "Salvar tudo" chama isso pra cada
-    // fornecedor ao mesmo tempo, e uma lista grande de concorrentes ×
-    // itens em série (um `await` de cada vez) ficava lenta o suficiente
-    // pra guarda de "não salvo" ainda estar ativa segundos depois do
-    // clique.
-    await Promise.all(
-      (outrosPedidos ?? []).flatMap((outro) =>
-        params.itens.map((item) =>
-          supabase
-            .from("pedido_itens")
-            .update({ quantidade_pedida: item.quantidadePedida })
-            .eq("pedido_id", outro.id)
-            .eq("sku", item.sku)
-        )
-      )
-    );
-  }
-
-  const salvo = await getPedidoSalvo(params.unidadeId, params.fornecedor, params.dataContagemBase);
-  if (!salvo) throw new Error("Pedido salvo mas não encontrado na releitura");
-  return salvo;
+    .update({ previsao_entrega: params.previsaoEntrega, atualizado_em: new Date().toISOString() })
+    .eq("id", pedidoId);
 }
 
 /** Todos os pedidos já salvos (de qualquer fornecedor) pra uma contagem base

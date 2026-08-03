@@ -5,7 +5,12 @@ import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { CodigoSelect } from "@/components/codigo-select";
-import { salvarPedidoAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
+import {
+  confirmarItemAction,
+  confirmarVencedorAction,
+  desfazerVencedorAction,
+  atualizarPrevisaoEntregaAction,
+} from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 import {
   gerarImagemPedido,
   compartilharOuCopiarImagem,
@@ -25,18 +30,17 @@ function formatNumero(v: number): string {
 
 // Preço é sempre por fornecedor (cada um cota o próprio valor pro mesmo
 // item) - toda chave de estado de preço usa fornecedor+sku, nunca só sku.
-// Quantidade continua só por sku (é a mesma quantidade combinada, não muda
-// conforme quem acaba fornecendo).
+// Quantidade continua só por sku: é a mesma necessidade, não muda conforme
+// quem acaba fornecendo.
 function chave(fornecedor: string, sku: string): string {
   return `${fornecedor}::${sku}`;
 }
 
 /** Editor de Espelhos: a partir da mesma cotação calculada de Criar
  * Cotação, deixa o comprador confirmar quantidade, fornecedor vencedor
- * (quando o item é cotado com mais de um) e preço, por fornecedor. Salvar
- * grava um Pedido de verdade (ver `src/lib/pedidos.ts`) e só depois disso
- * libera Compartilhar - que agora manda "Pedido de Compra", com valor por
- * item e total, não mais só a cotação informal. */
+ * (quando o item é cotado com mais de um) e preço, por fornecedor. Cada
+ * Confirmar grava na hora - não existe mais botão Salvar. Compartilhar
+ * manda "Pedido de Compra", com valor por item e total. */
 export function EditorEspelhos({
   itensPorFornecedor,
   fornecedores,
@@ -75,11 +79,11 @@ export function EditorEspelhos({
 
   // Só considera um vencedor já decidido quando EXATAMENTE um dos
   // fornecedores que disputam o item tem ele salvo no próprio Pedido. Criar
-  // Cotação não sabe de vencedor - quando salva um item disputado, salva o
-  // mesmo item pra todos os fornecedores concorrentes ao mesmo tempo (a
-  // decisão de quem fornece é só daqui). Se dois ou mais concorrentes têm o
-  // item salvo, ninguém escolheu de verdade ainda - tem que continuar
-  // aparecendo em todos, esperando "Confirmar aqui".
+  // Cotação não sabe de vencedor - confirmar um item disputado grava o mesmo
+  // item pra todos os fornecedores concorrentes ao mesmo tempo (a decisão de
+  // quem fornece é só daqui). Se dois ou mais concorrentes têm o item
+  // salvo, ninguém escolheu de verdade ainda - continua aparecendo em
+  // todos, esperando "Confirmar aqui".
   const [vencedor, setVencedor] = useState<Record<string, string | null>>(() => {
     const salvoEm: Record<string, string[]> = {};
     for (const fornecedor of fornecedores) {
@@ -94,12 +98,9 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  // Guarda o texto exatamente como a pessoa digita (não o número já
-  // convertido) - se o valor exibido fosse o número, digitar "6,59" some
-  // com a vírgula no meio (o "6," vira 6 assim que converte, o campo
-  // controlado redesenha só "6" e a vírgula desaparece). `toNumeroBR`
-  // (mesmo parser de pt-BR usado em `src/lib/sheets/*`) só entra na hora de
-  // calcular subtotal/salvar/compartilhar.
+  // Última quantidade/preço confirmados - o que a tela mostra fora do modo
+  // de edição. Quantidade é global por SKU (mesma necessidade em qualquer
+  // fornecedor); preço é por fornecedor+SKU (cada um cota o próprio valor).
   const [quantidadesTexto, setQuantidadesTexto] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -115,9 +116,6 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  // Preço é por fornecedor+sku (ver `chave`) - o mesmo item disputado pode
-  // ter um valor cotado diferente em cada bloco enquanto ninguém escolheu o
-  // vencedor ainda.
   const [precosTexto, setPrecosTexto] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -162,13 +160,8 @@ export function EditorEspelhos({
     return resultado;
   }, [fornecedoresPorSku, precosTexto]);
 
-  // Modo "Nome Fornecedor" não é só o nome - a quantidade e o preço também
-  // precisam virar embalagem (qtd de FD/CX/PCT em vez de kg/un, preço da
-  // embalagem em vez de preço por kg/un). Guarda um texto próprio nessa
-  // unidade (mesmo motivo dos outros: campo controlado por número apaga
-  // vírgula digitada) e, a cada edição aqui, deriva e atualiza o texto em
-  // unidade base (`quantidadesTexto`/`precosTexto`) - que continua sendo a
-  // fonte de verdade pra total/salvar, o modo só muda como edita.
+  // Texto em modo "Nome Fornecedor" (embalagem) - derivado do texto em
+  // unidade base pra exibição; convertido de volta na hora de confirmar.
   const [quantidadesTextoEmbalagem, setQuantidadesTextoEmbalagem] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -198,22 +191,6 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  function editarQuantidadeEmbalagem(sku: string, texto: string, qtdPorEmbalagem: number) {
-    setQuantidadesTextoEmbalagem((q) => ({ ...q, [sku]: texto }));
-    const embalagens = toNumeroBR(texto) ?? 0;
-    setQuantidadesTexto((q) => ({ ...q, [sku]: formatNumero(embalagens * qtdPorEmbalagem) }));
-  }
-
-  function editarPrecoEmbalagem(fornecedor: string, sku: string, texto: string, qtdPorEmbalagem: number) {
-    const k = chave(fornecedor, sku);
-    setPrecosTextoEmbalagem((p) => ({ ...p, [k]: texto }));
-    const precoEmbalagem = toNumeroBR(texto);
-    setPrecosTexto((p) => ({
-      ...p,
-      [k]: precoEmbalagem !== null ? formatNumero(precoEmbalagem / qtdPorEmbalagem) : "",
-    }));
-  }
-
   function itemSemEmbalagem(item: SugestaoCompra): boolean {
     return !item.nomeCompra.trim() || !item.unidadeEmbalagemFornecedor.trim() || !item.qtdUnidadeBasePorEmbalagem;
   }
@@ -226,15 +203,6 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  const [salvo, setSalvo] = useState<Record<string, boolean>>(() => {
-    const inicial: Record<string, boolean> = {};
-    for (const fornecedor of fornecedores) {
-      inicial[fornecedor] = pedidoSalvoPorFornecedor[fornecedor] !== null;
-    }
-    return inicial;
-  });
-
-  const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [compartilhando, setCompartilhando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [modo, setModo] = useState<Record<string, "interno" | "fornecedor">>({});
@@ -245,10 +213,17 @@ export function EditorEspelhos({
   // mesmo tempo, útil enquanto ainda tá comparando preço de item disputado).
   const [revelados, setRevelados] = useState<Record<string, boolean>>({});
 
+  // Campo em edição: presença na chave = editando. Quantidade é por SKU
+  // (mesmo valor em qualquer bloco); preço é por fornecedor+SKU.
+  const [editandoQtd, setEditandoQtd] = useState<Record<string, string>>({});
+  const [editandoPreco, setEditandoPreco] = useState<Record<string, string>>({});
+  const [confirmandoVencedor, setConfirmandoVencedor] = useState<Record<string, boolean>>({});
+
   // Clicar em "vencedor aqui" pede confirmação antes de desfazer - trocar
   // sem querer faz o item sumir desse bloco e reaparecer pra escolher de
   // novo em todos os fornecedores concorrentes.
   const [confirmarTroca, setConfirmarTroca] = useState<{ sku: string; fornecedor: string } | null>(null);
+  const [desfazendoTroca, setDesfazendoTroca] = useState(false);
 
   function itensVisiveisDoFornecedor(fornecedor: string): SugestaoCompra[] {
     return (itensPorFornecedor[fornecedor] ?? []).filter((item) => {
@@ -257,23 +232,99 @@ export function EditorEspelhos({
     });
   }
 
-  function desfazerVencedor(sku: string) {
-    setVencedor((v) => {
-      const novo = { ...v };
-      delete novo[sku];
-      return novo;
-    });
-    setConfirmarTroca(null);
-  }
-
-  async function salvar(fornecedor: string) {
-    const itens = itensVisiveisDoFornecedor(fornecedor).filter((item) => quantidadeDe(item.sku) > 0);
-    setSalvando((s) => ({ ...s, [fornecedor]: true }));
-    const resultado = await salvarPedidoAction({
+  /** Grava um item (quantidade + preço) no fornecedor informado - a
+   * quantidade sincroniza sozinha com qualquer outro fornecedor que já
+   * dispute esse SKU (feito no servidor, ver `confirmarItem` em
+   * `lib/pedidos.ts`). Usada tanto pelo confirmar de quantidade quanto pelo
+   * de preço - cada um manda o valor atual do outro campo, pra não apagar
+   * o que já estava lá. */
+  async function persistirItem(fornecedor: string, item: SugestaoCompra, quantidadeBase: number, precoBase: number | null) {
+    const resultado = await confirmarItemAction({
       fornecedor,
       dataContagemBase: dataUsada,
-      previsaoEntrega: previsaoEntrega[fornecedor] || null,
-      itens: itens.map((item) => ({
+      item: {
+        sku: item.sku,
+        nome: item.nome,
+        nomeCompra: item.nomeCompra,
+        unidadeBase: item.unidadeBase,
+        quantidadePedida: quantidadeBase,
+        precoAntigo: item.precoUnitario,
+        precoAtualizado: precoBase,
+      },
+    });
+    if ("erro" in resultado) {
+      setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
+    }
+  }
+
+  function iniciarEdicaoQtd(fornecedor: string, item: SugestaoCompra) {
+    const modoAtual = modo[fornecedor] ?? "interno";
+    setEditandoQtd((q) => ({
+      ...q,
+      [item.sku]: modoAtual === "interno" ? (quantidadesTexto[item.sku] ?? "") : (quantidadesTextoEmbalagem[item.sku] ?? ""),
+    }));
+  }
+
+  async function confirmarEdicaoQtd(fornecedor: string, item: SugestaoCompra) {
+    const raw = (editandoQtd[item.sku] ?? "").trim().replace(",", ".");
+    const num = Number(raw);
+    setEditandoQtd((q) => {
+      const novo = { ...q };
+      delete novo[item.sku];
+      return novo;
+    });
+    if (raw === "" || Number.isNaN(num) || num < 0) return;
+
+    const modoAtual = modo[fornecedor] ?? "interno";
+    const novaQtdBase = modoAtual === "interno" ? num : num * (item.qtdUnidadeBasePorEmbalagem ?? 1);
+    setQuantidadesTexto((q) => ({ ...q, [item.sku]: formatNumero(novaQtdBase) }));
+    if (item.qtdUnidadeBasePorEmbalagem) {
+      setQuantidadesTextoEmbalagem((q) => ({
+        ...q,
+        [item.sku]: formatNumero(Math.ceil(novaQtdBase / (item.qtdUnidadeBasePorEmbalagem as number))),
+      }));
+    }
+    await persistirItem(fornecedor, item, novaQtdBase, precoDe(fornecedor, item.sku));
+  }
+
+  function iniciarEdicaoPreco(fornecedor: string, item: SugestaoCompra) {
+    const k = chave(fornecedor, item.sku);
+    const modoAtual = modo[fornecedor] ?? "interno";
+    setEditandoPreco((p) => ({
+      ...p,
+      [k]: modoAtual === "interno" ? (precosTexto[k] ?? "") : (precosTextoEmbalagem[k] ?? ""),
+    }));
+  }
+
+  async function confirmarEdicaoPreco(fornecedor: string, item: SugestaoCompra) {
+    const k = chave(fornecedor, item.sku);
+    const raw = (editandoPreco[k] ?? "").trim().replace(",", ".");
+    const num = Number(raw);
+    setEditandoPreco((p) => {
+      const novo = { ...p };
+      delete novo[k];
+      return novo;
+    });
+    if (raw === "" || Number.isNaN(num) || num < 0) return;
+
+    const modoAtual = modo[fornecedor] ?? "interno";
+    const novoPrecoBase =
+      modoAtual === "interno" ? num : item.qtdUnidadeBasePorEmbalagem ? num / item.qtdUnidadeBasePorEmbalagem : num;
+    setPrecosTexto((p) => ({ ...p, [k]: formatNumero(novoPrecoBase) }));
+    if (item.qtdUnidadeBasePorEmbalagem) {
+      setPrecosTextoEmbalagem((p) => ({ ...p, [k]: formatNumero(novoPrecoBase * (item.qtdUnidadeBasePorEmbalagem as number)) }));
+    }
+    await persistirItem(fornecedor, item, quantidadeDe(item.sku), novoPrecoBase);
+  }
+
+  async function confirmarVencedorClick(fornecedor: string, item: SugestaoCompra) {
+    setConfirmandoVencedor((c) => ({ ...c, [item.sku]: true }));
+    const outros = (fornecedoresPorSku[item.sku] ?? []).filter((f) => f !== fornecedor);
+    const resultado = await confirmarVencedorAction({
+      dataContagemBase: dataUsada,
+      fornecedorVencedor: fornecedor,
+      outrosFornecedores: outros,
+      item: {
         sku: item.sku,
         nome: item.nome,
         nomeCompra: item.nomeCompra,
@@ -281,22 +332,69 @@ export function EditorEspelhos({
         quantidadePedida: quantidadeDe(item.sku),
         precoAntigo: item.precoUnitario,
         precoAtualizado: precoDe(fornecedor, item.sku),
-      })),
+      },
     });
-    setSalvando((s) => ({ ...s, [fornecedor]: false }));
+    setConfirmandoVencedor((c) => ({ ...c, [item.sku]: false }));
     if ("erro" in resultado) {
       setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
       return;
     }
-    // trava o fornecedor vencedor de cada item salvo, pra sumir dos outros blocos
+    setVencedor((v) => ({ ...v, [item.sku]: fornecedor }));
+  }
+
+  async function desfazerVencedorClick() {
+    if (!confirmarTroca) return;
+    const { sku, fornecedor } = confirmarTroca;
+    const item = (itensPorFornecedor[fornecedor] ?? []).find((i) => i.sku === sku);
+    if (!item) {
+      setConfirmarTroca(null);
+      return;
+    }
+    setDesfazendoTroca(true);
+    const outros = (fornecedoresPorSku[sku] ?? []).filter((f) => f !== fornecedor);
+    const resultado = await desfazerVencedorAction({
+      dataContagemBase: dataUsada,
+      fornecedoresParaRecriar: outros,
+      item: {
+        sku: item.sku,
+        nome: item.nome,
+        nomeCompra: item.nomeCompra,
+        unidadeBase: item.unidadeBase,
+        quantidadePedida: quantidadeDe(sku),
+        precoAntigo: item.precoUnitario,
+      },
+    });
+    setDesfazendoTroca(false);
+    if ("erro" in resultado) {
+      setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
+      setConfirmarTroca(null);
+      return;
+    }
     setVencedor((v) => {
       const novo = { ...v };
-      for (const item of itens) novo[item.sku] = fornecedor;
+      delete novo[sku];
       return novo;
     });
-    setSalvo((s) => ({ ...s, [fornecedor]: true }));
-    setStatus((s) => ({ ...s, [fornecedor]: "Salvo." }));
-    setTimeout(() => setStatus((s) => ({ ...s, [fornecedor]: "" })), 4000);
+    // preço concorrente volta em branco (recriado sem preço) - limpa aqui
+    // também pra tela bater com o banco.
+    setPrecosTexto((p) => {
+      const novo = { ...p };
+      for (const f of outros) delete novo[chave(f, sku)];
+      return novo;
+    });
+    setConfirmarTroca(null);
+  }
+
+  async function atualizarPrevisao(fornecedor: string, novaData: string) {
+    setPrevisaoEntrega((p) => ({ ...p, [fornecedor]: novaData }));
+    const resultado = await atualizarPrevisaoEntregaAction({
+      fornecedor,
+      dataContagemBase: dataUsada,
+      previsaoEntrega: novaData || null,
+    });
+    if ("erro" in resultado) {
+      setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
+    }
   }
 
   async function compartilhar(fornecedor: string) {
@@ -362,8 +460,8 @@ export function EditorEspelhos({
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Editor de Espelhos de Compras</h1>
         <p className="text-sm text-cinza-medio">
-          Confirma quantidade, fornecedor vencedor e preço de cada item antes de virar Pedido de
-          Compra de verdade. Salva pra liberar o Compartilhar - dá pra voltar e editar depois.
+          Confirma quantidade, fornecedor vencedor e preço de cada item - cada confirmação já grava na
+          hora. Compartilha quando estiver pronto.
         </p>
       </div>
 
@@ -420,7 +518,7 @@ export function EditorEspelhos({
                     <input
                       type="date"
                       value={previsaoEntrega[fornecedor] ?? ""}
-                      onChange={(e) => setPrevisaoEntrega((p) => ({ ...p, [fornecedor]: e.target.value }))}
+                      onChange={(e) => atualizarPrevisao(fornecedor, e.target.value)}
                       className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
                     />
                   </label>
@@ -431,17 +529,8 @@ export function EditorEspelhos({
                   )}
                   <button
                     type="button"
-                    onClick={() => salvar(fornecedor)}
-                    disabled={salvando[fornecedor]}
-                    className="shrink-0 rounded-md border border-cinza-claro bg-branco px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-off-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {salvando[fornecedor] ? "Salvando..." : salvo[fornecedor] ? "Salvar de novo" : "Salvar"}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => compartilhar(fornecedor)}
-                    disabled={!salvo[fornecedor] || compartilhando[fornecedor]}
-                    title={!salvo[fornecedor] ? "Salva o pedido antes de compartilhar" : undefined}
+                    disabled={compartilhando[fornecedor]}
                     className="shrink-0 rounded-md bg-ambar px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-[#b07720] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {compartilhando[fornecedor] ? "Gerando..." : "Compartilhar"}
@@ -510,13 +599,13 @@ export function EditorEspelhos({
                       const nomeExibido = modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
                       const unidadeExibida = modoAtual === "interno" ? item.unidadeBase : item.unidadeEmbalagemFornecedor;
                       const semEmbalagem = modoAtual === "fornecedor" && itemSemEmbalagem(item);
-                      const qtdPorEmbalagem = item.qtdUnidadeBasePorEmbalagem;
                       const precoAntigoExibido =
-                        modoAtual === "interno" || !qtdPorEmbalagem
+                        modoAtual === "interno" || !item.qtdUnidadeBasePorEmbalagem
                           ? item.precoUnitario
                           : item.precoUnitario !== null
-                            ? item.precoUnitario * qtdPorEmbalagem
+                            ? item.precoUnitario * item.qtdUnidadeBasePorEmbalagem
                             : null;
+                      const kPreco = chave(fornecedor, item.sku);
 
                       return (
                         <tr key={item.sku} className={`border-t border-cinza-claro ${semEmbalagem ? "bg-vermelho/5" : ""}`}>
@@ -539,49 +628,97 @@ export function EditorEspelhos({
                           ) : (
                             <>
                               <td className="px-3 py-2 text-right">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={
-                                    modoAtual === "interno"
-                                      ? (quantidadesTexto[item.sku] ?? "")
-                                      : (quantidadesTextoEmbalagem[item.sku] ?? "")
-                                  }
-                                  onChange={(e) =>
-                                    modoAtual === "interno"
-                                      ? setQuantidadesTexto((q) => ({ ...q, [item.sku]: e.target.value }))
-                                      : editarQuantidadeEmbalagem(item.sku, e.target.value, qtdPorEmbalagem as number)
-                                  }
-                                  className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                                />{" "}
-                                <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
+                                {editandoQtd[item.sku] !== undefined ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      autoFocus
+                                      value={editandoQtd[item.sku]}
+                                      onChange={(e) => setEditandoQtd((q) => ({ ...q, [item.sku]: e.target.value }))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          confirmarEdicaoQtd(fornecedor, item);
+                                        }
+                                      }}
+                                      className="w-16 rounded border border-ambar px-1.5 py-1 text-right focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => confirmarEdicaoQtd(fornecedor, item)}
+                                      className="rounded bg-ambar px-2 py-1 text-[10px] font-bold text-azul-noite hover:bg-[#b07720]"
+                                    >
+                                      Confirmar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className="tabular-nums text-cinza">
+                                      {modoAtual === "interno"
+                                        ? (quantidadesTexto[item.sku] ?? "")
+                                        : (quantidadesTextoEmbalagem[item.sku] ?? "")}
+                                    </span>
+                                    <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => iniciarEdicaoQtd(fornecedor, item)}
+                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                    >
+                                      Editar
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
                                 {precoAntigoExibido !== null ? formatMoeda(precoAntigoExibido) : "—"}
                               </td>
                               <td className="px-3 py-2 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={
-                                      modoAtual === "interno"
-                                        ? (precosTexto[chave(fornecedor, item.sku)] ?? "")
-                                        : (precosTextoEmbalagem[chave(fornecedor, item.sku)] ?? "")
-                                    }
-                                    onChange={(e) =>
-                                      modoAtual === "interno"
-                                        ? setPrecosTexto((p) => ({ ...p, [chave(fornecedor, item.sku)]: e.target.value }))
-                                        : editarPrecoEmbalagem(fornecedor, item.sku, e.target.value, qtdPorEmbalagem as number)
-                                    }
-                                    className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                                  />
-                                  {ehMelhorPreco && (
-                                    <span className="shrink-0 rounded-full bg-verde/10 px-1.5 py-0.5 text-[10px] font-bold text-verde">
-                                      Melhor preço
+                                {editandoPreco[kPreco] !== undefined ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      autoFocus
+                                      value={editandoPreco[kPreco]}
+                                      onChange={(e) => setEditandoPreco((p) => ({ ...p, [kPreco]: e.target.value }))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          confirmarEdicaoPreco(fornecedor, item);
+                                        }
+                                      }}
+                                      className="w-20 rounded border border-ambar px-1.5 py-1 text-right focus:outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => confirmarEdicaoPreco(fornecedor, item)}
+                                      className="rounded bg-ambar px-2 py-1 text-[10px] font-bold text-azul-noite hover:bg-[#b07720]"
+                                    >
+                                      Confirmar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className="tabular-nums text-cinza">
+                                      {modoAtual === "interno"
+                                        ? (precosTexto[kPreco] ?? "")
+                                        : (precosTextoEmbalagem[kPreco] ?? "")}
                                     </span>
-                                  )}
-                                </div>
+                                    {ehMelhorPreco && (
+                                      <span className="shrink-0 rounded-full bg-verde/10 px-1.5 py-0.5 text-[10px] font-bold text-verde">
+                                        Melhor preço
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => iniciarEdicaoPreco(fornecedor, item)}
+                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                    >
+                                      Editar
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </>
                           )}
@@ -603,10 +740,11 @@ export function EditorEspelhos({
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setVencedor((v) => ({ ...v, [item.sku]: fornecedor }))}
-                                className="rounded-md border border-ambar px-2 py-1 text-[11px] font-semibold text-ambar hover:bg-ambar/10"
+                                onClick={() => confirmarVencedorClick(fornecedor, item)}
+                                disabled={confirmandoVencedor[item.sku]}
+                                className="rounded-md border border-ambar px-2 py-1 text-[11px] font-semibold text-ambar hover:bg-ambar/10 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                Confirmar aqui
+                                {confirmandoVencedor[item.sku] ? "Confirmando..." : "Confirmar aqui"}
                               </button>
                             )}
                           </td>
@@ -661,27 +799,21 @@ export function EditorEspelhos({
             <h2 className="font-display text-lg font-bold text-azul-noite">Trocar o vencedor?</h2>
             <p className="mt-2 text-sm leading-relaxed text-cinza">
               Esse item volta a aparecer pra escolher de novo em todos os fornecedores que também
-              cotam ele.
-              {salvo[confirmarTroca.fornecedor] && (
-                <>
-                  {" "}
-                  <strong>{confirmarTroca.fornecedor}</strong> já foi salvo com esse item - depois de
-                  escolher o vencedor certo, salva {confirmarTroca.fornecedor} de novo pra tirar o
-                  item de lá.
-                </>
-              )}
+              cotam ele. O preço deles volta em branco, pra reconferir.
             </p>
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => desfazerVencedor(confirmarTroca.sku)}
-                className="flex-1 rounded-md bg-azul-noite px-3 py-2.5 text-sm font-bold text-branco hover:bg-azul-petroleo"
+                onClick={desfazerVencedorClick}
+                disabled={desfazendoTroca}
+                className="flex-1 rounded-md bg-azul-noite px-3 py-2.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Sim, trocar
+                {desfazendoTroca ? "Trocando..." : "Sim, trocar"}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmarTroca(null)}
+                disabled={desfazendoTroca}
                 className="flex-1 rounded-md border border-cinza-claro px-3 py-2.5 text-sm font-semibold text-cinza-medio hover:bg-off-white"
               >
                 Cancelar

@@ -32,7 +32,8 @@ function itemIncompleto(item: SugestaoCompra): boolean {
  * próprio modo de visualização e botão de Compartilhar - dois fornecedores
  * podem estar em modos diferentes ao mesmo tempo. Quantidade em si continua
  * compartilhada com o resto da página (vem de `valorAtual`/`onConfirmarValor`
- * do componente pai), só a exibição/edição em embalagem é local daqui. */
+ * do componente pai), só a exibição/edição em embalagem é local daqui.
+ * Confirmar já grava no banco na hora - não existe mais botão Salvar. */
 export function BlocoFornecedorCotacao({
   fornecedor,
   linhas,
@@ -40,10 +41,7 @@ export function BlocoFornecedorCotacao({
   legenda,
   valorAtual,
   onConfirmarValor,
-  podeSalvar,
-  salvando,
-  statusSalvar,
-  onSalvar,
+  podeEditar,
   fornecedoresCadastro,
   onFornecedorAtribuido,
 }: {
@@ -52,11 +50,8 @@ export function BlocoFornecedorCotacao({
   pedidoMinimo: number | null;
   legenda: string;
   valorAtual: (item: SugestaoCompra) => number;
-  onConfirmarValor: (sku: string, valorBase: number) => void;
-  podeSalvar: boolean;
-  salvando: boolean;
-  statusSalvar: string;
-  onSalvar: () => void;
+  onConfirmarValor: (item: SugestaoCompra, valorBase: number) => void;
+  podeEditar: boolean;
   fornecedoresCadastro: Fornecedor[];
   onFornecedorAtribuido: (sku: string, fornecedor: string) => void;
 }) {
@@ -108,7 +103,7 @@ export function BlocoFornecedorCotacao({
     const num = Number(raw);
     if (raw !== "" && !Number.isNaN(num) && num >= 0) {
       const base = modo === "interno" ? num : num * (item.qtdUnidadeBasePorEmbalagem ?? 1);
-      onConfirmarValor(item.sku, base);
+      onConfirmarValor(item, base);
     }
     setEditando((e) => {
       const novo = { ...e };
@@ -175,16 +170,6 @@ export function BlocoFornecedorCotacao({
             {formatMoeda(subtotal)}
             {pedidoMinimo !== null && ` de ${formatMoeda(pedidoMinimo)} mínimo`}
           </span>
-          {podeSalvar && (
-            <button
-              type="button"
-              onClick={onSalvar}
-              disabled={salvando}
-              className="shrink-0 rounded-md border border-branco/30 px-2.5 py-1 text-[11px] font-bold text-branco hover:bg-branco/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {salvando ? "Salvando..." : "Salvar"}
-            </button>
-          )}
           <button
             type="button"
             onClick={compartilhar}
@@ -299,13 +284,15 @@ export function BlocoFornecedorCotacao({
                         ) : (
                           <span className="text-xs text-cinza-medio">não precisa comprar</span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => iniciarEdicao(item)}
-                          className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                        >
-                          {precisa ? "Editar" : "Adicionar"}
-                        </button>
+                        {podeEditar && (
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicao(item)}
+                            className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                          >
+                            {precisa ? "Editar" : "Adicionar"}
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>
@@ -344,9 +331,6 @@ export function BlocoFornecedorCotacao({
         </table>
       </div>
       {status && <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{status}</div>}
-      {statusSalvar && (
-        <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{statusSalvar}</div>
-      )}
       {ehSemFornecedor && (
         <NovoFornecedorModal
           aberto={novoFornecedorParaSku !== null}
