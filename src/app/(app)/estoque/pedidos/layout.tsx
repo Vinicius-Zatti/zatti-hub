@@ -1,5 +1,5 @@
-import { SubTabs } from "@/components/sub-tabs";
 import { getAcessoAtual } from "@/lib/acesso";
+import { PedidosSubTabs } from "./pedidos-sub-tabs";
 
 export default async function PedidosLayout({ children }: { children: React.ReactNode }) {
   // Criar Cotação e Editor de Espelhos são só de quem compra (Gestão/master)
@@ -20,7 +20,7 @@ export default async function PedidosLayout({ children }: { children: React.Reac
 
   return (
     <div className="flex flex-col gap-4">
-      <SubTabs items={items} />
+      <PedidosSubTabs items={items} />
       {children}
     </div>
   );
