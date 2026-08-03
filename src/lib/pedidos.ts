@@ -159,15 +159,22 @@ export async function salvarPedido(params: {
       .eq("data_contagem_base", params.dataContagemBase)
       .neq("fornecedor", params.fornecedor);
 
-    for (const outro of outrosPedidos ?? []) {
-      for (const item of params.itens) {
-        await supabase
-          .from("pedido_itens")
-          .update({ quantidade_pedida: item.quantidadePedida })
-          .eq("pedido_id", outro.id)
-          .eq("sku", item.sku);
-      }
-    }
+    // Em paralelo, não em série - "Salvar tudo" chama isso pra cada
+    // fornecedor ao mesmo tempo, e uma lista grande de concorrentes ×
+    // itens em série (um `await` de cada vez) ficava lenta o suficiente
+    // pra guarda de "não salvo" ainda estar ativa segundos depois do
+    // clique.
+    await Promise.all(
+      (outrosPedidos ?? []).flatMap((outro) =>
+        params.itens.map((item) =>
+          supabase
+            .from("pedido_itens")
+            .update({ quantidade_pedida: item.quantidadePedida })
+            .eq("pedido_id", outro.id)
+            .eq("sku", item.sku)
+        )
+      )
+    );
   }
 
   const salvo = await getPedidoSalvo(params.unidadeId, params.fornecedor, params.dataContagemBase);
