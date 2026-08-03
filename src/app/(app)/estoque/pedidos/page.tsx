@@ -47,6 +47,20 @@ export default async function PedidosPage({
     fornecedoresDoPedido.map((f, i) => [f, pedidosSalvos[i]?.previsaoEntrega ?? null]),
   );
 
+  // Quantidade que já foi salva (Salvar/Salvar tudo) pra essa contagem base -
+  // sem isso, toda vez que a página recarrega ela recalcula a sugestão do
+  // zero e o que foi combinado com o fornecedor "some" da tela, mesmo tendo
+  // sido salvo certinho (o Editor de Espelhos continua mostrando certo,
+  // porque só ele lia esse dado - Criar Cotação nunca lia). Uma linha por SKU
+  // basta: o override já é global por SKU aqui, igual o resto da tela.
+  const quantidadesSalvas: Record<string, number> = {};
+  for (const pedido of pedidosSalvos) {
+    if (!pedido) continue;
+    for (const item of pedido.itens) {
+      quantidadesSalvas[item.sku] = item.quantidadePedida;
+    }
+  }
+
   return (
     <PedidoCompras
       itens={resultado.itens}
@@ -59,6 +73,7 @@ export default async function PedidosPage({
       previsaoEntregaPorFornecedor={previsaoEntregaPorFornecedor}
       podeSalvar={acesso.role === "gestao" || acesso.role === "master"}
       fornecedoresCadastro={fornecedores}
+      quantidadesSalvas={quantidadesSalvas}
     />
   );
 }

@@ -26,6 +26,7 @@ export function PedidoCompras({
   previsaoEntregaPorFornecedor,
   podeSalvar,
   fornecedoresCadastro,
+  quantidadesSalvas,
 }: {
   itens: SugestaoCompra[];
   dataUsada: string;
@@ -37,6 +38,7 @@ export function PedidoCompras({
   previsaoEntregaPorFornecedor: Record<string, string | null>;
   podeSalvar: boolean;
   fornecedoresCadastro: Fornecedor[];
+  quantidadesSalvas: Record<string, number>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -57,9 +59,14 @@ export function PedidoCompras({
   }
 
   // Correção manual da quantidade sugerida - só ajusta a tela/cotação, não
-  // grava em lugar nenhum. Compartilhada entre a tabela de conferência por
-  // Grupo e os blocos por Fornecedor: o mesmo SKU pode aparecer nas duas.
-  const [overrides, setOverrides] = useState<Record<string, number>>({});
+  // grava em lugar nenhum (a não ser clicando Salvar). Compartilhada entre a
+  // tabela de conferência por Grupo e os blocos por Fornecedor: o mesmo SKU
+  // pode aparecer nas duas. Começa pré-carregada com o que já foi salvo pra
+  // essa contagem base - sem isso, toda vez que a página recarrega ela volta
+  // a mostrar a sugestão crua calculada em cima do estoque, mesmo que o
+  // Salvar tenha funcionado certinho (o valor combinado com o fornecedor
+  // "sumia" da tela, só reaparecia no Editor de Espelhos).
+  const [overrides, setOverrides] = useState<Record<string, number>>(() => ({ ...quantidadesSalvas }));
   const [editando, setEditando] = useState<Record<string, string>>({});
   const [naoSalvo, setNaoSalvo] = useState(false);
 
