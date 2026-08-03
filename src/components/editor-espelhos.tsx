@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { CodigoSelect } from "@/components/codigo-select";
 import { salvarPedidoAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 import {
   gerarImagemPedido,
@@ -20,6 +21,14 @@ function formatMoeda(v: number): string {
 
 function formatNumero(v: number): string {
   return String(v).replace(".", ",");
+}
+
+// Preço é sempre por fornecedor (cada um cota o próprio valor pro mesmo
+// item) - toda chave de estado de preço usa fornecedor+sku, nunca só sku.
+// Quantidade continua só por sku (é a mesma quantidade combinada, não muda
+// conforme quem acaba fornecendo).
+function chave(fornecedor: string, sku: string): string {
+  return `${fornecedor}::${sku}`;
 }
 
 /** Editor de Espelhos: a partir da mesma cotação calculada de Criar
@@ -64,12 +73,23 @@ export function EditorEspelhos({
     return mapa;
   }, [fornecedores, itensPorFornecedor]);
 
+  // Só considera um vencedor já decidido quando EXATAMENTE um dos
+  // fornecedores que disputam o item tem ele salvo no próprio Pedido. Criar
+  // Cotação não sabe de vencedor - quando salva um item disputado, salva o
+  // mesmo item pra todos os fornecedores concorrentes ao mesmo tempo (a
+  // decisão de quem fornece é só daqui). Se dois ou mais concorrentes têm o
+  // item salvo, ninguém escolheu de verdade ainda - tem que continuar
+  // aparecendo em todos, esperando "Confirmar aqui".
   const [vencedor, setVencedor] = useState<Record<string, string | null>>(() => {
-    const inicial: Record<string, string | null> = {};
+    const salvoEm: Record<string, string[]> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[item.sku] = fornecedor;
+        (salvoEm[item.sku] ??= []).push(fornecedor);
       }
+    }
+    const inicial: Record<string, string | null> = {};
+    for (const [sku, lista] of Object.entries(salvoEm)) {
+      if (lista.length === 1) inicial[sku] = lista[0];
     }
     return inicial;
   });
@@ -95,17 +115,22 @@ export function EditorEspelhos({
     return inicial;
   });
 
+  // Preço é por fornecedor+sku (ver `chave`) - o mesmo item disputado pode
+  // ter um valor cotado diferente em cada bloco enquanto ninguém escolheu o
+  // vencedor ainda.
   const [precosTexto, setPrecosTexto] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[item.sku] = item.precoAtualizado !== null ? formatNumero(item.precoAtualizado) : "";
+        inicial[chave(fornecedor, item.sku)] =
+          item.precoAtualizado !== null ? formatNumero(item.precoAtualizado) : "";
       }
     }
     for (const fornecedor of fornecedores) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
-        if (!(item.sku in inicial)) {
-          inicial[item.sku] = item.precoUnitario !== null ? formatNumero(item.precoUnitario) : "";
+        const k = chave(fornecedor, item.sku);
+        if (!(k in inicial)) {
+          inicial[k] = item.precoUnitario !== null ? formatNumero(item.precoUnitario) : "";
         }
       }
     }
@@ -116,9 +141,26 @@ export function EditorEspelhos({
     return toNumeroBR(quantidadesTexto[sku]) ?? 0;
   }
 
-  function precoDe(sku: string): number | null {
-    return toNumeroBR(precosTexto[sku]);
+  function precoDe(fornecedor: string, sku: string): number | null {
+    return toNumeroBR(precosTexto[chave(fornecedor, sku)]);
   }
+
+  // Enquanto um item disputado ainda não tem vencedor escolhido, o mesmo SKU
+  // aparece em mais de um bloco com preço cotado diferente em cada um - essa
+  // conta acha, entre os que já têm preço digitado, qual é o menor. Só entra
+  // em jogo com 2+ preços digitados (com só 1, não tem o que comparar ainda).
+  const melhorPrecoPorSku = useMemo(() => {
+    const resultado: Record<string, number> = {};
+    for (const [sku, concorrentes] of Object.entries(fornecedoresPorSku)) {
+      if (concorrentes.length < 2) continue;
+      const precos = concorrentes
+        .map((f) => toNumeroBR(precosTexto[chave(f, sku)]))
+        .filter((p): p is number => p !== null);
+      if (precos.length < 2) continue;
+      resultado[sku] = Math.min(...precos);
+    }
+    return resultado;
+  }, [fornecedoresPorSku, precosTexto]);
 
   // Modo "Nome Fornecedor" não é só o nome - a quantidade e o preço também
   // precisam virar embalagem (qtd de FD/CX/PCT em vez de kg/un, preço da
@@ -145,9 +187,9 @@ export function EditorEspelhos({
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
-        if (item.sku in inicial) continue;
-        const precoBase = toNumeroBR(precosTexto[item.sku]);
-        inicial[item.sku] =
+        const k = chave(fornecedor, item.sku);
+        const precoBase = toNumeroBR(precosTexto[k]);
+        inicial[k] =
           precoBase !== null && item.qtdUnidadeBasePorEmbalagem
             ? formatNumero(precoBase * item.qtdUnidadeBasePorEmbalagem)
             : "";
@@ -162,12 +204,13 @@ export function EditorEspelhos({
     setQuantidadesTexto((q) => ({ ...q, [sku]: formatNumero(embalagens * qtdPorEmbalagem) }));
   }
 
-  function editarPrecoEmbalagem(sku: string, texto: string, qtdPorEmbalagem: number) {
-    setPrecosTextoEmbalagem((p) => ({ ...p, [sku]: texto }));
+  function editarPrecoEmbalagem(fornecedor: string, sku: string, texto: string, qtdPorEmbalagem: number) {
+    const k = chave(fornecedor, sku);
+    setPrecosTextoEmbalagem((p) => ({ ...p, [k]: texto }));
     const precoEmbalagem = toNumeroBR(texto);
     setPrecosTexto((p) => ({
       ...p,
-      [sku]: precoEmbalagem !== null ? formatNumero(precoEmbalagem / qtdPorEmbalagem) : "",
+      [k]: precoEmbalagem !== null ? formatNumero(precoEmbalagem / qtdPorEmbalagem) : "",
     }));
   }
 
@@ -195,6 +238,12 @@ export function EditorEspelhos({
   const [compartilhando, setCompartilhando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [modo, setModo] = useState<Record<string, "interno" | "fornecedor">>({});
+
+  // Item com quantidade zerada (não precisa comprar desse fornecedor) fica
+  // fora da tabela por padrão - só o "+ Adicionar item" traz ele de volta,
+  // por fornecedor (o mesmo item pode ficar revelado em vários blocos ao
+  // mesmo tempo, útil enquanto ainda tá comparando preço de item disputado).
+  const [revelados, setRevelados] = useState<Record<string, boolean>>({});
 
   // Clicar em "vencedor aqui" pede confirmação antes de desfazer - trocar
   // sem querer faz o item sumir desse bloco e reaparecer pra escolher de
@@ -231,7 +280,7 @@ export function EditorEspelhos({
         unidadeBase: item.unidadeBase,
         quantidadePedida: quantidadeDe(item.sku),
         precoAntigo: item.precoUnitario,
-        precoAtualizado: precoDe(item.sku),
+        precoAtualizado: precoDe(fornecedor, item.sku),
       })),
     });
     setSalvando((s) => ({ ...s, [fornecedor]: false }));
@@ -259,7 +308,7 @@ export function EditorEspelhos({
     setCompartilhando((c) => ({ ...c, [fornecedor]: true }));
     const modoCompartilhar = modo[fornecedor] ?? "interno";
     const linhas: LinhaPedido[] = itens.map((item) => {
-      const preco = precoDe(item.sku);
+      const preco = precoDe(fornecedor, item.sku);
       const valorTotal = preco !== null ? formatMoeda(quantidadeDe(item.sku) * preco) : "a calcular";
       if (modoCompartilhar === "interno" || itemSemEmbalagem(item)) {
         return {
@@ -277,7 +326,7 @@ export function EditorEspelhos({
       };
     });
     const total = itens.reduce((soma, item) => {
-      const preco = precoDe(item.sku);
+      const preco = precoDe(fornecedor, item.sku);
       if (preco === null) return soma;
       return soma + quantidadeDe(item.sku) * preco;
     }, 0);
@@ -343,9 +392,15 @@ export function EditorEspelhos({
 
       <div className="flex flex-col gap-4">
         {fornecedores.map((fornecedor) => {
-          const itens = itensVisiveisDoFornecedor(fornecedor);
-          const subtotal = itens.reduce((soma, item) => {
-            const preco = precoDe(item.sku);
+          const todosItens = itensVisiveisDoFornecedor(fornecedor);
+          const itensExibidos = todosItens.filter(
+            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)]
+          );
+          const itensOcultos = todosItens.filter(
+            (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
+          );
+          const subtotal = itensExibidos.reduce((soma, item) => {
+            const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;
             return soma + quantidadeDe(item.sku) * preco;
           }, 0);
@@ -353,7 +408,7 @@ export function EditorEspelhos({
           const bateuMinimo = pedidoMinimo === null || subtotal >= pedidoMinimo;
 
           const modoAtual = modo[fornecedor] ?? "interno";
-          const totalVolumes = itens.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
+          const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
 
           return (
             <div key={fornecedor} className="rounded-lg border border-cinza-claro bg-branco">
@@ -419,7 +474,7 @@ export function EditorEspelhos({
                 </button>
               </div>
 
-              {modoAtual === "fornecedor" && itens.some(itemSemEmbalagem) && (
+              {modoAtual === "fornecedor" && itensExibidos.some(itemSemEmbalagem) && (
                 <div className="border-b border-vermelho/30 bg-vermelho/5 px-4 py-2 text-xs text-vermelho">
                   Tem item sem Nome de Compra, Und. Embalagem ou Qtd. Base/Embalagem cadastrados. Completa em{" "}
                   <a href="/estoque/produtos/edicao" className="font-semibold underline">
@@ -442,11 +497,16 @@ export function EditorEspelhos({
                     </tr>
                   </thead>
                   <tbody>
-                    {itens.map((item) => {
+                    {itensExibidos.map((item) => {
                       const disputado = (fornecedoresPorSku[item.sku] ?? []).length > 1;
                       const jaVencido = vencedor[item.sku] === fornecedor;
-                      const preco = precoDe(item.sku);
+                      const preco = precoDe(fornecedor, item.sku);
                       const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
+                      const ehMelhorPreco =
+                        disputado &&
+                        preco !== null &&
+                        melhorPrecoPorSku[item.sku] !== undefined &&
+                        Math.abs(preco - melhorPrecoPorSku[item.sku]) < 0.001;
                       const nomeExibido = modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
                       const unidadeExibida = modoAtual === "interno" ? item.unidadeBase : item.unidadeEmbalagemFornecedor;
                       const semEmbalagem = modoAtual === "fornecedor" && itemSemEmbalagem(item);
@@ -500,21 +560,28 @@ export function EditorEspelhos({
                                 {precoAntigoExibido !== null ? formatMoeda(precoAntigoExibido) : "—"}
                               </td>
                               <td className="px-3 py-2 text-right">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={
-                                    modoAtual === "interno"
-                                      ? (precosTexto[item.sku] ?? "")
-                                      : (precosTextoEmbalagem[item.sku] ?? "")
-                                  }
-                                  onChange={(e) =>
-                                    modoAtual === "interno"
-                                      ? setPrecosTexto((p) => ({ ...p, [item.sku]: e.target.value }))
-                                      : editarPrecoEmbalagem(item.sku, e.target.value, qtdPorEmbalagem as number)
-                                  }
-                                  className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
-                                />
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={
+                                      modoAtual === "interno"
+                                        ? (precosTexto[chave(fornecedor, item.sku)] ?? "")
+                                        : (precosTextoEmbalagem[chave(fornecedor, item.sku)] ?? "")
+                                    }
+                                    onChange={(e) =>
+                                      modoAtual === "interno"
+                                        ? setPrecosTexto((p) => ({ ...p, [chave(fornecedor, item.sku)]: e.target.value }))
+                                        : editarPrecoEmbalagem(fornecedor, item.sku, e.target.value, qtdPorEmbalagem as number)
+                                    }
+                                    className="w-20 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
+                                  />
+                                  {ehMelhorPreco && (
+                                    <span className="shrink-0 rounded-full bg-verde/10 px-1.5 py-0.5 text-[10px] font-bold text-verde">
+                                      Melhor preço
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                             </>
                           )}
@@ -549,7 +616,7 @@ export function EditorEspelhos({
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-azul-noite bg-off-white font-semibold text-cinza">
-                      <td className="px-3 py-2">{itens.length} itens</td>
+                      <td className="px-3 py-2">{itensExibidos.length} itens</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {formatNumero(Math.round(totalVolumes * 100) / 100)} volumes
                       </td>
@@ -561,6 +628,23 @@ export function EditorEspelhos({
                   </tfoot>
                 </table>
               </div>
+
+              {itensOcultos.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-cinza-claro px-4 py-2">
+                  <span className="text-xs text-cinza-medio">Precisa comprar mais alguma coisa desse fornecedor?</span>
+                  <CodigoSelect
+                    value=""
+                    placeholder="+ Adicionar item"
+                    opcoes={itensOcultos.map((item) => ({
+                      codigo: item.sku,
+                      descricao: modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome,
+                    }))}
+                    onChange={(sku) => setRevelados((r) => ({ ...r, [chave(fornecedor, sku)]: true }))}
+                    className="w-64"
+                  />
+                </div>
+              )}
+
               {status[fornecedor] && (
                 <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">
                   {status[fornecedor]}

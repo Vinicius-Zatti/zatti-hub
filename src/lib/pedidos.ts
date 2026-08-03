@@ -142,6 +142,34 @@ export async function salvarPedido(params: {
     );
   }
 
+  // Quantidade pedida é a mesma necessidade não importa qual fornecedor
+  // acaba fornecendo - quando o mesmo SKU é cotado com mais de um (ainda sem
+  // vencedor escolhido), os pedidos concorrentes já salvos da mesma unidade+
+  // contagem base têm que ficar com a MESMA quantidade dali pra frente.
+  // Sem isso, editar e salvar só o bloco de um fornecedor deixava a
+  // quantidade divergente entre concorrentes, e qual delas aparecia em Criar
+  // Cotação/Editor de Espelhos dependia da ordem de leitura, não de qual foi
+  // editado por último (bug real reportado 03/08). Preço não sincroniza -
+  // cada fornecedor cota o próprio valor, é exatamente o que dá pra comparar.
+  if (params.itens.length > 0) {
+    const { data: outrosPedidos } = await supabase
+      .from("pedidos")
+      .select("id")
+      .eq("unidade_id", params.unidadeId)
+      .eq("data_contagem_base", params.dataContagemBase)
+      .neq("fornecedor", params.fornecedor);
+
+    for (const outro of outrosPedidos ?? []) {
+      for (const item of params.itens) {
+        await supabase
+          .from("pedido_itens")
+          .update({ quantidade_pedida: item.quantidadePedida })
+          .eq("pedido_id", outro.id)
+          .eq("sku", item.sku);
+      }
+    }
+  }
+
   const salvo = await getPedidoSalvo(params.unidadeId, params.fornecedor, params.dataContagemBase);
   if (!salvo) throw new Error("Pedido salvo mas não encontrado na releitura");
   return salvo;
