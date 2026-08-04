@@ -21,6 +21,7 @@ type PedidoItemRow = {
   quantidade_recebida: number | null;
   preco_antigo: number | null;
   preco_atualizado: number | null;
+  vencedor_confirmado: boolean;
 };
 
 function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
@@ -43,6 +44,7 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
         quantidadeRecebida: it.quantidade_recebida === null ? null : Number(it.quantidade_recebida),
         precoAntigo: it.preco_antigo === null ? null : Number(it.preco_antigo),
         precoAtualizado: it.preco_atualizado === null ? null : Number(it.preco_atualizado),
+        vencedorConfirmado: it.vencedor_confirmado,
       })
     ),
   };
@@ -154,9 +156,14 @@ export async function confirmarItem(params: {
   }
 }
 
-/** Escolhe o fornecedor vencedor de um item disputado: confirma o item nele
- * (cria/atualiza) e remove o mesmo SKU dos concorrentes que perderam - eles
- * deixam de ter esse item no próprio pedido a partir de agora. */
+/** Confirma o fornecedor vencedor de um item - editar quantidade/preço
+ * sozinho NUNCA marca isso, só esse clique explícito. Vale pra item
+ * disputado (2+ fornecedores) e pra fornecedor único também: nenhum dos
+ * dois casos deve contar como pedido de verdade sem essa confirmação - se
+ * fosse só "tem quantidade salva", fornecedor único ficaria sempre
+ * "confirmado" na hora que a quantidade é editada, mesmo sem ninguém ter
+ * decidido de propósito. Remove o item dos concorrentes que perderam (se
+ * houver) - eles deixam de ter esse SKU no próprio pedido. */
 export async function confirmarVencedor(params: {
   unidadeId: string;
   dataContagemBase: string;
@@ -165,6 +172,7 @@ export async function confirmarVencedor(params: {
   item: ItemParaConfirmar;
   criadoPor: string;
 }): Promise<void> {
+  const supabase = await createClient();
   await confirmarItem({
     unidadeId: params.unidadeId,
     fornecedor: params.fornecedorVencedor,
@@ -172,9 +180,20 @@ export async function confirmarVencedor(params: {
     item: params.item,
     criadoPor: params.criadoPor,
   });
+  const pedidoIdVencedor = await garantirPedido(
+    supabase,
+    params.unidadeId,
+    params.fornecedorVencedor,
+    params.dataContagemBase,
+    params.criadoPor
+  );
+  await supabase
+    .from("pedido_itens")
+    .update({ vencedor_confirmado: true })
+    .eq("pedido_id", pedidoIdVencedor)
+    .eq("sku", params.item.sku);
 
   if (params.outrosFornecedores.length === 0) return;
-  const supabase = await createClient();
   const { data: pedidosPerdedores } = await supabase
     .from("pedidos")
     .select("id")
@@ -188,18 +207,34 @@ export async function confirmarVencedor(params: {
   }
 }
 
-/** Desfaz a escolha de vencedor: recria o item (mesma quantidade, preço em
- * branco pra reconferir) em cada fornecedor que tinha perdido a disputa. O
- * vencedor atual não é mexido - continua com o que já tinha. */
+/** Desfaz a confirmação de vencedor: tira a marca do fornecedor atual e, se
+ * o item tinha concorrentes que perderam a disputa, recria o item neles
+ * (mesma quantidade, preço em branco pra reconferir). Pra fornecedor único
+ * (sem concorrente nenhum), só desmarca - não tem ninguém pra recriar. */
 export async function desfazerVencedor(params: {
   unidadeId: string;
   dataContagemBase: string;
-  fornecedoresParaRecriar: string[];
+  fornecedorAtual: string;
+  outrosFornecedores: string[];
   item: Omit<ItemParaConfirmar, "precoAtualizado">;
   criadoPor: string;
 }): Promise<void> {
+  const supabase = await createClient();
+  const pedidoIdAtual = await garantirPedido(
+    supabase,
+    params.unidadeId,
+    params.fornecedorAtual,
+    params.dataContagemBase,
+    params.criadoPor
+  );
+  await supabase
+    .from("pedido_itens")
+    .update({ vencedor_confirmado: false })
+    .eq("pedido_id", pedidoIdAtual)
+    .eq("sku", params.item.sku);
+
   await Promise.all(
-    params.fornecedoresParaRecriar.map((fornecedor) =>
+    params.outrosFornecedores.map((fornecedor) =>
       confirmarItem({
         unidadeId: params.unidadeId,
         fornecedor,

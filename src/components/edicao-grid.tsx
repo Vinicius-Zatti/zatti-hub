@@ -5,6 +5,7 @@ import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
+import { arredondarPrecoCima } from "@/lib/sheets/numero";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
@@ -25,6 +26,13 @@ type StatusLinha = { tipo: "salvando" | "ok" | "erro"; msg?: string } | undefine
 // Cadastro mínimo pra um produto não cair fora do Pedido de Compras: SKU,
 // Grupo, Nome, Unidade Base, Preço, Estoque p/ semana, Estoque mínimo e
 // Fornecedor 1 (colunas A, C, D, E, F, G, H, M da planilha).
+// Nome de Compra vazio herda o Nome interno - o cliente só precisa
+// completar Und. Embalagem/Qtd. Base por Embalagem pra fazer sentido,
+// editável se quiser um nome diferente do que o fornecedor chama.
+function comNomeCompraPadrao(p: Produto): Produto {
+  return p.nomeCompra.trim() ? p : { ...p, nomeCompra: p.nome };
+}
+
 function produtoIncompleto(p: Produto): boolean {
   return (
     !p.sku.trim() ||
@@ -85,10 +93,10 @@ function CadastroSection({
   const [ordenacao, setOrdenacao] = useState<Ordenacao>({ campo: null, direcao: "asc" });
 
   const [baseline, setBaseline] = useState<Record<string, Produto>>(() =>
-    Object.fromEntries(produtos.map((p) => [p.sku, p]))
+    Object.fromEntries(produtos.map((p) => [p.sku, comNomeCompraPadrao(p)]))
   );
   const [estado, setEstado] = useState<Record<string, Produto>>(() =>
-    Object.fromEntries(produtos.map((p) => [p.sku, p]))
+    Object.fromEntries(produtos.map((p) => [p.sku, comNomeCompraPadrao(p)]))
   );
   const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
@@ -648,6 +656,36 @@ const LinhaProduto = memo(function LinhaProduto({
     onChange(sku, key, value);
   }
 
+  // Preço Base, Qtd. Base/Embalagem e Preço Fornecedor formam um triângulo -
+  // mudar qualquer um dos dois primeiros recalcula o Preço Fornecedor
+  // (base × qtd); mudar o Preço Fornecedor direto recalcula o Preço Base
+  // (fornecedor ÷ qtd). Sempre arredondado pra cima em 2 casas - preço é
+  // dinheiro, nunca sobra terceira casa.
+  function aoMudarPrecoBase(v: number | null) {
+    campo("precoUnitario", v);
+    if (v !== null && editado.qtdUnidadeBasePorEmbalagem) {
+      campo("precoFornecedor", arredondarPrecoCima(v * editado.qtdUnidadeBasePorEmbalagem));
+    }
+  }
+
+  function aoMudarPrecoFornecedor(v: number | null) {
+    campo("precoFornecedor", v);
+    if (v !== null && editado.qtdUnidadeBasePorEmbalagem) {
+      campo("precoUnitario", arredondarPrecoCima(v / editado.qtdUnidadeBasePorEmbalagem));
+    }
+  }
+
+  function aoMudarQtdEmbalagem(v: number | null) {
+    campo("qtdUnidadeBasePorEmbalagem", v);
+    if (v) {
+      if (editado.precoUnitario !== null) {
+        campo("precoFornecedor", arredondarPrecoCima(editado.precoUnitario * v));
+      } else if (editado.precoFornecedor !== null) {
+        campo("precoUnitario", arredondarPrecoCima(editado.precoFornecedor / v));
+      }
+    }
+  }
+
   return (
     <tr className="border-t border-cinza-claro">
       <td className="px-2 py-1.5 font-mono text-cinza-medio">{sku}</td>
@@ -675,11 +713,7 @@ const LinhaProduto = memo(function LinhaProduto({
         <CodigoSelect value={editado.unidadeBase} opcoes={UNIDADES} onChange={(v) => campo("unidadeBase", v)} className="w-14" />
       </td>
       <td className="px-2 py-1.5">
-        <CampoNumero
-          value={editado.precoUnitario}
-          onChange={(v) => campo("precoUnitario", v)}
-          className="w-16"
-        />
+        <CampoNumero value={editado.precoUnitario} onChange={aoMudarPrecoBase} className="w-16" />
       </td>
       <td className="px-2 py-1.5">
         <CampoNumero
@@ -716,7 +750,7 @@ const LinhaProduto = memo(function LinhaProduto({
       <td className="px-2 py-1.5">
         <CampoNumero
           value={editado.qtdUnidadeBasePorEmbalagem}
-          onChange={(v) => campo("qtdUnidadeBasePorEmbalagem", v)}
+          onChange={aoMudarQtdEmbalagem}
           decimais={decimaisQuantidade(editado.unidadeBase)}
           className="w-16"
         />
@@ -724,7 +758,7 @@ const LinhaProduto = memo(function LinhaProduto({
       <td className="px-2 py-1.5">
         <CampoNumero
           value={editado.precoFornecedor}
-          onChange={(v) => campo("precoFornecedor", v)}
+          onChange={aoMudarPrecoFornecedor}
           className="w-16"
         />
       </td>

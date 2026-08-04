@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,19 @@ export const metadata: Metadata = {
     title: "Zatti Hub",
     statusBarStyle: "default",
   },
+};
+
+// Trava o zoom automático que Safari/Chrome no iPhone dão ao focar um campo
+// de contagem/quantidade - sem isso, a tela inteira amplia sozinha e sai da
+// posição, mesmo com fonte de 16px no campo (achado real testando no
+// celular, 03/08). Também impede pinch-zoom manual do usuário no app
+// inteiro - troca deliberada, o app é usado "como app" (salvo na tela de
+// início), não como página de conteúdo pra ampliar.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({

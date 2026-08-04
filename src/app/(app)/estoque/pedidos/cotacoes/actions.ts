@@ -89,11 +89,13 @@ export async function confirmarVencedorAction(input: {
   }
 }
 
-/** Desfaz a escolha de vencedor - recria o item nos fornecedores que tinham
- * perdido, preço em branco pra eles reconferirem. */
+/** Desfaz a confirmação de vencedor - desmarca o fornecedor atual e recria o
+ * item nos concorrentes que tinham perdido (se houver), preço em branco pra
+ * eles reconferirem. */
 export async function desfazerVencedorAction(input: {
   dataContagemBase: string;
-  fornecedoresParaRecriar: string[];
+  fornecedorAtual: string;
+  outrosFornecedores: string[];
   item: Omit<ItemConfirmar, "precoAtualizado">;
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
@@ -101,7 +103,8 @@ export async function desfazerVencedorAction(input: {
     await desfazerVencedor({
       unidadeId: acesso.unidadeId,
       dataContagemBase: input.dataContagemBase,
-      fornecedoresParaRecriar: input.fornecedoresParaRecriar,
+      fornecedorAtual: input.fornecedorAtual,
+      outrosFornecedores: input.outrosFornecedores,
       item: input.item,
       criadoPor: acesso.userId,
     });

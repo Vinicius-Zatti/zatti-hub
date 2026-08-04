@@ -148,7 +148,13 @@ create table if not exists pedido_itens (
   quantidade_pedida numeric not null,
   quantidade_recebida numeric,
   preco_antigo numeric,
-  preco_atualizado numeric
+  preco_atualizado numeric,
+  -- Verdadeiro só depois de um clique explícito em "Confirmar aqui" no
+  -- Editor de Espelhos (adicionado 03/08) - editar quantidade/preço sozinho
+  -- nunca marca isso. Sem essa coluna, item de fornecedor único ficava
+  -- "confirmado" na hora que a quantidade era gravada, mesmo sem decisão
+  -- nenhuma de propósito.
+  vencedor_confirmado boolean not null default false
 );
 
 alter table pedidos enable row level security;

@@ -100,6 +100,13 @@ export type PedidoItem = {
    * Cadastro de Produtos dali pra frente (contagens antigas mantêm o preço
    * que tinham, igual já acontece em Contagem). */
   precoAtualizado: number | null;
+  /** Verdadeiro só depois de um clique explícito em "Confirmar aqui" no
+   * Editor de Espelhos - editar quantidade/preço sozinho nunca marca isso.
+   * Separado de "tem quantidade confirmada" porque pra item de fornecedor
+   * único a linha já nasce salva assim que a quantidade é confirmada, e sem
+   * esse campo não dava pra saber se foi decisão de propósito ou só uma
+   * edição no meio do caminho. */
+  vencedorConfirmado: boolean;
 };
 
 /** Um pedido de compra fechado com um fornecedor específico - nasce quando

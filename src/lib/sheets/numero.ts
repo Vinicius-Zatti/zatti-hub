@@ -16,3 +16,10 @@ export function toNumeroBR(v: unknown): number | null {
   const n = Number(limpo);
   return Number.isNaN(n) ? null : n;
 }
+
+/** Arredonda valor monetário pra exatamente 2 casas, sempre pra cima -
+ * nunca deixa sobrar dízima de multiplicar/dividir preço por quantidade de
+ * embalagem (base↔fornecedor, nos dois sentidos). */
+export function arredondarPrecoCima(v: number): number {
+  return Math.ceil(v * 100) / 100;
+}
