@@ -6,7 +6,17 @@ export const dynamic = "force-dynamic";
 
 export default async function PedidosFeitosPage() {
   const acesso = await getAcessoAtual();
-  const pedidos = await listPedidosFeitos(acesso.unidadeId);
+  const todosPedidos = await listPedidosFeitos(acesso.unidadeId);
+
+  // Só item com vencedor confirmado no Editor de Espelhos é pedido de
+  // verdade - editar quantidade/preço sozinho grava a linha, mas não decide
+  // vencedor nenhum (ver `vencedorConfirmado`). Sem esse filtro, item que
+  // nunca ganhou disputa nenhuma (ou que caiu pra 0 depois de sincronizar
+  // com outro fornecedor) aparecia aqui como "pedido 0 unidades", confuso.
+  // Fornecedor sem nenhum item confirmado nem aparece.
+  const pedidos = todosPedidos
+    .map((p) => ({ ...p, itens: p.itens.filter((it) => it.vencedorConfirmado) }))
+    .filter((p) => p.itens.length > 0);
 
   return (
     <div className="flex flex-col gap-5">
