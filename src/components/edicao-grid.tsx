@@ -9,7 +9,7 @@ import { arredondarPrecoCima } from "@/lib/sheets/numero";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
-import { BotaoExpandir } from "@/components/botao-expandir";
+import { ControlesTabela } from "@/components/tabela-rolavel";
 import { StatCard } from "@/components/stat-card";
 import { InfoIcon } from "@/components/info-icon";
 import { CampoNumero } from "@/components/campo-numero";
@@ -236,7 +236,7 @@ function CadastroSection({
     setOrdenacao((o) => (o.campo !== campoOrd ? { campo: campoOrd, direcao: "asc" } : { campo: campoOrd, direcao: o.direcao === "asc" ? "desc" : "asc" }));
   }
 
-  const { scrollRef, handlers, arrastando, espacoPressionado } = useArrastarParaRolar<HTMLDivElement>();
+  const { scrollRef, handlers, arrastando } = useArrastarParaRolar<HTMLDivElement>();
 
   return (
     <div>
@@ -282,7 +282,7 @@ function CadastroSection({
             >
               {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
             </button>
-            <BotaoExpandir expandido={expandido} onClick={alternar} />
+            <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
         <p className="text-xs text-cinza-medio">
@@ -293,7 +293,7 @@ function CadastroSection({
           ref={scrollRef}
           {...handlers}
           className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
-            arrastando ? "cursor-grabbing" : espacoPressionado ? "cursor-grab" : ""
+            arrastando ? "cursor-grabbing" : "cursor-grab"
           }`}
         >
         <table className="w-full min-w-[1750px] text-xs">

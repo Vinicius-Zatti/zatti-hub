@@ -9,7 +9,7 @@ export function BotaoExpandir({ expandido, onClick }: { expandido: boolean; onCl
       onClick={onClick}
       title={expandido ? "Sair da tela cheia" : "Expandir tabela"}
       aria-label={expandido ? "Sair da tela cheia" : "Expandir tabela"}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-cinza-claro bg-branco text-cinza-medio hover:border-ambar hover:text-ambar"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-cinza-claro bg-branco text-cinza-medio transition-colors hover:border-ambar hover:text-ambar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
     >
       <svg
         width="15"

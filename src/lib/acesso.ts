@@ -14,6 +14,7 @@ const COOKIE_ORGANIZACAO = "zh_org";
 
 export type AcessoAtual = {
   userId: string;
+  usuarioEmail: string;
   organizacaoId: string;
   organizacaoNome: string;
   unidadeId: string;
@@ -155,6 +156,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
 
   return {
     userId,
+    usuarioEmail: typeof claims.claims.email === "string" ? claims.claims.email : "",
     organizacaoId,
     organizacaoNome:
       organizacoesDisponiveis.find((o) => o.id === organizacaoId)?.nome ?? "",

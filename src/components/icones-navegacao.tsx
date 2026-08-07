@@ -1,4 +1,5 @@
 export type NomeIconeNavegacao =
+  | "painel"
   | "estoque"
   | "financeiro"
   | "fichas"
@@ -17,6 +18,14 @@ export function IconeNavegacao({
   className?: string;
 }) {
   const conteudo = {
+    painel: (
+      <>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+      </>
+    ),
     estoque: (
       <>
         <path d="m4 7 8-4 8 4-8 4-8-4Z" />

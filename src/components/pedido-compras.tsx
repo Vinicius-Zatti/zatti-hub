@@ -6,6 +6,7 @@ import type { Fornecedor, SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos, SEM_FORNECEDOR } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
@@ -324,7 +325,7 @@ function TabelaItens({
         <span>{titulo}</span>
         <span className="text-xs font-semibold text-cinza-claro">{formatMoeda(subtotal)}</span>
       </div>
-      <div className="max-h-[50vh] overflow-auto">
+      <TabelaRolavel className="max-h-[50vh]" ariaLabel={titulo}>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-off-white text-cinza-medio">
@@ -430,7 +431,7 @@ function TabelaItens({
             })}
           </tbody>
         </table>
-      </div>
+      </TabelaRolavel>
     </div>
   );
 }

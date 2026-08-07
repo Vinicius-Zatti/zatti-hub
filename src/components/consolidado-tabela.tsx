@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ConsolidadoVenda } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { FiltroPeriodo, type PeriodoAplicado } from "@/components/filtro-periodo";
 
 function brl(n: number): string {
@@ -82,7 +83,7 @@ export function ConsolidadoTabela({
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+      <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Histórico do consolidado de vendas">
         <table className="w-full min-w-[1020px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -140,7 +141,7 @@ export function ConsolidadoTabela({
             )}
           </tbody>
         </table>
-      </div>
+      </TabelaRolavel>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Fornecedor } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 
 export function TabelaFornecedores({ fornecedores }: { fornecedores: Fornecedor[] }) {
   const [filtroGrupos, setFiltroGrupos] = useState<string[]>([]);
@@ -47,7 +48,7 @@ export function TabelaFornecedores({ fornecedores }: { fornecedores: Fornecedor[
         ))}
       </div>
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+      <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Lista de fornecedores">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -88,7 +89,7 @@ export function TabelaFornecedores({ fornecedores }: { fornecedores: Fornecedor[
             )}
           </tbody>
         </table>
-      </div>
+      </TabelaRolavel>
     </div>
   );
 }

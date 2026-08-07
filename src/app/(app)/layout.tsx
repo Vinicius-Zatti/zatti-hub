@@ -78,6 +78,13 @@ export default async function AppLayout({
   // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
   const itensNavegacao: ItemNavegacao[] = [
     {
+      label: "Painel geral",
+      href: "/painel",
+      icone: "painel",
+      activePrefix: "/painel",
+      disabled: false,
+    },
+    {
       label: "Estoque",
       href: "/estoque/produtos",
       icone: "estoque",
@@ -106,6 +113,7 @@ export default async function AppLayout({
           organizacaoAtual={acesso.organizacaoId}
           organizacaoNome={acesso.organizacaoNome}
           organizacoes={acesso.organizacoesDisponiveis}
+          usuarioEmail={acesso.usuarioEmail}
         >
           {children}
         </EstruturaAplicativo>

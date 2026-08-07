@@ -28,6 +28,7 @@ type Props = {
   organizacaoAtual: string;
   organizacaoNome: string;
   organizacoes: { id: string; nome: string }[];
+  usuarioEmail: string;
 };
 
 const PAINEL_ORGANIZACAO = "__organizacao";
@@ -38,6 +39,7 @@ export function EstruturaAplicativo({
   organizacaoAtual,
   organizacaoNome,
   organizacoes,
+  usuarioEmail,
 }: Props) {
   const pathname = usePathname();
   const [recolhido, setRecolhido] = useState(false);
@@ -96,7 +98,7 @@ export function EstruturaAplicativo({
         className={`fixed inset-y-0 left-0 z-40 flex w-[5.5rem] flex-col border-r border-white/10 bg-azul-noite text-branco shadow-xl transition-[width] duration-200 ${larguraLateral}`}
       >
         <Link
-          href="/estoque/produtos"
+          href="/painel"
           aria-label="Ir para o início do Zatti Hub"
           title="Zatti Hub"
           className="flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ambar"
@@ -189,12 +191,9 @@ export function EstruturaAplicativo({
                   >
                     <IconeNavegacao nome={item.icone} className="h-5 w-5 shrink-0" />
                     {!recolhido && (
-                      <>
-                        <span className="hidden min-w-0 flex-1 truncate text-left lg:block">
-                          {item.label}
-                        </span>
-                        <IconeNavegacao nome="expandir" className="hidden h-4 w-4 shrink-0 lg:block" />
-                      </>
+                      <span className="hidden min-w-0 flex-1 truncate text-left lg:block">
+                        {item.label}
+                      </span>
                     )}
                   </button>
                 );
@@ -228,6 +227,12 @@ export function EstruturaAplicativo({
         <div className="shrink-0 border-t border-white/10 p-2">
           {!recolhido && (
             <div className="mb-2 hidden rounded-lg bg-white/5 p-2 lg:block">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">
+                Usuário
+              </p>
+              <p className="mb-2 truncate text-xs font-medium text-branco" title={usuarioEmail}>
+                {usuarioEmail || "Conta ativa"}
+              </p>
               <p className="mb-1 truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">
                 Organização
               </p>
@@ -284,6 +289,13 @@ export function EstruturaAplicativo({
           >
             <CabecalhoPainel titulo="Organização" aoFechar={() => setPainelAberto(null)} />
             <div className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-cinza-medio">
+                Usuário conectado
+              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-azul-noite" title={usuarioEmail}>
+                {usuarioEmail || "Conta ativa"}
+              </p>
+              <div className="my-4 border-t border-cinza-claro" />
               <p className="mb-3 text-sm text-cinza-medio">Escolha qual cliente deseja acessar.</p>
               {variasOrganizacoes ? (
                 <OrgSwitcher organizacoes={organizacoes} atual={organizacaoAtual} />

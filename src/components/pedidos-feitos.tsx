@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Pedido, PedidoItem } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { marcarRecebidoAction } from "@/app/(app)/estoque/pedidos/feitos/actions";
 import { toNumeroBR } from "@/lib/sheets/numero";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
@@ -111,7 +112,7 @@ export function PedidosFeitos({
               </div>
             </div>
 
-            <div className="max-h-[45vh] overflow-auto">
+            <TabelaRolavel className="max-h-[45vh]" ariaLabel={`Itens do pedido ${pedido.id}`}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-off-white text-cinza-medio">
@@ -175,7 +176,7 @@ export function PedidosFeitos({
                   </tr>
                 </tfoot>
               </table>
-            </div>
+            </TabelaRolavel>
 
             <div className="flex flex-wrap items-end gap-3 border-t border-cinza-claro px-4 py-3">
               <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">

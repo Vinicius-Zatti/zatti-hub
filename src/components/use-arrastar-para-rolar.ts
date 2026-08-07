@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const EDITAVEL = "input, select, textarea, button, [role='button']";
+const EDITAVEL = "input, select, textarea, button, a, [role='button'], [data-nao-arrastar]";
 
 function focoEmCampo(): boolean {
   const el = document.activeElement;
@@ -61,6 +61,7 @@ export function useArrastarParaRolar<T extends HTMLElement>() {
     if (emEditavel && !espacoPressionado) return; // deixa o clique normal acontecer
     if (emEditavel && espacoPressionado) e.preventDefault(); // segurando espaço, não foca o campo
     if (!scrollRef.current) return;
+    if (!emEditavel) e.preventDefault();
     arrasto.current = {
       x: e.clientX,
       y: e.clientY,

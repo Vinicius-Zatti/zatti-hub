@@ -9,7 +9,8 @@ import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
-import { BotaoExpandir } from "@/components/botao-expandir";
+import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
+import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
 
@@ -120,6 +121,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   }, [fornecedoresLocais, estado, busca, somenteIncompletos, filtroGrupos]);
 
   const { expandido, alternar } = useTabelaExpansivel();
+  const { scrollRef, handlers, arrastando } = useArrastarParaRolar<HTMLDivElement>();
 
   const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
   useEffect(() => {
@@ -181,7 +183,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
             >
               {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
             </button>
-            <BotaoExpandir expandido={expandido} onClick={alternar} />
+            <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
         <p className="text-xs text-cinza-medio">
@@ -216,7 +218,11 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
           ))}
         </div>
 
-        <div className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco`}>
+        <div
+          ref={scrollRef}
+          {...handlers}
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco ${arrastando ? "cursor-grabbing select-none" : "cursor-grab"}`}
+        >
         <table className="w-full min-w-[1600px] text-xs">
           <thead>
             <tr className="bg-azul-petroleo text-branco">

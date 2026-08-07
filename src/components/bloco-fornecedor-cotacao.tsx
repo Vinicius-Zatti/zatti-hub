@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Fornecedor, SugestaoCompra } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { SEM_FORNECEDOR } from "@/lib/pedido";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
@@ -216,7 +217,7 @@ export function BlocoFornecedorCotacao({
         </div>
       )}
 
-      <div className="max-h-[50vh] overflow-auto">
+      <TabelaRolavel className="max-h-[50vh]" ariaLabel={`Cotação de ${fornecedor}`}>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-off-white text-cinza-medio">
@@ -329,7 +330,7 @@ export function BlocoFornecedorCotacao({
             })}
           </tbody>
         </table>
-      </div>
+      </TabelaRolavel>
       {status && <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">{status}</div>}
       {ehSemFornecedor && (
         <NovoFornecedorModal

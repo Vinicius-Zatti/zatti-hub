@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CodigoSelect } from "@/components/codigo-select";
 import {
   confirmarItemAction,
@@ -666,7 +667,7 @@ export function EditorEspelhos({
                 </div>
               )}
 
-              <div className="max-h-[55vh] overflow-auto">
+              <TabelaRolavel className="max-h-[55vh]" ariaLabel={`Espelho de compras de ${fornecedor}`}>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-off-white text-cinza-medio">
@@ -884,7 +885,7 @@ export function EditorEspelhos({
                     </tr>
                   </tfoot>
                 </table>
-              </div>
+              </TabelaRolavel>
 
               {itensOcultos.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-cinza-claro px-4 py-2">

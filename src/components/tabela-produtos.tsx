@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Produto } from "@/lib/types";
 import { Th } from "@/components/tabela";
-import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
-import { BotaoExpandir } from "@/components/botao-expandir";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { formatarQuantidade } from "@/lib/unidades";
 
 function formatMoeda(v: number | null): string {
@@ -21,7 +20,6 @@ function Seta({ ativa, direcao }: { ativa: boolean; direcao: Direcao }) {
 }
 
 export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
-  const { expandido, alternar } = useTabelaExpansivel();
   const [coluna, setColuna] = useState<Coluna | null>(null);
   const [direcao, setDirecao] = useState<Direcao>("asc");
 
@@ -46,13 +44,7 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
   }, [produtos, coluna, direcao]);
 
   return (
-    <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
-      <div className="flex items-center justify-end">
-        <BotaoExpandir expandido={expandido} onClick={alternar} />
-      </div>
-      <div
-        className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco`}
-      >
+    <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Lista de produtos">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -119,7 +111,6 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+    </TabelaRolavel>
   );
 }

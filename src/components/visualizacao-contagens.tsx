@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ItemInventario } from "@/lib/types";
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { atualizarQuantidadeContagemAction } from "@/app/(app)/estoque/contagem/actions";
 
 const ABREV_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -174,7 +175,7 @@ export function VisualizacaoContagens({ itens }: { itens: ItemInventario[] }) {
         </p>
       )}
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro bg-branco">
+      <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Conferência de contagens">
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
@@ -270,7 +271,7 @@ export function VisualizacaoContagens({ itens }: { itens: ItemInventario[] }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TabelaRolavel>
     </div>
   );
 }
