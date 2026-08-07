@@ -1,10 +1,11 @@
-import Link from "next/link";
-import { NavTabs, type NavItem, type NavSection } from "@/components/nav-tabs";
+import {
+  EstruturaAplicativo,
+  type ItemNavegacao,
+  type SecaoNavegacao,
+} from "@/components/estrutura-aplicativo";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
 import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
-import { OrgSwitcher } from "@/components/org-switcher";
 import { getAcessoAtual } from "@/lib/acesso";
-import { signOutAction } from "@/lib/supabase/actions";
 
 export default async function AppLayout({
   children,
@@ -14,7 +15,7 @@ export default async function AppLayout({
   const acesso = await getAcessoAtual();
   const podeGerir = acesso.role !== "operacional";
 
-  const secoesEstoque: NavSection[] = [
+  const secoesEstoque: SecaoNavegacao[] = [
     {
       label: "Produtos",
       items: [
@@ -60,12 +61,26 @@ export default async function AppLayout({
       : []),
   ];
 
+  const secoesFinanceiro: SecaoNavegacao[] = [
+    {
+      label: "Consolidado de vendas",
+      items: [
+        { label: "Novo lançamento", href: "/financeiro/consolidado/novo" },
+        { label: "Histórico", href: "/financeiro/consolidado" },
+        ...(podeGerir
+          ? [{ label: "Dashboard", href: "/financeiro/consolidado/dashboard" }]
+          : []),
+      ],
+    },
+  ];
+
   // Financeiro só sai de "em breve" pra unidade com a flag ligada
   // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
-  const NAV_ITEMS: NavItem[] = [
+  const itensNavegacao: ItemNavegacao[] = [
     {
       label: "Estoque",
       href: "/estoque/produtos",
+      icone: "estoque",
       activePrefix: "/estoque",
       disabled: false,
       sections: secoesEstoque,
@@ -73,62 +88,28 @@ export default async function AppLayout({
     {
       label: "Financeiro",
       href: "/financeiro/consolidado/novo",
+      icone: "financeiro",
       activePrefix: "/financeiro",
       disabled: !acesso.consolidadoVendasHabilitado,
+      sections: secoesFinanceiro,
     },
-    { label: "Fichas Técnicas", href: "#", disabled: true },
-    { label: "Tarefas", href: "#", disabled: true },
-    { label: "Marketing", href: "#", disabled: true },
+    { label: "Fichas Técnicas", href: "#", icone: "fichas", disabled: true },
+    { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
+    { label: "Marketing", href: "#", icone: "marketing", disabled: true },
   ];
 
   return (
     <GuardaContagemProvider>
-    <GuardaEdicaoProvider>
-      <div className="flex min-h-full flex-col">
-        <header className="bg-azul-noite text-branco">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-            <Link href="/estoque/produtos" className="flex items-center">
-              <img src="/brand/zatti-logo-invertida.svg" alt="Zatti Hub" className="h-7 w-auto" />
-            </Link>
-            <div className="flex items-center gap-3 text-sm">
-              {acesso.organizacoesDisponiveis.length > 1 ? (
-                <OrgSwitcher
-                  organizacoes={acesso.organizacoesDisponiveis}
-                  atual={acesso.organizacaoId}
-                />
-              ) : (
-                <span className="hidden text-cinza-claro sm:inline">
-                  {acesso.organizacaoNome}
-                </span>
-              )}
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ambar text-sm font-bold text-azul-noite">
-                {acesso.organizacaoNome.charAt(0).toUpperCase() || "?"}
-              </div>
-              <form action={signOutAction}>
-                <button
-                  type="submit"
-                  className="text-xs text-cinza-claro underline-offset-2 hover:text-branco hover:underline"
-                >
-                  Sair
-                </button>
-              </form>
-            </div>
-          </div>
-        </header>
-
-        <div className="sticky top-0 z-30 bg-azul-noite text-branco shadow-md">
-          <NavTabs items={NAV_ITEMS} />
-        </div>
-
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
+      <GuardaEdicaoProvider>
+        <EstruturaAplicativo
+          items={itensNavegacao}
+          organizacaoAtual={acesso.organizacaoId}
+          organizacaoNome={acesso.organizacaoNome}
+          organizacoes={acesso.organizacoesDisponiveis}
+        >
           {children}
-        </main>
-
-        <footer className="border-t border-cinza-claro bg-branco py-4 text-center text-xs text-cinza-medio">
-          Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
-        </footer>
-      </div>
-    </GuardaEdicaoProvider>
+        </EstruturaAplicativo>
+      </GuardaEdicaoProvider>
     </GuardaContagemProvider>
   );
 }
