@@ -9,11 +9,15 @@ export type EntradaConsolidado = {
   valeAlimentacao: number;
   salao: number;
   deliveryProprio: number;
+  ifood: number;
+  food99: number;
 };
 
 export type TotaisConsolidado = {
   totalFormasPagamento: number;
   totalCanais: number;
+  totalMarketplaces: number;
+  faturamentoTotal: number;
   diferenca: number;
   status: "conferido" | "divergente";
 };
@@ -36,10 +40,13 @@ export function calcularTotais(valores: EntradaConsolidado): TotaisConsolidado {
     paraCentavos(valores.dinheiro) +
     paraCentavos(valores.valeAlimentacao);
   const canaisCents = paraCentavos(valores.salao) + paraCentavos(valores.deliveryProprio);
+  const marketplacesCents = paraCentavos(valores.ifood) + paraCentavos(valores.food99);
   const diferencaCents = Math.abs(formasCents - canaisCents);
   return {
     totalFormasPagamento: formasCents / 100,
     totalCanais: canaisCents / 100,
+    totalMarketplaces: marketplacesCents / 100,
+    faturamentoTotal: (formasCents + marketplacesCents) / 100,
     diferenca: diferencaCents / 100,
     status: diferencaCents === 0 ? "conferido" : "divergente",
   };
@@ -55,8 +62,12 @@ type ConsolidadoRow = {
   vale_alimentacao: number;
   salao: number;
   delivery_proprio: number;
+  ifood: number;
+  food99: number;
   total_formas_pagamento: number;
   total_canais: number;
+  total_marketplaces: number;
+  faturamento_total: number;
   diferenca: number;
   status: "conferido" | "divergente";
   criado_por: string;
@@ -92,8 +103,12 @@ function rowToConsolidado(row: ConsolidadoRow, nomes: Map<string, string>): Cons
     valeAlimentacao: Number(row.vale_alimentacao),
     salao: Number(row.salao),
     deliveryProprio: Number(row.delivery_proprio),
+    ifood: Number(row.ifood),
+    food99: Number(row.food99),
     totalFormasPagamento: Number(row.total_formas_pagamento),
     totalCanais: Number(row.total_canais),
+    totalMarketplaces: Number(row.total_marketplaces),
+    faturamentoTotal: Number(row.faturamento_total),
     diferenca: Number(row.diferenca),
     status: row.status,
     criadoPorNome: nomes.get(row.criado_por) ?? "Usuário",
@@ -112,8 +127,12 @@ function valoresToRow(valores: EntradaConsolidado, totais: TotaisConsolidado) {
     vale_alimentacao: valores.valeAlimentacao,
     salao: valores.salao,
     delivery_proprio: valores.deliveryProprio,
+    ifood: valores.ifood,
+    food99: valores.food99,
     total_formas_pagamento: totais.totalFormasPagamento,
     total_canais: totais.totalCanais,
+    total_marketplaces: totais.totalMarketplaces,
+    faturamento_total: totais.faturamentoTotal,
     diferenca: totais.diferenca,
     status: totais.status,
   };

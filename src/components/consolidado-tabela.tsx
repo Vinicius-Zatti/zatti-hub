@@ -49,7 +49,7 @@ export function ConsolidadoTabela({
   }, [lancamentos, periodo, status]);
 
   const divergentesNoFiltro = filtrados.filter((l) => l.status === "divergente").length;
-  const totalColunas = podeEditar ? 10 : 9;
+  const totalColunas = podeEditar ? 13 : 12;
 
   return (
     <div className="flex flex-col gap-4 pb-10">
@@ -84,14 +84,21 @@ export function ConsolidadoTabela({
       </div>
 
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Histórico do consolidado de vendas">
-        <table className="w-full min-w-[1020px] text-sm">
+        <table className="w-full min-w-[1380px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th>Data</Th>
               <Th align="right">Total formas de pagamento</Th>
               <Th align="right">Salão</Th>
               <Th align="right">Delivery próprio</Th>
-              <Th align="right">Total canais</Th>
+              <Th align="right">
+                <span className="rounded bg-[#EA1D2C] px-1.5 py-0.5 text-branco">iFood</span>
+              </Th>
+              <Th align="right">
+                <span className="rounded bg-[#FFDD00] px-1.5 py-0.5 text-azul-noite">99Food</span>
+              </Th>
+              <Th align="right">Faturamento total</Th>
+              <Th align="right">Total canais próprios</Th>
               <Th align="right">Diferença</Th>
               <Th>Status</Th>
               {podeEditar && <Th align="center">Edição</Th>}
@@ -106,6 +113,11 @@ export function ConsolidadoTabela({
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalFormasPagamento)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.salao)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.deliveryProprio)}</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#EA1D2C]">{brl(l.ifood)}</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#8A7600]">{brl(l.food99)}</td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums text-azul-noite">
+                  {brl(l.faturamentoTotal)}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalCanais)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{l.diferenca > 0 ? brl(l.diferenca) : "—"}</td>
                 <td className="px-3 py-2">

@@ -29,6 +29,8 @@ type Campos = {
   valeAlimentacao: number | null;
   salao: number | null;
   deliveryProprio: number | null;
+  ifood: number | null;
+  food99: number | null;
 };
 
 const ZERADOS: Campos = {
@@ -39,6 +41,8 @@ const ZERADOS: Campos = {
   valeAlimentacao: 0,
   salao: 0,
   deliveryProprio: 0,
+  ifood: 0,
+  food99: 0,
 };
 
 function num(v: number | null): number {
@@ -61,6 +65,8 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
           valeAlimentacao: existente.valeAlimentacao,
           salao: existente.salao,
           deliveryProprio: existente.deliveryProprio,
+          ifood: existente.ifood,
+          food99: existente.food99,
         }
       : ZERADOS
   );
@@ -77,6 +83,8 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
   const totalFormasPagamento =
     num(campos.credito) + num(campos.debito) + num(campos.pix) + num(campos.dinheiro) + num(campos.valeAlimentacao);
   const totalCanais = num(campos.salao) + num(campos.deliveryProprio);
+  const totalMarketplaces = num(campos.ifood) + num(campos.food99);
+  const faturamentoTotal = totalFormasPagamento + totalMarketplaces;
 
   function atualizarCampo(chave: keyof Campos, valor: number | null) {
     setCampos((c) => ({ ...c, [chave]: valor }));
@@ -93,6 +101,8 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
       valeAlimentacao: num(campos.valeAlimentacao),
       salao: num(campos.salao),
       deliveryProprio: num(campos.deliveryProprio),
+      ifood: num(campos.ifood),
+      food99: num(campos.food99),
       confirmarDivergencia,
     };
   }
@@ -136,7 +146,9 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
         <h1 className="font-display text-2xl font-bold text-azul-noite">
           {existente ? "Editar Lançamento" : "Novo Lançamento"}
         </h1>
-        <p className="text-sm text-cinza-medio">Fechamento diário: formas de pagamento contra canal de venda.</p>
+        <p className="text-sm text-cinza-medio">
+          Fechamento diário: formas de pagamento contra canais próprios, com marketplaces separados.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -172,7 +184,12 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Canais de venda</div>
+          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+            Canais próprios conciliados
+          </div>
+          <p className="mb-3 text-xs text-cinza-medio">
+            Salão e Delivery próprio devem bater com o total das formas de pagamento.
+          </p>
           <div className="flex flex-col gap-3">
             <CampoLinha label="Salão" value={campos.salao} onChange={(v) => atualizarCampo("salao", v)} />
             <CampoLinha
@@ -182,9 +199,39 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
             />
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-cinza-claro pt-3">
-            <span className="text-sm font-semibold text-cinza-medio">Total dos canais de venda</span>
+            <span className="text-sm font-semibold text-cinza-medio">Total dos canais próprios</span>
             <span className="font-display text-lg font-bold text-azul-noite">{brl(totalCanais)}</span>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Marketplaces</div>
+          <p className="mb-3 text-xs text-cinza-medio">
+            Entram no faturamento do dia, mas ficam fora da conciliação.
+          </p>
+          <div className="flex flex-col gap-3">
+            <CampoLinha
+              label="iFood"
+              value={campos.ifood}
+              onChange={(v) => atualizarCampo("ifood", v)}
+              cor="#EA1D2C"
+            />
+            <CampoLinha
+              label="99Food"
+              value={campos.food99}
+              onChange={(v) => atualizarCampo("food99", v)}
+              cor="#FFDD00"
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-cinza-claro pt-3">
+            <span className="text-sm font-semibold text-cinza-medio">Total dos marketplaces</span>
+            <span className="font-display text-lg font-bold text-azul-noite">{brl(totalMarketplaces)}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg bg-azul-noite p-4 text-branco">
+          <span className="text-sm font-semibold">Faturamento total do dia</span>
+          <span className="font-display text-xl font-bold text-ambar">{brl(faturamentoTotal)}</span>
         </div>
 
         {jaExiste && (
@@ -230,14 +277,19 @@ function CampoLinha({
   label,
   value,
   onChange,
+  cor,
 }: {
   label: string;
   value: number | null;
   onChange: (v: number | null) => void;
+  cor?: string;
 }) {
   return (
     <label className="flex items-center justify-between gap-3 text-sm text-cinza">
-      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        {cor && <span className="h-2.5 w-2.5 rounded-full border border-black/10" style={{ backgroundColor: cor }} />}
+        {label}
+      </span>
       <CampoNumero value={value} onChange={onChange} className="w-32" />
     </label>
   );

@@ -9,6 +9,8 @@ import { FiltroPeriodo, type PeriodoAplicado } from "@/components/filtro-periodo
 // `Date.getDay()` (0=domingo...6=sábado) é convertido com `(getDay()+6)%7`.
 const DIAS_SEMANA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const DIA_ABREV_MIN = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]; // indexado direto por getDay()
+const COR_IFOOD = "#EA1D2C";
+const COR_99FOOD = "#FFDD00";
 
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -24,12 +26,9 @@ function dataBR(iso: string): string {
 }
 
 /** Dashboard de vendas - só Gestão/master (`requireGestao()` na página).
- * Cores restritas às 3 cores cromáticas do manual de marca oficial
- * (azul-noite, azul-petróleo, âmbar) - sem verde/vermelho aqui (esses ficam
- * reservados pro badge de status em `consolidado-tabela.tsx`) e sem cor
- * nova. Séries com várias categorias (formas de pagamento, dia da semana)
- * usam hue único + rótulo direto em vez de forçar 5-7 cores que a paleta
- * oficial não tem. */
+ * A paleta Zatti continua nos dados próprios. iFood e 99Food são exceções
+ * autorizadas: usam as cores oficiais das marcas para separar visualmente
+ * receitas de marketplace que não participam da conciliação. */
 export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda[] }) {
   const [periodo, setPeriodo] = useState<PeriodoAplicado>({ de: "", ate: "" });
 
@@ -38,10 +37,11 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
     [lancamentos, periodo]
   );
 
-  const faturamentoTotal = dados.reduce((s, l) => s + l.totalFormasPagamento, 0);
+  const faturamentoTotal = dados.reduce((s, l) => s + l.faturamentoTotal, 0);
+  const totalFormasPagamento = dados.reduce((s, l) => s + l.totalFormasPagamento, 0);
   const mediaPorDia = dados.length > 0 ? faturamentoTotal / dados.length : 0;
   const melhorDia = dados.reduce<ConsolidadoVenda | null>(
-    (melhor, l) => (!melhor || l.totalFormasPagamento > melhor.totalFormasPagamento ? l : melhor),
+    (melhor, l) => (!melhor || l.faturamentoTotal > melhor.faturamentoTotal ? l : melhor),
     null
   );
   const divergentes = dados.filter((l) => l.status === "divergente").length;
@@ -50,7 +50,14 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
     () =>
       [...dados]
         .sort((a, b) => (a.data < b.data ? -1 : 1))
-        .map((l) => ({ data: l.data, total: l.totalFormasPagamento, salao: l.salao, delivery: l.deliveryProprio })),
+        .map((l) => ({
+          data: l.data,
+          total: l.faturamentoTotal,
+          salao: l.salao,
+          delivery: l.deliveryProprio,
+          ifood: l.ifood,
+          food99: l.food99,
+        })),
     [dados]
   );
 
@@ -62,7 +69,7 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
     const somaPorIndice = Array.from({ length: 7 }, () => ({ soma: 0, qtd: 0 }));
     for (const l of dados) {
       const idx = (new Date(`${l.data}T00:00:00`).getDay() + 6) % 7;
-      somaPorIndice[idx].soma += l.totalFormasPagamento;
+      somaPorIndice[idx].soma += l.faturamentoTotal;
       somaPorIndice[idx].qtd += 1;
     }
     const medias = somaPorIndice.map((s) => (s.qtd > 0 ? s.soma / s.qtd : 0));
@@ -86,13 +93,19 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
 
   const totalSalao = dados.reduce((s, l) => s + l.salao, 0);
   const totalDelivery = dados.reduce((s, l) => s + l.deliveryProprio, 0);
+  const totalIfood = dados.reduce((s, l) => s + l.ifood, 0);
+  const totalFood99 = dados.reduce((s, l) => s + l.food99, 0);
+  const totalMarketplaces = totalIfood + totalFood99;
   const totalCanaisPeriodo = totalSalao + totalDelivery;
   const larguraSalao = totalCanaisPeriodo > 0 ? (totalSalao / totalCanaisPeriodo) * 100 : 50;
-  // Porcentagem exibida é frente ao faturamento oficial (total formas de
-  // pagamento), não frente à soma dos canais - pode não somar 100% exato
-  // quando há divergência no período, e isso é esperado.
+  const larguraIfood = totalMarketplaces > 0 ? (totalIfood / totalMarketplaces) * 100 : 50;
+  // Porcentagem exibida é frente ao faturamento total, não frente à soma
+  // dos canais próprios - pode não somar 100% porque marketplaces ficam em
+  // um bloco separado e divergências continuam possíveis.
   const pctSalaoFaturamento = faturamentoTotal > 0 ? (totalSalao / faturamentoTotal) * 100 : 0;
   const pctDeliveryFaturamento = faturamentoTotal > 0 ? (totalDelivery / faturamentoTotal) * 100 : 0;
+  const pctIfoodFaturamento = faturamentoTotal > 0 ? (totalIfood / faturamentoTotal) * 100 : 0;
+  const pctFood99Faturamento = faturamentoTotal > 0 ? (totalFood99 / faturamentoTotal) * 100 : 0;
 
   const maxForma = Math.max(1, ...formasPagamento.map((f) => f.valor));
   const maxSemana = Math.max(1, ...porDiaSemana.map((d) => d.media));
@@ -101,7 +114,9 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
     <div className="flex flex-col gap-5 pb-10">
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Dashboard de Vendas</h1>
-        <p className="text-sm text-cinza-medio">Faturamento oficial = total das formas de pagamento.</p>
+        <p className="text-sm text-cinza-medio">
+          Faturamento total = formas de pagamento + iFood + 99Food.
+        </p>
       </div>
 
       <FiltroPeriodo lancamentos={lancamentos} onAplicar={setPeriodo} />
@@ -117,13 +132,42 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
             <StatCard label="Média por dia" value={brl(mediaPorDia)} />
             <StatCard
               label="Melhor dia"
-              value={melhorDia ? `${brl(melhorDia.totalFormasPagamento)} · ${dataBR(melhorDia.data)}` : "—"}
+              value={melhorDia ? `${brl(melhorDia.faturamentoTotal)} · ${dataBR(melhorDia.data)}` : "—"}
             />
             <StatCard
               label="Lançamentos com divergência"
               value={String(divergentes)}
               tone={divergentes > 0 ? "alerta" : "neutral"}
             />
+          </div>
+
+          <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+            <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+              Marketplaces
+            </div>
+            <p className="mb-3 text-xs text-cinza-medio">
+              Receita separada, sem conciliação com formas de pagamento ou canais próprios.
+            </p>
+            <div className="flex h-6 overflow-hidden rounded-full bg-cinza-claro/40">
+              <div style={{ width: `${larguraIfood}%`, backgroundColor: COR_IFOOD }} />
+              <div className="w-0.5 shrink-0 bg-branco" />
+              <div style={{ width: `${100 - larguraIfood}%`, backgroundColor: COR_99FOOD }} />
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-cinza sm:grid-cols-2">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_IFOOD }} />
+                iFood · <span className="font-semibold">{brl(totalIfood)}</span> ·{" "}
+                <span className="font-semibold">{pct(pctIfoodFaturamento)}</span> do faturamento
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
+                  style={{ backgroundColor: COR_99FOOD }}
+                />
+                99Food · <span className="font-semibold">{brl(totalFood99)}</span> ·{" "}
+                <span className="font-semibold">{pct(pctFood99Faturamento)}</span> do faturamento
+              </span>
+            </div>
           </div>
 
           {divergentes > 0 && (
@@ -204,7 +248,7 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
                   </div>
                   <span className="w-24 shrink-0 text-right font-semibold text-cinza">{brl(f.valor)}</span>
                   <span className="w-14 shrink-0 text-right text-xs text-cinza-medio">
-                    {pct(faturamentoTotal > 0 ? (f.valor / faturamentoTotal) * 100 : 0)}
+                    {pct(totalFormasPagamento > 0 ? (f.valor / totalFormasPagamento) * 100 : 0)}
                   </span>
                 </div>
               ))}
@@ -221,16 +265,15 @@ function tooltip(serie: string, data: string, valor: number): string {
   return `${serie}; ${abrev}; ${dataBR(data)}; ${brl(valor)}`;
 }
 
-/** 3 linhas (Total das formas de pagamento, Salão, Delivery próprio) - cor
- * repete a mesma associação do bloco "Salão x Delivery" (azul-noite = Salão,
- * âmbar = Delivery), com azul-petróleo sobrando pro Total. Salão ganha
- * traço tracejado: o validador da skill `dataviz` aponta azul-noite e
- * azul-petróleo como próximos demais pra distinguir só pela cor (ΔE 10.7,
- * abaixo do piso de 15 mesmo pra visão normal) - tracejado é a
- * "codificação secundária" que o método pede nesse caso, já que a paleta
- * fica presa às 3 cores do manual de marca. Eixo de baixo marca a data de
- * cada segunda-feira, pra dar pra ver onde cada semana começa. */
-function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao: number; delivery: number }[] }) {
+/** Cinco linhas: faturamento total, Salão, Delivery próprio, iFood e 99Food.
+ * Salão continua tracejado para não depender só da diferença pequena entre
+ * os dois azuis da marca Zatti. A linha amarela da 99Food é mais espessa e
+ * pontilhada para continuar legível sobre fundo branco. */
+function GraficoLinha({
+  pontos,
+}: {
+  pontos: { data: string; total: number; salao: number; delivery: number; ifood: number; food99: number }[];
+}) {
   if (pontos.length === 0) return <p className="text-sm text-cinza-medio">Sem lançamentos no período.</p>;
 
   const W = 600;
@@ -240,7 +283,7 @@ function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao
   const PAD_TOPO = 10;
   const PAD_BASE = 34;
   const alturaUtil = H - PAD_TOPO - PAD_BASE;
-  const max = Math.max(1, ...pontos.flatMap((p) => [p.total, p.salao, p.delivery]));
+  const max = Math.max(1, ...pontos.flatMap((p) => [p.total, p.salao, p.delivery, p.ifood, p.food99]));
   const step = pontos.length > 1 ? (W - PAD_ESQ - PAD_DIR) / (pontos.length - 1) : 0;
 
   function y(v: number): number {
@@ -252,6 +295,8 @@ function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao
   const linhaTotal = coords.map((c) => `${c.x},${y(c.total)}`).join(" ");
   const linhaSalao = coords.map((c) => `${c.x},${y(c.salao)}`).join(" ");
   const linhaDelivery = coords.map((c) => `${c.x},${y(c.delivery)}`).join(" ");
+  const linhaIfood = coords.map((c) => `${c.x},${y(c.ifood)}`).join(" ");
+  const linhaFood99 = coords.map((c) => `${c.x},${y(c.food99)}`).join(" ");
 
   return (
     <div className="flex flex-col gap-2">
@@ -279,6 +324,8 @@ function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao
 
         <polyline points={linhaSalao} fill="none" className="stroke-azul-noite" strokeWidth={2} strokeDasharray="6,3" />
         <polyline points={linhaDelivery} fill="none" className="stroke-ambar" strokeWidth={2} />
+        <polyline points={linhaIfood} fill="none" stroke={COR_IFOOD} strokeWidth={2.5} />
+        <polyline points={linhaFood99} fill="none" stroke={COR_99FOOD} strokeWidth={3} strokeDasharray="3,2" />
         <polyline points={linhaTotal} fill="none" className="stroke-azul-petroleo" strokeWidth={2.5} />
 
         {coords.map((c) => (
@@ -289,8 +336,14 @@ function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao
             <circle cx={c.x} cy={y(c.delivery)} r={2.5} className="fill-ambar">
               <title>{tooltip("Delivery próprio", c.data, c.delivery)}</title>
             </circle>
+            <circle cx={c.x} cy={y(c.ifood)} r={2.5} fill={COR_IFOOD}>
+              <title>{tooltip("iFood", c.data, c.ifood)}</title>
+            </circle>
+            <circle cx={c.x} cy={y(c.food99)} r={2.5} fill={COR_99FOOD} stroke="#0D1F2D" strokeWidth={0.5}>
+              <title>{tooltip("99Food", c.data, c.food99)}</title>
+            </circle>
             <circle cx={c.x} cy={y(c.total)} r={3} className="fill-azul-petroleo">
-              <title>{tooltip("Total formas de pagamento", c.data, c.total)}</title>
+              <title>{tooltip("Faturamento total", c.data, c.total)}</title>
             </circle>
           </g>
         ))}
@@ -309,13 +362,19 @@ function GraficoLinha({ pontos }: { pontos: { data: string; total: number; salao
       </svg>
       <div className="flex flex-wrap gap-4 text-xs text-cinza">
         <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 bg-azul-petroleo" /> Total formas de pagamento
+          <span className="h-0.5 w-4 bg-azul-petroleo" /> Faturamento total
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-0 w-4 border-t-2 border-dashed border-azul-noite" /> Salão
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-4 bg-ambar" /> Delivery próprio
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4" style={{ backgroundColor: COR_IFOOD }} /> iFood
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0 w-4 border-t-[3px] border-dotted" style={{ borderColor: COR_99FOOD }} /> 99Food
         </span>
       </div>
     </div>

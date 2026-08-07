@@ -144,8 +144,12 @@ export type ConsolidadoVenda = {
   valeAlimentacao: number;
   salao: number;
   deliveryProprio: number;
+  ifood: number;
+  food99: number;
   totalFormasPagamento: number;
   totalCanais: number;
+  totalMarketplaces: number;
+  faturamentoTotal: number;
   diferenca: number;
   status: "conferido" | "divergente";
   criadoPorNome: string;

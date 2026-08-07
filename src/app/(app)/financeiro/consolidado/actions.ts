@@ -37,6 +37,8 @@ function extrairValores(input: EntradaForm): EntradaConsolidado {
     valeAlimentacao: input.valeAlimentacao,
     salao: input.salao,
     deliveryProprio: input.deliveryProprio,
+    ifood: input.ifood,
+    food99: input.food99,
   };
 }
 
