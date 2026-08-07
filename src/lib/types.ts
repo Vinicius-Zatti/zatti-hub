@@ -61,6 +61,10 @@ export type SugestaoCompra = {
   nome: string;
   unidadeBase: string;
   precoUnitario: number | null;
+  /** Foto do preço unitário gravado na contagem escolhida. Diferente de
+   * `precoUnitario`, que é o último preço salvo hoje no Cadastro e serve
+   * apenas como valor inicial caso ninguém recote o item. */
+  precoNaContagem: number | null;
   /** null = produto ativo mas sem contagem na data escolhida (não dá pra
    * saber o estoque atual, não confundir com estoque zerado). */
   estoqueAtual: number | null;
@@ -93,13 +97,15 @@ export type PedidoItem = {
   /** null = ainda não confirmado o recebimento - preenchido em Pedidos
    * Feitos, pode ficar diferente do pedido (fornecedor mandou menos). */
   quantidadeRecebida: number | null;
-  /** Preço no Cadastro no momento em que a cotação foi salva - referência
-   * pro comprador comparar contra o preço da nota nova. */
+  /** Foto do preço registrada na contagem que originou a cotação. Não muda
+   * quando o Cadastro recebe o preço de uma compra posterior. */
   precoAntigo: number | null;
-  /** Se diferente de precoAntigo quando o pedido é salvo, atualiza o
-   * Cadastro de Produtos dali pra frente (contagens antigas mantêm o preço
-   * que tinham, igual já acontece em Contagem). */
+  /** Preço cotado para este fornecedor. Começa com o último valor salvo no
+   * Cadastro como referência; só o preço do vencedor atualiza o Cadastro. */
   precoAtualizado: number | null;
+  /** Distingue o valor inicial carregado do Cadastro de uma cotação que a
+   * pessoa realmente confirmou, inclusive quando repetiu o preço antigo. */
+  precoConfirmado: boolean;
   /** Verdadeiro só depois de um clique explícito em "Confirmar aqui" no
    * Editor de Espelhos - editar quantidade/preço sozinho nunca marca isso.
    * Separado de "tem quantidade confirmada" porque pra item de fornecedor

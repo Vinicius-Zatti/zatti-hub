@@ -10,13 +10,14 @@ import type { Produto, SugestaoCompra } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function produtoParaSugestao(produto: Produto): SugestaoCompra {
+function produtoParaSugestao(produto: Produto, precoNaContagem: number | null): SugestaoCompra {
   return {
     sku: produto.sku,
     grupo: produto.grupo,
     nome: produto.nome,
     unidadeBase: produto.unidadeBase,
     precoUnitario: produto.precoUnitario,
+    precoNaContagem,
     estoqueAtual: null,
     estoqueNecessario: produto.estoqueNecessarioSemana ?? 0,
     quantidadeSugerida: 0,
@@ -77,9 +78,13 @@ export default async function EditorEspelhosPage({
 
     const itensSalvosNaoFrescos = (pedidoDoFornecedor?.itens ?? [])
       .filter((item) => !skusFrescos.has(item.sku))
-      .map((item) => skuParaItemFresco.get(item.sku) ?? skuParaProduto.get(item.sku))
-      .filter((item): item is Produto | SugestaoCompra => !!item)
-      .map((item) => ("precisaComprar" in item ? item : produtoParaSugestao(item)));
+      .map((itemSalvo) => {
+        const itemFresco = skuParaItemFresco.get(itemSalvo.sku);
+        if (itemFresco) return itemFresco;
+        const produto = skuParaProduto.get(itemSalvo.sku);
+        return produto ? produtoParaSugestao(produto, itemSalvo.precoAntigo) : null;
+      })
+      .filter((item): item is SugestaoCompra => !!item);
 
     itensPorFornecedor[fornecedor] = [...itensFrescos, ...itensSalvosNaoFrescos];
   }

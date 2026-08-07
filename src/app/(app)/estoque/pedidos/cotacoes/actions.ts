@@ -8,7 +8,14 @@ import { revalidatePath } from "next/cache";
 
 type ItemConfirmar = Pick<
   PedidoItem,
-  "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
+  | "sku"
+  | "nome"
+  | "nomeCompra"
+  | "unidadeBase"
+  | "quantidadePedida"
+  | "precoAntigo"
+  | "precoAtualizado"
+  | "precoConfirmado"
 >;
 
 function revalidarPedidos() {
@@ -17,15 +24,15 @@ function revalidarPedidos() {
   revalidatePath("/estoque/pedidos/feitos");
 }
 
-/** Se o preço atualizado mudou em relação ao Cadastro, atualiza o Cadastro
- * dali pra frente (contagens antigas mantêm o preço que tinham) e grava
- * auditoria com o valor antigo e o novo. */
+/** Só o preço do fornecedor vencedor atualiza o Cadastro dali pra frente.
+ * Confirmar uma cotação isolada nunca muda a referência dos concorrentes. */
 async function atualizarPrecoCadastroSeMudou(item: ItemConfirmar, acesso: Awaited<ReturnType<typeof requireGestao>>) {
-  if (item.precoAtualizado === null || item.precoAtualizado === item.precoAntigo) return;
+  if (item.precoAtualizado === null) return;
   const produtos = await listProdutos(acesso.spreadsheetId);
   const produto = produtos.find((p) => p.sku === item.sku);
   if (!produto) return;
   const precoAntes = produto.precoUnitario;
+  if (precoAntes !== null && Math.abs(precoAntes - item.precoAtualizado) < 0.001) return;
   await upsertProduto({ ...produto, precoUnitario: item.precoAtualizado }, acesso.spreadsheetId);
   await registrarAuditoria({
     acesso,
@@ -44,6 +51,7 @@ export async function confirmarItemAction(input: {
   fornecedor: string;
   dataContagemBase: string;
   item: ItemConfirmar;
+  atualizarPreco: boolean;
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
@@ -52,11 +60,10 @@ export async function confirmarItemAction(input: {
       fornecedor: input.fornecedor,
       dataContagemBase: input.dataContagemBase,
       item: input.item,
+      atualizarPreco: input.atualizarPreco,
       criadoPor: acesso.userId,
     });
-    await atualizarPrecoCadastroSeMudou(input.item, acesso);
     revalidarPedidos();
-    revalidatePath("/estoque/produtos");
     return { ok: true };
   } catch (err) {
     return { erro: (err as Error).message };
@@ -83,6 +90,8 @@ export async function confirmarVencedorAction(input: {
     });
     await atualizarPrecoCadastroSeMudou(input.item, acesso);
     revalidarPedidos();
+    revalidatePath("/estoque/produtos");
+    revalidatePath("/estoque/produtos/edicao");
     return { ok: true };
   } catch (err) {
     return { erro: (err as Error).message };
@@ -90,13 +99,13 @@ export async function confirmarVencedorAction(input: {
 }
 
 /** Desfaz a confirmação de vencedor - desmarca o fornecedor atual e recria o
- * item nos concorrentes que tinham perdido (se houver), preço em branco pra
- * eles reconferirem. */
+ * item nos concorrentes que tinham perdido (se houver). O preço do Cadastro
+ * volta apenas como referência na tela e precisa ser confirmado de novo. */
 export async function desfazerVencedorAction(input: {
   dataContagemBase: string;
   fornecedorAtual: string;
   outrosFornecedores: string[];
-  item: Omit<ItemConfirmar, "precoAtualizado">;
+  item: Omit<ItemConfirmar, "precoAtualizado" | "precoConfirmado">;
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {

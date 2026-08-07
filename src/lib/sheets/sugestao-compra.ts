@@ -40,10 +40,12 @@ export async function gerarPedido(
 
   const skusContadosNoDia = new Set<string>();
   const contagemPorSku = new Map<string, number>();
+  const precoNaContagemPorSku = new Map<string, number | null>();
   const alertaPorSku = new Map<string, string>();
   for (const item of inventario) {
     if (item.data !== dataUsada) continue;
     skusContadosNoDia.add(item.sku);
+    precoNaContagemPorSku.set(item.sku, item.precoUnitario);
     if (item.alerta) alertaPorSku.set(item.sku, item.alerta);
     if (item.quantidade === null) continue;
     contagemPorSku.set(item.sku, item.quantidade);
@@ -80,6 +82,7 @@ export async function gerarPedido(
       nome: produto.nome,
       unidadeBase: produto.unidadeBase,
       precoUnitario: produto.precoUnitario,
+      precoNaContagem: precoNaContagemPorSku.get(produto.sku) ?? null,
       estoqueAtual,
       estoqueNecessario: produto.estoqueNecessarioSemana,
       quantidadeSugerida,

@@ -93,9 +93,11 @@ export function PedidoCompras({
             nomeCompra: item.nomeCompra,
             unidadeBase: item.unidadeBase,
             quantidadePedida: valorBase,
-            precoAntigo: item.precoUnitario,
+            precoAntigo: item.precoNaContagem,
             precoAtualizado: item.precoUnitario,
+            precoConfirmado: false,
           },
+          atualizarPreco: false,
         })
       )
     );

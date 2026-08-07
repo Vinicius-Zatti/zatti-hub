@@ -118,8 +118,9 @@ export function EditorEspelhos({
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
-        inicial[chave(fornecedor, item.sku)] =
-          item.precoAtualizado !== null ? formatNumero(item.precoAtualizado) : "";
+        if (item.precoAtualizado !== null) {
+          inicial[chave(fornecedor, item.sku)] = formatNumero(item.precoAtualizado);
+        }
       }
     }
     for (const fornecedor of fornecedores) {
@@ -128,6 +129,20 @@ export function EditorEspelhos({
         if (!(k in inicial)) {
           inicial[k] = item.precoUnitario !== null ? formatNumero(item.precoUnitario) : "";
         }
+      }
+    }
+    return inicial;
+  });
+
+  // O valor começa preenchido com o último preço do Cadastro, mas só entra
+  // na comparação depois que a pessoa confirma o campo de preço. Comparar
+  // apenas pela diferença numérica falha quando o fornecedor repete o preço
+  // antigo, que continua sendo uma cotação real.
+  const [precosConfirmados, setPrecosConfirmados] = useState<Record<string, boolean>>(() => {
+    const inicial: Record<string, boolean> = {};
+    for (const fornecedor of fornecedores) {
+      for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
+        inicial[chave(fornecedor, item.sku)] = item.precoConfirmado;
       }
     }
     return inicial;
@@ -145,38 +160,25 @@ export function EditorEspelhos({
     return (itensPorFornecedor[fornecedor] ?? []).find((i) => i.sku === sku);
   }
 
-  /** Preço ainda igual ao Cadastro (nunca foi recotado essa semana) - não
-   * conta como concorrente de "Melhor preço", é só o último valor
-   * conhecido. Sem preço antigo pra comparar (item nunca teve preço no
-   * Cadastro), qualquer valor digitado já conta como novo. */
-  function precoEhNovo(preco: number | null, precoAntigo: number | null): boolean {
-    if (preco === null) return false;
-    if (precoAntigo === null) return true;
-    return Math.abs(preco - precoAntigo) > PRECO_EPSILON;
-  }
-
   // Enquanto um item disputado ainda não tem vencedor escolhido, o mesmo SKU
-  // aparece em mais de um bloco - essa conta acha, entre os preços que já
-  // foram de verdade recotados (não só o valor antigo carregado por
-  // padrão), qual é o menor. Só entra em jogo com 2+ preços novos - com só
-  // 1, ainda não tem o que comparar.
+  // aparece em mais de um bloco. Só compara valores confirmados de verdade;
+  // o último preço do Cadastro que preenche o campo por segurança não conta.
   const melhorPrecoPorSku = useMemo(() => {
     const resultado: Record<string, number> = {};
     for (const [sku, concorrentes] of Object.entries(fornecedoresPorSku)) {
       if (concorrentes.length < 2) continue;
-      const precosNovos = concorrentes
-        .map((f) => {
-          const preco = toNumeroBR(precosTexto[chave(f, sku)]);
-          const antigo = itemPorSku(f, sku)?.precoUnitario ?? null;
-          return precoEhNovo(preco, antigo) ? preco : null;
-        })
+      const precosCotados = concorrentes
+        .map((f) =>
+          precosConfirmados[chave(f, sku)]
+            ? toNumeroBR(precosTexto[chave(f, sku)])
+            : null
+        )
         .filter((p): p is number => p !== null);
-      if (precosNovos.length < 2) continue;
-      resultado[sku] = Math.min(...precosNovos);
+      if (precosCotados.length < 2) continue;
+      resultado[sku] = Math.min(...precosCotados);
     }
     return resultado;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fornecedoresPorSku, precosTexto, itensPorFornecedor]);
+  }, [fornecedoresPorSku, precosTexto, precosConfirmados]);
 
   // Texto em modo "Nome Fornecedor" (embalagem) - derivado do texto em
   // unidade base pra exibição; convertido de volta na hora de confirmar.
@@ -253,13 +255,20 @@ export function EditorEspelhos({
     });
   }
 
-  /** Grava um item (quantidade + preço) no fornecedor informado - a
+  /** Grava um item no fornecedor informado - a
    * quantidade sincroniza sozinha com qualquer outro fornecedor que já
    * dispute esse SKU (feito no servidor, ver `confirmarItem` em
-   * `lib/pedidos.ts`). Usada tanto pelo confirmar de quantidade quanto pelo
-   * de preço - cada um manda o valor atual do outro campo, pra não apagar
-   * o que já estava lá. Nunca mexe em vencedor_confirmado. */
-  async function persistirItem(fornecedor: string, item: SugestaoCompra, quantidadeBase: number, precoBase: number | null) {
+   * `lib/pedidos.ts`). Confirmar quantidade preserva a cotação existente;
+   * confirmar preço grava o valor e marca que houve cotação de verdade.
+   * Nunca mexe em vencedor_confirmado. */
+  async function persistirItem(
+    fornecedor: string,
+    item: SugestaoCompra,
+    quantidadeBase: number,
+    precoBase: number | null,
+    precoConfirmado: boolean,
+    atualizarPreco: boolean
+  ): Promise<boolean> {
     const resultado = await confirmarItemAction({
       fornecedor,
       dataContagemBase: dataUsada,
@@ -269,13 +278,17 @@ export function EditorEspelhos({
         nomeCompra: item.nomeCompra,
         unidadeBase: item.unidadeBase,
         quantidadePedida: quantidadeBase,
-        precoAntigo: item.precoUnitario,
+        precoAntigo: item.precoNaContagem,
         precoAtualizado: precoBase,
+        precoConfirmado,
       },
+      atualizarPreco,
     });
     if ("erro" in resultado) {
       setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
+      return false;
     }
+    return true;
   }
 
   function iniciarEdicaoQtd(fornecedor: string, item: SugestaoCompra) {
@@ -307,7 +320,14 @@ export function EditorEspelhos({
         [item.sku]: formatNumero(Math.ceil(novaQtdBase / (item.qtdUnidadeBasePorEmbalagem as number))),
       }));
     }
-    await persistirItem(fornecedor, item, novaQtdBase, precoDe(fornecedor, item.sku));
+    await persistirItem(
+      fornecedor,
+      item,
+      novaQtdBase,
+      precoDe(fornecedor, item.sku),
+      precosConfirmados[chave(fornecedor, item.sku)] ?? false,
+      false
+    );
   }
 
   function iniciarEdicaoPreco(fornecedor: string, item: SugestaoCompra) {
@@ -341,7 +361,17 @@ export function EditorEspelhos({
         [k]: formatNumero(arredondarPrecoCima(novoPrecoBase * (item.qtdUnidadeBasePorEmbalagem as number))),
       }));
     }
-    await persistirItem(fornecedor, item, quantidadeDe(item.sku), novoPrecoBase);
+    const salvou = await persistirItem(
+      fornecedor,
+      item,
+      quantidadeDe(item.sku),
+      novoPrecoBase,
+      true,
+      true
+    );
+    if (salvou) {
+      setPrecosConfirmados((p) => ({ ...p, [k]: true }));
+    }
   }
 
   async function confirmarVencedorClick(fornecedor: string, item: SugestaoCompra) {
@@ -357,8 +387,11 @@ export function EditorEspelhos({
         nomeCompra: item.nomeCompra,
         unidadeBase: item.unidadeBase,
         quantidadePedida: quantidadeDe(item.sku),
-        precoAntigo: item.precoUnitario,
+        precoAntigo: item.precoNaContagem,
         precoAtualizado: precoDe(fornecedor, item.sku),
+        // Escolher o vencedor também aceita explicitamente o preço visível,
+        // mesmo quando ele veio como referência do Cadastro.
+        precoConfirmado: precoDe(fornecedor, item.sku) !== null,
       },
     });
     setConfirmandoVencedor((c) => ({ ...c, [item.sku]: false }));
@@ -377,6 +410,7 @@ export function EditorEspelhos({
       setConfirmarTroca(null);
       return;
     }
+    const precoAtualCadastro = precoDe(fornecedor, sku) ?? item.precoUnitario;
     setDesfazendoTroca(true);
     const outros = (fornecedoresPorSku[sku] ?? []).filter((f) => f !== fornecedor);
     const resultado = await desfazerVencedorAction({
@@ -389,7 +423,7 @@ export function EditorEspelhos({
         nomeCompra: item.nomeCompra,
         unidadeBase: item.unidadeBase,
         quantidadePedida: quantidadeDe(sku),
-        precoAntigo: item.precoUnitario,
+        precoAntigo: item.precoNaContagem,
       },
     });
     setDesfazendoTroca(false);
@@ -403,11 +437,35 @@ export function EditorEspelhos({
       delete novo[sku];
       return novo;
     });
-    // preço concorrente volta em branco (recriado sem preço) - limpa aqui
-    // também pra tela bater com o banco.
+    // O concorrente volta com o preço atual do Cadastro apenas como referência.
+    // Ele precisa ser confirmado de novo antes de participar da comparação.
     setPrecosTexto((p) => {
       const novo = { ...p };
-      for (const f of outros) delete novo[chave(f, sku)];
+      for (const f of outros) {
+        const k = chave(f, sku);
+        if (precoAtualCadastro === null) delete novo[k];
+        else novo[k] = formatNumero(precoAtualCadastro);
+      }
+      return novo;
+    });
+    setPrecosTextoEmbalagem((p) => {
+      const novo = { ...p };
+      for (const f of outros) {
+        const concorrente = itemPorSku(f, sku);
+        const k = chave(f, sku);
+        if (precoAtualCadastro === null || !concorrente?.qtdUnidadeBasePorEmbalagem) {
+          delete novo[k];
+        } else {
+          novo[k] = formatNumero(
+            arredondarPrecoCima(precoAtualCadastro * concorrente.qtdUnidadeBasePorEmbalagem)
+          );
+        }
+      }
+      return novo;
+    });
+    setPrecosConfirmados((p) => {
+      const novo = { ...p };
+      for (const f of outros) novo[chave(f, sku)] = false;
       return novo;
     });
     setConfirmarTroca(null);
@@ -624,26 +682,38 @@ export function EditorEspelhos({
                     {itensExibidos.map((item) => {
                       const disputado = (fornecedoresPorSku[item.sku] ?? []).length > 1;
                       const jaVencido = vencedor[item.sku] === fornecedor;
+                      const kPreco = chave(fornecedor, item.sku);
                       const preco = precoDe(fornecedor, item.sku);
                       const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
-                      const ehNovo = precoEhNovo(preco, item.precoUnitario);
-                      const ehMelhorPreco =
+                      const menorPreco = melhorPrecoPorSku[item.sku];
+                      const comparacaoAtiva =
+                        vencedor[item.sku] == null &&
                         disputado &&
-                        ehNovo &&
-                        melhorPrecoPorSku[item.sku] !== undefined &&
-                        Math.abs((preco as number) - melhorPrecoPorSku[item.sku]) < PRECO_EPSILON;
-                      const ehUltimaCompra = preco !== null && !ehNovo;
+                        (precosConfirmados[kPreco] ?? false) &&
+                        menorPreco !== undefined &&
+                        preco !== null;
+                      const ehMelhorPreco =
+                        comparacaoAtiva && Math.abs(preco - menorPreco) < PRECO_EPSILON;
+                      const diferencaDoMelhor =
+                        comparacaoAtiva && !ehMelhorPreco ? preco - menorPreco : null;
                       const kQtd = chave(fornecedor, item.sku);
                       const nomeExibido = modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome;
                       const unidadeExibida = modoAtual === "interno" ? item.unidadeBase : item.unidadeEmbalagemFornecedor;
                       const semEmbalagem = modoAtual === "fornecedor" && itemSemEmbalagem(item);
                       const precoAntigoExibido =
                         modoAtual === "interno" || !item.qtdUnidadeBasePorEmbalagem
-                          ? item.precoUnitario
-                          : item.precoUnitario !== null
-                            ? arredondarPrecoCima(item.precoUnitario * item.qtdUnidadeBasePorEmbalagem)
-                            : null;
-                      const kPreco = chave(fornecedor, item.sku);
+                          ? item.precoNaContagem
+                          : item.precoNaContagem !== null
+                             ? arredondarPrecoCima(item.precoNaContagem * item.qtdUnidadeBasePorEmbalagem)
+                             : null;
+                      const diferencaExibida =
+                        diferencaDoMelhor !== null &&
+                        preco !== null &&
+                        modoAtual === "fornecedor" &&
+                        item.qtdUnidadeBasePorEmbalagem
+                          ? arredondarPrecoCima(preco * item.qtdUnidadeBasePorEmbalagem) -
+                            arredondarPrecoCima(menorPreco * item.qtdUnidadeBasePorEmbalagem)
+                          : diferencaDoMelhor;
 
                       return (
                         <tr key={item.sku} className={`border-t border-cinza-claro ${semEmbalagem ? "bg-vermelho/5" : ""}`}>
@@ -748,9 +818,9 @@ export function EditorEspelhos({
                                         Melhor preço
                                       </span>
                                     )}
-                                    {!ehMelhorPreco && ehUltimaCompra && (
-                                      <span className="shrink-0 rounded-full bg-cinza-claro px-1.5 py-0.5 text-[10px] font-bold text-cinza-medio">
-                                        Última compra
+                                    {diferencaExibida !== null && (
+                                      <span className="shrink-0 rounded-full bg-ambar/10 px-1.5 py-0.5 text-[10px] font-bold text-ambar">
+                                        {formatMoeda(diferencaExibida)} acima
                                       </span>
                                     )}
                                     <button
@@ -842,8 +912,9 @@ export function EditorEspelhos({
           <div className="w-full max-w-sm rounded-xl bg-branco p-5 shadow-xl">
             <h2 className="font-display text-lg font-bold text-azul-noite">Trocar o vencedor?</h2>
             <p className="mt-2 text-sm leading-relaxed text-cinza">
-              Esse item volta a precisar de confirmação de novo (e some do Compartilhar até alguém
-              confirmar). Se tiver concorrente, o preço deles volta em branco, pra reconferir.
+              Esse item volta a precisar de confirmação e some do Compartilhar até alguém confirmar.
+              Se tiver concorrente, o preço atual do Cadastro volta apenas como referência e precisa
+              ser confirmado de novo.
             </p>
             <div className="mt-4 flex gap-2">
               <button

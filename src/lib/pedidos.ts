@@ -21,6 +21,7 @@ type PedidoItemRow = {
   quantidade_recebida: number | null;
   preco_antigo: number | null;
   preco_atualizado: number | null;
+  preco_confirmado: boolean;
   vencedor_confirmado: boolean;
 };
 
@@ -44,6 +45,7 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
         quantidadeRecebida: it.quantidade_recebida === null ? null : Number(it.quantidade_recebida),
         precoAntigo: it.preco_antigo === null ? null : Number(it.preco_antigo),
         precoAtualizado: it.preco_atualizado === null ? null : Number(it.preco_atualizado),
+        precoConfirmado: it.preco_confirmado ?? false,
         vencedorConfirmado: it.vencedor_confirmado,
       })
     ),
@@ -85,7 +87,14 @@ async function garantirPedido(
 
 type ItemParaConfirmar = Pick<
   PedidoItem,
-  "sku" | "nome" | "nomeCompra" | "unidadeBase" | "quantidadePedida" | "precoAntigo" | "precoAtualizado"
+  | "sku"
+  | "nome"
+  | "nomeCompra"
+  | "unidadeBase"
+  | "quantidadePedida"
+  | "precoAntigo"
+  | "precoAtualizado"
+  | "precoConfirmado"
 >;
 
 /** Confirma (cria ou atualiza) UM item do pedido de um fornecedor - nunca
@@ -106,6 +115,9 @@ export async function confirmarItem(params: {
   fornecedor: string;
   dataContagemBase: string;
   item: ItemParaConfirmar;
+  /** Confirmação de quantidade não pode apagar nem confirmar o preço que já
+   * foi cotado no Editor de Espelhos. */
+  atualizarPreco: boolean;
   criadoPor: string;
 }): Promise<void> {
   const supabase = await createClient();
@@ -117,13 +129,17 @@ export async function confirmarItem(params: {
     params.criadoPor
   );
 
-  const linha = {
+  const linhaBase = {
     nome: params.item.nome,
     nome_compra: params.item.nomeCompra || null,
     unidade_base: params.item.unidadeBase,
     quantidade_pedida: params.item.quantidadePedida,
     preco_antigo: params.item.precoAntigo,
+  };
+  const linhaComPreco = {
+    ...linhaBase,
     preco_atualizado: params.item.precoAtualizado,
+    preco_confirmado: params.item.precoConfirmado,
   };
 
   const { data: existente } = await supabase
@@ -134,9 +150,16 @@ export async function confirmarItem(params: {
     .maybeSingle();
 
   if (existente) {
-    await supabase.from("pedido_itens").update(linha).eq("id", existente.id);
+    const { error } = await supabase
+      .from("pedido_itens")
+      .update(params.atualizarPreco ? linhaComPreco : linhaBase)
+      .eq("id", existente.id);
+    if (error) throw new Error(error.message);
   } else {
-    await supabase.from("pedido_itens").insert({ pedido_id: pedidoId, sku: params.item.sku, ...linha });
+    const { error } = await supabase
+      .from("pedido_itens")
+      .insert({ pedido_id: pedidoId, sku: params.item.sku, ...linhaComPreco });
+    if (error) throw new Error(error.message);
   }
 
   const { data: outrosPedidos } = await supabase
@@ -178,6 +201,7 @@ export async function confirmarVencedor(params: {
     fornecedor: params.fornecedorVencedor,
     dataContagemBase: params.dataContagemBase,
     item: params.item,
+    atualizarPreco: true,
     criadoPor: params.criadoPor,
   });
   const pedidoIdVencedor = await garantirPedido(
@@ -187,36 +211,43 @@ export async function confirmarVencedor(params: {
     params.dataContagemBase,
     params.criadoPor
   );
-  await supabase
+  const { error: erroMarcarVencedor } = await supabase
     .from("pedido_itens")
     .update({ vencedor_confirmado: true })
     .eq("pedido_id", pedidoIdVencedor)
     .eq("sku", params.item.sku);
+  if (erroMarcarVencedor) throw new Error(erroMarcarVencedor.message);
 
   if (params.outrosFornecedores.length === 0) return;
-  const { data: pedidosPerdedores } = await supabase
+  const { data: pedidosPerdedores, error: erroBuscarPerdedores } = await supabase
     .from("pedidos")
     .select("id")
     .eq("unidade_id", params.unidadeId)
     .eq("data_contagem_base", params.dataContagemBase)
     .in("fornecedor", params.outrosFornecedores);
+  if (erroBuscarPerdedores) throw new Error(erroBuscarPerdedores.message);
 
   const ids = (pedidosPerdedores ?? []).map((p) => p.id);
   if (ids.length > 0) {
-    await supabase.from("pedido_itens").delete().eq("sku", params.item.sku).in("pedido_id", ids);
+    const { error: erroRemoverPerdedores } = await supabase
+      .from("pedido_itens")
+      .delete()
+      .eq("sku", params.item.sku)
+      .in("pedido_id", ids);
+    if (erroRemoverPerdedores) throw new Error(erroRemoverPerdedores.message);
   }
 }
 
 /** Desfaz a confirmação de vencedor: tira a marca do fornecedor atual e, se
  * o item tinha concorrentes que perderam a disputa, recria o item neles
- * (mesma quantidade, preço em branco pra reconferir). Pra fornecedor único
+ * (mesma quantidade, preço não confirmado). Pra fornecedor único
  * (sem concorrente nenhum), só desmarca - não tem ninguém pra recriar. */
 export async function desfazerVencedor(params: {
   unidadeId: string;
   dataContagemBase: string;
   fornecedorAtual: string;
   outrosFornecedores: string[];
-  item: Omit<ItemParaConfirmar, "precoAtualizado">;
+  item: Omit<ItemParaConfirmar, "precoAtualizado" | "precoConfirmado">;
   criadoPor: string;
 }): Promise<void> {
   const supabase = await createClient();
@@ -227,11 +258,12 @@ export async function desfazerVencedor(params: {
     params.dataContagemBase,
     params.criadoPor
   );
-  await supabase
+  const { error: erroDesmarcarVencedor } = await supabase
     .from("pedido_itens")
     .update({ vencedor_confirmado: false })
     .eq("pedido_id", pedidoIdAtual)
     .eq("sku", params.item.sku);
+  if (erroDesmarcarVencedor) throw new Error(erroDesmarcarVencedor.message);
 
   await Promise.all(
     params.outrosFornecedores.map((fornecedor) =>
@@ -239,7 +271,8 @@ export async function desfazerVencedor(params: {
         unidadeId: params.unidadeId,
         fornecedor,
         dataContagemBase: params.dataContagemBase,
-        item: { ...params.item, precoAtualizado: null },
+        item: { ...params.item, precoAtualizado: null, precoConfirmado: false },
+        atualizarPreco: true,
         criadoPor: params.criadoPor,
       })
     )

@@ -149,6 +149,9 @@ create table if not exists pedido_itens (
   quantidade_recebida numeric,
   preco_antigo numeric,
   preco_atualizado numeric,
+  -- Valor começa como referência do Cadastro. Só vira uma cotação real
+  -- depois que a pessoa confirma explicitamente o campo de preço.
+  preco_confirmado boolean not null default false,
   -- Verdadeiro só depois de um clique explícito em "Confirmar aqui" no
   -- Editor de Espelhos (adicionado 03/08) - editar quantidade/preço sozinho
   -- nunca marca isso. Sem essa coluna, item de fornecedor único ficava
@@ -159,6 +162,13 @@ create table if not exists pedido_itens (
 
 alter table pedidos enable row level security;
 alter table pedido_itens enable row level security;
+
+-- Compatibilidade com bancos criados antes da comparação de cotações.
+alter table pedido_itens add column if not exists preco_confirmado boolean not null default false;
+update pedido_itens
+set preco_confirmado = true
+where preco_atualizado is not null
+  and (vencedor_confirmado = true or preco_antigo is distinct from preco_atualizado);
 
 -- Pedidos/pedido_itens: qualquer vínculo ativo (Gestão, Operacional ou
 -- master) que alcance a unidade pode ler/gravar - o recorte real de quem
