@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NavTabs } from "@/components/nav-tabs";
+import { NavTabs, type NavItem, type NavSection } from "@/components/nav-tabs";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
 import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
 import { OrgSwitcher } from "@/components/org-switcher";
@@ -12,12 +12,70 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const acesso = await getAcessoAtual();
+  const podeGerir = acesso.role !== "operacional";
+
+  const secoesEstoque: NavSection[] = [
+    {
+      label: "Produtos",
+      items: [
+        { label: "Consultar produtos", href: "/estoque/produtos" },
+        ...(podeGerir
+          ? [{ label: "Editar dados", href: "/estoque/produtos/edicao" }]
+          : []),
+      ],
+    },
+    {
+      label: "Contagem",
+      items: [
+        { label: "Fazer contagem", href: "/estoque/contagem" },
+        { label: "Conferir contagens", href: "/estoque/contagem/visualizacao" },
+      ],
+    },
+    {
+      label: "Pedidos",
+      items: [
+        ...(podeGerir
+          ? [
+              { label: "Criar cotação", href: "/estoque/pedidos" },
+              { label: "Editor de espelhos", href: "/estoque/pedidos/cotacoes" },
+            ]
+          : []),
+        { label: "Pedidos feitos", href: "/estoque/pedidos/feitos" },
+      ],
+    },
+    ...(podeGerir
+      ? [
+          {
+            label: "Fornecedores",
+            items: [
+              { label: "Consultar fornecedores", href: "/estoque/fornecedores" },
+              { label: "Editar dados", href: "/estoque/fornecedores/edicao" },
+            ],
+          },
+          {
+            label: "CMV Real",
+            items: [{ label: "Consultar CMV", href: "/estoque/cmv" }],
+          },
+        ]
+      : []),
+  ];
 
   // Financeiro só sai de "em breve" pra unidade com a flag ligada
   // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
-  const NAV_ITEMS = [
-    { label: "Estoque", href: "/estoque/produtos", disabled: false },
-    { label: "Financeiro", href: "/financeiro/consolidado/novo", disabled: !acesso.consolidadoVendasHabilitado },
+  const NAV_ITEMS: NavItem[] = [
+    {
+      label: "Estoque",
+      href: "/estoque/produtos",
+      activePrefix: "/estoque",
+      disabled: false,
+      sections: secoesEstoque,
+    },
+    {
+      label: "Financeiro",
+      href: "/financeiro/consolidado/novo",
+      activePrefix: "/financeiro",
+      disabled: !acesso.consolidadoVendasHabilitado,
+    },
     { label: "Fichas Técnicas", href: "#", disabled: true },
     { label: "Tarefas", href: "#", disabled: true },
     { label: "Marketing", href: "#", disabled: true },
@@ -56,8 +114,11 @@ export default async function AppLayout({
               </form>
             </div>
           </div>
-          <NavTabs items={NAV_ITEMS} />
         </header>
+
+        <div className="sticky top-0 z-30 bg-azul-noite text-branco shadow-md">
+          <NavTabs items={NAV_ITEMS} />
+        </div>
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
           {children}
