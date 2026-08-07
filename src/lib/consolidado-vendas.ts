@@ -46,7 +46,7 @@ export function calcularTotais(valores: EntradaConsolidado): TotaisConsolidado {
     totalFormasPagamento: formasCents / 100,
     totalCanais: canaisCents / 100,
     totalMarketplaces: marketplacesCents / 100,
-    faturamentoTotal: (formasCents + marketplacesCents) / 100,
+    faturamentoTotal: (canaisCents + marketplacesCents) / 100,
     diferenca: diferencaCents / 100,
     status: diferencaCents === 0 ? "conferido" : "divergente",
   };

@@ -84,7 +84,7 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
     num(campos.credito) + num(campos.debito) + num(campos.pix) + num(campos.dinheiro) + num(campos.valeAlimentacao);
   const totalCanais = num(campos.salao) + num(campos.deliveryProprio);
   const totalMarketplaces = num(campos.ifood) + num(campos.food99);
-  const faturamentoTotal = totalFormasPagamento + totalMarketplaces;
+  const faturamentoTotal = totalCanais + totalMarketplaces;
 
   function atualizarCampo(chave: keyof Campos, valor: number | null) {
     setCampos((c) => ({ ...c, [chave]: valor }));

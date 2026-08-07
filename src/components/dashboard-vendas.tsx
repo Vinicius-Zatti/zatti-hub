@@ -11,6 +11,7 @@ const DIAS_SEMANA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const DIA_ABREV_MIN = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]; // indexado direto por getDay()
 const COR_IFOOD = "#EA1D2C";
 const COR_99FOOD = "#FFDD00";
+const COR_DELIVERY_PROPRIO = "#C9882A";
 
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -96,16 +97,14 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
   const totalIfood = dados.reduce((s, l) => s + l.ifood, 0);
   const totalFood99 = dados.reduce((s, l) => s + l.food99, 0);
   const totalMarketplaces = totalIfood + totalFood99;
-  const totalCanaisPeriodo = totalSalao + totalDelivery;
+  const totalVendasDelivery = totalDelivery + totalMarketplaces;
+  const totalCanaisPeriodo = totalSalao + totalVendasDelivery;
   const larguraSalao = totalCanaisPeriodo > 0 ? (totalSalao / totalCanaisPeriodo) * 100 : 50;
-  const larguraIfood = totalMarketplaces > 0 ? (totalIfood / totalMarketplaces) * 100 : 50;
-  // Porcentagem exibida é frente ao faturamento total, não frente à soma
-  // dos canais próprios - pode não somar 100% porque marketplaces ficam em
-  // um bloco separado e divergências continuam possíveis.
   const pctSalaoFaturamento = faturamentoTotal > 0 ? (totalSalao / faturamentoTotal) * 100 : 0;
-  const pctDeliveryFaturamento = faturamentoTotal > 0 ? (totalDelivery / faturamentoTotal) * 100 : 0;
-  const pctIfoodFaturamento = faturamentoTotal > 0 ? (totalIfood / faturamentoTotal) * 100 : 0;
-  const pctFood99Faturamento = faturamentoTotal > 0 ? (totalFood99 / faturamentoTotal) * 100 : 0;
+  const pctDeliveryFaturamento = faturamentoTotal > 0 ? (totalVendasDelivery / faturamentoTotal) * 100 : 0;
+  const pctDeliveryProprio = totalVendasDelivery > 0 ? (totalDelivery / totalVendasDelivery) * 100 : 0;
+  const pctIfoodDelivery = totalVendasDelivery > 0 ? (totalIfood / totalVendasDelivery) * 100 : 0;
+  const pctFood99Delivery = totalVendasDelivery > 0 ? (totalFood99 / totalVendasDelivery) * 100 : 0;
 
   const maxForma = Math.max(1, ...formasPagamento.map((f) => f.valor));
   const maxSemana = Math.max(1, ...porDiaSemana.map((d) => d.media));
@@ -115,7 +114,7 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Dashboard de Vendas</h1>
         <p className="text-sm text-cinza-medio">
-          Faturamento total = formas de pagamento + iFood + 99Food.
+          Faturamento total = Salão + Delivery próprio + iFood + 99Food.
         </p>
       </div>
 
@@ -139,35 +138,6 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
               value={String(divergentes)}
               tone={divergentes > 0 ? "alerta" : "neutral"}
             />
-          </div>
-
-          <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-            <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
-              Marketplaces
-            </div>
-            <p className="mb-3 text-xs text-cinza-medio">
-              Receita separada, sem conciliação com formas de pagamento ou canais próprios.
-            </p>
-            <div className="flex h-6 overflow-hidden rounded-full bg-cinza-claro/40">
-              <div style={{ width: `${larguraIfood}%`, backgroundColor: COR_IFOOD }} />
-              <div className="w-0.5 shrink-0 bg-branco" />
-              <div style={{ width: `${100 - larguraIfood}%`, backgroundColor: COR_99FOOD }} />
-            </div>
-            <div className="mt-3 grid gap-2 text-xs text-cinza sm:grid-cols-2">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_IFOOD }} />
-                iFood · <span className="font-semibold">{brl(totalIfood)}</span> ·{" "}
-                <span className="font-semibold">{pct(pctIfoodFaturamento)}</span> do faturamento
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
-                  style={{ backgroundColor: COR_99FOOD }}
-                />
-                99Food · <span className="font-semibold">{brl(totalFood99)}</span> ·{" "}
-                <span className="font-semibold">{pct(pctFood99Faturamento)}</span> do faturamento
-              </span>
-            </div>
           </div>
 
           {divergentes > 0 && (
@@ -213,7 +183,7 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
 
             <div className="rounded-lg border border-cinza-claro bg-branco p-4">
               <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
-                Salão x Delivery próprio
+                Salão x Delivery
               </div>
               <div className="flex h-6 overflow-hidden rounded-full">
                 <div className="bg-azul-noite" style={{ width: `${larguraSalao}%` }} />
@@ -227,36 +197,80 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
                   <span className="font-semibold">{pct(pctSalaoFaturamento)}</span> do faturamento
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ambar" /> Delivery próprio ·{" "}
-                  <span className="font-semibold">{brl(totalDelivery)}</span> ·{" "}
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ambar" /> Delivery total ·{" "}
+                  <span className="font-semibold">{brl(totalVendasDelivery)}</span> ·{" "}
                   <span className="font-semibold">{pct(pctDeliveryFaturamento)}</span> do faturamento
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-            <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
-              Distribuição por forma de pagamento
-            </div>
-            <div className="flex flex-col gap-2">
-              {formasPagamento.map((f) => (
-                <div key={f.label} className="flex items-center gap-2 text-sm">
-                  <span className="w-32 shrink-0 text-cinza-medio">{f.label}</span>
-                  <div className="h-3 flex-1 overflow-hidden rounded bg-cinza-claro/40">
-                    <div className="h-full rounded bg-ambar" style={{ width: `${(f.valor / maxForma) * 100}%` }} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+              <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+                Distribuição por forma de pagamento
+              </div>
+              <div className="flex flex-col gap-2">
+                {formasPagamento.map((f) => (
+                  <div key={f.label} className="flex items-center gap-2 text-sm">
+                    <span className="w-32 shrink-0 text-cinza-medio">{f.label}</span>
+                    <div className="h-3 flex-1 overflow-hidden rounded bg-cinza-claro/40">
+                      <div className="h-full rounded bg-ambar" style={{ width: `${(f.valor / maxForma) * 100}%` }} />
+                    </div>
+                    <span className="w-24 shrink-0 text-right font-semibold text-cinza">{brl(f.valor)}</span>
+                    <span className="w-14 shrink-0 text-right text-xs text-cinza-medio">
+                      {pct(totalFormasPagamento > 0 ? (f.valor / totalFormasPagamento) * 100 : 0)}
+                    </span>
                   </div>
-                  <span className="w-24 shrink-0 text-right font-semibold text-cinza">{brl(f.valor)}</span>
-                  <span className="w-14 shrink-0 text-right text-xs text-cinza-medio">
-                    {pct(totalFormasPagamento > 0 ? (f.valor / totalFormasPagamento) * 100 : 0)}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+                Distribuição das vendas do delivery
+              </div>
+              <p className="mb-3 text-xs text-cinza-medio">Participação sobre o total vendido por delivery.</p>
+              <div className="flex h-6 overflow-hidden rounded-full bg-cinza-claro/40">
+                <div style={{ width: `${pctDeliveryProprio}%`, backgroundColor: COR_DELIVERY_PROPRIO }} />
+                <div style={{ width: `${pctIfoodDelivery}%`, backgroundColor: COR_IFOOD }} />
+                <div style={{ width: `${pctFood99Delivery}%`, backgroundColor: COR_99FOOD }} />
+              </div>
+              <div className="mt-3 flex flex-col gap-1.5 text-xs text-cinza">
+                <ItemDistribuicao cor={COR_DELIVERY_PROPRIO} label="Delivery próprio" valor={totalDelivery} porcentagem={pctDeliveryProprio} />
+                <ItemDistribuicao cor={COR_IFOOD} label="iFood" valor={totalIfood} porcentagem={pctIfoodDelivery} />
+                <ItemDistribuicao cor={COR_99FOOD} label="99Food" valor={totalFood99} porcentagem={pctFood99Delivery} contorno />
+              </div>
             </div>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+function ItemDistribuicao({
+  cor,
+  label,
+  valor,
+  porcentagem,
+  contorno = false,
+}: {
+  cor: string;
+  label: string;
+  valor: number;
+  porcentagem: number;
+  contorno?: boolean;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className={`h-2.5 w-2.5 shrink-0 rounded-full ${contorno ? "border border-black/10" : ""}`}
+        style={{ backgroundColor: cor }}
+      />
+      {label} · <span className="font-semibold">{brl(valor)}</span> ·{" "}
+      <span className="font-semibold">{pct(porcentagem)}</span>
+    </span>
   );
 }
 

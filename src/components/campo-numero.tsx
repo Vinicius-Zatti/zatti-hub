@@ -25,15 +25,24 @@ export function CampoNumero({
     setEdicao(value === null ? "" : String(value).replace(".", ","));
   }
 
-  function aoDesfocar() {
-    const limpo = (edicao ?? "").trim();
-    setEdicao(null);
+  function interpretar(texto: string): number | null {
+    const limpo = texto.trim();
     if (limpo === "") {
-      onChange(null);
-      return;
+      return null;
     }
     const num = Number(limpo.replace(/\./g, "").replace(",", "."));
-    onChange(Number.isNaN(num) ? null : num);
+    return Number.isNaN(num) ? null : num;
+  }
+
+  function aoAlterar(texto: string) {
+    setEdicao(texto);
+    // Atualiza a fonte real enquanto digita. Se deixasse só no blur, o
+    // último campo antes de Salvar poderia enviar o valor anterior.
+    onChange(interpretar(texto));
+  }
+
+  function aoDesfocar() {
+    setEdicao(null);
   }
 
   const texto = edicao !== null ? edicao : formatar(value, decimais);
@@ -44,7 +53,7 @@ export function CampoNumero({
       inputMode="decimal"
       value={texto}
       onFocus={aoFocar}
-      onChange={(e) => setEdicao(e.target.value)}
+      onChange={(e) => aoAlterar(e.target.value)}
       onBlur={aoDesfocar}
       className={`rounded border px-1.5 py-1 text-right ${
         value === null ? VAZIO_CLASSE : NORMAL_CLASSE

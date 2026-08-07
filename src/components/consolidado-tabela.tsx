@@ -49,7 +49,7 @@ export function ConsolidadoTabela({
   }, [lancamentos, periodo, status]);
 
   const divergentesNoFiltro = filtrados.filter((l) => l.status === "divergente").length;
-  const totalColunas = podeEditar ? 13 : 12;
+  const totalColunas = 12;
 
   return (
     <div className="flex flex-col gap-4 pb-10">
@@ -84,24 +84,19 @@ export function ConsolidadoTabela({
       </div>
 
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Histórico do consolidado de vendas">
-        <table className="w-full min-w-[1380px] text-sm">
+        <table className="w-full min-w-[1260px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th>Data</Th>
+              <Th fixo>{podeEditar ? "Data / ação" : "Data"}</Th>
               <Th align="right">Total formas de pagamento</Th>
               <Th align="right">Salão</Th>
               <Th align="right">Delivery próprio</Th>
-              <Th align="right">
-                <span className="rounded bg-[#EA1D2C] px-1.5 py-0.5 text-branco">iFood</span>
-              </Th>
-              <Th align="right">
-                <span className="rounded bg-[#FFDD00] px-1.5 py-0.5 text-azul-noite">99Food</span>
-              </Th>
+              <Th align="right">iFood</Th>
+              <Th align="right">99Food</Th>
               <Th align="right">Faturamento total</Th>
               <Th align="right">Total canais próprios</Th>
               <Th align="right">Diferença</Th>
               <Th>Status</Th>
-              {podeEditar && <Th align="center">Edição</Th>}
               <Th>Responsável</Th>
               <Th>Última atualização</Th>
             </tr>
@@ -109,12 +104,32 @@ export function ConsolidadoTabela({
           <tbody>
             {filtrados.map((l, i) => (
               <tr key={l.id} className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}>
-                <td className="px-3 py-2 whitespace-nowrap font-medium text-cinza">{dataBR(l.data)}</td>
+                <td
+                  className={`sticky left-0 z-10 px-3 py-2 whitespace-nowrap font-medium text-cinza ${
+                    i % 2 === 1 ? "bg-off-white" : "bg-branco"
+                  }`}
+                >
+                  {podeEditar ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/financeiro/consolidado/${l.id}/editar`)}
+                      className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded px-1 py-1 text-left transition-colors hover:bg-ambar/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+                      aria-label={`Editar lançamento de ${dataBR(l.data)}`}
+                    >
+                      <span>{dataBR(l.data)}</span>
+                      <span className="rounded bg-azul-noite px-2 py-0.5 text-[10px] font-bold text-branco transition-colors group-hover:bg-azul-petroleo">
+                        Editar
+                      </span>
+                    </button>
+                  ) : (
+                    dataBR(l.data)
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalFormasPagamento)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.salao)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.deliveryProprio)}</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#EA1D2C]">{brl(l.ifood)}</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#8A7600]">{brl(l.food99)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.ifood)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{brl(l.food99)}</td>
                 <td className="px-3 py-2 text-right font-bold tabular-nums text-azul-noite">
                   {brl(l.faturamentoTotal)}
                 </td>
@@ -129,17 +144,6 @@ export function ConsolidadoTabela({
                     {l.status === "divergente" ? "Com divergência" : "Conferido"}
                   </span>
                 </td>
-                {podeEditar && (
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/financeiro/consolidado/${l.id}/editar`)}
-                      className="cursor-pointer rounded bg-azul-noite px-2.5 py-1 text-[10px] font-bold text-branco hover:bg-azul-petroleo"
-                    >
-                      Editar
-                    </button>
-                  </td>
-                )}
                 <td className="px-3 py-2 whitespace-nowrap">{l.atualizadoPorNome ?? l.criadoPorNome}</td>
                 <td className="px-3 py-2 whitespace-nowrap text-xs text-cinza-medio">{dataHoraBR(l.atualizadoEm)}</td>
               </tr>
