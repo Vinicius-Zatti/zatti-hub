@@ -714,6 +714,10 @@ export function EditorEspelhos({
                           ? arredondarPrecoCima(preco * item.qtdUnidadeBasePorEmbalagem) -
                             arredondarPrecoCima(menorPreco * item.qtdUnidadeBasePorEmbalagem)
                           : diferencaDoMelhor;
+                      const precoAtualizadoExibido =
+                        modoAtual === "interno"
+                          ? preco
+                          : toNumeroBR(precosTextoEmbalagem[kPreco]);
 
                       return (
                         <tr key={item.sku} className={`border-t border-cinza-claro ${semEmbalagem ? "bg-vermelho/5" : ""}`}>
@@ -784,6 +788,7 @@ export function EditorEspelhos({
                               <td className="px-3 py-2 text-right">
                                 {editandoPreco[kPreco] !== undefined ? (
                                   <div className="flex items-center justify-end gap-1.5">
+                                    <span className="text-xs font-semibold text-cinza-medio">R$</span>
                                     <input
                                       type="text"
                                       inputMode="decimal"
@@ -809,9 +814,9 @@ export function EditorEspelhos({
                                 ) : (
                                   <div className="flex items-center justify-end gap-1.5">
                                     <span className="tabular-nums text-cinza">
-                                      {modoAtual === "interno"
-                                        ? (precosTexto[kPreco] ?? "")
-                                        : (precosTextoEmbalagem[kPreco] ?? "")}
+                                      {precoAtualizadoExibido !== null
+                                        ? formatMoeda(precoAtualizadoExibido)
+                                        : "—"}
                                     </span>
                                     {ehMelhorPreco && (
                                       <span className="shrink-0 rounded-full bg-verde/10 px-1.5 py-0.5 text-[10px] font-bold text-verde">
