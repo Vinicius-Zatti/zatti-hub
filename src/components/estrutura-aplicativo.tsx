@@ -101,16 +101,35 @@ export function EstruturaAplicativo({
           title="Zatti Hub"
           className="flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ambar"
         >
-          <Image
-            src="/brand/zatti-logo-invertida.svg"
-            alt="Zatti Hub"
-            width={160}
-            height={69}
-            priority
-            className={`h-auto transition-[width] duration-200 ${
-              recolhido ? "w-[4.5rem]" : "w-[4.5rem] lg:w-36"
-            }`}
-          />
+          {recolhido ? (
+            <Image
+              src="/brand/zatti-hub-simbolo.svg"
+              alt=""
+              width={96}
+              height={96}
+              priority
+              className="h-11 w-11"
+            />
+          ) : (
+            <>
+              <Image
+                src="/brand/zatti-hub-horizontal.svg"
+                alt="Zatti Hub"
+                width={900}
+                height={520}
+                priority
+                className="hidden h-auto w-28 lg:block"
+              />
+              <Image
+                src="/brand/zatti-hub-simbolo.svg"
+                alt=""
+                width={96}
+                height={96}
+                priority
+                className="h-11 w-11 lg:hidden"
+              />
+            </>
+          )}
         </Link>
 
         <button

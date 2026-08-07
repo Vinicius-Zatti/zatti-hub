@@ -4,6 +4,18 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## Identidade visual oficial
+
+- O produto usa sempre a assinatura `Zatti Hub`. `Zatti Consultoria` é a
+  empresa de consultoria e aparece somente como endosso institucional.
+- A identidade digital oficial é `V2.1 - Preto e Âmbar`: Zatti branco
+  metálico, HUB âmbar dourado alinhado à direita, fundo preto ou azul-marinho
+  profundo, sem quadriculado e sem feixe diagonal.
+- Use os ativos oficiais em `public/brand/`: versão com fundo nas telas de
+  acesso, assinatura horizontal no menu expandido e símbolo MEGA no menu
+  compacto. Não reutilize `zatti-logo-invertida.svg` em novas interfaces.
+- Ícone do aplicativo, favicon e ícone para iOS seguem o símbolo MEGA V2.1.
+
 ## Convenções fixas deste projeto
 
 - **Toda tabela precisa de cabeçalho fixo (sticky)** — a pessoa rola a tabela
