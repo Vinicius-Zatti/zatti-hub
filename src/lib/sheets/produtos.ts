@@ -1,6 +1,8 @@
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
+import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
+import { listarProdutosBanco, salvarProdutosBanco } from "@/lib/banco/estoque";
 
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
@@ -57,7 +59,7 @@ function produtoToRow(p: Produto): (string | number)[] {
   ];
 }
 
-export async function listProdutos(spreadsheetId: string): Promise<Produto[]> {
+async function listProdutosPlanilha(spreadsheetId: string): Promise<Produto[]> {
   const sheets = getSheetsClient();
 
   const res = await sheets.spreadsheets.values.get({
@@ -71,9 +73,15 @@ export async function listProdutos(spreadsheetId: string): Promise<Produto[]> {
     .map(rowToProduto);
 }
 
+export async function listProdutos(spreadsheetId: string | null): Promise<Produto[]> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") return listarProdutosBanco(fonte.unidadeId);
+  return listProdutosPlanilha(fonte.spreadsheetId!);
+}
+
 export async function upsertProduto(
   produto: Produto,
-  spreadsheetId: string
+  spreadsheetId: string | null
 ): Promise<void> {
   await upsertProdutosBatch([produto], spreadsheetId);
 }
@@ -85,7 +93,19 @@ export async function upsertProduto(
  * API do Sheets a partir de ~10 itens de uma vez. */
 export async function upsertProdutosBatch(
   produtos: Produto[],
-  spreadsheetId: string
+  spreadsheetId: string | null
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await salvarProdutosBanco(produtos, fonte.unidadeId);
+    return;
+  }
+  await upsertProdutosPlanilha(produtos, fonte.spreadsheetId!);
+}
+
+async function upsertProdutosPlanilha(
+  produtos: Produto[],
+  spreadsheetId: string,
 ): Promise<void> {
   if (produtos.length === 0) return;
   const sheets = getSheetsClient();

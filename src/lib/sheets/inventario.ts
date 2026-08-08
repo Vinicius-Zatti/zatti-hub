@@ -2,6 +2,12 @@ import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
 import { listProdutos } from "./produtos";
+import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
+import {
+  atualizarQuantidadeInventarioBanco,
+  listarInventarioBanco,
+  registrarContagemBanco,
+} from "@/lib/banco/estoque";
 
 const SHEET = "Inventário";
 const FIRST_DATA_ROW = 3;
@@ -24,12 +30,18 @@ function rowToItem(row: string[]): ItemInventario {
   };
 }
 
-export async function listInventario(spreadsheetId: string): Promise<ItemInventario[]> {
+async function listInventarioPlanilha(spreadsheetId: string): Promise<ItemInventario[]> {
   const sheets = getSheetsClient();
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
   const rows = res.data.values ?? [];
   return rows.filter((r) => r[2]).map(rowToItem);
+}
+
+export async function listInventario(spreadsheetId: string | null): Promise<ItemInventario[]> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") return listarInventarioBanco(fonte.unidadeId);
+  return listInventarioPlanilha(fonte.spreadsheetId!);
 }
 
 /** Mesma regra combinada com o Vinícius em 18/07: alto = suspeita de erro de
@@ -65,7 +77,7 @@ export type NovaContagemLinha = {
   unidadeAvulso?: string;
 };
 
-export async function registrarContagem(
+async function registrarContagemPlanilha(
   data: string, // "DD/MM/AAAA"
   mes: string, // "julho 2026"
   linhas: NovaContagemLinha[],
@@ -119,12 +131,26 @@ export async function registrarContagem(
   });
 }
 
+export async function registrarContagem(
+  data: string,
+  mes: string,
+  linhas: NovaContagemLinha[],
+  spreadsheetId: string | null,
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await registrarContagemBanco(data, mes, linhas, fonte.unidadeId, fonte.userId);
+    return;
+  }
+  await registrarContagemPlanilha(data, mes, linhas, fonte.spreadsheetId!);
+}
+
 /** Corrige a quantidade de um item já registrado (só a última contagem pode
  * ser corrigida, decisão de 21/07 — contagens antigas ficam intactas como
  * histórico). Recalcula total e alerta a partir do preço que já estava
  * gravado naquela linha — não busca preço novo do cadastro, pra não mudar o
  * valor da contagem por conta de um reajuste de preço posterior. */
-export async function atualizarQuantidadeInventario(
+async function atualizarQuantidadeInventarioPlanilha(
   data: string,
   sku: string,
   quantidade: number,
@@ -157,9 +183,28 @@ export async function atualizarQuantidadeInventario(
   });
 }
 
+export async function atualizarQuantidadeInventario(
+  data: string,
+  sku: string,
+  quantidade: number,
+  spreadsheetId: string | null,
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await atualizarQuantidadeInventarioBanco(data, sku, quantidade, fonte.unidadeId);
+    return;
+  }
+  await atualizarQuantidadeInventarioPlanilha(
+    data,
+    sku,
+    quantidade,
+    fonte.spreadsheetId!,
+  );
+}
+
 /** Itens contados como avulso (fora do Cadastro de Produtos) que ainda não
  * viraram produto de verdade. Pega a ocorrência mais recente de cada nome. */
-export async function listItensPendentes(spreadsheetId: string): Promise<ItemPendente[]> {
+export async function listItensPendentes(spreadsheetId: string | null): Promise<ItemPendente[]> {
   const [inventario, produtos] = await Promise.all([
     listInventario(spreadsheetId),
     listProdutos(spreadsheetId),

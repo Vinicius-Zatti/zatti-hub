@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export type Role = "gestao" | "operacional" | "master";
+export type FonteDadosEstoque = "planilha" | "banco";
 
 /** Nome do cookie que guarda qual organização a pessoa escolheu ver, pra
  * quem tem acesso a mais de uma (master, ou alguém com vínculo em dois
@@ -19,7 +20,8 @@ export type AcessoAtual = {
   organizacaoNome: string;
   unidadeId: string;
   unidadeNome: string;
-  spreadsheetId: string;
+  spreadsheetId: string | null;
+  fonteDadosEstoque: FonteDadosEstoque;
   /** Liga o menu Financeiro > Consolidado de Vendas pra essa unidade -
    * configurável por cliente, editado direto no Supabase (sem tela de
    * admin), mesma convenção de `spreadsheet_id`/`ativo`. */
@@ -45,6 +47,7 @@ type UnidadeRow = {
   id: string;
   nome: string;
   spreadsheet_id: string | null;
+  fonte_dados_estoque: FonteDadosEstoque;
   consolidado_vendas_habilitado: boolean;
 };
 
@@ -98,18 +101,21 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
       // (sem seletor pra sair de lá) mesmo tendo outras organizações prontas.
       const { data: unidadesProntas } = await supabase
         .from("unidades")
-        .select("organizacao_id")
+        .select("organizacao_id, spreadsheet_id, fonte_dados_estoque")
         .in(
           "organizacao_id",
           organizacoesDisponiveis.map((o) => o.id),
         )
-        .eq("ativo", true)
-        .not("spreadsheet_id", "is", null);
+        .eq("ativo", true);
 
       const orgsComDados = new Set(
-        (unidadesProntas as { organizacao_id: string }[] | null)?.map(
-          (u) => u.organizacao_id,
-        ) ?? [],
+        ((unidadesProntas as {
+          organizacao_id: string;
+          spreadsheet_id: string | null;
+          fonte_dados_estoque: FonteDadosEstoque;
+        }[] | null) ?? [])
+          .filter((u) => u.fonte_dados_estoque === "banco" || Boolean(u.spreadsheet_id))
+          .map((u) => u.organizacao_id),
       );
       organizacaoId =
         organizacoesDisponiveis.find((o) => orgsComDados.has(o.id))?.id ??
@@ -137,13 +143,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -152,7 +158,9 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const { data: unidades } = await unidadeQuery;
   const unidade = (unidades as unknown as UnidadeRow[] | null)?.[0];
   if (!unidade) redirect("/sem-acesso");
-  if (!unidade.spreadsheet_id) redirect("/planilha-pendente");
+  if (unidade.fonte_dados_estoque === "planilha" && !unidade.spreadsheet_id) {
+    redirect("/planilha-pendente");
+  }
 
   return {
     userId,
@@ -163,6 +171,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     unidadeId: unidade.id,
     unidadeNome: unidade.nome,
     spreadsheetId: unidade.spreadsheet_id,
+    fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
     role,
     organizacoesDisponiveis,

@@ -1,6 +1,8 @@
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Fornecedor } from "@/lib/types";
+import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
+import { listarFornecedoresBanco, salvarFornecedoresBanco } from "@/lib/banco/estoque";
 
 const SHEET = "Fornecedores";
 const FIRST_DATA_ROW = 3;
@@ -55,7 +57,7 @@ function fornecedorToRow(f: Fornecedor): (string | number)[] {
   ];
 }
 
-export async function listFornecedores(spreadsheetId: string): Promise<Fornecedor[]> {
+async function listFornecedoresPlanilha(spreadsheetId: string): Promise<Fornecedor[]> {
   const sheets = getSheetsClient();
 
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: RANGE });
@@ -66,10 +68,19 @@ export async function listFornecedores(spreadsheetId: string): Promise<Fornecedo
   return rows.filter((r) => r[1] || r[2]).map(rowToFornecedor);
 }
 
+export async function listFornecedores(spreadsheetId: string | null): Promise<Fornecedor[]> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") return listarFornecedoresBanco(fonte.unidadeId);
+  return listFornecedoresPlanilha(fonte.spreadsheetId!);
+}
+
 /** Atualiza/insere um fornecedor. Exige `codigo` preenchido pra saber qual
  * linha é qual - fornecedor sem código ainda (cadastro antigo, direto na
  * planilha) precisa passar por `garantirCodigos` antes. */
-export async function upsertFornecedor(fornecedor: Fornecedor, spreadsheetId: string): Promise<void> {
+export async function upsertFornecedor(
+  fornecedor: Fornecedor,
+  spreadsheetId: string | null,
+): Promise<void> {
   await upsertFornecedoresBatch([fornecedor], spreadsheetId);
 }
 
@@ -79,7 +90,19 @@ export async function upsertFornecedor(fornecedor: Fornecedor, spreadsheetId: st
  * limite de taxa da API do Sheets). */
 export async function upsertFornecedoresBatch(
   fornecedores: Fornecedor[],
-  spreadsheetId: string
+  spreadsheetId: string | null
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await salvarFornecedoresBanco(fornecedores, fonte.unidadeId);
+    return;
+  }
+  await upsertFornecedoresPlanilha(fornecedores, fonte.spreadsheetId!);
+}
+
+async function upsertFornecedoresPlanilha(
+  fornecedores: Fornecedor[],
+  spreadsheetId: string,
 ): Promise<void> {
   if (fornecedores.length === 0) return;
   for (const f of fornecedores) {
@@ -142,14 +165,18 @@ export function proximoCodigo(fornecedores: Fornecedor[]): string {
  * (casando pela linha com Código vazio + mesmo Nome Fantasia, a única coisa
  * estável que sobra). Depois da primeira vez que cada fornecedor passa por
  * aqui isso vira no-op pra ele. */
-export async function garantirCodigos(spreadsheetId: string): Promise<Fornecedor[]> {
-  const fornecedores = await listFornecedores(spreadsheetId);
+export async function garantirCodigos(spreadsheetId: string | null): Promise<Fornecedor[]> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") return listarFornecedoresBanco(fonte.unidadeId);
+
+  const planilhaId = fonte.spreadsheetId!;
+  const fornecedores = await listFornecedoresPlanilha(planilhaId);
   const semCodigo = fornecedores.filter((f) => !f.codigo);
   if (semCodigo.length === 0) return fornecedores;
 
   const sheets = getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
+    spreadsheetId: planilhaId,
     range: `'${SHEET}'!A${FIRST_DATA_ROW}:C`,
   });
   const linhas = res.data.values ?? [];
@@ -166,7 +193,7 @@ export async function garantirCodigos(spreadsheetId: string): Promise<Fornecedor
     const codigo = `FOR${String(proximoNum).padStart(3, "0")}`;
     proximoNum += 1;
     await sheets.spreadsheets.values.update({
-      spreadsheetId,
+      spreadsheetId: planilhaId,
       range: `'${SHEET}'!A${FIRST_DATA_ROW + idx}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [[codigo]] },
