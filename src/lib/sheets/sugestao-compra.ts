@@ -1,5 +1,5 @@
 import { listProdutos } from "./produtos";
-import { listInventario } from "./inventario";
+import { listInventario, calcularAlerta } from "./inventario";
 import { ordenarGrupos } from "@/lib/pedido";
 import type { SugestaoCompra } from "@/lib/types";
 
@@ -41,12 +41,10 @@ export async function gerarPedido(
   const skusContadosNoDia = new Set<string>();
   const contagemPorSku = new Map<string, number>();
   const precoNaContagemPorSku = new Map<string, number | null>();
-  const alertaPorSku = new Map<string, string>();
   for (const item of inventario) {
     if (item.data !== dataUsada) continue;
     skusContadosNoDia.add(item.sku);
     precoNaContagemPorSku.set(item.sku, item.precoUnitario);
-    if (item.alerta) alertaPorSku.set(item.sku, item.alerta);
     if (item.quantidade === null) continue;
     contagemPorSku.set(item.sku, item.quantidade);
   }
@@ -93,7 +91,15 @@ export async function gerarPedido(
       nomeCompra: produto.nomeCompra,
       unidadeEmbalagemFornecedor: produto.unidadeEmbalagemFornecedor,
       qtdUnidadeBasePorEmbalagem: produto.qtdUnidadeBasePorEmbalagem,
-      alerta: alertaPorSku.get(produto.sku) ?? "",
+      // Recalculado com o estoque mínimo ATUAL do cadastro - o alerta gravado
+      // na linha da Contagem fica congelado no valor de quando foi escrito
+      // (achado em teste com Zatti Teste em 08/08: mínimo editado depois de a
+      // contagem já existir mostrava "Comprar emergencial" errado aqui,
+      // mesmo com o cadastro já corrigido). A tela de Contagens continua
+      // mostrando o alerta histórico gravado - só Pedidos/Criar Cotação usa
+      // o valor atual, porque é sobre decidir compra agora, não sobre o
+      // registro daquele dia.
+      alerta: calcularAlerta(estoqueAtual, produto.precoUnitario, produto),
     });
   }
 

@@ -47,7 +47,7 @@ export async function listInventario(spreadsheetId: string | null): Promise<Item
 /** Mesma regra combinada com o Vinícius em 18/07: alto = suspeita de erro de
  * contagem; baixo (abaixo do estoque mínimo) = alerta de compra emergencial,
  * nunca "erro" (pode legitimamente zerar). */
-function calcularAlerta(
+export function calcularAlerta(
   quantidade: number | null,
   precoUnitario: number | null,
   produto: Produto | undefined
