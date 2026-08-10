@@ -174,9 +174,11 @@ const chavesInventario = inventario.map((item) => `${item.data}|${item.sku}`);
 const repetidos = (lista) => [...new Set(lista.filter((valor, i) => lista.indexOf(valor) !== i))];
 if (repetidos(skus).length) throw new Error("Há SKU duplicado no cadastro de produtos.");
 if (repetidos(codigos).length) throw new Error("Há código duplicado no cadastro de fornecedores.");
-if (repetidos(chavesInventario).length) {
-  throw new Error("Há SKU repetido na mesma data de inventário; revise antes de importar.");
-}
+// SKU repetido na mesma data é permitido pelo próprio schema (contagem_itens
+// não tem unique por sku, só por origem_linha_planilha - o legado permitia
+// reenvio no mesmo dia). Não bloqueia a importação, só é reportado no resumo
+// final pra quem gera o SQL decidir se quer revisar antes de rodar.
+const gruposComSkuRepetidoNoDia = repetidos(chavesInventario);
 
 const contagens = [...new Map(inventario.map((item) => [item.data, item.mes])).entries()];
 const linhasSql = [
@@ -204,14 +206,20 @@ const linhasSql = [
   `values\n${contagens.map(([data, mes]) => `(${[unidadeId, data, mes].map(sql).join(", ")})`).join(",\n")}`,
   "on conflict (unidade_id, data) do update set mes = excluded.mes;",
   "",
-  "insert into contagem_itens (contagem_id, origem_linha_planilha, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta)",
-  "select c.id, v.linha, v.sku, v.grupo, v.nome, v.unidade_base, v.quantidade, v.preco_unitario, v.total, v.alerta",
+  "insert into contagem_itens (contagem_id, ordem, origem_linha_planilha, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta)",
+  "select c.id, v.linha, v.linha, v.sku, v.grupo, v.nome, v.unidade_base, v.quantidade, v.preco_unitario, v.total, v.alerta",
   `from (values\n${inventario.map((item) => `(${[
     item.data, item.linhaPlanilha, item.sku, item.grupo, item.nome, item.unidadeBase,
     item.quantidade, item.precoUnitario, item.total, item.alerta,
   ].map(sql).join(", ")})`).join(",\n")}) as v(data, linha, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta)`,
   `join contagens c on c.unidade_id = ${sql(unidadeId)} and c.data = v.data::date`,
-  "on conflict (contagem_id, origem_linha_planilha) do update set sku = excluded.sku, grupo = excluded.grupo, nome = excluded.nome, unidade_base = excluded.unidade_base, quantidade = excluded.quantidade, preco_unitario = excluded.preco_unitario, total = excluded.total, alerta = excluded.alerta;",
+  // ordem = número da linha original na planilha (estritamente crescente na
+  // ordem de leitura), em vez de deixar pro identity automático do Postgres -
+  // garante por construção que, quando o mesmo SKU repete na mesma data,
+  // `listarInventarioBanco` (que lê ordenado por `ordem`) devolve as
+  // ocorrências na mesma ordem da planilha, e a última prevalece em Pedidos -
+  // mesma regra de hoje na planilha, onde a linha mais embaixo prevalece.
+  "on conflict (contagem_id, origem_linha_planilha) do update set ordem = excluded.ordem, sku = excluded.sku, grupo = excluded.grupo, nome = excluded.nome, unidade_base = excluded.unidade_base, quantidade = excluded.quantidade, preco_unitario = excluded.preco_unitario, total = excluded.total, alerta = excluded.alerta;",
   "",
   "commit;",
   "",
@@ -230,6 +238,8 @@ console.log(JSON.stringify({
   fornecedores: fornecedores.length,
   datasContagem: contagens.length,
   itensContagem: inventario.length,
+  chavesUnicasInventario: new Set(chavesInventario).size,
+  gruposComSkuRepetidoNoDia: gruposComSkuRepetidoNoDia.length,
   somaPrecoProdutos: soma(produtos, "precoUnitario"),
   somaQuantidadeInventario: soma(inventario, "quantidade"),
   somaValorInventario: soma(inventario, "total"),
