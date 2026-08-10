@@ -181,10 +181,12 @@ if (repetidos(codigos).length) throw new Error("Há código duplicado no cadastr
 const gruposComSkuRepetidoNoDia = repetidos(chavesInventario);
 
 const contagens = [...new Map(inventario.map((item) => [item.data, item.mes])).entries()];
-const linhasSql = [
-  "begin;",
-  `do $$ begin if not exists (select 1 from unidades where id = ${sql(unidadeId)}) then raise exception 'Unidade não encontrada'; end if; end $$;`,
-  "",
+
+// Cada bloco só entra no SQL se tiver pelo menos 1 linha - "values" sem
+// nenhuma linha é erro de sintaxe no Postgres. Unidade nova/incompleta (ex:
+// cadastro criado mas sem fornecedor nem contagem ainda) é um caso real, não
+// hipotético - achado importando a Adega em 10/08.
+const blocoProdutos = produtos.length === 0 ? [] : [
   "insert into produtos (unidade_id, ordem, sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo)",
   `values\n${produtos.map((p) => `(${[
     unidadeId, p.ordem, p.sku, p.posicao, p.grupo, p.nome, p.unidadeBase,
@@ -194,6 +196,9 @@ const linhasSql = [
   ].map(sql).join(", ")})`).join(",\n")}`,
   "on conflict (unidade_id, sku) do update set posicao = excluded.posicao, grupo = excluded.grupo, nome = excluded.nome, unidade_base = excluded.unidade_base, preco_unitario = excluded.preco_unitario, estoque_necessario_semana = excluded.estoque_necessario_semana, estoque_minimo = excluded.estoque_minimo, nome_compra = excluded.nome_compra, unidade_embalagem_fornecedor = excluded.unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem = excluded.qtd_unidade_base_por_embalagem, preco_fornecedor = excluded.preco_fornecedor, fornecedor_1 = excluded.fornecedor_1, fornecedor_2 = excluded.fornecedor_2, fornecedor_3 = excluded.fornecedor_3, fornecedor_4 = excluded.fornecedor_4, observacoes = excluded.observacoes, ativo = excluded.ativo, atualizado_em = now();",
   "",
+];
+
+const blocoFornecedores = fornecedores.length === 0 ? [] : [
   "insert into fornecedores (unidade_id, ordem, codigo, razao_social, nome_fantasia, grupos, nome_vendedor, whatsapp, condicoes_pagamento, prazo_boleto, limite_credito, pedido_minimo, dias_entrega, observacoes)",
   `values\n${fornecedores.map((f) => `(${[
     unidadeId, f.ordem, f.codigo, f.razaoSocial, f.nomeFantasia, f.grupos,
@@ -202,10 +207,16 @@ const linhasSql = [
   ].map(sql).join(", ")})`).join(",\n")}`,
   "on conflict (unidade_id, codigo) do update set razao_social = excluded.razao_social, nome_fantasia = excluded.nome_fantasia, grupos = excluded.grupos, nome_vendedor = excluded.nome_vendedor, whatsapp = excluded.whatsapp, condicoes_pagamento = excluded.condicoes_pagamento, prazo_boleto = excluded.prazo_boleto, limite_credito = excluded.limite_credito, pedido_minimo = excluded.pedido_minimo, dias_entrega = excluded.dias_entrega, observacoes = excluded.observacoes, atualizado_em = now();",
   "",
+];
+
+const blocoContagens = contagens.length === 0 ? [] : [
   "insert into contagens (unidade_id, data, mes)",
   `values\n${contagens.map(([data, mes]) => `(${[unidadeId, data, mes].map(sql).join(", ")})`).join(",\n")}`,
   "on conflict (unidade_id, data) do update set mes = excluded.mes;",
   "",
+];
+
+const blocoContagemItens = inventario.length === 0 ? [] : [
   "insert into contagem_itens (contagem_id, ordem, origem_linha_planilha, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta)",
   "select c.id, v.linha, v.linha, v.sku, v.grupo, v.nome, v.unidade_base, v.quantidade, v.preco_unitario, v.total, v.alerta",
   `from (values\n${inventario.map((item) => `(${[
@@ -221,6 +232,16 @@ const linhasSql = [
   // mesma regra de hoje na planilha, onde a linha mais embaixo prevalece.
   "on conflict (contagem_id, origem_linha_planilha) do update set ordem = excluded.ordem, sku = excluded.sku, grupo = excluded.grupo, nome = excluded.nome, unidade_base = excluded.unidade_base, quantidade = excluded.quantidade, preco_unitario = excluded.preco_unitario, total = excluded.total, alerta = excluded.alerta;",
   "",
+];
+
+const linhasSql = [
+  "begin;",
+  `do $$ begin if not exists (select 1 from unidades where id = ${sql(unidadeId)}) then raise exception 'Unidade não encontrada'; end if; end $$;`,
+  "",
+  ...blocoProdutos,
+  ...blocoFornecedores,
+  ...blocoContagens,
+  ...blocoContagemItens,
   "commit;",
   "",
   `select ${sql(unidadeId)} as unidade,`,
