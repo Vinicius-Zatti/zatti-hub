@@ -3,6 +3,15 @@
 import { listFornecedores, upsertFornecedor, upsertFornecedoresBatch, proximoCodigo } from "@/lib/sheets/fornecedores";
 import type { Fornecedor } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
+import { paraErroPublico, ErroPublico } from "@/lib/erros";
+import { exigirLimite, chaveUsuario } from "@/lib/rate-limit";
+import {
+  validar,
+  fornecedorSchema,
+  fornecedorNovoSchema,
+  fornecedoresBatchSchema,
+  fornecedorRapidoSchema,
+} from "@/lib/validacao";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -28,7 +37,7 @@ async function criarFornecedor(
   const nomeNormalizado = dados.nomeFantasia.trim().toLowerCase();
   const duplicado = existentes.find((f) => f.nomeFantasia.trim().toLowerCase() === nomeNormalizado);
   if (duplicado) {
-    throw new Error(
+    throw new ErroPublico(
       `Já existe um fornecedor "${duplicado.nomeFantasia}" cadastrado (código ${duplicado.codigo}) - escolhe ele na lista em vez de criar de novo.`
     );
   }
@@ -51,7 +60,9 @@ export async function criarFornecedorAction(formData: FormData) {
   const acesso = await requireGestao();
 
   try {
-    await criarFornecedor(
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(
+      fornecedorNovoSchema,
       {
         razaoSocial: String(formData.get("razaoSocial") ?? ""),
         nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
@@ -65,10 +76,11 @@ export async function criarFornecedorAction(formData: FormData) {
         diasEntrega: String(formData.get("diasEntrega") ?? ""),
         observacoes: String(formData.get("observacoes") ?? ""),
       },
-      acesso
+      "criarFornecedorAction"
     );
+    await criarFornecedor(dados, acesso);
   } catch (err) {
-    redirect(`/estoque/fornecedores/novo?erro=${encodeURIComponent((err as Error).message)}`);
+    redirect(`/estoque/fornecedores/novo?erro=${encodeURIComponent(paraErroPublico(err, "criarFornecedorAction"))}`);
   }
   redirect("/estoque/fornecedores");
 }
@@ -85,13 +97,15 @@ export async function criarFornecedorRapidoAction(dados: {
 }): Promise<{ fornecedor: Fornecedor } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const validados = validar(fornecedorRapidoSchema, dados, "criarFornecedorRapidoAction");
     const fornecedor = await criarFornecedor(
       {
         razaoSocial: "",
-        nomeFantasia: dados.nomeFantasia,
-        grupos: dados.grupos,
-        nomeVendedor: dados.nomeVendedor,
-        whatsapp: dados.whatsapp,
+        nomeFantasia: validados.nomeFantasia,
+        grupos: validados.grupos,
+        nomeVendedor: validados.nomeVendedor,
+        whatsapp: validados.whatsapp,
         condicoesPagamento: "",
         prazoBoleto: "",
         limiteCredito: null,
@@ -103,7 +117,7 @@ export async function criarFornecedorRapidoAction(dados: {
     );
     return { fornecedor };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "criarFornecedorRapidoAction") };
   }
 }
 
@@ -114,18 +128,20 @@ export async function salvarFornecedorAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertFornecedor(fornecedor, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const validado = validar(fornecedorSchema, fornecedor, "salvarFornecedorAction");
+    await upsertFornecedor(validado, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
       entidade: "fornecedor",
-      entidadeId: fornecedor.codigo,
-      dadosNovos: fornecedor,
+      entidadeId: validado.codigo,
+      dadosNovos: validado,
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "salvarFornecedorAction") };
   }
 }
 
@@ -138,9 +154,11 @@ export async function salvarFornecedoresAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertFornecedoresBatch(fornecedores, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const validados = validar(fornecedoresBatchSchema, fornecedores, "salvarFornecedoresAction");
+    await upsertFornecedoresBatch(validados, acesso.spreadsheetId);
     await registrarAuditoriaBatch(
-      fornecedores.map((fornecedor) => ({
+      validados.map((fornecedor) => ({
         acesso,
         acao: "salvar",
         entidade: "fornecedor",
@@ -151,6 +169,6 @@ export async function salvarFornecedoresAction(
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "salvarFornecedoresAction") };
   }
 }

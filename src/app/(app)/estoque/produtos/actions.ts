@@ -4,6 +4,15 @@ import { listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/p
 import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
+import { paraErroPublico, ErroPublico } from "@/lib/erros";
+import { exigirLimite, chaveUsuario } from "@/lib/rate-limit";
+import {
+  validar,
+  produtoSchema,
+  produtosBatchSchema,
+  sugerirSkuSchema,
+  definirFornecedor1Schema,
+} from "@/lib/validacao";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -19,46 +28,58 @@ export async function sugerirSkuAction(
 ): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    return await sugerirSku(nome, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "sugerir_sku");
+    const nomeValidado = validar(sugerirSkuSchema, nome, "sugerirSkuAction");
+    return await sugerirSku(nomeValidado, acesso.spreadsheetId);
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "sugerirSkuAction") };
   }
 }
 
 export async function criarProdutoAction(formData: FormData) {
   const acesso = await requireGestao();
 
-  const produto: Produto = {
-    sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
-    posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
-    grupo: String(formData.get("grupo") ?? ""),
-    nome: String(formData.get("nome") ?? ""),
-    unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
-    precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
-    estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
-      ? Number(formData.get("estoqueNecessarioSemana"))
-      : null,
-    estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
-    nomeCompra: String(formData.get("nomeCompra") ?? ""),
-    unidadeEmbalagemFornecedor: "",
-    qtdUnidadeBasePorEmbalagem: null,
-    precoFornecedor: null,
-    fornecedor1: "",
-    fornecedor2: "",
-    fornecedor3: "",
-    fornecedor4: "",
-    observacoes: String(formData.get("observacoes") ?? ""),
-    ativo: true,
-  };
+  try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
 
-  await upsertProduto(produto, acesso.spreadsheetId);
-  await registrarAuditoria({
-    acesso,
-    acao: "criar",
-    entidade: "produto",
-    entidadeId: produto.sku,
-    dadosNovos: produto,
-  });
+    const produto = validar(
+      produtoSchema,
+      {
+        sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
+        posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
+        grupo: String(formData.get("grupo") ?? ""),
+        nome: String(formData.get("nome") ?? ""),
+        unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
+        precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
+        estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
+          ? Number(formData.get("estoqueNecessarioSemana"))
+          : null,
+        estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
+        nomeCompra: String(formData.get("nomeCompra") ?? ""),
+        unidadeEmbalagemFornecedor: "",
+        qtdUnidadeBasePorEmbalagem: null,
+        precoFornecedor: null,
+        fornecedor1: "",
+        fornecedor2: "",
+        fornecedor3: "",
+        fornecedor4: "",
+        observacoes: String(formData.get("observacoes") ?? ""),
+        ativo: true,
+      } satisfies Produto,
+      "criarProdutoAction"
+    );
+
+    await upsertProduto(produto, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "criar",
+      entidade: "produto",
+      entidadeId: produto.sku,
+      dadosNovos: produto,
+    });
+  } catch (err) {
+    redirect(`/estoque/produtos/novo?erro=${encodeURIComponent(paraErroPublico(err, "criarProdutoAction"))}`);
+  }
   revalidarTudo();
   redirect("/estoque/produtos");
 }
@@ -69,18 +90,20 @@ export async function salvarProdutoAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertProduto(produto, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const produtoValidado = validar(produtoSchema, produto, "salvarProdutoAction");
+    await upsertProduto(produtoValidado, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
       entidade: "produto",
-      entidadeId: produto.sku,
-      dadosNovos: produto,
+      entidadeId: produtoValidado.sku,
+      dadosNovos: produtoValidado,
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "salvarProdutoAction") };
   }
 }
 
@@ -95,24 +118,27 @@ export async function definirFornecedor1Action(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    const produtos = await listProdutos(acesso.spreadsheetId);
-    const produto = produtos.find((p) => p.sku === sku);
-    if (!produto) return { erro: "Produto não encontrado - a lista pode ter mudado, recarrega a página." };
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(definirFornecedor1Schema, { sku, fornecedor1 }, "definirFornecedor1Action");
 
-    const atualizado: Produto = { ...produto, fornecedor1 };
+    const produtos = await listProdutos(acesso.spreadsheetId);
+    const produto = produtos.find((p) => p.sku === dados.sku);
+    if (!produto) throw new ErroPublico("Produto não encontrado - a lista pode ter mudado, recarrega a página.");
+
+    const atualizado: Produto = { ...produto, fornecedor1: dados.fornecedor1 };
     await upsertProduto(atualizado, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "definir_fornecedor_via_cotacao",
       entidade: "produto",
-      entidadeId: sku,
+      entidadeId: dados.sku,
       dadosAntigos: { fornecedor1: produto.fornecedor1 },
-      dadosNovos: { fornecedor1 },
+      dadosNovos: { fornecedor1: dados.fornecedor1 },
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "definirFornecedor1Action") };
   }
 }
 
@@ -127,9 +153,11 @@ export async function salvarProdutosAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertProdutosBatch(produtos, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const produtosValidados = validar(produtosBatchSchema, produtos, "salvarProdutosAction");
+    await upsertProdutosBatch(produtosValidados, acesso.spreadsheetId);
     await registrarAuditoriaBatch(
-      produtos.map((produto) => ({
+      produtosValidados.map((produto) => ({
         acesso,
         acao: "salvar",
         entidade: "produto",
@@ -140,6 +168,6 @@ export async function salvarProdutosAction(
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "salvarProdutosAction") };
   }
 }

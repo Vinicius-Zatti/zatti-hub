@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErroPublico } from "@/lib/erros";
 import type { Pedido, PedidoItem } from "@/lib/types";
 
 type PedidoRow = {
@@ -81,7 +82,10 @@ async function garantirPedido(
     })
     .select("id")
     .single();
-  if (error || !novo) throw new Error(error?.message ?? "Falha ao criar pedido");
+  if (error || !novo) {
+    console.error("[pedidos:garantirPedido]", error);
+    throw new ErroPublico("Não foi possível salvar o pedido agora. Tenta de novo em instantes.");
+  }
   return novo.id;
 }
 
@@ -154,12 +158,18 @@ export async function confirmarItem(params: {
       .from("pedido_itens")
       .update(params.atualizarPreco ? linhaComPreco : linhaBase)
       .eq("id", existente.id);
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[pedidos:confirmarItem:update]", error);
+      throw new ErroPublico("Não foi possível salvar o item agora. Tenta de novo em instantes.");
+    }
   } else {
     const { error } = await supabase
       .from("pedido_itens")
       .insert({ pedido_id: pedidoId, sku: params.item.sku, ...linhaComPreco });
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[pedidos:confirmarItem:insert]", error);
+      throw new ErroPublico("Não foi possível salvar o item agora. Tenta de novo em instantes.");
+    }
   }
 
   const { data: outrosPedidos } = await supabase
@@ -216,7 +226,10 @@ export async function confirmarVencedor(params: {
     .update({ vencedor_confirmado: true })
     .eq("pedido_id", pedidoIdVencedor)
     .eq("sku", params.item.sku);
-  if (erroMarcarVencedor) throw new Error(erroMarcarVencedor.message);
+  if (erroMarcarVencedor) {
+    console.error("[pedidos:confirmarVencedor:marcar]", erroMarcarVencedor);
+    throw new ErroPublico("Não foi possível confirmar o vencedor agora. Tenta de novo em instantes.");
+  }
 
   if (params.outrosFornecedores.length === 0) return;
   const { data: pedidosPerdedores, error: erroBuscarPerdedores } = await supabase
@@ -225,7 +238,10 @@ export async function confirmarVencedor(params: {
     .eq("unidade_id", params.unidadeId)
     .eq("data_contagem_base", params.dataContagemBase)
     .in("fornecedor", params.outrosFornecedores);
-  if (erroBuscarPerdedores) throw new Error(erroBuscarPerdedores.message);
+  if (erroBuscarPerdedores) {
+    console.error("[pedidos:confirmarVencedor:buscarPerdedores]", erroBuscarPerdedores);
+    throw new ErroPublico("Não foi possível confirmar o vencedor agora. Tenta de novo em instantes.");
+  }
 
   const ids = (pedidosPerdedores ?? []).map((p) => p.id);
   if (ids.length > 0) {
@@ -234,7 +250,10 @@ export async function confirmarVencedor(params: {
       .delete()
       .eq("sku", params.item.sku)
       .in("pedido_id", ids);
-    if (erroRemoverPerdedores) throw new Error(erroRemoverPerdedores.message);
+    if (erroRemoverPerdedores) {
+      console.error("[pedidos:confirmarVencedor:removerPerdedores]", erroRemoverPerdedores);
+      throw new ErroPublico("Não foi possível confirmar o vencedor agora. Tenta de novo em instantes.");
+    }
   }
 }
 
@@ -296,10 +315,15 @@ export async function atualizarPrevisaoEntrega(params: {
     params.dataContagemBase,
     params.criadoPor
   );
-  await supabase
+  const { error } = await supabase
     .from("pedidos")
     .update({ previsao_entrega: params.previsaoEntrega, atualizado_em: new Date().toISOString() })
-    .eq("id", pedidoId);
+    .eq("id", pedidoId)
+    .eq("unidade_id", params.unidadeId);
+  if (error) {
+    console.error("[pedidos:atualizarPrevisaoEntrega]", error);
+    throw new ErroPublico("Não foi possível salvar a previsão de entrega agora. Tenta de novo em instantes.");
+  }
 }
 
 /** Todos os pedidos já salvos (de qualquer fornecedor) pra uma contagem base
@@ -373,8 +397,17 @@ export async function listPedidosFeitos(unidadeId: string): Promise<Pedido[]> {
 /** Ação restrita: só toca recebimento (quantidade recebida por item,
  * observação, marcar recebido) - nunca preço nem quantidade pedida. É o que
  * permite o papel Operacional mexer em Pedidos Feitos com segurança, mesmo
- * chamando essa mesma função. */
+ * chamando essa mesma função.
+ *
+ * `unidadeId` vem de `acesso.unidadeId` (resolvido da sessão, nunca do
+ * cliente) - a Server Action nunca deve aceitar `pedidoId` sem confirmar
+ * que ele pertence à unidade de quem está chamando. Sem essa checagem, o
+ * RLS de `pedidos`/`pedido_itens` ainda bloquearia a escrita cross-tenant
+ * (unidade_id não bate com o vínculo), mas o update reportaria sucesso
+ * mesmo afetando zero linhas - por isso a dupla barreira: confere o dono
+ * antes de tentar, e confere quantas linhas foram afetadas depois. */
 export async function atualizarRecebimento(params: {
+  unidadeId: string;
   pedidoId: string;
   recebido: boolean;
   observacaoEntrega: string | null;
@@ -382,14 +415,24 @@ export async function atualizarRecebimento(params: {
 }): Promise<void> {
   const supabase = await createClient();
 
-  await supabase
+  const { data: pedidoAtualizado, error: erroUpdate } = await supabase
     .from("pedidos")
     .update({
       recebido: params.recebido,
       observacao_entrega: params.observacaoEntrega,
       atualizado_em: new Date().toISOString(),
     })
-    .eq("id", params.pedidoId);
+    .eq("id", params.pedidoId)
+    .eq("unidade_id", params.unidadeId)
+    .select("id");
+
+  if (erroUpdate) {
+    console.error("[pedidos:atualizarRecebimento]", erroUpdate);
+    throw new ErroPublico("Não foi possível salvar o recebimento agora. Tenta de novo em instantes.");
+  }
+  if (!pedidoAtualizado || pedidoAtualizado.length === 0) {
+    throw new ErroPublico("Esse pedido não foi encontrado para a sua unidade.");
+  }
 
   for (const item of params.itensRecebidos) {
     await supabase

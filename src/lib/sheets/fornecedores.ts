@@ -1,5 +1,6 @@
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
+import { neutralizarFormula } from "@/lib/formula-injection";
 import type { Fornecedor } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
 import { listarFornecedoresBanco, salvarFornecedoresBanco } from "@/lib/banco/estoque";
@@ -40,20 +41,24 @@ function rowToFornecedor(row: string[]): Fornecedor {
   };
 }
 
+// `valueInputOption: "USER_ENTERED"` (abaixo) faz o Sheets interpretar
+// célula que começa com =, +, -, @ como fórmula - todo campo de texto que
+// veio de input de usuário passa por `neutralizarFormula` antes de virar
+// célula (formula injection / CSV injection).
 function fornecedorToRow(f: Fornecedor): (string | number)[] {
   return [
     f.codigo,
-    f.razaoSocial,
-    f.nomeFantasia,
-    gruposToCell(f.grupos),
-    f.nomeVendedor,
-    f.whatsapp,
-    f.condicoesPagamento,
-    f.prazoBoleto,
+    neutralizarFormula(f.razaoSocial),
+    neutralizarFormula(f.nomeFantasia),
+    neutralizarFormula(gruposToCell(f.grupos)),
+    neutralizarFormula(f.nomeVendedor),
+    neutralizarFormula(f.whatsapp),
+    neutralizarFormula(f.condicoesPagamento),
+    neutralizarFormula(f.prazoBoleto),
     f.limiteCredito ?? "",
     f.pedidoMinimo ?? "",
-    f.diasEntrega,
-    f.observacoes,
+    neutralizarFormula(f.diasEntrega),
+    neutralizarFormula(f.observacoes),
   ];
 }
 

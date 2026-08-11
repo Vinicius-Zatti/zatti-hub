@@ -1,5 +1,6 @@
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
+import { neutralizarFormula } from "@/lib/formula-injection";
 import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
 import { listarProdutosBanco, salvarProdutosBanco } from "@/lib/banco/estoque";
@@ -36,25 +37,30 @@ function rowToProduto(row: string[]): Produto {
   };
 }
 
+// `valueInputOption: "USER_ENTERED"` (abaixo) faz o Sheets interpretar
+// célula que começa com =, +, -, @ como fórmula - todo campo de texto que
+// veio de input de usuário passa por `neutralizarFormula` antes de virar
+// célula, pra um nome de produto tipo `=IMPORTXML(...)` não executar
+// nada ao abrir a planilha (formula injection / CSV injection).
 function produtoToRow(p: Produto): (string | number)[] {
   return [
     p.sku,
     p.posicao ?? "",
-    p.grupo,
-    p.nome,
-    p.unidadeBase,
+    neutralizarFormula(p.grupo),
+    neutralizarFormula(p.nome),
+    neutralizarFormula(p.unidadeBase),
     p.precoUnitario ?? "",
     p.estoqueNecessarioSemana ?? "",
     p.estoqueMinimo ?? "",
-    p.nomeCompra,
-    p.unidadeEmbalagemFornecedor,
+    neutralizarFormula(p.nomeCompra),
+    neutralizarFormula(p.unidadeEmbalagemFornecedor),
     p.qtdUnidadeBasePorEmbalagem ?? "",
     p.precoFornecedor ?? "",
-    p.fornecedor1,
-    p.fornecedor2,
-    p.fornecedor3,
-    p.fornecedor4,
-    p.observacoes,
+    neutralizarFormula(p.fornecedor1),
+    neutralizarFormula(p.fornecedor2),
+    neutralizarFormula(p.fornecedor3),
+    neutralizarFormula(p.fornecedor4),
+    neutralizarFormula(p.observacoes),
     p.ativo ? 1 : 0,
   ];
 }

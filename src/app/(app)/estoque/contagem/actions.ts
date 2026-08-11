@@ -6,6 +6,9 @@ import {
   type NovaContagemLinha,
 } from "@/lib/sheets/inventario";
 import { getAcessoAtual, registrarAuditoria } from "@/lib/acesso";
+import { paraErroPublico } from "@/lib/erros";
+import { exigirLimite, chaveUsuario } from "@/lib/rate-limit";
+import { validar, registrarContagemSchema, atualizarQuantidadeContagemSchema } from "@/lib/validacao";
 import { revalidatePath } from "next/cache";
 
 const MESES = [
@@ -28,31 +31,40 @@ export type LinhaAvulsa = {
 export async function registrarContagemAction(
   linhas: NovaContagemLinha[],
   dataISO?: string
-) {
+): Promise<void> {
   const acesso = await getAcessoAtual();
 
-  let dia: Date;
-  if (dataISO) {
-    const [ano, mes, diaNum] = dataISO.split("-").map(Number);
-    dia = new Date(ano, mes - 1, diaNum);
-  } else {
-    dia = new Date();
+  try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(registrarContagemSchema, { linhas, dataISO }, "registrarContagemAction");
+
+    let dia: Date;
+    if (dados.dataISO) {
+      const [ano, mes, diaNum] = dados.dataISO.split("-").map(Number);
+      dia = new Date(ano, mes - 1, diaNum);
+    } else {
+      dia = new Date();
+    }
+
+    const dataFmt = dia.toLocaleDateString("pt-BR");
+    const mesFmt = `${MESES[dia.getMonth()]} ${dia.getFullYear()}`;
+
+    await registrarContagem(dataFmt, mesFmt, dados.linhas, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "registrar",
+      entidade: "contagem",
+      entidadeId: dataFmt,
+      dadosNovos: dados.linhas,
+    });
+
+    revalidatePath("/estoque/contagem");
+    revalidatePath("/estoque/pedidos");
+  } catch (err) {
+    // Mantém o contrato original (lança em vez de devolver `{ erro }`) - o
+    // componente que chama isso só faz try/catch genérico, sem ler mensagem.
+    throw new Error(paraErroPublico(err, "registrarContagemAction"));
   }
-
-  const dataFmt = dia.toLocaleDateString("pt-BR");
-  const mesFmt = `${MESES[dia.getMonth()]} ${dia.getFullYear()}`;
-
-  await registrarContagem(dataFmt, mesFmt, linhas, acesso.spreadsheetId);
-  await registrarAuditoria({
-    acesso,
-    acao: "registrar",
-    entidade: "contagem",
-    entidadeId: dataFmt,
-    dadosNovos: linhas,
-  });
-
-  revalidatePath("/estoque/contagem");
-  revalidatePath("/estoque/pedidos");
 }
 
 /** Corrige a quantidade de um item da última contagem (única que ainda pode
@@ -66,18 +78,24 @@ export async function atualizarQuantidadeContagemAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await getAcessoAtual();
   try {
-    await atualizarQuantidadeInventario(data, sku, quantidade, acesso.spreadsheetId);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(
+      atualizarQuantidadeContagemSchema,
+      { data, sku, quantidade },
+      "atualizarQuantidadeContagemAction"
+    );
+    await atualizarQuantidadeInventario(dados.data, dados.sku, dados.quantidade, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "corrigir_quantidade",
+      entidade: "contagem_item",
+      entidadeId: `${dados.data}:${dados.sku}`,
+      dadosNovos: { quantidade: dados.quantidade },
+    });
+    revalidatePath("/estoque/contagem/visualizacao");
+    revalidatePath("/estoque/pedidos");
+    return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "atualizarQuantidadeContagemAction") };
   }
-  await registrarAuditoria({
-    acesso,
-    acao: "corrigir_quantidade",
-    entidade: "contagem_item",
-    entidadeId: `${data}:${sku}`,
-    dadosNovos: { quantidade },
-  });
-  revalidatePath("/estoque/contagem/visualizacao");
-  revalidatePath("/estoque/pedidos");
-  return { ok: true };
 }

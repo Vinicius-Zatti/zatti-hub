@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErroPublico } from "@/lib/erros";
 import type { ConsolidadoVenda } from "@/lib/types";
 
 export type EntradaConsolidado = {
@@ -193,12 +194,13 @@ export async function criarConsolidado(params: {
 
   if (error) {
     if (error.code === "23505") return { ok: false, erro: "ja_existe" };
-    throw new Error(error.message);
+    console.error("[consolidado-vendas:criarConsolidado]", error);
+    throw new ErroPublico("Não foi possível salvar o lançamento agora. Tenta de novo em instantes.");
   }
-  if (!novo) throw new Error("Lançamento criado mas não encontrado na releitura");
+  if (!novo) throw new ErroPublico("Não foi possível salvar o lançamento agora. Tenta de novo em instantes.");
 
   const salvo = await getConsolidadoPorId(params.unidadeId, novo.id);
-  if (!salvo) throw new Error("Lançamento salvo mas não encontrado na releitura");
+  if (!salvo) throw new ErroPublico("Lançamento salvo, mas não foi possível confirmar a leitura. Recarrega a página.");
   return { ok: true, consolidado: salvo };
 }
 
@@ -213,7 +215,11 @@ export async function editarConsolidado(params: {
   const supabase = await createClient();
   const totais = calcularTotais(params.valores);
 
-  await supabase
+  // `.eq("unidade_id", ...)` além do id: além do RLS, a query só deve
+  // afetar linha da unidade autorizada - `.select("id")` devolve as linhas
+  // realmente afetadas, pra distinguir "0 linhas porque o id é de outra
+  // unidade/não existe" de "gravou certo".
+  const { data: atualizado, error } = await supabase
     .from("consolidados_vendas")
     .update({
       ...valoresToRow(params.valores, totais),
@@ -221,10 +227,19 @@ export async function editarConsolidado(params: {
       atualizado_em: new Date().toISOString(),
     })
     .eq("id", params.id)
-    .eq("unidade_id", params.unidadeId);
+    .eq("unidade_id", params.unidadeId)
+    .select("id");
+
+  if (error) {
+    console.error("[consolidado-vendas:editarConsolidado]", error);
+    throw new ErroPublico("Não foi possível salvar a edição agora. Tenta de novo em instantes.");
+  }
+  if (!atualizado || atualizado.length === 0) {
+    throw new ErroPublico("Esse lançamento não foi encontrado para a sua unidade.");
+  }
 
   const salvo = await getConsolidadoPorId(params.unidadeId, params.id);
-  if (!salvo) throw new Error("Lançamento editado mas não encontrado na releitura");
+  if (!salvo) throw new ErroPublico("Lançamento salvo, mas não foi possível confirmar a leitura. Recarrega a página.");
   return salvo;
 }
 

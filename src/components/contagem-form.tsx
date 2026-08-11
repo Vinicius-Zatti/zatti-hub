@@ -5,6 +5,7 @@ import type { Produto } from "@/lib/types";
 import { registrarContagemAction } from "@/app/(app)/estoque/contagem/actions";
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
+import { neutralizarFormula } from "@/lib/formula-injection";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -232,7 +233,17 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
         ? (qty * item.precoUnitario).toFixed(2).replace(".", ",")
         : "";
       linhas.push(
-        [dataFmt, mesDisplay, item.sku, nomeGrupo(item.grupo), item.nome, item.unidadeBase, String(qty ?? "").replace(".", ","), preco, total].join(";")
+        [
+          dataFmt,
+          mesDisplay,
+          item.sku,
+          neutralizarFormula(nomeGrupo(item.grupo)),
+          neutralizarFormula(item.nome),
+          neutralizarFormula(item.unidadeBase),
+          String(qty ?? "").replace(".", ","),
+          preco,
+          total,
+        ].join(";")
       );
     });
     const csv = "﻿" + linhas.join("\n");
