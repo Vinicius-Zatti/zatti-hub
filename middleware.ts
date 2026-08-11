@@ -13,16 +13,26 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
+          // A lib pede pra propagar esses headers (Cache-Control etc) toda
+          // vez que grava cookie de sessão - sem isso, um CDN/proxy na
+          // frente do app (Vercel Edge, Cloudflare) poderia cachear a
+          // resposta com o Set-Cookie de uma pessoa e servir a mesma sessão
+          // pra outra.
+          Object.entries(headers).forEach(([chave, valor]) => response.headers.set(chave, valor));
         },
       },
     }
