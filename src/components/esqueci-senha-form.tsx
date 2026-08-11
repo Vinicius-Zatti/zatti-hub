@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import { CaptchaTurnstile } from "@/components/captcha-turnstile";
 
 export function EsqueciSenhaForm() {
   const [email, setEmail] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [estado, setEstado] = useState<"idle" | "enviando" | "enviado" | "erro">("idle");
   const [erro, setErro] = useState("");
 
@@ -16,7 +19,13 @@ export function EsqueciSenhaForm() {
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/callback?next=/redefinir-senha`,
+      ...(captchaToken ? { captchaToken } : {}),
     });
+
+    // Token do Turnstile é de uso único - força o widget a renderizar de
+    // novo antes da próxima tentativa, sucesso ou erro.
+    setCaptchaToken(null);
+    setTentativa((n) => n + 1);
 
     if (error) {
       setEstado("erro");
@@ -48,6 +57,7 @@ export function EsqueciSenhaForm() {
           placeholder="voce@exemplo.com"
         />
       </label>
+      <CaptchaTurnstile key={tentativa} onToken={setCaptchaToken} />
       {estado === "erro" && <p className="text-sm text-vermelho">{erro}</p>}
       <button
         type="submit"

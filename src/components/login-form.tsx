@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import { CaptchaTurnstile } from "@/components/captcha-turnstile";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const [estado, setEstado] = useState<"idle" | "entrando" | "erro">("idle");
   const [erro, setErro] = useState("");
 
@@ -16,7 +19,11 @@ export function LoginForm() {
     setErro("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
 
     if (error) {
       setEstado("erro");
@@ -25,6 +32,10 @@ export function LoginForm() {
           ? "Email ou senha incorretos."
           : error.message,
       );
+      // Token do Turnstile é de uso único - força o widget a renderizar de
+      // novo (gerando um token novo) antes da próxima tentativa.
+      setCaptchaToken(null);
+      setTentativa((n) => n + 1);
       return;
     }
 
@@ -57,6 +68,7 @@ export function LoginForm() {
           placeholder="••••••••"
         />
       </label>
+      <CaptchaTurnstile key={tentativa} onToken={setCaptchaToken} />
       {estado === "erro" && <p className="text-sm text-vermelho">{erro}</p>}
       <button
         type="submit"
