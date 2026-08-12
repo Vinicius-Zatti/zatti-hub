@@ -76,7 +76,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
 
   // Master exige AAL2 (MFA confirmado nessa sessão), sem exceção mesmo se
   // a mesma conta também tiver vínculo com outro papel - o RLS (ver
-  // supabase/migrations/20260811_p0_rls_hardening.sql) já bloqueia
+  // supabase/migrations/20260811090000_p0_rls_hardening.sql) já bloqueia
   // `organizacoes`/`unidades`/etc pra master em aal1, isso aqui só evita
   // a pessoa cair num /sem-acesso confuso em vez de ir direto pra tela de
   // MFA quando é esse o motivo real de não ver nada.

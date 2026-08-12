@@ -14,10 +14,35 @@
 --      conta também tiver outro papel em algum vínculo.
 --   3. A lógica de "tem vínculo que alcança essa unidade/organização"
 --      estava duplicada em ~15 policies quase idênticas. Consolidada em
---      3 funções auxiliares, search_path fixo, sem SECURITY DEFINER (elas
---      só leem `vinculos`/`unidades`, que o próprio chamador autenticado já
---      teria acesso via RLS de qualquer forma - nenhuma precisa rodar com
---      privilégio elevado).
+--      3 funções auxiliares, search_path fixo.
+--
+-- Correção feita na revisão de 12/08 (achada rodando a suite pgTAP pela
+-- primeira vez, com Docker disponível): `vinculo_unidade` e
+-- `vinculo_unidade_gestao` fazem `join unidades` por dentro. A primeira
+-- versão marcava as três funções como `security invoker` (raciocínio
+-- original: "só leem vinculos/unidades, que o chamador já teria acesso via
+-- RLS de qualquer forma"). Esse raciocínio ignorava que a policy de
+-- SELECT de `unidades` (`unidades_select_por_vinculo`, logo abaixo) é
+-- `using (public.vinculo_unidade(id))` - com `security invoker`, o join
+-- interno a `unidades` reavalia essa mesma policy, que chama
+-- `vinculo_unidade` de novo, que faz o join de novo... recursão infinita,
+-- "stack depth limit exceeded" em qualquer SELECT de `produtos`,
+-- `fornecedores`, `pedidos` ou qualquer tabela cuja policy passe por
+-- `vinculo_unidade`/`vinculo_unidade_gestao` - ou seja, a maior parte do
+-- app, pra qualquer papel. `vinculo_unidade`/`vinculo_unidade_gestao`
+-- agora são `security definer`: o join a `unidades` roda com privilégio
+-- do dono da função, sem reavaliar RLS, quebrando o ciclo. Isso não é
+-- escalação de privilégio - `auth.uid()` dentro da função continua
+-- refletindo a sessão de quem chamou (SECURITY DEFINER muda o privilégio
+-- de acesso à tabela, não a identidade usada no filtro), então a função
+-- segue só respondendo "esse usuário específico tem vínculo que alcança
+-- isso" - nunca mais que isso. `vinculo_organizacao` não faz join a
+-- `unidades`/`organizacoes`, só lê `vinculos` (cuja policy é
+-- `user_id = auth.uid()`, sem depender de `vinculo_organizacao`) - sem o
+-- mesmo ciclo, mas trocada pra `security definer` também, pelo mesmo
+-- motivo que `checar_rate_limit`/`admin_criar_cliente` já usam: função de
+-- autorização não deveria depender de como a RLS de outra tabela está
+-- configurada hoje pra continuar correta amanhã.
 --
 -- Idempotente: todo `create or replace function` e `drop policy if exists`
 -- + `create policy` pode rodar de novo sem erro. Reversível: ver bloco
@@ -46,7 +71,7 @@ create or replace function public.vinculo_organizacao(p_organizacao_id text)
 returns boolean
 language sql
 stable
-security invoker
+security definer
 set search_path = public, pg_catalog
 as $$
   select exists (
@@ -55,13 +80,19 @@ as $$
       and v.status = 'ativo'
       and (
         (v.role = 'master' and public.tem_aal2())
-        or v.organizacao_id = p_organizacao_id
+        -- `v.role <> 'master'` aqui é essencial, não redundante: sem essa
+        -- exclusão, o vínculo do próprio master (organizacao_id = âncora
+        -- de FK) bate literalmente nesta cláusula pra ESSA organização
+        -- específica mesmo sem AAL2 - achado rodando a suite pgTAP pela
+        -- primeira vez (12/08), com Docker disponível. Master só pode
+        -- entrar pela cláusula de cima, nunca por coincidência de id.
+        or (v.role <> 'master' and v.organizacao_id = p_organizacao_id)
       )
   );
 $$;
 
 comment on function public.vinculo_organizacao(text) is
-  'Usuário logado tem vínculo ativo com essa organização (direto, ou master com AAL2)?';
+  'Usuário logado tem vínculo ativo com essa organização (direto, ou master com AAL2 - nunca master sem AAL2, mesmo que a organização coincida com a âncora do vínculo dele).';
 
 revoke all on function public.vinculo_organizacao(text) from public;
 grant execute on function public.vinculo_organizacao(text) to authenticated;
@@ -70,7 +101,7 @@ create or replace function public.vinculo_unidade(p_unidade_id text)
 returns boolean
 language sql
 stable
-security invoker
+security definer
 set search_path = public, pg_catalog
 as $$
   select exists (
@@ -80,13 +111,21 @@ as $$
       and v.status = 'ativo'
       and (
         (v.role = 'master' and public.tem_aal2())
-        or (v.organizacao_id = u.organizacao_id and (v.unidade_id is null or v.unidade_id = u.id))
+        -- `v.role <> 'master'` pelo mesmo motivo de vinculo_organizacao -
+        -- sem isso, o vínculo do master bate por coincidência de
+        -- organizacao_id com a âncora, vazando exatamente a organização
+        -- (e suas unidades) escolhida como âncora, mesmo sem AAL2.
+        or (
+          v.role <> 'master'
+          and v.organizacao_id = u.organizacao_id
+          and (v.unidade_id is null or v.unidade_id = u.id)
+        )
       )
   );
 $$;
 
 comment on function public.vinculo_unidade(text) is
-  'Usuário logado alcança essa unidade com qualquer papel (direto, dono de rede com unidade_id nulo, ou master com AAL2)?';
+  'Usuário logado alcança essa unidade com qualquer papel (direto, dono de rede com unidade_id nulo, ou master com AAL2 - nunca master sem AAL2, mesmo que a unidade pertença à organização-âncora do vínculo dele).';
 
 revoke all on function public.vinculo_unidade(text) from public;
 grant execute on function public.vinculo_unidade(text) to authenticated;
@@ -95,7 +134,7 @@ create or replace function public.vinculo_unidade_gestao(p_unidade_id text)
 returns boolean
 language sql
 stable
-security invoker
+security definer
 set search_path = public, pg_catalog
 as $$
   select exists (
@@ -350,9 +389,10 @@ create policy "consolidados_vendas_update_por_vinculo" on consolidados_vendas
   with check (public.vinculo_unidade(unidade_id));
 
 -- ── rollback manual (referência, não executa) ────────────────────────────
--- drop policy ... on <tabela>; recriar com o texto de supabase/schema.sql +
--- supabase/migrations/20260807_estoque_no_banco.sql (sem `to authenticated`
--- nem checagem de AAL2). drop function public.tem_aal2(),
+-- drop policy ... on <tabela>; recriar com o texto de
+-- supabase/migrations/20260722_schema_base.sql +
+-- supabase/migrations/20260807090000_estoque_no_banco.sql (sem
+-- `to authenticated` nem checagem de AAL2). drop function public.tem_aal2(),
 -- public.vinculo_organizacao(text), public.vinculo_unidade(text),
 -- public.vinculo_unidade_gestao(text) só depois de recriar as policies que
 -- dependem delas (senão a criação da policy antiga falha por função

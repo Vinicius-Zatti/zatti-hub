@@ -9,8 +9,8 @@ adicionar uma `service_role` ao frontend ou a uma variável `NEXT_PUBLIC_*`.
 ## Ordem de rollout recomendada
 
 1. Fazer backup do banco e aplicar primeiro num projeto de staging.
-2. Aplicar `supabase/migrations/20260811_p0_rls_hardening.sql`.
-3. Aplicar `supabase/migrations/20260811_p0_rate_limiting.sql`.
+2. Aplicar `supabase/migrations/20260811090000_p0_rls_hardening.sql`.
+3. Aplicar `supabase/migrations/20260811093000_p0_rate_limiting.sql`.
 4. Publicar a aplicação (build usa Next.js 16.3.0).
 5. Um usuário `master` precisa entrar e cadastrar o TOTP em `/mfa` antes de
    qualquer outra pessoa depender de acesso `master` - a partir do passo 2,
