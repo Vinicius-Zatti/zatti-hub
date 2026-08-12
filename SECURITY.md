@@ -41,9 +41,44 @@ cliente nenhum - intencional, é a barreira funcionando.
 ### Vercel
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
   `NEXT_PUBLIC_TURNSTILE_SITE_KEY`: variáveis públicas, sem problema expor.
-- `service_role` do Supabase: **não é usada em nenhum lugar do código hoje**.
-  Se algum dia for necessária (ex: job administrativo), só em variável
-  server-only, nunca `NEXT_PUBLIC_*`, nunca logada.
+- `SUPABASE_SERVICE_ROLE_KEY`: usada em um único módulo server-only
+  (`src/lib/supabase/admin.ts`), só para convidar usuário novo no
+  onboarding administrativo (`/admin/clientes/novo` - ver seção abaixo).
+  Cadastrar só como variável server-only na Vercel, nunca `NEXT_PUBLIC_*`,
+  nunca logada. O módulo importa `server-only` de propósito - o build
+  falha se algum dia for importado por um componente cliente.
+
+## Onboarding administrativo de cliente (`/admin/clientes/novo`)
+
+Substitui o processo manual (convite avulso no Supabase Auth + SQL solto
+no SQL Editor) usado até aqui. Só master com AAL2 chega na página e na
+Server Action - `requireMaster()` já exige os dois; as funções SQL
+(`admin_criar_cliente`, `admin_buscar_usuario_por_email`) revalidam os
+dois de novo por dentro, então nenhuma das três camadas depende de as
+outras duas estarem certas.
+
+| Cenário | Resultado esperado |
+| --- | --- |
+| Master com AAL2 acessa a página/aciona a action | Permitido |
+| Master sem AAL2 (ainda em AAL1) | Bloqueado - vai para `/mfa` |
+| `gestao`, `operacional` ou sessão anônima | Bloqueado |
+| Requisição direta com `role: "master"` num usuário | Rejeitado pelo schema (Zod) e, mesmo se passasse disso, pela função SQL |
+| Requisição direta com `unidade_id` fora da unidade sendo criada | Rejeitado pela função SQL |
+| Organização já existe com dados divergentes | Nada é criado, nenhum convite é enviado |
+| Organização/unidade/vínculo já existem e batem exatamente | Idempotente - não duplica, não erra |
+| E-mail já tem conta no Supabase Auth | Só recebe o vínculo novo, nunca é reconvidado |
+| Falha ao convidar qualquer e-mail novo | Nenhum registro é criado (organização, unidade, vínculos) - repetir a chamada depois de corrigir é seguro |
+
+`service_role` só é chamada para `auth.admin.inviteUserByEmail` - toda
+gravação em `organizacoes`/`unidades`/`perfis`/`vinculos` acontece via
+`admin_criar_cliente` (SECURITY DEFINER, sessão normal do master, não
+usa `service_role`).
+
+Mesma limitação da suite pgTAP registrada acima: os cenários de RLS
+propriamente dita (ex: vínculo de uma organização não alcançar a
+organização nova) dependem das policies já existentes
+(`vinculo_organizacao`, não alteradas por esta feature) e não têm
+execução automatizada nesta máquina sem Docker/staging.
 
 ## Limitação conhecida (registrada, não é omissão)
 
@@ -62,7 +97,9 @@ fail-closed (erro na checagem bloqueia a ação, nunca libera por omissão).
 ## Testes
 
 - `npm test` - testes unitários (vitest) dos helpers de segurança
-  (validação, erro público, rate limit fail-closed, anti formula-injection).
+  (validação, erro público, rate limit fail-closed, anti formula-injection)
+  e da matriz de autorização do onboarding administrativo (`acesso.test.ts`,
+  `admin/clientes/novo/actions.test.ts`).
 - `supabase test db` - suite pgTAP (`supabase/tests/database/`) da matriz
   de autorização multi-tenant. Exige o stack local do Supabase (Docker) ou
   um projeto de staging.
