@@ -36,11 +36,22 @@ values
   ('00000000-0000-0000-0000-00000000a001', 'gestao.a@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000a002', 'operacional.a@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000b001', 'gestao.b@teste.local', 'x', now(), 'authenticated', 'authenticated'),
-  ('00000000-0000-0000-0000-00000000m001', 'master@teste.local', 'x', now(), 'authenticated', 'authenticated');
+  ('00000000-0000-0000-0000-00000000e001', 'master@teste.local', 'x', now(), 'authenticated', 'authenticated');
 
 insert into organizacoes (id, nome, tipo_cliente, ativo)
 values ('org-teste-a', 'Organização Teste A', 'saas', true),
-       ('org-teste-b', 'Organização Teste B', 'saas', true);
+       ('org-teste-b', 'Organização Teste B', 'saas', true),
+       -- Só existe pra ser a âncora de FK do vínculo do master (ver
+       -- comentário abaixo) - achado nesta revisão: usar 'org-teste-a'
+       -- como âncora colidia de propósito com uma organização real do
+       -- teste, e o fallback de vinculo_organizacao/vinculo_unidade
+       -- (`v.organizacao_id = p_organizacao_id`) deixava passar
+       -- exatamente essa organização mesmo com master em AAL1 - não por
+       -- causa de nenhum bug de RLS, só coincidência de id repetido
+       -- mascarando o teste "master sem AAL2 não vê nada". Isolar a
+       -- âncora numa organização que não é usada em nenhum outro teste
+       -- fecha esse furo no proprio fixture.
+       ('org-ancora-master', 'Âncora Master (não usar em teste de dado real)', 'saas', true);
 
 insert into unidades (id, organizacao_id, nome, fonte_dados_estoque, ativo)
 values ('unid-a-1', 'org-teste-a', 'Unidade A1', 'banco', true),
@@ -54,7 +65,11 @@ values
   ('00000000-0000-0000-0000-00000000b001', 'org-teste-b', 'unid-b-1', 'gestao', 'ativo'),
   -- organizacao_id é só âncora pra FK - master enxerga tudo via RLS, não
   -- por causa dessa organização específica (ver supabase/schema.sql).
-  ('00000000-0000-0000-0000-00000000m001', 'org-teste-a', null, 'master', 'ativo');
+  -- Tem que ser uma organização que NÃO participa de nenhum teste de
+  -- isolamento de dado real (ver 'org-ancora-master' acima), senão o
+  -- fallback de vinculo_organizacao/vinculo_unidade deixa passar essa
+  -- organização por coincidência de id, mesmo com master sem AAL2.
+  ('00000000-0000-0000-0000-00000000e001', 'org-ancora-master', null, 'master', 'ativo');
 
 insert into produtos (unidade_id, sku, nome)
 values ('unid-a-1', 'SKU-A-1', 'Produto da unidade A1'),
@@ -95,8 +110,23 @@ select is(
   'gestao da org A não lê produto da org B (SELECT bloqueado por RLS)'
 );
 
+-- throws_ok(sql, description) NÃO existe como "só rótulo, aceita qualquer
+-- exceção" - a versão original destes dois testes (achada rodando pela
+-- primeira vez nesta revisão) passava só a descrição livre como segundo
+-- argumento de texto, que o Postgres resolve pra
+-- throws_ok(text, text) = throws_ok(sql, errmsg_esperado) - comparado
+-- literalmente contra SQLERRM. Nunca ia bater com a mensagem real do
+-- Postgres ("new row violates row-level security policy..."), então
+-- nunca teria passado mesmo antes do bug de recursão da RLS ser
+-- corrigido. Confirmado direto em pg_proc (`pg_get_functiondef`) que a
+-- forma que aceita SQLSTATE é throws_ok(sql, errcode char, errmsg text,
+-- description text) - 4 argumentos, sem forma curta de 3 só com
+-- SQLSTATE. `errmsg => null` pula a checagem de mensagem, deixando só o
+-- SQLSTATE valer.
 select throws_ok(
   $$ insert into produtos (unidade_id, sku, nome) values ('unid-b-1', 'SKU-INVASOR', 'x') $$,
+  '42501',
+  null,
   'gestao da org A não consegue INSERT em produto da org B (bloqueado por RLS - policy with check falha)'
 );
 
@@ -128,12 +158,14 @@ select is(
 
 select throws_ok(
   $$ insert into produtos (unidade_id, sku, nome) values ('unid-a-1', 'SKU-NOVO-OPERACIONAL', 'x') $$,
+  '42501',
+  null,
   'operacional não consegue INSERT em produtos (cadastro é exclusivo de gestao/master - RLS bloqueia mesmo bypassando a Server Action)'
 );
 
 -- ── 5. Master sem AAL2 é bloqueado ──────────────────────────────────────
 
-select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000m001', 'aal1');
+select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000e001', 'aal1');
 
 select is(
   public.tem_aal2(),
@@ -154,7 +186,7 @@ select is(
 );
 
 -- Mesma sessão, agora com AAL2: deve enxergar tudo.
-select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000m001', 'aal2');
+select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000e001', 'aal2');
 
 select is(
   public.tem_aal2(),
@@ -164,8 +196,8 @@ select is(
 
 select is(
   (select count(*)::int from organizacoes),
-  2,
-  'master em aal2 lê todas as organizações ativas'
+  3,
+  'master em aal2 lê todas as organizações ativas (as 2 de teste + a âncora)'
 );
 
 select is(
