@@ -207,19 +207,26 @@ select is(
 );
 
 -- ── 6. Anônimo não acessa tabela protegida ──────────────────────────────
+-- `anon` não tem GRANT nenhum nessas tabelas (revisado em 12/08 - ver
+-- 20260812000000_grants_tabelas_aplicacao.sql: privilégio mínimo de
+-- verdade pra um papel que não deveria alcançar nada é NENHUM grant, não
+-- SELECT liberado com zero policy). A barreira agora é "permission
+-- denied" (42501), checada antes até da RLS - não "zero linhas".
 
 select pg_temp.autenticar_como_anon();
 
-select is(
-  (select count(*)::int from produtos),
-  0,
-  'usuário anônimo (sem sessão) não lê nenhum produto'
+select throws_ok(
+  $$ select count(*) from produtos $$,
+  '42501',
+  null,
+  'usuário anônimo (sem sessão) não tem GRANT pra ler produtos (permission denied, nem chega na RLS)'
 );
 
-select is(
-  (select count(*)::int from organizacoes),
-  0,
-  'usuário anônimo (sem sessão) não lê nenhuma organização'
+select throws_ok(
+  $$ select count(*) from organizacoes $$,
+  '42501',
+  null,
+  'usuário anônimo (sem sessão) não tem GRANT pra ler organizacoes (permission denied, nem chega na RLS)'
 );
 
 select * from finish();
