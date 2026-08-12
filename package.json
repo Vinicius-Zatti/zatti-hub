@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/verificar-bundle-cliente.mjs",
+    "verificar:bundle": "node scripts/verificar-bundle-cliente.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
