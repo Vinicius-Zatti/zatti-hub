@@ -6,6 +6,7 @@ export type NomeIconeNavegacao =
   | "tarefas"
   | "marketing"
   | "organizacao"
+  | "admin"
   | "sair"
   | "recolher"
   | "expandir";
@@ -64,6 +65,13 @@ export function IconeNavegacao({
       <>
         <path d="M4 21V7l8-4 8 4v14" />
         <path d="M9 21v-4h6v4M8 9h1M12 9h1M16 9h1M8 13h1M12 13h1M16 13h1" />
+      </>
+    ),
+    admin: (
+      <>
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3.5 20c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5" />
+        <path d="M17 8v5M14.5 10.5h5" />
       </>
     ),
     sair: (

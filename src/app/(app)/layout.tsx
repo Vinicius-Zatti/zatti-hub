@@ -103,6 +103,20 @@ export default async function AppLayout({
     { label: "Fichas Técnicas", href: "#", icone: "fichas", disabled: true },
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
+    // Só aparece pra master - `acesso.role` já exige AAL2 pra chegar até
+    // "master" (ver getAcessoAtual em src/lib/acesso.ts). Esconder aqui é
+    // só UX: a página e a Server Action revalidam os dois de novo.
+    ...(acesso.role === "master"
+      ? [
+          {
+            label: "Administração",
+            href: "/admin/clientes/novo",
+            icone: "admin" as const,
+            activePrefix: "/admin",
+            disabled: false,
+          },
+        ]
+      : []),
   ];
 
   return (
