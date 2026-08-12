@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Runtime local do `supabase start`/`db reset` (bundles gerados,
+    // nunca código-fonte nosso) - achado rodando lint pela primeira vez
+    // depois de `supabase start` nesta revisão do pacote P0.
+    "supabase/.temp/**",
   ]),
 ]);
 

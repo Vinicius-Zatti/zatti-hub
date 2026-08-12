@@ -36,6 +36,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase local (gerado por `supabase start`/`db reset` - runtime só
+# desta máquina, nunca versionar)
+supabase/.temp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
