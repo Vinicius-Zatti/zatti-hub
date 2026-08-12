@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErroPublico } from "@/lib/erros";
 import type { Fornecedor, ItemInventario, Produto } from "@/lib/types";
 
 export type NovaContagemBanco = {
@@ -97,7 +98,10 @@ export async function listarProdutosBanco(unidadeId: string): Promise<Produto[]>
     .select("sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo")
     .eq("unidade_id", unidadeId)
     .order("ordem");
-  if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
+  if (error) {
+    console.error("[banco/estoque:listarProdutosBanco]", error);
+    throw new ErroPublico("Não foi possível carregar os produtos agora. Tenta de novo em instantes.");
+  }
   return ((data as ProdutoRow[] | null) ?? []).map(produtoDaLinha);
 }
 
@@ -132,7 +136,10 @@ export async function salvarProdutosBanco(
     })),
     { onConflict: "unidade_id,sku" },
   );
-  if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
+  if (error) {
+    console.error("[banco/estoque:salvarProdutosBanco]", error);
+    throw new ErroPublico("Não foi possível salvar os produtos agora. Tenta de novo em instantes.");
+  }
 }
 
 export async function listarFornecedoresBanco(unidadeId: string): Promise<Fornecedor[]> {
@@ -142,7 +149,10 @@ export async function listarFornecedoresBanco(unidadeId: string): Promise<Fornec
     .select("codigo, razao_social, nome_fantasia, grupos, nome_vendedor, whatsapp, condicoes_pagamento, prazo_boleto, limite_credito, pedido_minimo, dias_entrega, observacoes")
     .eq("unidade_id", unidadeId)
     .order("ordem");
-  if (error) throw new Error(`Não foi possível carregar os fornecedores: ${error.message}`);
+  if (error) {
+    console.error("[banco/estoque:listarFornecedoresBanco]", error);
+    throw new ErroPublico("Não foi possível carregar os fornecedores agora. Tenta de novo em instantes.");
+  }
   return ((data as FornecedorRow[] | null) ?? []).map(fornecedorDaLinha);
 }
 
@@ -171,12 +181,15 @@ export async function salvarFornecedoresBanco(
     })),
     { onConflict: "unidade_id,codigo" },
   );
-  if (error) throw new Error(`Não foi possível salvar os fornecedores: ${error.message}`);
+  if (error) {
+    console.error("[banco/estoque:salvarFornecedoresBanco]", error);
+    throw new ErroPublico("Não foi possível salvar os fornecedores agora. Tenta de novo em instantes.");
+  }
 }
 
 function dataBrParaIso(data: string): string {
   const [dia, mes, ano] = data.split("/").map(Number);
-  if (!dia || !mes || !ano) throw new Error("Data de contagem inválida.");
+  if (!dia || !mes || !ano) throw new ErroPublico("Data de contagem inválida.");
   return `${String(ano).padStart(4, "0")}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
@@ -211,7 +224,10 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
     .from("contagens")
     .select("id, data, mes")
     .eq("unidade_id", unidadeId);
-  if (erroContagens) throw new Error(`Não foi possível carregar as contagens: ${erroContagens.message}`);
+  if (erroContagens) {
+    console.error("[banco/estoque:listarInventarioBanco:contagens]", erroContagens);
+    throw new ErroPublico("Não foi possível carregar as contagens agora. Tenta de novo em instantes.");
+  }
   if (!contagens?.length) return [];
 
   const contagemPorId = new Map(
@@ -222,7 +238,10 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
     .select("contagem_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta")
     .in("contagem_id", contagens.map((contagem) => contagem.id))
     .order("ordem");
-  if (erroItens) throw new Error(`Não foi possível carregar os itens contados: ${erroItens.message}`);
+  if (erroItens) {
+    console.error("[banco/estoque:listarInventarioBanco:itens]", erroItens);
+    throw new ErroPublico("Não foi possível carregar os itens contados agora. Tenta de novo em instantes.");
+  }
 
   return (itens ?? []).map((item) => {
     const contagem = contagemPorId.get(item.contagem_id)!;
@@ -259,7 +278,10 @@ export async function registrarContagemBanco(
     .eq("data", dataIso)
     .maybeSingle();
 
-  if (erroContagem) throw new Error(`Não foi possível localizar a contagem: ${erroContagem.message}`);
+  if (erroContagem) {
+    console.error("[banco/estoque:registrarContagemBanco:localizar]", erroContagem);
+    throw new ErroPublico("Não foi possível localizar a contagem agora. Tenta de novo em instantes.");
+  }
   let contagem = contagemEncontrada;
   if (!contagem) {
     const criada = await supabase
@@ -267,7 +289,10 @@ export async function registrarContagemBanco(
       .insert({ unidade_id: unidadeId, data: dataIso, mes, criado_por: userId })
       .select("id")
       .single();
-    if (criada.error) throw new Error(`Não foi possível criar a contagem: ${criada.error.message}`);
+    if (criada.error) {
+      console.error("[banco/estoque:registrarContagemBanco:criar]", criada.error);
+      throw new ErroPublico("Não foi possível criar a contagem agora. Tenta de novo em instantes.");
+    }
     contagem = criada.data;
   }
 
@@ -300,7 +325,10 @@ export async function registrarContagemBanco(
       };
     }),
   );
-  if (erroItens) throw new Error(`Não foi possível registrar os itens: ${erroItens.message}`);
+  if (erroItens) {
+    console.error("[banco/estoque:registrarContagemBanco:itens]", erroItens);
+    throw new ErroPublico("Não foi possível registrar os itens agora. Tenta de novo em instantes.");
+  }
 }
 
 export async function atualizarQuantidadeInventarioBanco(
@@ -316,8 +344,11 @@ export async function atualizarQuantidadeInventarioBanco(
     .eq("unidade_id", unidadeId)
     .eq("data", dataBrParaIso(data))
     .maybeSingle();
-  if (erroContagem) throw new Error(`Não foi possível localizar a contagem: ${erroContagem.message}`);
-  if (!contagem) throw new Error("Não achei essa contagem para corrigir.");
+  if (erroContagem) {
+    console.error("[banco/estoque:atualizarQuantidadeInventarioBanco:contagem]", erroContagem);
+    throw new ErroPublico("Não foi possível localizar a contagem agora. Tenta de novo em instantes.");
+  }
+  if (!contagem) throw new ErroPublico("Não achei essa contagem para corrigir.");
 
   const { data: itens, error: erroItem } = await supabase
     .from("contagem_itens")
@@ -326,10 +357,13 @@ export async function atualizarQuantidadeInventarioBanco(
     .eq("sku", sku)
     .order("ordem")
     .limit(1);
-  if (erroItem) throw new Error(`Não foi possível localizar o item: ${erroItem.message}`);
+  if (erroItem) {
+    console.error("[banco/estoque:atualizarQuantidadeInventarioBanco:item]", erroItem);
+    throw new ErroPublico("Não foi possível localizar o item agora. Tenta de novo em instantes.");
+  }
   const item = itens?.[0];
   if (!item) {
-    throw new Error("Não achei essa contagem para corrigir - ela pode ter sido alterada por outra pessoa.");
+    throw new ErroPublico("Não achei essa contagem para corrigir - ela pode ter sido alterada por outra pessoa.");
   }
 
   const produto = (await listarProdutosBanco(unidadeId)).find((atual) => atual.sku === sku);
@@ -340,5 +374,8 @@ export async function atualizarQuantidadeInventarioBanco(
     .from("contagem_itens")
     .update({ quantidade, total, alerta })
     .eq("id", item.id);
-  if (error) throw new Error(`Não foi possível corrigir a quantidade: ${error.message}`);
+  if (error) {
+    console.error("[banco/estoque:atualizarQuantidadeInventarioBanco:corrigir]", error);
+    throw new ErroPublico("Não foi possível corrigir a quantidade agora. Tenta de novo em instantes.");
+  }
 }

@@ -11,6 +11,15 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // `httpOnly` fica no padrão da lib (false) de propósito - o client do
+      // navegador (`@/lib/supabase/browser`) precisa ler esse cookie via
+      // document.cookie pra renovar sessão sem reload de página. `secure`
+      // força HTTPS em produção; em dev (http://localhost) fica desligado
+      // senão o navegador simplesmente descarta o cookie.
+      cookieOptions: {
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

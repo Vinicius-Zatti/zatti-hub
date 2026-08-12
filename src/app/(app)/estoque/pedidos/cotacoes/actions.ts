@@ -4,6 +4,15 @@ import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEntrega } from "@/lib/pedidos";
 import { listProdutos, upsertProduto } from "@/lib/sheets/produtos";
 import type { PedidoItem } from "@/lib/types";
+import { paraErroPublico } from "@/lib/erros";
+import { exigirLimite, chaveUsuario } from "@/lib/rate-limit";
+import {
+  validar,
+  confirmarItemSchema,
+  confirmarVencedorSchema,
+  desfazerVencedorSchema,
+  atualizarPrevisaoEntregaSchema,
+} from "@/lib/validacao";
 import { revalidatePath } from "next/cache";
 
 type ItemConfirmar = Pick<
@@ -55,18 +64,20 @@ export async function confirmarItemAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(confirmarItemSchema, input, "confirmarItemAction");
     await confirmarItem({
       unidadeId: acesso.unidadeId,
-      fornecedor: input.fornecedor,
-      dataContagemBase: input.dataContagemBase,
-      item: input.item,
-      atualizarPreco: input.atualizarPreco,
+      fornecedor: dados.fornecedor,
+      dataContagemBase: dados.dataContagemBase,
+      item: dados.item,
+      atualizarPreco: dados.atualizarPreco,
       criadoPor: acesso.userId,
     });
     revalidarPedidos();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "confirmarItemAction") };
   }
 }
 
@@ -80,21 +91,23 @@ export async function confirmarVencedorAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(confirmarVencedorSchema, input, "confirmarVencedorAction");
     await confirmarVencedor({
       unidadeId: acesso.unidadeId,
-      dataContagemBase: input.dataContagemBase,
-      fornecedorVencedor: input.fornecedorVencedor,
-      outrosFornecedores: input.outrosFornecedores,
-      item: input.item,
+      dataContagemBase: dados.dataContagemBase,
+      fornecedorVencedor: dados.fornecedorVencedor,
+      outrosFornecedores: dados.outrosFornecedores,
+      item: dados.item,
       criadoPor: acesso.userId,
     });
-    await atualizarPrecoCadastroSeMudou(input.item, acesso);
+    await atualizarPrecoCadastroSeMudou(dados.item, acesso);
     revalidarPedidos();
     revalidatePath("/estoque/produtos");
     revalidatePath("/estoque/produtos/edicao");
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "confirmarVencedorAction") };
   }
 }
 
@@ -109,18 +122,20 @@ export async function desfazerVencedorAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(desfazerVencedorSchema, input, "desfazerVencedorAction");
     await desfazerVencedor({
       unidadeId: acesso.unidadeId,
-      dataContagemBase: input.dataContagemBase,
-      fornecedorAtual: input.fornecedorAtual,
-      outrosFornecedores: input.outrosFornecedores,
-      item: input.item,
+      dataContagemBase: dados.dataContagemBase,
+      fornecedorAtual: dados.fornecedorAtual,
+      outrosFornecedores: dados.outrosFornecedores,
+      item: dados.item,
       criadoPor: acesso.userId,
     });
     revalidarPedidos();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "desfazerVencedorAction") };
   }
 }
 
@@ -133,16 +148,18 @@ export async function atualizarPrevisaoEntregaAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(atualizarPrevisaoEntregaSchema, input, "atualizarPrevisaoEntregaAction");
     await atualizarPrevisaoEntrega({
       unidadeId: acesso.unidadeId,
-      fornecedor: input.fornecedor,
-      dataContagemBase: input.dataContagemBase,
-      previsaoEntrega: input.previsaoEntrega,
+      fornecedor: dados.fornecedor,
+      dataContagemBase: dados.dataContagemBase,
+      previsaoEntrega: dados.previsaoEntrega,
       criadoPor: acesso.userId,
     });
     revalidatePath("/estoque/pedidos/cotacoes");
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: paraErroPublico(err, "atualizarPrevisaoEntregaAction") };
   }
 }

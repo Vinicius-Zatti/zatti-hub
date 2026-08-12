@@ -36,6 +36,16 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase local (gerado por `supabase start`/`db reset` - runtime só
+# desta máquina, nunca versionar)
+supabase/.temp
+
+# saída da pré-validação de produção (topologia real, nunca versionar -
+# só referencia-schema-pre-p0.sql, que é a referência local, é rastreado)
+supabase/rollback/producao-schema-atual.sql
+supabase/rollback/producao-historico-migrations.txt
+supabase/rollback/diff-producao-vs-referencia.txt
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

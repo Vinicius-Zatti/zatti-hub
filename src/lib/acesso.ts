@@ -73,6 +73,18 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   if (vinculos.length === 0) redirect("/sem-acesso");
 
   const ehMaster = vinculos.some((v) => v.role === "master");
+
+  // Master exige AAL2 (MFA confirmado nessa sessão), sem exceção mesmo se
+  // a mesma conta também tiver vínculo com outro papel - o RLS (ver
+  // supabase/migrations/20260811090000_p0_rls_hardening.sql) já bloqueia
+  // `organizacoes`/`unidades`/etc pra master em aal1, isso aqui só evita
+  // a pessoa cair num /sem-acesso confuso em vez de ir direto pra tela de
+  // MFA quando é esse o motivo real de não ver nada.
+  if (ehMaster) {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel !== "aal2") redirect("/mfa");
+  }
+
   const cookieStore = await cookies();
   const orgEscolhida = cookieStore.get(COOKIE_ORGANIZACAO)?.value;
 

@@ -10,6 +10,9 @@ import {
   type EntradaConsolidado,
   type TotaisConsolidado,
 } from "@/lib/consolidado-vendas";
+import { paraErroPublico } from "@/lib/erros";
+import { exigirLimite, chaveUsuario } from "@/lib/rate-limit";
+import { validar, entradaConsolidadoSchema, editarConsolidadoSchema } from "@/lib/validacao";
 import { revalidatePath } from "next/cache";
 
 export type EntradaForm = EntradaConsolidado & {
@@ -28,7 +31,7 @@ function revalidarTudo() {
   revalidatePath("/financeiro/consolidado/dashboard");
 }
 
-function extrairValores(input: EntradaForm): EntradaConsolidado {
+function extrairValores(input: EntradaConsolidado): EntradaConsolidado {
   return {
     credito: input.credito,
     debito: input.debito,
@@ -50,7 +53,10 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
   const acesso = await getAcessoAtual();
 
   try {
-    const existente = await getConsolidadoPorData(acesso.unidadeId, input.data);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(entradaConsolidadoSchema, input, "criarConsolidadoAction");
+
+    const existente = await getConsolidadoPorData(acesso.unidadeId, dados.data);
     if (existente) {
       return {
         ok: false,
@@ -60,21 +66,21 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
       };
     }
 
-    const valores = extrairValores(input);
+    const valores = extrairValores(dados);
     const totais = calcularTotais(valores);
-    if (totais.status === "divergente" && !input.confirmarDivergencia) {
+    if (totais.status === "divergente" && !dados.confirmarDivergencia) {
       return { ok: false, tipo: "divergencia", totais };
     }
 
     const resultado = await criarConsolidado({
       unidadeId: acesso.unidadeId,
-      data: input.data,
+      data: dados.data,
       valores,
       criadoPor: acesso.userId,
     });
     if (!resultado.ok) {
       // Corrida: alguém salvou a mesma data entre o check acima e o insert.
-      const concorrente = await getConsolidadoPorData(acesso.unidadeId, input.data);
+      const concorrente = await getConsolidadoPorData(acesso.unidadeId, dados.data);
       return {
         ok: false,
         tipo: "ja_existe",
@@ -93,7 +99,7 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
     revalidarTudo();
     return { ok: true, id: resultado.consolidado.id };
   } catch (err) {
-    return { ok: false, tipo: "erro", mensagem: (err as Error).message };
+    return { ok: false, tipo: "erro", mensagem: paraErroPublico(err, "criarConsolidadoAction") };
   }
 }
 
@@ -102,16 +108,19 @@ export async function editarConsolidadoAction(id: string, input: EntradaForm): P
   const acesso = await requireGestao();
 
   try {
-    const valores = extrairValores(input);
+    await exigirLimite(chaveUsuario(acesso.userId), "escrita_padrao");
+    const dados = validar(editarConsolidadoSchema, { id, entrada: input }, "editarConsolidadoAction");
+
+    const valores = extrairValores(dados.entrada);
     const totais = calcularTotais(valores);
-    if (totais.status === "divergente" && !input.confirmarDivergencia) {
+    if (totais.status === "divergente" && !dados.entrada.confirmarDivergencia) {
       return { ok: false, tipo: "divergencia", totais };
     }
 
-    const antes = await getConsolidadoPorId(acesso.unidadeId, id);
+    const antes = await getConsolidadoPorId(acesso.unidadeId, dados.id);
     const atualizado = await editarConsolidado({
       unidadeId: acesso.unidadeId,
-      id,
+      id: dados.id,
       valores,
       atualizadoPor: acesso.userId,
     });
@@ -120,13 +129,13 @@ export async function editarConsolidadoAction(id: string, input: EntradaForm): P
       acesso,
       acao: "editar",
       entidade: "consolidado_venda",
-      entidadeId: id,
+      entidadeId: dados.id,
       dadosAntigos: antes,
       dadosNovos: atualizado,
     });
     revalidarTudo();
     return { ok: true, id: atualizado.id };
   } catch (err) {
-    return { ok: false, tipo: "erro", mensagem: (err as Error).message };
+    return { ok: false, tipo: "erro", mensagem: paraErroPublico(err, "editarConsolidadoAction") };
   }
 }

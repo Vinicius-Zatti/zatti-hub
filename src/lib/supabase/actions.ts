@@ -14,11 +14,12 @@ export async function signOutAction() {
  * só quem é "master"). Só grava uma preferência num cookie - não concede
  * acesso nenhum, `getAcessoAtual` sempre confere contra o banco de novo. */
 export async function trocarOrganizacaoAction(formData: FormData) {
-  const organizacaoId = String(formData.get("organizacaoId") ?? "");
+  const organizacaoId = String(formData.get("organizacaoId") ?? "").slice(0, 128);
   const cookieStore = await cookies();
   cookieStore.set("zh_org", organizacaoId, {
     path: "/",
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 365,
   });

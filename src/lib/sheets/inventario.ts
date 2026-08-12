@@ -1,5 +1,7 @@
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
+import { neutralizarFormula } from "@/lib/formula-injection";
+import { ErroPublico } from "@/lib/erros";
 import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
 import { listProdutos } from "./produtos";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
@@ -87,6 +89,11 @@ async function registrarContagemPlanilha(
   const produtos = await listProdutos(spreadsheetId);
   const porSku = new Map(produtos.map((p) => [p.sku, p]));
 
+  // `nomeAvulso`/`unidadeAvulso` são texto livre digitado na hora da
+  // contagem (item ainda sem cadastro) - único ponto deste arquivo onde
+  // entra texto de usuário que nunca passou por `produtoToRow` antes.
+  // `valueInputOption: "USER_ENTERED"` (abaixo) faz o Sheets interpretar
+  // célula que começa com =, +, -, @ como fórmula.
   const rows = linhas.map(({ sku, quantidade, nomeAvulso, unidadeAvulso }) => {
     if (nomeAvulso) {
       return [
@@ -94,8 +101,8 @@ async function registrarContagemPlanilha(
         mes,
         sku,
         "",
-        nomeAvulso,
-        unidadeAvulso || "UN",
+        neutralizarFormula(nomeAvulso),
+        neutralizarFormula(unidadeAvulso || "UN"),
         quantidade,
         "",
         "a calcular",
@@ -112,9 +119,9 @@ async function registrarContagemPlanilha(
       data,
       mes,
       sku,
-      produto?.grupo ?? "",
-      produto?.nome ?? "",
-      produto?.unidadeBase ?? "",
+      neutralizarFormula(produto?.grupo ?? ""),
+      neutralizarFormula(produto?.nome ?? ""),
+      neutralizarFormula(produto?.unidadeBase ?? ""),
       quantidade,
       precoUnitario ?? "",
       total,
@@ -165,7 +172,7 @@ async function atualizarQuantidadeInventarioPlanilha(
   const rows = res.data.values ?? [];
   const idx = rows.findIndex((r) => r[0] === data && r[2] === sku);
   if (idx === -1) {
-    throw new Error("Não achei essa contagem pra corrigir - pode ter sido alterada por outra pessoa.");
+    throw new ErroPublico("Não achei essa contagem pra corrigir - pode ter sido alterada por outra pessoa.");
   }
   const linha = rows[idx];
   const rowNumber = FIRST_DATA_ROW + idx;
