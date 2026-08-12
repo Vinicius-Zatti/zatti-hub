@@ -194,11 +194,42 @@ grant execute on function public.admin_criar_cliente(text, text, text, text, tex
 -- Usada pela Server Action antes de decidir se convida (e-mail novo) ou só
 -- vincula (e-mail já tem conta no Supabase Auth). Le direto de `auth.users`
 -- porque isso não é exposto via API REST normal - só alcançável de dentro
--- do Postgres. Mesma barreira de master+AAL2 de `admin_criar_cliente`, pra
--- não virar um jeito indireto de enumerar e-mails cadastrados na
--- plataforma. Só leitura, sem `service_role` - o convite em si (que exige
--- a Auth Admin API de verdade) continua sendo o único uso de
--- `service_role`, feito em Node.
+-- do Postgres. Só leitura, sem `service_role` - o convite em si (que exige
+-- a Auth Admin API de verdade, chamada de Node) continua sendo o único
+-- lugar que usa `service_role`.
+--
+-- Garantias, uma por uma:
+--   1. Master global + AAL2 exigido por dentro da função (mesmas duas
+--      checagens de `admin_criar_cliente`, repetidas aqui porque cada
+--      função SQL se defende sozinha - não herda a autorização de quem a
+--      chamou antes na mesma request).
+--   2. Devolve só `uuid` (o id) - nunca email, nome, telefone, metadata,
+--      `confirmed_at` ou qualquer outro campo de `auth.users`. O chamador
+--      (Server Action) já sabe o e-mail que perguntou; não precisa de mais
+--      nada pra decidir "convida" vs "só vincula".
+--   3. Não é enumeração geral: só resolve UM e-mail exato por chamada, sem
+--      LIKE/ILIKE, sem paginação, sem listagem - não dá pra pedir "todos os
+--      e-mails que começam com X" nem "próxima página de usuários". Quem
+--      chama já precisa saber o e-mail exato de antemão (é o que a pessoa
+--      master digitou no formulário). Ficar tentando emails ao acaso pra
+--      "descobrir" quem está cadastrado é limitado pelo mesmo rate limit
+--      de `admin_criar_cliente` (10 chamadas/hora, cada uma com até 20
+--      e-mails) - não existe uma rota separada e sem limite só pra isso.
+--   4. E-mail normalizado dos dois lados da comparação (`lower(email) =
+--      lower(trim(p_email))`) - maiúscula/minúscula ou espaço colado não
+--      escondem nem duplicam um cadastro.
+--   5. `search_path` fixo (`public, auth, pg_catalog`) - obrigatório pra
+--      alcançar `auth.users` de dentro de uma função `SECURITY DEFINER`
+--      sem abrir brecha de search_path hijacking.
+--   6. `revoke all ... from public, anon` + só `grant ... to authenticated`
+--      - mesmo padrão de toda função administrativa deste projeto
+--      (`checar_rate_limit`, `admin_criar_cliente`): o papel `authenticated`
+--      do Postgres é compartilhado por qualquer pessoa logada (não existe
+--      papel nativo do Postgres por `gestao`/`operacional`/`master` - isso
+--      é modelado na tabela `vinculos`, não em ROLE do banco), então quem
+--      trava "usuário comum não passa" é mesmo a checagem 1 aqui dentro,
+--      não o GRANT. `anon`/`public` continuam impedidos de chamar de
+--      qualquer jeito.
 create or replace function public.admin_buscar_usuario_por_email(p_email text)
 returns uuid
 language plpgsql
