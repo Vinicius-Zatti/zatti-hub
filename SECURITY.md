@@ -45,6 +45,32 @@ cliente nenhum - intencional, é a barreira funcionando.
   Se algum dia for necessária (ex: job administrativo), só em variável
   server-only, nunca `NEXT_PUBLIC_*`, nunca logada.
 
+## GRANT de tabela (`authenticated`/`service_role`), por que existe
+
+`supabase/migrations/20260812000000_grants_tabelas_aplicacao.sql` concede
+GRANT explícito de tabela por verbo real usado no código (não
+SELECT/INSERT/UPDATE/DELETE uniforme - ver comentário da própria
+migration para a lista completa por tabela). `anon` não recebe grant
+nenhum - cadastro público está desabilitado, nenhuma tela depende de
+`anon` ler qualquer tabela da aplicação.
+
+Contexto (data de referência: 12/08/2026, quando esta nota foi escrita):
+`supabase/config.toml` (gerado por `supabase init`) documenta que a
+Supabase já mudou o padrão da nuvem hoje para **não** expor tabela nova
+sem GRANT explícito (`auto_expose_new_tables`, comentário do próprio
+arquivo). A mesma nota descreve uma mudança **futura, ainda não
+efetivada**: o campo legado que permite reativar o comportamento antigo
+está marcado como descontinuado e, segundo a documentação da Supabase,
+será removido em **30/10/2026** - não em 12/08/2026, nem já removido
+hoje. Citação literal da fonte (comentário gerado pela própria Supabase
+CLI em `supabase/config.toml`):
+
+> "this is deprecated and the field is removed on 2026-10-30 once the
+> always-revoked behaviour is permanent"
+
+Esta migration já deixa o projeto no formato exigido de qualquer forma,
+independente da data de remoção do campo legado.
+
 ## Limitação conhecida (registrada, não é omissão)
 
 Login (`signInWithPassword`), "esqueci minha senha"
