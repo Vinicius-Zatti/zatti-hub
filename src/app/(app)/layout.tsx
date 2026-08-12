@@ -103,9 +103,21 @@ export default async function AppLayout({
     { label: "Fichas Técnicas", href: "#", icone: "fichas", disabled: true },
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
-    // Só aparece pra master - `acesso.role` já exige AAL2 pra chegar até
-    // "master" (ver getAcessoAtual em src/lib/acesso.ts). Esconder aqui é
-    // só UX: a página e a Server Action revalidam os dois de novo.
+    // `acesso.role === "master"` aqui já significa "master global COM
+    // AAL2", não só o papel - não é preciso (nem daria pra) checar os dois
+    // separadamente nesta variável. Prova em getAcessoAtual() (src/lib/
+    // acesso.ts): `role = "master"` só é atribuído dentro do bloco
+    // `if (ehMaster) { ... }`, e logo no início desse mesmo bloco, antes de
+    // qualquer outra coisa, `if (aal?.currentLevel !== "aal2") redirect
+    // ("/mfa")` já rodou. `redirect()` do Next.js lança (a função nunca
+    // retorna depois disso), então é estruturalmente impossível a função
+    // devolver `role: "master"` sem ter passado pela checagem de AAL2 -
+    // ver acesso.test.ts ("master sem AAL2 é bloqueado", que confirma o
+    // redirect pra /mfa acontece antes de qualquer `role` ser decidido).
+    // Mesmo assim, esconder o item aqui é só UX: a página e a Server
+    // Action chamam `requireMaster()` de novo, cada uma na sua própria
+    // requisição ao servidor - nenhuma confia no que esta variável já
+    // calculou faz uma renderização atrás.
     ...(acesso.role === "master"
       ? [
           {

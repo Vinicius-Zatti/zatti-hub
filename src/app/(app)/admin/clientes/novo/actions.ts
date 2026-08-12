@@ -58,8 +58,18 @@ type RespostaAdminCriarCliente = {
  * lados: convite não duplica porque confere existência antes, e a função
  * SQL não duplica organização/unidade/vínculo já criados). */
 export async function criarClienteAdmin(dadoBruto: unknown): Promise<ResultadoCriarCliente> {
+  // `requireMaster()` fica FORA do try/catch de propósito, igual todo
+  // outro Server Action do repo (ver estoque/produtos/actions.ts) - ele
+  // redireciona (`next/navigation.redirect()`) quem não é master+AAL2, e
+  // `redirect()` funciona lançando um erro especial que o próprio Next.js
+  // precisa enxergar subindo a pilha pra executar o redirecionamento de
+  // verdade. Um try/catch genérico em volta dele engoliria esse erro e
+  // devolveria uma mensagem de "não foi possível" em vez de mandar a
+  // pessoa pra /mfa ou /login - autorização vira sempre um redirect real,
+  // nunca um retorno de erro comum.
+  const acesso = await requireMaster();
+
   try {
-    const acesso = await requireMaster();
     await exigirLimite(chaveUsuario(acesso.userId), "admin_criar_cliente");
 
     const dado = validar(clienteNovoSchema, dadoBruto, "admin_criar_cliente");
