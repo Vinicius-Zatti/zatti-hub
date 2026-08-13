@@ -103,6 +103,20 @@ export default async function AppLayout({
     { label: "Fichas Técnicas", href: "#", icone: "fichas", disabled: true },
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
+    // Esconder o item pra quem não é master é só UX - a barreira de
+    // verdade é `requireMaster()` no layout de `/acessos` e em cada Server
+    // Action de `src/app/(app)/acessos/actions.ts`, não isto aqui.
+    ...(acesso.role === "master"
+      ? [
+          {
+            label: "Acessos",
+            href: "/acessos",
+            icone: "acessos" as const,
+            activePrefix: "/acessos",
+            disabled: false,
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -46,3 +46,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Supabase CLI - estado/runtime local (Docker), nunca versionar
+supabase/.temp
+supabase/.branches
