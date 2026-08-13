@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "security/**", "feat/**"]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes unitários
+        run: npm test
+
+      - name: Auditoria de dependências
+        run: npm audit --audit-level=high
+
+      # Build sem nenhuma env var real configurada de propósito - não
+      # existe staging/produção acessível a partir do CI, e o objetivo
+      # aqui não é validar contra Supabase de verdade, é (a) garantir que
+      # o build não quebra e (b) rodar a checagem de bundle abaixo, que
+      # não depende de nenhuma env var conter valor real.
+      - name: Build (com verificação automática de bundle sem service_role)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key

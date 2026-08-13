@@ -180,3 +180,54 @@ export const editarConsolidadoSchema = z.object({
   id: textoObrigatorio(64),
   entrada: entradaConsolidadoSchema,
 });
+
+// ── Admin: onboarding de cliente ─────────────────────────────────────
+// `role` nunca inclui "master" de propósito - nem o schema aceita, nem o
+// formulário oferece a opção. `unidadeId` só é exigido pra operacional; a
+// primeira unidade sempre é única nesta versão do fluxo (uma organização
+// nova nasce com uma unidade só), então o valor esperado é sempre o mesmo
+// slug que `unidadeId` da organização - a Server Action confere isso de
+// novo, e a função SQL confere uma terceira vez.
+
+export const usuarioClienteNovoSchema = z
+  .object({
+    nome: textoObrigatorio(200),
+    email: z.string().trim().toLowerCase().email().max(320),
+    role: z.enum(["gestao", "operacional"]),
+    unidadeId: z.string().trim().max(80).nullable(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.role === "operacional" && !val.unidadeId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Operacional precisa de uma unidade.",
+        path: ["unidadeId"],
+      });
+    }
+  });
+
+export const clienteNovoSchema = z
+  .object({
+    organizacaoNome: textoObrigatorio(200),
+    organizacaoId: textoObrigatorio(80).regex(
+      /^[a-z0-9]+(-[a-z0-9]+)*$/,
+      "Use só letras minúsculas, números e hífen, sem espaços."
+    ),
+    tipoCliente: z.enum(["consultoria", "saas"]),
+    unidadeNome: textoObrigatorio(200),
+    fonteDadosEstoque: z.enum(["planilha", "banco"]),
+    usuarios: z.array(usuarioClienteNovoSchema).min(1).max(20),
+  })
+  .superRefine((val, ctx) => {
+    const emails = val.usuarios.map((u) => u.email);
+    const duplicado = emails.some((email, i) => emails.indexOf(email) !== i);
+    if (duplicado) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tem e-mail repetido na lista de usuários.",
+        path: ["usuarios"],
+      });
+    }
+  });
+
+export type ClienteNovoInput = z.infer<typeof clienteNovoSchema>;

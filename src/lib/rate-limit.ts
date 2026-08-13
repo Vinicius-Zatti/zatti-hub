@@ -12,6 +12,11 @@ export const LIMITES = {
   escrita_padrao: { limite: 40, janelaSegundos: 60 },
   sugerir_sku: { limite: 20, janelaSegundos: 3600 },
   auth_callback: { limite: 20, janelaSegundos: 300 },
+  // Onboarding administrativo de cliente: bem mais restrito que escrita
+  // comum de propósito - cada chamada pode enviar convites de verdade e
+  // criar organização/unidade, não é uma ação de uso repetitivo no dia a
+  // dia mesmo pra quem é master.
+  admin_criar_cliente: { limite: 10, janelaSegundos: 3600 },
 } as const;
 
 export type AcaoLimitada = keyof typeof LIMITES;
