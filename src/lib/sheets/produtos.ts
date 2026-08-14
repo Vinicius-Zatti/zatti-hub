@@ -3,6 +3,7 @@ import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
 import { listarProdutosBanco, salvarProdutosBanco } from "@/lib/banco/estoque";
+import { paraCelulaSegura } from "./seguranca";
 
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
@@ -56,7 +57,7 @@ function produtoToRow(p: Produto): (string | number)[] {
     p.fornecedor4,
     p.observacoes,
     p.ativo ? 1 : 0,
-  ];
+  ].map((valor) => (typeof valor === "string" ? paraCelulaSegura(valor) : valor));
 }
 
 async function listProdutosPlanilha(spreadsheetId: string): Promise<Produto[]> {

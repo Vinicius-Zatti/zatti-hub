@@ -12,8 +12,8 @@ export default async function CmvPage() {
   let itensInventario;
   try {
     itensInventario = await listInventario(acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar os dados do estoque." />;
   }
 
   const pedidos = await listPedidosFeitos(acesso.unidadeId);

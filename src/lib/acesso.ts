@@ -73,6 +73,9 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   if (vinculos.length === 0) redirect("/sem-acesso");
 
   const ehMaster = vinculos.some((v) => v.role === "master");
+  // Sessao administrativa precisa de segundo fator. A mesma exigencia esta
+  // nos helpers de RLS, portanto vale tambem para chamadas diretas a Data API.
+  if (ehMaster && claims.claims.aal !== "aal2") redirect("/mfa");
   const cookieStore = await cookies();
   const orgEscolhida = cookieStore.get(COOKIE_ORGANIZACAO)?.value;
 
@@ -188,6 +191,23 @@ export async function requireGestao(): Promise<AcessoAtual> {
   return acesso;
 }
 
+/** Barreira de autorizacao do modulo Financeiro. A flag no layout controla a
+ * navegacao; esta funcao protege tambem Server Actions chamadas diretamente.
+ * A mesma regra e repetida nas policies do banco como ultima barreira. */
+export async function requireConsolidadoVendas(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Edicao do consolidado exige simultaneamente modulo habilitado e papel de
+ * Gestao (master continua com os mesmos privilegios administrativos). */
+export async function requireGestaoConsolidado(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
 /** Barreira pra telas ainda em construção, visíveis só pro Vinícius
  * (master) enquanto não são validadas pra virar acesso real de cliente. */
 export async function requireMaster(): Promise<AcessoAtual> {
@@ -233,11 +253,36 @@ export async function registrarAuditoriaBatch(
         acao: params.acao,
         entidade: params.entidade,
         entidade_id: params.entidadeId,
-        dados_antigos: params.dadosAntigos ?? null,
-        dados_novos: params.dadosNovos ?? null,
+        dados_antigos: sanitizarAuditoria(params.dadosAntigos),
+        dados_novos: sanitizarAuditoria(params.dadosNovos),
       }))
     );
-  } catch (err) {
-    console.error("Falha ao gravar log de auditoria:", err);
+  } catch {
+    console.error("Falha ao gravar log de auditoria");
   }
+}
+
+const CAMPOS_SENSIVEIS_AUDITORIA = /^(senha|password|token|secret|authorization|cookie|cpf|cnpj|email|telefone|whatsapp)$/i;
+
+function sanitizarAuditoria(valor: unknown, profundidade = 0): unknown {
+  if (valor === undefined || valor === null) return null;
+  if (profundidade >= 4) return "[limite]";
+  if (typeof valor === "string") return valor.slice(0, 500);
+  if (typeof valor === "number" || typeof valor === "boolean") return valor;
+  if (Array.isArray(valor)) {
+    return valor.slice(0, 50).map((item) => sanitizarAuditoria(item, profundidade + 1));
+  }
+  if (typeof valor === "object") {
+    return Object.fromEntries(
+      Object.entries(valor as Record<string, unknown>)
+        .slice(0, 80)
+        .map(([chave, conteudo]) => [
+          chave,
+          CAMPOS_SENSIVEIS_AUDITORIA.test(chave)
+            ? "[redigido]"
+            : sanitizarAuditoria(conteudo, profundidade + 1),
+        ]),
+    );
+  }
+  return String(valor).slice(0, 200);
 }

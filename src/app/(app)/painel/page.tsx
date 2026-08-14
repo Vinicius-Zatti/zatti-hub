@@ -47,8 +47,8 @@ export default async function PainelPage() {
         : listFornecedores(acesso.spreadsheetId),
       listPedidosFeitos(acesso.unidadeId),
     ]);
-  } catch (erro) {
-    return <ConectarPlanilha erro={(erro as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar o painel." />;
   }
 
   const datas = Array.from(new Set(inventario.map((item) => item.data).filter(Boolean)));

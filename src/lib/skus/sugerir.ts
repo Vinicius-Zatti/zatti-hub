@@ -62,9 +62,6 @@ export async function sugerirSku(nome: string, spreadsheetId: string | null): Pr
   }
 
   const produtos = await listProdutos(spreadsheetId);
-  const cadastro = produtos.length
-    ? produtos.map((p) => `${p.sku} (${p.grupo}) — ${p.nome}`).join("\n")
-    : "(nenhum produto cadastrado ainda)";
   const skusExistentes = new Set(produtos.map((p) => p.sku));
 
   const client = new Anthropic({ apiKey });
@@ -76,7 +73,9 @@ export async function sugerirSku(nome: string, spreadsheetId: string | null): Pr
     messages: [
       {
         role: "user",
-        content: `Nome do produto novo: ${nome}\n\nProdutos já cadastrados (todos os grupos):\n${cadastro}`,
+        // Envia somente o dado necessario para a tarefa. Colisoes com o
+        // catalogo do cliente sao resolvidas localmente logo abaixo.
+        content: `Nome do produto novo: ${nome}`,
       },
     ],
     tools: [

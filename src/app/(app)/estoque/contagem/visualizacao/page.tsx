@@ -10,8 +10,8 @@ export default async function VisualizacaoContagensPage() {
   let itens;
   try {
     itens = await listInventario(acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar as contagens." />;
   }
 
   return <VisualizacaoContagens itens={itens} />;

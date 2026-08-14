@@ -155,7 +155,7 @@ export function BlocoFornecedorCotacao({
       if (err instanceof CompartilharCancelado) {
         setStatus("");
       } else {
-        setStatus((err as Error).message);
+        setStatus("Nao foi possivel confirmar o item.");
       }
     }
     setCompartilhando(false);

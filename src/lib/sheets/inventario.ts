@@ -8,6 +8,7 @@ import {
   listarInventarioBanco,
   registrarContagemBanco,
 } from "@/lib/banco/estoque";
+import { paraCelulaSegura } from "./seguranca";
 
 const SHEET = "Inventário";
 const FIRST_DATA_ROW = 3;
@@ -127,7 +128,11 @@ async function registrarContagemPlanilha(
     range: RANGE,
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
-    requestBody: { values: rows },
+    requestBody: {
+      values: rows.map((row) =>
+        row.map((valor) => (typeof valor === "string" ? paraCelulaSegura(valor) : valor)),
+      ),
+    },
   });
 }
 
@@ -179,7 +184,7 @@ async function atualizarQuantidadeInventarioPlanilha(
     spreadsheetId,
     range: `'${SHEET}'!G${rowNumber}:J${rowNumber}`,
     valueInputOption: "USER_ENTERED",
-    requestBody: { values: [[quantidade, linha[7] ?? "", total, alerta]] },
+    requestBody: { values: [[quantidade, precoUnitario ?? "", total, alerta]] },
   });
 }
 

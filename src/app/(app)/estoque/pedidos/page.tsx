@@ -25,8 +25,8 @@ export default async function PedidosPage({
       datasDisponiveis(acesso.spreadsheetId),
       listFornecedores(acesso.spreadsheetId),
     ]);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar os dados do pedido." />;
   }
 
   const pedidoMinimoPorFornecedor = Object.fromEntries(

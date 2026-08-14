@@ -13,8 +13,8 @@ export default async function FornecedoresPage() {
   let fornecedores;
   try {
     fornecedores = await listFornecedores(acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar os fornecedores." />;
   }
 
   const incompletos = fornecedores.filter(fornecedorIncompleto);

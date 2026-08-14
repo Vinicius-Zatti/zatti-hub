@@ -375,6 +375,7 @@ export async function listPedidosFeitos(unidadeId: string): Promise<Pedido[]> {
  * permite o papel Operacional mexer em Pedidos Feitos com segurança, mesmo
  * chamando essa mesma função. */
 export async function atualizarRecebimento(params: {
+  unidadeId: string;
   pedidoId: string;
   recebido: boolean;
   observacaoEntrega: string | null;
@@ -382,20 +383,42 @@ export async function atualizarRecebimento(params: {
 }): Promise<void> {
   const supabase = await createClient();
 
-  await supabase
+  // pedidoId vem do navegador. Confirma o escopo da unidade resolvida pela
+  // sessao antes de qualquer escrita, sem depender apenas da policy RLS.
+  const { data: pedido, error: erroPedido } = await supabase
+    .from("pedidos")
+    .select("id")
+    .eq("id", params.pedidoId)
+    .eq("unidade_id", params.unidadeId)
+    .maybeSingle();
+  if (erroPedido) throw new Error("Nao foi possivel validar o pedido");
+  if (!pedido) throw new Error("Pedido nao encontrado nesta unidade");
+
+  const { data: pedidoAtualizado, error: erroAtualizarPedido } = await supabase
     .from("pedidos")
     .update({
       recebido: params.recebido,
       observacao_entrega: params.observacaoEntrega,
       atualizado_em: new Date().toISOString(),
     })
-    .eq("id", params.pedidoId);
+    .eq("id", params.pedidoId)
+    .eq("unidade_id", params.unidadeId)
+    .select("id")
+    .maybeSingle();
+  if (erroAtualizarPedido || !pedidoAtualizado) {
+    throw new Error("Nao foi possivel atualizar o recebimento");
+  }
 
   for (const item of params.itensRecebidos) {
-    await supabase
+    const { data: itemAtualizado, error: erroAtualizarItem } = await supabase
       .from("pedido_itens")
       .update({ quantidade_recebida: item.quantidadeRecebida })
       .eq("pedido_id", params.pedidoId)
-      .eq("sku", item.sku);
+      .eq("sku", item.sku)
+      .select("id")
+      .maybeSingle();
+    if (erroAtualizarItem || !itemAtualizado) {
+      throw new Error("Um item do pedido nao pertence a esta unidade");
+    }
   }
 }

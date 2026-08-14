@@ -10,8 +10,8 @@ export default async function ContagemPage() {
   let produtos;
   try {
     produtos = await listProdutos(acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar os produtos." />;
   }
 
   return <ContagemForm produtos={produtos} />;
