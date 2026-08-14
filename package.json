@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "preview:acessos": "node scripts/preparar-preview-acessos.mjs",
     "estoque:gerar-importacao": "node scripts/gerar-importacao-estoque.mjs"
   },
   "dependencies": {

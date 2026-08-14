@@ -63,11 +63,20 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const userId = claims?.claims.sub;
   if (erroClaims || !userId) redirect("/login");
 
-  const { data: vinculosData } = await supabase
+  const { data: vinculosData, error: erroVinculos } = await supabase
     .from("vinculos")
     .select("organizacao_id, unidade_id, role, organizacoes(nome)")
     .eq("user_id", userId)
     .eq("status", "ativo");
+
+  if (erroVinculos) {
+    console.error("Falha ao consultar os vínculos do usuário:", {
+      codigo: erroVinculos.code,
+      mensagem: erroVinculos.message,
+      detalhes: erroVinculos.details,
+    });
+    throw new Error("Não foi possível validar o acesso do usuário.");
+  }
 
   const vinculos = (vinculosData as unknown as VinculoRow[] | null) ?? [];
   if (vinculos.length === 0) redirect("/sem-acesso");

@@ -233,15 +233,19 @@ export async function convidarEVincularAction(formData: FormData): Promise<
     return { erro: `Falha ao criar o perfil: ${erroPerfil.message}` };
   }
 
-  const { data: vinculoDuplicado, error: erroChecagem } = await admin
+  const consultaVinculoDuplicado = admin
     .from("vinculos")
     .select("id")
     .eq("user_id", userId)
     .eq("organizacao_id", organizacaoId)
     .eq("status", "ativo")
-    .eq("role", papel.role)
-    .is("unidade_id", papel.unidadeId)
-    .maybeSingle();
+    .eq("role", papel.role);
+
+  const { data: vinculoDuplicado, error: erroChecagem } = await (
+    papel.unidadeId
+      ? consultaVinculoDuplicado.eq("unidade_id", papel.unidadeId)
+      : consultaVinculoDuplicado.is("unidade_id", null)
+  ).maybeSingle();
   if (erroChecagem) return { erro: erroChecagem.message };
   if (vinculoDuplicado) {
     return { erro: `${email} já tem esse exato vínculo ativo - nada a fazer.` };
