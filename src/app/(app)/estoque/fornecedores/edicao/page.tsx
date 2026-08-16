@@ -10,8 +10,8 @@ export default async function EdicaoFornecedoresPage() {
   let fornecedores;
   try {
     fornecedores = await garantirCodigos(acesso.spreadsheetId);
-  } catch (err) {
-    return <ConectarPlanilha erro={(err as Error).message} />;
+  } catch {
+    return <ConectarPlanilha erro="Nao foi possivel carregar os fornecedores." />;
   }
 
   return (

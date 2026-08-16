@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import {
+  CaptchaTurnstile,
+  turnstileHabilitado,
+} from "@/components/captcha-turnstile";
 
 export function EsqueciSenhaForm() {
   const [email, setEmail] = useState("");
   const [estado, setEstado] = useState<"idle" | "enviando" | "enviado" | "erro">("idle");
   const [erro, setErro] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function enviarLink(e: React.FormEvent) {
     e.preventDefault();
@@ -14,13 +20,15 @@ export function EsqueciSenhaForm() {
     setErro("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/auth/callback?next=/redefinir-senha`,
+      captchaToken: captchaToken || undefined,
     });
 
     if (error) {
       setEstado("erro");
-      setErro(error.message);
+      setCaptchaReset((valor) => valor + 1);
+      setErro("Nao foi possivel enviar o link agora. Aguarde um pouco e tente novamente.");
       return;
     }
     setEstado("enviado");
@@ -48,10 +56,11 @@ export function EsqueciSenhaForm() {
           placeholder="voce@exemplo.com"
         />
       </label>
+      <CaptchaTurnstile onTokenChange={setCaptchaToken} resetSignal={captchaReset} />
       {estado === "erro" && <p className="text-sm text-vermelho">{erro}</p>}
       <button
         type="submit"
-        disabled={estado === "enviando"}
+        disabled={estado === "enviando" || (turnstileHabilitado && !captchaToken)}
         className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo disabled:opacity-60"
       >
         {estado === "enviando" ? "Enviando..." : "Enviar link"}

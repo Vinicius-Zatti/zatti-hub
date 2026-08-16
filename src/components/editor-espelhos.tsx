@@ -541,7 +541,7 @@ export function EditorEspelhos({
       }));
     } catch (err) {
       if (!(err instanceof CompartilharCancelado)) {
-        setStatus((s) => ({ ...s, [fornecedor]: (err as Error).message }));
+        setStatus((s) => ({ ...s, [fornecedor]: "Nao foi possivel salvar esta alteracao." }));
       }
     }
     setCompartilhando((c) => ({ ...c, [fornecedor]: false }));

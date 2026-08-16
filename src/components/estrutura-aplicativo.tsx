@@ -81,9 +81,10 @@ export function EstruturaAplicativo({
     );
   }
 
-  const larguraLateral = recolhido ? "lg:w-[5.5rem]" : "lg:w-64";
-  const recuoConteudo = recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64";
+  const larguraLateral = recolhido ? "w-0 lg:w-[5.5rem]" : "w-16 lg:w-64";
+  const recuoConteudo = recolhido ? "pl-0 lg:pl-[5.5rem]" : "pl-16 lg:pl-64";
   const alinhamentoItem = recolhido ? "lg:justify-center" : "lg:justify-start";
+  const ocultoNoMobile = recolhido ? "max-lg:invisible" : "";
 
   return (
     <div className="min-h-dvh">
@@ -95,13 +96,15 @@ export function EstruturaAplicativo({
       </a>
       <aside
         ref={lateralRef}
-        className={`fixed inset-y-0 left-0 z-40 flex w-[5.5rem] flex-col border-r border-white/10 bg-azul-noite text-branco shadow-xl transition-[width] duration-200 ${larguraLateral}`}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-white/10 bg-azul-noite text-branco shadow-xl transition-[width] duration-200 ${larguraLateral} ${
+          recolhido ? "max-lg:border-r-0 max-lg:shadow-none" : ""
+        }`}
       >
         <Link
           href="/painel"
           aria-label="Ir para o início do Zatti Hub"
           title="Zatti Hub"
-          className="flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ambar"
+          className={`flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ambar ${ocultoNoMobile}`}
         >
           {recolhido ? (
             <Image
@@ -142,12 +145,14 @@ export function EstruturaAplicativo({
           }}
           aria-label={recolhido ? "Expandir menu lateral" : "Recolher menu lateral"}
           title={recolhido ? "Expandir menu" : "Recolher menu"}
-          className="absolute -right-3 top-[4.5rem] hidden h-7 w-7 items-center justify-center rounded-full border border-cinza-claro bg-branco text-azul-noite shadow-md transition-colors hover:bg-off-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:flex"
+          className={`absolute top-[4.5rem] z-50 flex h-9 w-9 items-center justify-center rounded-full border border-cinza-claro bg-branco text-azul-noite shadow-md transition-[right,background-color] hover:bg-off-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:h-7 lg:w-7 ${
+            recolhido ? "-right-11 lg:-right-3" : "-right-3"
+          }`}
         >
-          <IconeNavegacao nome={recolhido ? "expandir" : "recolher"} className="h-4 w-4" />
+          <IconeNavegacao nome={recolhido ? "expandir" : "recolher"} className="h-5 w-5 lg:h-4 lg:w-4" />
         </button>
 
-        <nav aria-label="Módulos do sistema" className="min-h-0 flex-1 overflow-y-auto px-2 py-4">
+        <nav aria-label="Módulos do sistema" className={`min-h-0 flex-1 overflow-y-auto px-2 py-4 ${ocultoNoMobile}`}>
           <div className="flex flex-col gap-1.5">
             {items.map((item) => {
               const ativo = !item.disabled && pathname.startsWith(item.activePrefix ?? item.href);
@@ -224,7 +229,7 @@ export function EstruturaAplicativo({
           </div>
         </nav>
 
-        <div className="shrink-0 border-t border-white/10 p-2">
+        <div className={`shrink-0 border-t border-white/10 p-2 ${ocultoNoMobile}`}>
           {!recolhido && (
             <div className="mb-2 hidden rounded-lg bg-white/5 p-2 lg:block">
               <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">
@@ -285,7 +290,7 @@ export function EstruturaAplicativo({
         {labelAberto === PAINEL_ORGANIZACAO && (
           <div
             id="painel-destinos"
-            className="absolute inset-y-0 left-full flex w-[calc(100vw-5.5rem)] max-w-sm flex-col border-r border-cinza-claro bg-branco text-cinza shadow-2xl"
+            className="absolute inset-y-0 left-full flex w-[calc(100vw-4rem)] max-w-sm flex-col border-r border-cinza-claro bg-branco text-cinza shadow-2xl"
           >
             <CabecalhoPainel titulo="Organização" aoFechar={() => setPainelAberto(null)} />
             <div className="p-4">
@@ -307,7 +312,7 @@ export function EstruturaAplicativo({
         )}
       </aside>
 
-      <div className={`flex min-h-dvh flex-col pl-[5.5rem] transition-[padding-left] duration-200 ${recuoConteudo}`}>
+      <div className={`flex min-h-dvh flex-col transition-[padding-left] duration-200 ${recuoConteudo}`}>
         <main
           id="conteudo-principal"
           tabIndex={-1}
@@ -354,7 +359,7 @@ function PainelDestinos({
   return (
     <div
       id="painel-destinos"
-      className="absolute inset-y-0 left-full flex w-[calc(100vw-5.5rem)] max-w-sm flex-col border-r border-cinza-claro bg-branco text-cinza shadow-2xl"
+      className="absolute inset-y-0 left-full flex w-[calc(100vw-4rem)] max-w-sm flex-col border-r border-cinza-claro bg-branco text-cinza shadow-2xl"
     >
       <CabecalhoPainel titulo={titulo} aoFechar={aoFechar} />
       <div className="min-h-0 flex-1 overflow-y-auto p-3">

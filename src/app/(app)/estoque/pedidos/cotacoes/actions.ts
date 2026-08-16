@@ -5,6 +5,15 @@ import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEn
 import { listProdutos, upsertProduto } from "@/lib/sheets/produtos";
 import type { PedidoItem } from "@/lib/types";
 import { revalidatePath } from "next/cache";
+import {
+  confirmarItemSchema,
+  confirmarVencedorSchema,
+  desfazerVencedorSchema,
+  previsaoEntregaSchema,
+  validarEntrada,
+} from "@/lib/validacao";
+import { exigirLimiteRequisicao } from "@/lib/rate-limit";
+import { mensagemErroPublica } from "@/lib/erros";
 
 type ItemConfirmar = Pick<
   PedidoItem,
@@ -55,18 +64,20 @@ export async function confirmarItemAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("pedidos_cotacao");
+    const entrada = validarEntrada(confirmarItemSchema, input);
     await confirmarItem({
       unidadeId: acesso.unidadeId,
-      fornecedor: input.fornecedor,
-      dataContagemBase: input.dataContagemBase,
-      item: input.item,
-      atualizarPreco: input.atualizarPreco,
+      fornecedor: entrada.fornecedor,
+      dataContagemBase: entrada.dataContagemBase,
+      item: entrada.item,
+      atualizarPreco: entrada.atualizarPreco,
       criadoPor: acesso.userId,
     });
     revalidarPedidos();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o item.") };
   }
 }
 
@@ -80,21 +91,23 @@ export async function confirmarVencedorAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("pedidos_cotacao");
+    const entrada = validarEntrada(confirmarVencedorSchema, input);
     await confirmarVencedor({
       unidadeId: acesso.unidadeId,
-      dataContagemBase: input.dataContagemBase,
-      fornecedorVencedor: input.fornecedorVencedor,
-      outrosFornecedores: input.outrosFornecedores,
-      item: input.item,
+      dataContagemBase: entrada.dataContagemBase,
+      fornecedorVencedor: entrada.fornecedorVencedor,
+      outrosFornecedores: entrada.outrosFornecedores,
+      item: entrada.item,
       criadoPor: acesso.userId,
     });
-    await atualizarPrecoCadastroSeMudou(input.item, acesso);
+    await atualizarPrecoCadastroSeMudou(entrada.item, acesso);
     revalidarPedidos();
     revalidatePath("/estoque/produtos");
     revalidatePath("/estoque/produtos/edicao");
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o fornecedor.") };
   }
 }
 
@@ -109,18 +122,20 @@ export async function desfazerVencedorAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("pedidos_cotacao");
+    const entrada = validarEntrada(desfazerVencedorSchema, input);
     await desfazerVencedor({
       unidadeId: acesso.unidadeId,
-      dataContagemBase: input.dataContagemBase,
-      fornecedorAtual: input.fornecedorAtual,
-      outrosFornecedores: input.outrosFornecedores,
-      item: input.item,
+      dataContagemBase: entrada.dataContagemBase,
+      fornecedorAtual: entrada.fornecedorAtual,
+      outrosFornecedores: entrada.outrosFornecedores,
+      item: entrada.item,
       criadoPor: acesso.userId,
     });
     revalidarPedidos();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel desfazer a confirmacao.") };
   }
 }
 
@@ -133,16 +148,18 @@ export async function atualizarPrevisaoEntregaAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("pedidos_cotacao");
+    const entrada = validarEntrada(previsaoEntregaSchema, input);
     await atualizarPrevisaoEntrega({
       unidadeId: acesso.unidadeId,
-      fornecedor: input.fornecedor,
-      dataContagemBase: input.dataContagemBase,
-      previsaoEntrega: input.previsaoEntrega,
+      fornecedor: entrada.fornecedor,
+      dataContagemBase: entrada.dataContagemBase,
+      previsaoEntrega: entrada.previsaoEntrega,
       criadoPor: acesso.userId,
     });
     revalidatePath("/estoque/pedidos/cotacoes");
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel atualizar a previsao.") };
   }
 }

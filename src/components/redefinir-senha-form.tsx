@@ -12,9 +12,14 @@ export function RedefinirSenhaForm() {
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
 
-    if (senha.length < 8) {
+    if (senha.length < 12) {
       setEstado("erro");
-      setErro("A senha precisa ter pelo menos 8 caracteres.");
+      setErro("A senha precisa ter pelo menos 12 caracteres.");
+      return;
+    }
+    if (senha.length > 128) {
+      setEstado("erro");
+      setErro("A senha pode ter no maximo 128 caracteres.");
       return;
     }
     if (senha !== confirmacao) {
@@ -31,11 +36,13 @@ export function RedefinirSenhaForm() {
 
     if (error) {
       setEstado("erro");
-      setErro(error.message);
+      setErro("Nao foi possivel atualizar a senha. Solicite um novo link e tente novamente.");
       return;
     }
 
-    window.location.href = "/";
+    // Invalida as demais sessoes e exige um login novo com a senha alterada.
+    await supabase.auth.signOut({ scope: "global" });
+    window.location.replace(new URL("/login?senha_redefinida=1", window.location.origin).toString());
   }
 
   return (

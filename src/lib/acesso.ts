@@ -26,6 +26,10 @@ export type AcessoAtual = {
    * configurável por cliente, editado direto no Supabase (sem tela de
    * admin), mesma convenção de `spreadsheet_id`/`ativo`. */
   consolidadoVendasHabilitado: boolean;
+  /** Liga o menu Fichas Técnicas pra essa unidade - piloto exclusivo,
+  * mesma convenção de `consolidado_vendas_habilitado` (editado direto no
+  * Supabase, sem tela de admin). */
+  fichasTecnicasHabilitado: boolean;
   role: Role;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
@@ -49,6 +53,7 @@ type UnidadeRow = {
   spreadsheet_id: string | null;
   fonte_dados_estoque: FonteDadosEstoque;
   consolidado_vendas_habilitado: boolean;
+  fichas_tecnicas_habilitado: boolean;
 };
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
@@ -82,6 +87,9 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   if (vinculos.length === 0) redirect("/sem-acesso");
 
   const ehMaster = vinculos.some((v) => v.role === "master");
+  // Sessao administrativa precisa de segundo fator. A mesma exigencia esta
+  // nos helpers de RLS, portanto vale tambem para chamadas diretas a Data API.
+  if (ehMaster && claims.claims.aal !== "aal2") redirect("/mfa");
   const cookieStore = await cookies();
   const orgEscolhida = cookieStore.get(COOKIE_ORGANIZACAO)?.value;
 
@@ -152,13 +160,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -182,6 +190,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     spreadsheetId: unidade.spreadsheet_id,
     fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
+    fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
     role,
     organizacoesDisponiveis,
   };
@@ -194,6 +203,42 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
 export async function requireGestao(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (acesso.role !== "gestao" && acesso.role !== "master") redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Barreira de autorizacao do modulo Financeiro. A flag no layout controla a
+ * navegacao; esta funcao protege tambem Server Actions chamadas diretamente.
+ * A mesma regra e repetida nas policies do banco como ultima barreira. */
+export async function requireConsolidadoVendas(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Edicao do consolidado exige simultaneamente modulo habilitado e papel de
+ * Gestao (master continua com os mesmos privilegios administrativos). */
+export async function requireGestaoConsolidado(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Barreira de autorizacao do modulo Fichas Tecnicas (piloto exclusivo). A
+ * flag no layout controla a navegacao; esta funcao protege tambem Server
+ * Actions chamadas diretamente. A mesma regra e repetida em
+ * `usuario_pode_usar_fichas` no banco como ultima barreira. */
+export async function requireFichasTecnicas(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Escrita em Fichas Tecnicas exige simultaneamente modulo habilitado e
+ * papel de Gestao (master continua com os mesmos privilegios
+ * administrativos) - consulta e liberada pra todos os papeis. */
+export async function requireGestaoFichasTecnicas(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
   return acesso;
 }
 
@@ -242,11 +287,36 @@ export async function registrarAuditoriaBatch(
         acao: params.acao,
         entidade: params.entidade,
         entidade_id: params.entidadeId,
-        dados_antigos: params.dadosAntigos ?? null,
-        dados_novos: params.dadosNovos ?? null,
+        dados_antigos: sanitizarAuditoria(params.dadosAntigos),
+        dados_novos: sanitizarAuditoria(params.dadosNovos),
       }))
     );
-  } catch (err) {
-    console.error("Falha ao gravar log de auditoria:", err);
+  } catch {
+    console.error("Falha ao gravar log de auditoria");
   }
+}
+
+const CAMPOS_SENSIVEIS_AUDITORIA = /^(senha|password|token|secret|authorization|cookie|cpf|cnpj|email|telefone|whatsapp)$/i;
+
+function sanitizarAuditoria(valor: unknown, profundidade = 0): unknown {
+  if (valor === undefined || valor === null) return null;
+  if (profundidade >= 4) return "[limite]";
+  if (typeof valor === "string") return valor.slice(0, 500);
+  if (typeof valor === "number" || typeof valor === "boolean") return valor;
+  if (Array.isArray(valor)) {
+    return valor.slice(0, 50).map((item) => sanitizarAuditoria(item, profundidade + 1));
+  }
+  if (typeof valor === "object") {
+    return Object.fromEntries(
+      Object.entries(valor as Record<string, unknown>)
+        .slice(0, 80)
+        .map(([chave, conteudo]) => [
+          chave,
+          CAMPOS_SENSIVEIS_AUDITORIA.test(chave)
+            ? "[redigido]"
+            : sanitizarAuditoria(conteudo, profundidade + 1),
+        ]),
+    );
+  }
+  return String(valor).slice(0, 200);
 }

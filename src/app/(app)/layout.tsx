@@ -74,6 +74,21 @@ export default async function AppLayout({
     },
   ];
 
+  const secoesFichasTecnicas: SecaoNavegacao[] = [
+    {
+      label: "Fichas técnicas",
+      items: [
+        { label: "Consultar fichas", href: "/fichas-tecnicas" },
+        ...(podeGerir
+          ? [
+              { label: "Nova ficha", href: "/fichas-tecnicas/nova" },
+              { label: "Categorias", href: "/fichas-tecnicas/categorias" },
+            ]
+          : []),
+      ],
+    },
+  ];
+
   // Financeiro só sai de "em breve" pra unidade com a flag ligada
   // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
   const itensNavegacao: ItemNavegacao[] = [
@@ -100,7 +115,14 @@ export default async function AppLayout({
       disabled: !acesso.consolidadoVendasHabilitado,
       sections: secoesFinanceiro,
     },
-    { label: "Fichas Técnicas", href: "#", icone: "fichas", disabled: true },
+    {
+      label: "Fichas Técnicas",
+      href: "/fichas-tecnicas",
+      icone: "fichas",
+      activePrefix: "/fichas-tecnicas",
+      disabled: !acesso.fichasTecnicasHabilitado,
+      sections: secoesFichasTecnicas,
+    },
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
     // Esconder o item pra quem não é master é só UX - a barreira de

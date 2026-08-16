@@ -3,6 +3,7 @@ import { toNumeroBR as toNumber } from "./numero";
 import type { Fornecedor } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
 import { listarFornecedoresBanco, salvarFornecedoresBanco } from "@/lib/banco/estoque";
+import { paraCelulaSegura } from "./seguranca";
 
 const SHEET = "Fornecedores";
 const FIRST_DATA_ROW = 3;
@@ -54,7 +55,7 @@ function fornecedorToRow(f: Fornecedor): (string | number)[] {
     f.pedidoMinimo ?? "",
     f.diasEntrega,
     f.observacoes,
-  ];
+  ].map((valor) => (typeof valor === "string" ? paraCelulaSegura(valor) : valor));
 }
 
 async function listFornecedoresPlanilha(spreadsheetId: string): Promise<Fornecedor[]> {

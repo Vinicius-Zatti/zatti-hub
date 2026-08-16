@@ -358,7 +358,7 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
   // ── TELA 3: INVENTÁRIO ───────────────────────────────────────────────
   return (
     <div className="pb-40">
-      <div className="sticky top-0 z-10 -mx-4 rounded-t-lg bg-azul-noite px-4 py-3 sm:-mx-6 sm:px-6">
+      <div className="sticky top-0 z-10 -mx-3 rounded-t-lg bg-azul-noite px-3 py-3 sm:-mx-6 sm:px-6">
         <div className="text-[9px] font-bold uppercase tracking-widest text-ambar">
           Zatti Consultoria · M.E.G.A.
         </div>
@@ -372,6 +372,11 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
         <div className="mt-1 text-right text-[10px] text-cinza-claro">
           {confirmadosCount} de {totalItens} itens confirmados
         </div>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-ambar/40 bg-ambar/10 px-3 py-2.5 text-xs leading-relaxed text-cinza sm:hidden">
+        <span className="font-bold text-azul-noite">Tela estreita?</span>{" "}
+        Recolha o menu pela seta lateral para ver melhor os nomes. Se preferir, gire o celular.
       </div>
 
       <div className="mt-2 flex flex-col gap-4">
@@ -581,9 +586,14 @@ function ItemRow({
   const precoTxt = precoUnitario !== null ? `R$ ${brl(precoUnitario)}/${unidadeBase}` : "a calcular";
 
   return (
-    <div className={`flex items-center gap-3 px-3.5 py-3 ${ok ? "bg-ambar/10" : "bg-branco"}`}>
-      <div className="min-w-0 flex-1">
-        <div className={`truncate text-sm ${ok ? "font-semibold text-azul-noite" : "font-medium text-cinza"}`}>
+    <div
+      data-sku={sku}
+      className={`flex flex-col items-stretch gap-2.5 px-3.5 py-3 sm:flex-row sm:items-center sm:gap-3 ${
+        ok ? "bg-ambar/10" : "bg-branco"
+      }`}
+    >
+      <div className="w-full min-w-0 flex-1">
+        <div className={`break-words text-[15px] leading-snug ${ok ? "font-semibold text-azul-noite" : "font-medium text-cinza"}`}>
           {nome}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -600,18 +610,19 @@ function ItemRow({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
         {ok ? (
           <>
             <input
               type="text"
               value={confirmado}
               disabled
-              className="w-16 border-none bg-transparent text-right text-base font-bold text-ambar outline-none"
+              aria-label={`Quantidade confirmada de ${nome}`}
+              className="w-20 border-none bg-transparent text-right text-base font-bold text-ambar outline-none sm:w-16"
             />
             <button
               onClick={onEditar}
-              className="rounded-md border border-cinza-claro px-3 py-2.5 text-xs font-semibold text-cinza-medio hover:bg-off-white"
+              className="min-h-11 flex-1 rounded-md border border-cinza-claro px-3 py-2.5 text-xs font-semibold text-cinza-medio hover:bg-off-white sm:min-h-0 sm:flex-none"
             >
               Editar
             </button>
@@ -623,6 +634,7 @@ function ItemRow({
               type="text"
               inputMode="decimal"
               placeholder="0"
+              aria-label={`Quantidade de ${nome}`}
               value={valor}
               onChange={(e) => onChangeValor(e.target.value)}
               onKeyDown={(e) => {
@@ -631,11 +643,11 @@ function ItemRow({
                   onConfirmar();
                 }
               }}
-              className="w-16 rounded-md border border-cinza-claro px-2 py-2.5 text-right text-base font-bold text-cinza focus:border-ambar focus:outline-none"
+              className="w-20 rounded-md border border-cinza-claro px-2 py-2.5 text-right text-base font-bold text-cinza focus:border-ambar focus:outline-none sm:w-16"
             />
             <button
               onClick={onConfirmar}
-              className="rounded-md bg-ambar px-3 py-2.5 text-xs font-bold text-azul-noite hover:bg-[#b07720]"
+              className="min-h-11 flex-1 rounded-md bg-ambar px-3 py-2.5 text-xs font-bold text-azul-noite hover:bg-[#b07720] sm:min-h-0 sm:flex-none"
             >
               Confirmar
             </button>

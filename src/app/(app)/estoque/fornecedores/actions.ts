@@ -5,6 +5,14 @@ import type { Fornecedor } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  fornecedorNovoSchema,
+  fornecedorSchema,
+  fornecedoresSchema,
+  validarEntrada,
+} from "@/lib/validacao";
+import { exigirLimiteRequisicao } from "@/lib/rate-limit";
+import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 
 function revalidarTudo() {
   revalidatePath("/estoque/fornecedores");
@@ -28,7 +36,7 @@ async function criarFornecedor(
   const nomeNormalizado = dados.nomeFantasia.trim().toLowerCase();
   const duplicado = existentes.find((f) => f.nomeFantasia.trim().toLowerCase() === nomeNormalizado);
   if (duplicado) {
-    throw new Error(
+    throw new ErroPublico(
       `Já existe um fornecedor "${duplicado.nomeFantasia}" cadastrado (código ${duplicado.codigo}) - escolhe ele na lista em vez de criar de novo.`
     );
   }
@@ -51,24 +59,27 @@ export async function criarFornecedorAction(formData: FormData) {
   const acesso = await requireGestao();
 
   try {
+    await exigirLimiteRequisicao("salvar_fornecedores");
+    const dados = validarEntrada(fornecedorNovoSchema, {
+      razaoSocial: String(formData.get("razaoSocial") ?? ""),
+      nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
+      grupos: formData.getAll("grupos").map(String),
+      nomeVendedor: String(formData.get("nomeVendedor") ?? ""),
+      whatsapp: String(formData.get("whatsapp") ?? ""),
+      condicoesPagamento: String(formData.get("condicoesPagamento") ?? ""),
+      prazoBoleto: String(formData.get("prazoBoleto") ?? ""),
+      limiteCredito: formData.get("limiteCredito") ? Number(formData.get("limiteCredito")) : null,
+      pedidoMinimo: formData.get("pedidoMinimo") ? Number(formData.get("pedidoMinimo")) : null,
+      diasEntrega: String(formData.get("diasEntrega") ?? ""),
+      observacoes: String(formData.get("observacoes") ?? ""),
+    });
     await criarFornecedor(
-      {
-        razaoSocial: String(formData.get("razaoSocial") ?? ""),
-        nomeFantasia: String(formData.get("nomeFantasia") ?? ""),
-        grupos: formData.getAll("grupos").map(String),
-        nomeVendedor: String(formData.get("nomeVendedor") ?? ""),
-        whatsapp: String(formData.get("whatsapp") ?? ""),
-        condicoesPagamento: String(formData.get("condicoesPagamento") ?? ""),
-        prazoBoleto: String(formData.get("prazoBoleto") ?? ""),
-        limiteCredito: formData.get("limiteCredito") ? Number(formData.get("limiteCredito")) : null,
-        pedidoMinimo: formData.get("pedidoMinimo") ? Number(formData.get("pedidoMinimo")) : null,
-        diasEntrega: String(formData.get("diasEntrega") ?? ""),
-        observacoes: String(formData.get("observacoes") ?? ""),
-      },
+      dados,
       acesso
     );
   } catch (err) {
-    redirect(`/estoque/fornecedores/novo?erro=${encodeURIComponent((err as Error).message)}`);
+    const mensagem = mensagemErroPublica(err, "Nao foi possivel criar o fornecedor.");
+    redirect(`/estoque/fornecedores/novo?erro=${encodeURIComponent(mensagem)}`);
   }
   redirect("/estoque/fornecedores");
 }
@@ -85,25 +96,27 @@ export async function criarFornecedorRapidoAction(dados: {
 }): Promise<{ fornecedor: Fornecedor } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("salvar_fornecedores");
+    const entrada = validarEntrada(fornecedorNovoSchema, {
+      razaoSocial: "",
+      nomeFantasia: dados.nomeFantasia,
+      grupos: dados.grupos,
+      nomeVendedor: dados.nomeVendedor,
+      whatsapp: dados.whatsapp,
+      condicoesPagamento: "",
+      prazoBoleto: "",
+      limiteCredito: null,
+      pedidoMinimo: null,
+      diasEntrega: "",
+      observacoes: "",
+    });
     const fornecedor = await criarFornecedor(
-      {
-        razaoSocial: "",
-        nomeFantasia: dados.nomeFantasia,
-        grupos: dados.grupos,
-        nomeVendedor: dados.nomeVendedor,
-        whatsapp: dados.whatsapp,
-        condicoesPagamento: "",
-        prazoBoleto: "",
-        limiteCredito: null,
-        pedidoMinimo: null,
-        diasEntrega: "",
-        observacoes: "",
-      },
+      entrada,
       acesso
     );
     return { fornecedor };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel criar o fornecedor.") };
   }
 }
 
@@ -114,18 +127,20 @@ export async function salvarFornecedorAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertFornecedor(fornecedor, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("salvar_fornecedores");
+    const entrada = validarEntrada(fornecedorSchema, fornecedor);
+    await upsertFornecedor(entrada, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
       entidade: "fornecedor",
-      entidadeId: fornecedor.codigo,
-      dadosNovos: fornecedor,
+      entidadeId: entrada.codigo,
+      dadosNovos: entrada,
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o fornecedor.") };
   }
 }
 
@@ -138,9 +153,11 @@ export async function salvarFornecedoresAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertFornecedoresBatch(fornecedores, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("salvar_fornecedores");
+    const entradas = validarEntrada(fornecedoresSchema, fornecedores);
+    await upsertFornecedoresBatch(entradas, acesso.spreadsheetId);
     await registrarAuditoriaBatch(
-      fornecedores.map((fornecedor) => ({
+      entradas.map((fornecedor) => ({
         acesso,
         acao: "salvar",
         entidade: "fornecedor",
@@ -151,6 +168,6 @@ export async function salvarFornecedoresAction(
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel salvar os fornecedores.") };
   }
 }

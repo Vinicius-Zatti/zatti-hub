@@ -1,6 +1,10 @@
 "use server";
 
-import { getAcessoAtual, requireGestao, registrarAuditoria } from "@/lib/acesso";
+import {
+  requireConsolidadoVendas,
+  requireGestaoConsolidado,
+  registrarAuditoria,
+} from "@/lib/acesso";
 import {
   calcularTotais,
   criarConsolidado,
@@ -11,6 +15,9 @@ import {
   type TotaisConsolidado,
 } from "@/lib/consolidado-vendas";
 import { revalidatePath } from "next/cache";
+import { consolidadoSchema, idUuidSchema, validarEntrada } from "@/lib/validacao";
+import { exigirLimiteRequisicao } from "@/lib/rate-limit";
+import { mensagemErroPublica } from "@/lib/erros";
 
 export type EntradaForm = EntradaConsolidado & {
   data: string;
@@ -47,10 +54,12 @@ function extrairValores(input: EntradaForm): EntradaConsolidado {
  * aqui bloqueando a criação quando já existe lançamento pra data, não
  * proibindo o papel em si de cadastrar outros dias. */
 export async function criarConsolidadoAction(input: EntradaForm): Promise<ResultadoSalvar> {
-  const acesso = await getAcessoAtual();
+  const acesso = await requireConsolidadoVendas();
 
   try {
-    const existente = await getConsolidadoPorData(acesso.unidadeId, input.data);
+    await exigirLimiteRequisicao("consolidado_criar");
+    const entrada = validarEntrada(consolidadoSchema, input);
+    const existente = await getConsolidadoPorData(acesso.unidadeId, entrada.data);
     if (existente) {
       return {
         ok: false,
@@ -60,21 +69,21 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
       };
     }
 
-    const valores = extrairValores(input);
+    const valores = extrairValores(entrada);
     const totais = calcularTotais(valores);
-    if (totais.status === "divergente" && !input.confirmarDivergencia) {
+    if (totais.status === "divergente" && !entrada.confirmarDivergencia) {
       return { ok: false, tipo: "divergencia", totais };
     }
 
     const resultado = await criarConsolidado({
       unidadeId: acesso.unidadeId,
-      data: input.data,
+      data: entrada.data,
       valores,
       criadoPor: acesso.userId,
     });
     if (!resultado.ok) {
       // Corrida: alguém salvou a mesma data entre o check acima e o insert.
-      const concorrente = await getConsolidadoPorData(acesso.unidadeId, input.data);
+      const concorrente = await getConsolidadoPorData(acesso.unidadeId, entrada.data);
       return {
         ok: false,
         tipo: "ja_existe",
@@ -93,25 +102,32 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
     revalidarTudo();
     return { ok: true, id: resultado.consolidado.id };
   } catch (err) {
-    return { ok: false, tipo: "erro", mensagem: (err as Error).message };
+    return {
+      ok: false,
+      tipo: "erro",
+      mensagem: mensagemErroPublica(err, "Nao foi possivel salvar o consolidado."),
+    };
   }
 }
 
 /** Só Gestão/master edita lançamento já salvo. */
 export async function editarConsolidadoAction(id: string, input: EntradaForm): Promise<ResultadoSalvar> {
-  const acesso = await requireGestao();
+  const acesso = await requireGestaoConsolidado();
 
   try {
-    const valores = extrairValores(input);
+    await exigirLimiteRequisicao("consolidado_editar");
+    const idValidado = validarEntrada(idUuidSchema, id);
+    const entrada = validarEntrada(consolidadoSchema, input);
+    const valores = extrairValores(entrada);
     const totais = calcularTotais(valores);
-    if (totais.status === "divergente" && !input.confirmarDivergencia) {
+    if (totais.status === "divergente" && !entrada.confirmarDivergencia) {
       return { ok: false, tipo: "divergencia", totais };
     }
 
-    const antes = await getConsolidadoPorId(acesso.unidadeId, id);
+    const antes = await getConsolidadoPorId(acesso.unidadeId, idValidado);
     const atualizado = await editarConsolidado({
       unidadeId: acesso.unidadeId,
-      id,
+      id: idValidado,
       valores,
       atualizadoPor: acesso.userId,
     });
@@ -120,13 +136,17 @@ export async function editarConsolidadoAction(id: string, input: EntradaForm): P
       acesso,
       acao: "editar",
       entidade: "consolidado_venda",
-      entidadeId: id,
+      entidadeId: idValidado,
       dadosAntigos: antes,
       dadosNovos: atualizado,
     });
     revalidarTudo();
     return { ok: true, id: atualizado.id };
   } catch (err) {
-    return { ok: false, tipo: "erro", mensagem: (err as Error).message };
+    return {
+      ok: false,
+      tipo: "erro",
+      mensagem: mensagemErroPublica(err, "Nao foi possivel editar o consolidado."),
+    };
   }
 }

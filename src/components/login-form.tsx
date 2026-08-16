@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import {
+  CaptchaTurnstile,
+  turnstileHabilitado,
+} from "@/components/captcha-turnstile";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [estado, setEstado] = useState<"idle" | "entrando" | "erro">("idle");
   const [erro, setErro] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
@@ -16,21 +22,26 @@ export function LoginForm() {
     setErro("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: senha,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
 
     if (error) {
       setEstado("erro");
+      setCaptchaReset((valor) => valor + 1);
       setErro(
         error.message === "Invalid login credentials"
           ? "Email ou senha incorretos."
-          : error.message,
+          : "Nao foi possivel entrar. Confira os dados e tente novamente.",
       );
       return;
     }
 
     // Recarga completa (não router.push) pra garantir que o servidor já
     // enxerga o cookie de sessão novo na primeira renderização.
-    window.location.href = "/";
+    window.location.replace(new URL("/", window.location.origin).toString());
   }
 
   return (
@@ -57,10 +68,11 @@ export function LoginForm() {
           placeholder="••••••••"
         />
       </label>
+      <CaptchaTurnstile onTokenChange={setCaptchaToken} resetSignal={captchaReset} />
       {estado === "erro" && <p className="text-sm text-vermelho">{erro}</p>}
       <button
         type="submit"
-        disabled={estado === "entrando"}
+        disabled={estado === "entrando" || (turnstileHabilitado && !captchaToken)}
         className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo disabled:opacity-60"
       >
         {estado === "entrando" ? "Entrando..." : "Entrar"}

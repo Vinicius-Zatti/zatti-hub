@@ -6,6 +6,13 @@ import {
   type NovaContagemLinha,
 } from "@/lib/sheets/inventario";
 import { getAcessoAtual, registrarAuditoria } from "@/lib/acesso";
+import {
+  atualizarQuantidadeContagemSchema,
+  registrarContagemSchema,
+  validarEntrada,
+} from "@/lib/validacao";
+import { exigirLimiteRequisicao } from "@/lib/rate-limit";
+import { mensagemErroPublica } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
 
 const MESES = [
@@ -30,10 +37,12 @@ export async function registrarContagemAction(
   dataISO?: string
 ) {
   const acesso = await getAcessoAtual();
+  await exigirLimiteRequisicao("registrar_contagem");
+  const entrada = validarEntrada(registrarContagemSchema, { linhas, dataISO });
 
   let dia: Date;
-  if (dataISO) {
-    const [ano, mes, diaNum] = dataISO.split("-").map(Number);
+  if (entrada.dataISO) {
+    const [ano, mes, diaNum] = entrada.dataISO.split("-").map(Number);
     dia = new Date(ano, mes - 1, diaNum);
   } else {
     dia = new Date();
@@ -42,13 +51,13 @@ export async function registrarContagemAction(
   const dataFmt = dia.toLocaleDateString("pt-BR");
   const mesFmt = `${MESES[dia.getMonth()]} ${dia.getFullYear()}`;
 
-  await registrarContagem(dataFmt, mesFmt, linhas, acesso.spreadsheetId);
+  await registrarContagem(dataFmt, mesFmt, entrada.linhas, acesso.spreadsheetId);
   await registrarAuditoria({
     acesso,
     acao: "registrar",
     entidade: "contagem",
     entidadeId: dataFmt,
-    dadosNovos: linhas,
+    dadosNovos: entrada.linhas,
   });
 
   revalidatePath("/estoque/contagem");
@@ -66,17 +75,24 @@ export async function atualizarQuantidadeContagemAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await getAcessoAtual();
   try {
-    await atualizarQuantidadeInventario(data, sku, quantidade, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("corrigir_contagem");
+    const entrada = validarEntrada(atualizarQuantidadeContagemSchema, { data, sku, quantidade });
+    await atualizarQuantidadeInventario(
+      entrada.data,
+      entrada.sku,
+      entrada.quantidade,
+      acesso.spreadsheetId,
+    );
+    await registrarAuditoria({
+      acesso,
+      acao: "corrigir_quantidade",
+      entidade: "contagem_item",
+      entidadeId: `${entrada.data}:${entrada.sku}`,
+      dadosNovos: { quantidade: entrada.quantidade },
+    });
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel corrigir a contagem.") };
   }
-  await registrarAuditoria({
-    acesso,
-    acao: "corrigir_quantidade",
-    entidade: "contagem_item",
-    entidadeId: `${data}:${sku}`,
-    dadosNovos: { quantidade },
-  });
   revalidatePath("/estoque/contagem/visualizacao");
   revalidatePath("/estoque/pedidos");
   return { ok: true };

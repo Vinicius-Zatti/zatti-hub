@@ -6,6 +6,15 @@ import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  fornecedor1Schema,
+  nomeProdutoSchema,
+  produtoSchema,
+  produtosSchema,
+  validarEntrada,
+} from "@/lib/validacao";
+import { exigirLimiteRequisicao } from "@/lib/rate-limit";
+import { mensagemErroPublica } from "@/lib/erros";
 
 function revalidarTudo() {
   revalidatePath("/estoque/produtos");
@@ -19,16 +28,19 @@ export async function sugerirSkuAction(
 ): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    return await sugerirSku(nome, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("sugerir_sku");
+    const nomeValidado = validarEntrada(nomeProdutoSchema, nome);
+    return await sugerirSku(nomeValidado, acesso.spreadsheetId);
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel sugerir o SKU.") };
   }
 }
 
 export async function criarProdutoAction(formData: FormData) {
   const acesso = await requireGestao();
+  await exigirLimiteRequisicao("salvar_produtos");
 
-  const produto: Produto = {
+  const produto = validarEntrada(produtoSchema, {
     sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
     posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
     grupo: String(formData.get("grupo") ?? ""),
@@ -49,7 +61,7 @@ export async function criarProdutoAction(formData: FormData) {
     fornecedor4: "",
     observacoes: String(formData.get("observacoes") ?? ""),
     ativo: true,
-  };
+  });
 
   await upsertProduto(produto, acesso.spreadsheetId);
   await registrarAuditoria({
@@ -69,18 +81,20 @@ export async function salvarProdutoAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertProduto(produto, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("salvar_produtos");
+    const entrada = validarEntrada(produtoSchema, produto);
+    await upsertProduto(entrada, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
       entidade: "produto",
-      entidadeId: produto.sku,
-      dadosNovos: produto,
+      entidadeId: entrada.sku,
+      dadosNovos: entrada,
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
   }
 }
 
@@ -95,24 +109,26 @@ export async function definirFornecedor1Action(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    await exigirLimiteRequisicao("salvar_produtos");
+    const entrada = validarEntrada(fornecedor1Schema, { sku, fornecedor1 });
     const produtos = await listProdutos(acesso.spreadsheetId);
-    const produto = produtos.find((p) => p.sku === sku);
+    const produto = produtos.find((p) => p.sku === entrada.sku);
     if (!produto) return { erro: "Produto não encontrado - a lista pode ter mudado, recarrega a página." };
 
-    const atualizado: Produto = { ...produto, fornecedor1 };
+    const atualizado: Produto = { ...produto, fornecedor1: entrada.fornecedor1 };
     await upsertProduto(atualizado, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "definir_fornecedor_via_cotacao",
       entidade: "produto",
-      entidadeId: sku,
+      entidadeId: entrada.sku,
       dadosAntigos: { fornecedor1: produto.fornecedor1 },
-      dadosNovos: { fornecedor1 },
+      dadosNovos: { fornecedor1: entrada.fornecedor1 },
     });
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel definir o fornecedor.") };
   }
 }
 
@@ -127,9 +143,11 @@ export async function salvarProdutosAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
-    await upsertProdutosBatch(produtos, acesso.spreadsheetId);
+    await exigirLimiteRequisicao("salvar_produtos");
+    const entradas = validarEntrada(produtosSchema, produtos);
+    await upsertProdutosBatch(entradas, acesso.spreadsheetId);
     await registrarAuditoriaBatch(
-      produtos.map((produto) => ({
+      entradas.map((produto) => ({
         acesso,
         acao: "salvar",
         entidade: "produto",
@@ -140,6 +158,6 @@ export async function salvarProdutosAction(
     revalidarTudo();
     return { ok: true };
   } catch (err) {
-    return { erro: (err as Error).message };
+    return { erro: mensagemErroPublica(err, "Nao foi possivel salvar os produtos.") };
   }
 }
