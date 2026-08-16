@@ -321,7 +321,7 @@ const MENSAGENS_PUBLICAS_RPC = new Set([
  * sempre resolvido no servidor via `getAcessoAtual()`, nunca aceito do
  * cliente. Delega pra `salvar_ficha_tecnica` no Postgres, que grava ficha +
  * componentes + etapas + versão numa única transação (ver migração
- * 20260811_z_fichas_tecnicas.sql) - RLS de cada tabela continua sendo a
+ * 20260811100000_fichas_tecnicas.sql) - RLS de cada tabela continua sendo a
  * barreira que vale de verdade mesmo dentro da função. */
 export async function salvarFichaTecnica(params: {
   unidadeId: string;

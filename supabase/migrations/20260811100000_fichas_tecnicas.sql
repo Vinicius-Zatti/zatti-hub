@@ -1,4 +1,4 @@
--- Fichas Técnicas: executar depois de 20260811_seguranca_rls.sql.
+-- Fichas Técnicas: executar depois de 20260811090000_seguranca_rls.sql.
 -- O módulo nasce desligado e deve ser habilitado primeiro apenas na Zatti Teste.
 begin;
 
