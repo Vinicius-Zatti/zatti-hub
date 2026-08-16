@@ -49,3 +49,7 @@ next-env.d.ts
 
 # Template vazio e seguro para novas instalacoes; segredos reais continuam ignorados.
 !.env.local.example
+
+# Supabase CLI - estado/runtime local (Docker), nunca versionar
+supabase/.temp
+supabase/.branches
