@@ -157,3 +157,68 @@ export type ConsolidadoVenda = {
   atualizadoPorNome: string | null;
   atualizadoEm: string;
 };
+
+/** Fichas Técnicas (piloto exclusivo Zatti Teste, flag por unidade). Camada
+ * é o prefixo do SKU (PRE = pré-preparo interno, VEN = item vendável) - é
+ * padrão fixo e não pode ser derivado da categoria, que é só agrupamento
+ * visual (ver AGENTS.md). */
+export type CamadaFicha = "PRE" | "VEN";
+
+export type StatusFicha = "rascunho" | "ativa" | "inativa";
+
+export type UnidadeRendimentoFicha = "KG" | "LT" | "UN";
+
+export type CategoriaFicha = {
+  id: string;
+  camada: CamadaFicha;
+  codigo: string;
+  nome: string;
+  ativo: boolean;
+};
+
+/** Insumo de uma ficha: ou um produto do Estoque (`produtoSku`) ou outra
+ * ficha técnica usada como sub-receita (`fichaComponenteId`) - nunca os
+ * dois ao mesmo tempo. `nomeExibicao` já vem resolvido do servidor. */
+export type ComponenteFicha = {
+  id: string | null;
+  tipo: "produto" | "ficha";
+  produtoSku: string | null;
+  fichaComponenteId: string | null;
+  nomeExibicao: string;
+  unidadeUso: string;
+  quantidade: number;
+  ordem: number;
+  observacoes: string;
+};
+
+export type EtapaFicha = {
+  ordem: number;
+  descricao: string;
+};
+
+export type FichaTecnicaResumo = {
+  id: string;
+  sku: string;
+  camada: CamadaFicha;
+  categoriaId: string;
+  categoriaNome: string;
+  nome: string;
+  rendimentoQuantidade: number;
+  rendimentoUnidade: UnidadeRendimentoFicha;
+  precoVenda: number | null;
+  status: StatusFicha;
+  atualizadoEm: string;
+};
+
+export type FichaTecnica = FichaTecnicaResumo & {
+  tempoPreparoMinutos: number | null;
+  fotoPath: string | null;
+  observacoesOperacionais: string;
+  observacoesGerenciais: string;
+  versao: number;
+  componentes: ComponenteFicha[];
+  etapas: EtapaFicha[];
+  criadoPorNome: string;
+  criadoEm: string;
+  atualizadoPorNome: string | null;
+};

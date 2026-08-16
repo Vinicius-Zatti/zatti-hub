@@ -46,7 +46,9 @@ begin
       ('recebimento', 60, 600),
       ('consolidado_criar', 30, 600),
       ('consolidado_editar', 60, 600),
-      ('trocar_organizacao', 30, 600)
+      ('trocar_organizacao', 30, 600),
+      ('ficha_salvar', 60, 600),
+      ('categoria_ficha_criar', 30, 600)
   ) as configuracao(chave, limite, janela_segundos)
   where configuracao.chave = p_chave;
 

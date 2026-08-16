@@ -11,7 +11,9 @@ export type ChaveLimiteRequisicao =
   | "recebimento"
   | "consolidado_criar"
   | "consolidado_editar"
-  | "trocar_organizacao";
+  | "trocar_organizacao"
+  | "ficha_salvar"
+  | "categoria_ficha_criar";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do
  * banco estiver indisponivel, a mutacao nao continua sem protecao. */

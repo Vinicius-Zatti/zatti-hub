@@ -200,6 +200,76 @@ export const fornecedor1Schema = z
   .object({ sku: identificador, fornecedor1: textoObrigatorio(160) })
   .strict();
 
+const numeroInteiroNaoNegativo = z.number().int().min(0).max(LIMITE_QUANTIDADE);
+const quantidadePositiva = z.number().finite().min(0.0001).max(LIMITE_QUANTIDADE);
+const unidadeUsoSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .min(1)
+  .max(20)
+  .regex(/^[A-Z0-9]+$/, "Use letras maiusculas e numeros, sem espaco");
+
+export const camadaFichaSchema = z.enum(["PRE", "VEN"]);
+export const statusFichaSchema = z.enum(["rascunho", "ativa", "inativa"]);
+export const rendimentoUnidadeFichaSchema = z.enum(["KG", "LT", "UN"]);
+
+export const categoriaFichaEntradaSchema = z
+  .object({
+    camada: camadaFichaSchema,
+    codigo: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use 3 letras, ex: BUR"),
+    nome: textoObrigatorio(80),
+  })
+  .strict();
+
+const componenteFichaBase = {
+  quantidade: quantidadePositiva,
+  unidadeUso: unidadeUsoSchema,
+  ordem: numeroInteiroNaoNegativo,
+  observacoes: texto(500),
+};
+
+/** Ou aponta pra um produto do Estoque ou pra outra ficha técnica usada como
+ * sub-receita - nunca os dois, mesma regra do check constraint em
+ * `ficha_componentes` na migração. */
+export const componenteFichaEntradaSchema = z.discriminatedUnion("tipo", [
+  z
+    .object({ tipo: z.literal("produto"), produtoSku: identificador, fichaComponenteId: z.null(), ...componenteFichaBase })
+    .strict(),
+  z
+    .object({ tipo: z.literal("ficha"), produtoSku: z.null(), fichaComponenteId: idUuidSchema, ...componenteFichaBase })
+    .strict(),
+]);
+
+export const etapaFichaEntradaSchema = z
+  .object({
+    ordem: numeroInteiroNaoNegativo,
+    descricao: textoObrigatorio(2_000),
+  })
+  .strict();
+
+export const fichaTecnicaEntradaSchema = z
+  .object({
+    categoriaId: idUuidSchema,
+    camada: camadaFichaSchema,
+    nome: textoObrigatorio(160),
+    rendimentoQuantidade: quantidadePositiva,
+    rendimentoUnidade: rendimentoUnidadeFichaSchema,
+    precoVenda: dinheiroOuNull,
+    tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
+    fotoPath: texto(500).nullable(),
+    observacoesOperacionais: texto(2_000),
+    observacoesGerenciais: texto(2_000),
+    status: statusFichaSchema,
+    componentes: z.array(componenteFichaEntradaSchema).max(200),
+    etapas: z.array(etapaFichaEntradaSchema).max(200),
+  })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

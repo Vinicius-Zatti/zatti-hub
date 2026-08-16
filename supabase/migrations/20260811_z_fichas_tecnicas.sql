@@ -127,6 +127,15 @@ create table if not exists public.ficha_versoes (
     references public.fichas_tecnicas(unidade_id, id) on delete cascade
 );
 
+-- Contador atômico por unidade+camada pra gerar os caracteres 4-6 do SKU
+-- (PRE/VEN + sequencial de 6 dígitos), independente da categoria escolhida.
+create table if not exists public.ficha_sku_contador (
+  unidade_id text not null references public.unidades(id),
+  camada text not null check (camada in ('PRE', 'VEN')),
+  proximo integer not null default 1 check (proximo > 0),
+  primary key (unidade_id, camada)
+);
+
 create index if not exists categorias_ficha_unidade_idx
   on public.categorias_ficha (unidade_id, camada, ativo);
 create index if not exists fichas_tecnicas_unidade_idx
@@ -167,6 +176,7 @@ alter table public.produto_conversoes enable row level security;
 alter table public.ficha_componentes enable row level security;
 alter table public.ficha_etapas enable row level security;
 alter table public.ficha_versoes enable row level security;
+alter table public.ficha_sku_contador enable row level security;
 
 drop policy if exists "categorias_ficha_select" on public.categorias_ficha;
 drop policy if exists "categorias_ficha_insert_gestao" on public.categorias_ficha;
@@ -245,6 +255,12 @@ create policy "ficha_versoes_insert_gestao" on public.ficha_versoes
     and criado_por = auth.uid()
   );
 
+drop policy if exists "ficha_sku_contador_gestao" on public.ficha_sku_contador;
+create policy "ficha_sku_contador_gestao" on public.ficha_sku_contador
+  for all to authenticated
+  using (public.usuario_pode_usar_fichas(unidade_id, array['gestao']))
+  with check (public.usuario_pode_usar_fichas(unidade_id, array['gestao']));
+
 create or replace function public.proteger_categoria_ficha()
 returns trigger
 language plpgsql
@@ -280,15 +296,17 @@ begin
   new.sku := upper(trim(new.sku));
   new.nome := trim(new.nome);
 
+  -- Categoria é só metadado/agrupamento: não determina os caracteres 4-6
+  -- do SKU (isso é papel do contador sequencial de proximo_sku_ficha,
+  -- pra não contradizer o padrão oficial PRE/VEN).
   select * into v_categoria
   from public.categorias_ficha c
   where c.id = new.categoria_id;
 
   if not found
      or v_categoria.unidade_id <> new.unidade_id
-     or v_categoria.camada <> new.camada
-     or v_categoria.codigo <> substring(new.sku from 4 for 3) then
-    raise exception 'Categoria, camada e SKU nao correspondem';
+     or v_categoria.camada <> new.camada then
+    raise exception 'Categoria e camada nao correspondem a ficha';
   end if;
 
   if exists (
@@ -306,6 +324,7 @@ begin
   else
     if new.id is distinct from old.id
        or new.unidade_id is distinct from old.unidade_id
+       or new.sku is distinct from old.sku
        or new.criado_por is distinct from old.criado_por
        or new.criado_em is distinct from old.criado_em
        or new.versao < old.versao then
@@ -413,6 +432,167 @@ drop trigger if exists proteger_ficha_componente on public.ficha_componentes;
 create trigger proteger_ficha_componente
   before insert or update on public.ficha_componentes
   for each row execute function public.proteger_ficha_componente();
+
+-- Gera o SKU (camada + sequencial de 6 dígitos, sem relação com a
+-- categoria) via contador atômico por unidade+camada. security invoker:
+-- quem chama precisa passar pela RLS de ficha_sku_contador (só Gestão).
+create or replace function public.gerar_sku_ficha(
+  p_unidade_id text,
+  p_camada text
+)
+returns text
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_proximo integer;
+begin
+  insert into public.ficha_sku_contador (unidade_id, camada, proximo)
+  values (p_unidade_id, p_camada, 2)
+  on conflict (unidade_id, camada)
+  do update set proximo = public.ficha_sku_contador.proximo + 1
+  returning proximo - 1 into v_proximo;
+
+  return p_camada || lpad(v_proximo::text, 6, '0');
+end;
+$$;
+
+revoke all on function public.gerar_sku_ficha(text, text) from public, anon;
+grant execute on function public.gerar_sku_ficha(text, text) to authenticated;
+
+-- Operação transacional única pra salvar ficha + componentes + etapas +
+-- versão. security invoker: roda com o papel de quem chamou, então toda
+-- gravação continua sujeita às policies de RLS de cada tabela (a barreira
+-- que vale de verdade) — o Server Action que chama isso já resolve
+-- p_unidade_id no servidor via getAcessoAtual()/requireGestao() e nunca
+-- aceita esse id vindo do cliente.
+create or replace function public.salvar_ficha_tecnica(
+  p_unidade_id text,
+  p_ficha_id uuid,
+  p_categoria_id uuid,
+  p_camada text,
+  p_nome text,
+  p_rendimento_quantidade numeric,
+  p_rendimento_unidade text,
+  p_preco_venda numeric,
+  p_tempo_preparo_minutos integer,
+  p_foto_path text,
+  p_observacoes_operacionais text,
+  p_observacoes_gerenciais text,
+  p_status text,
+  p_componentes jsonb,
+  p_etapas jsonb
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+  v_versao_nova integer;
+  v_ficha public.fichas_tecnicas%rowtype;
+  v_item jsonb;
+begin
+  if p_ficha_id is null then
+    v_versao_nova := 1;
+
+    insert into public.fichas_tecnicas (
+      unidade_id, categoria_id, sku, camada, nome,
+      rendimento_quantidade, rendimento_unidade, preco_venda,
+      tempo_preparo_minutos, foto_path,
+      observacoes_operacionais, observacoes_gerenciais, status, versao,
+      criado_por, atualizado_por
+    ) values (
+      p_unidade_id, p_categoria_id,
+      public.gerar_sku_ficha(p_unidade_id, p_camada), p_camada, p_nome,
+      p_rendimento_quantidade, p_rendimento_unidade, p_preco_venda,
+      p_tempo_preparo_minutos, p_foto_path,
+      coalesce(p_observacoes_operacionais, ''), coalesce(p_observacoes_gerenciais, ''),
+      p_status, v_versao_nova,
+      auth.uid(), auth.uid()
+    )
+    returning * into v_ficha;
+
+    v_id := v_ficha.id;
+  else
+    select versao + 1 into v_versao_nova
+    from public.fichas_tecnicas
+    where id = p_ficha_id and unidade_id = p_unidade_id;
+
+    if v_versao_nova is null then
+      raise exception 'Ficha tecnica nao encontrada';
+    end if;
+
+    update public.fichas_tecnicas set
+      categoria_id = p_categoria_id,
+      nome = p_nome,
+      rendimento_quantidade = p_rendimento_quantidade,
+      rendimento_unidade = p_rendimento_unidade,
+      preco_venda = p_preco_venda,
+      tempo_preparo_minutos = p_tempo_preparo_minutos,
+      foto_path = p_foto_path,
+      observacoes_operacionais = coalesce(p_observacoes_operacionais, ''),
+      observacoes_gerenciais = coalesce(p_observacoes_gerenciais, ''),
+      status = p_status,
+      versao = v_versao_nova
+    where id = p_ficha_id and unidade_id = p_unidade_id
+    returning * into v_ficha;
+
+    if not found then
+      raise exception 'Sem permissao para editar esta ficha tecnica';
+    end if;
+
+    v_id := v_ficha.id;
+  end if;
+
+  delete from public.ficha_componentes where ficha_id = v_id and unidade_id = p_unidade_id;
+  for v_item in select * from jsonb_array_elements(coalesce(p_componentes, '[]'::jsonb)) loop
+    insert into public.ficha_componentes (
+      unidade_id, ficha_id, produto_sku, ficha_componente_id,
+      quantidade, unidade_uso, ordem, observacoes
+    ) values (
+      p_unidade_id,
+      v_id,
+      nullif(v_item->>'produto_sku', ''),
+      nullif(v_item->>'ficha_componente_id', '')::uuid,
+      (v_item->>'quantidade')::numeric,
+      v_item->>'unidade_uso',
+      coalesce((v_item->>'ordem')::integer, 0),
+      coalesce(v_item->>'observacoes', '')
+    );
+  end loop;
+
+  delete from public.ficha_etapas where ficha_id = v_id and unidade_id = p_unidade_id;
+  for v_item in select * from jsonb_array_elements(coalesce(p_etapas, '[]'::jsonb)) loop
+    insert into public.ficha_etapas (unidade_id, ficha_id, ordem, descricao)
+    values (p_unidade_id, v_id, (v_item->>'ordem')::integer, v_item->>'descricao');
+  end loop;
+
+  insert into public.ficha_versoes (unidade_id, ficha_id, versao, snapshot, criado_por)
+  values (
+    p_unidade_id,
+    v_id,
+    v_versao_nova,
+    jsonb_build_object(
+      'ficha', to_jsonb(v_ficha),
+      'componentes', coalesce(p_componentes, '[]'::jsonb),
+      'etapas', coalesce(p_etapas, '[]'::jsonb)
+    ),
+    auth.uid()
+  );
+
+  return jsonb_build_object('id', v_id, 'sku', v_ficha.sku, 'versao', v_versao_nova);
+end;
+$$;
+
+revoke all on function public.salvar_ficha_tecnica(
+  text, uuid, uuid, text, text, numeric, text, numeric, integer, text, text, text, text, jsonb, jsonb
+) from public, anon;
+grant execute on function public.salvar_ficha_tecnica(
+  text, uuid, uuid, text, text, numeric, text, numeric, integer, text, text, text, text, jsonb, jsonb
+) to authenticated;
 
 insert into public.categorias_ficha (unidade_id, camada, codigo, nome)
 select u.id, padrao.camada, padrao.codigo, padrao.nome

@@ -26,6 +26,10 @@ export type AcessoAtual = {
    * configurável por cliente, editado direto no Supabase (sem tela de
    * admin), mesma convenção de `spreadsheet_id`/`ativo`. */
   consolidadoVendasHabilitado: boolean;
+  /** Liga o menu Fichas Técnicas pra essa unidade - piloto exclusivo,
+  * mesma convenção de `consolidado_vendas_habilitado` (editado direto no
+  * Supabase, sem tela de admin). */
+  fichasTecnicasHabilitado: boolean;
   role: Role;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
@@ -49,6 +53,7 @@ type UnidadeRow = {
   spreadsheet_id: string | null;
   fonte_dados_estoque: FonteDadosEstoque;
   consolidado_vendas_habilitado: boolean;
+  fichas_tecnicas_habilitado: boolean;
 };
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
@@ -146,13 +151,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -176,6 +181,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     spreadsheetId: unidade.spreadsheet_id,
     fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
+    fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
     role,
     organizacoesDisponiveis,
   };
@@ -205,6 +211,25 @@ export async function requireConsolidadoVendas(): Promise<AcessoAtual> {
 export async function requireGestaoConsolidado(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Barreira de autorizacao do modulo Fichas Tecnicas (piloto exclusivo). A
+ * flag no layout controla a navegacao; esta funcao protege tambem Server
+ * Actions chamadas diretamente. A mesma regra e repetida em
+ * `usuario_pode_usar_fichas` no banco como ultima barreira. */
+export async function requireFichasTecnicas(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Escrita em Fichas Tecnicas exige simultaneamente modulo habilitado e
+ * papel de Gestao (master continua com os mesmos privilegios
+ * administrativos) - consulta e liberada pra todos os papeis. */
+export async function requireGestaoFichasTecnicas(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
   return acesso;
 }
 
