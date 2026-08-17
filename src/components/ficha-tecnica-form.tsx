@@ -61,11 +61,18 @@ export function FichaTecnicaForm({
   categorias: categoriasIniciais,
   produtos,
   fichasDisponiveis,
+  onSalvo,
+  onCancelar,
 }: {
   existente?: FichaTecnica;
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
+  /** Quando informado, o form vira "in-place" (usado dentro da própria tela
+   * de detalhe) - em vez de navegar pra `/fichas-tecnicas/[id]`, avisa o
+   * componente pai que salvou, pra ele voltar sozinho pro modo de leitura. */
+  onSalvo?: (id: string) => void;
+  onCancelar?: () => void;
 }) {
   const router = useRouter();
   const { ativar, desativar } = useGuardaEdicao();
@@ -214,12 +221,21 @@ export function FichaTecnicaForm({
       const resultado = await salvarFichaTecnicaAction(existente?.id ?? null, montarInput());
       if (resultado.ok) {
         desativar();
-        router.push(`/fichas-tecnicas/${resultado.id}`);
-        router.refresh();
+        if (onSalvo) {
+          onSalvo(resultado.id);
+        } else {
+          router.push(`/fichas-tecnicas/${resultado.id}`);
+          router.refresh();
+        }
         return;
       }
       setErro(resultado.mensagem);
     });
+  }
+
+  function cancelar() {
+    desativar();
+    onCancelar?.();
   }
 
   return (
@@ -507,13 +523,25 @@ export function FichaTecnicaForm({
 
         {erro && <p className="text-sm text-vermelho">{erro}</p>}
 
-        <button
-          type="submit"
-          disabled={isPending}
-          className="w-full rounded-lg bg-ambar px-4 py-3.5 text-sm font-bold text-azul-noite disabled:opacity-50"
-        >
-          {isPending ? "Salvando..." : "Salvar ficha técnica"}
-        </button>
+        <div className="flex gap-2">
+          {onCancelar && (
+            <button
+              type="button"
+              onClick={cancelar}
+              disabled={isPending}
+              className="rounded-lg border border-cinza-claro px-4 py-3.5 text-sm font-semibold text-cinza-medio disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={isPending}
+            className="flex-1 rounded-lg bg-ambar px-4 py-3.5 text-sm font-bold text-azul-noite disabled:opacity-50"
+          >
+            {isPending ? "Salvando..." : "Salvar ficha técnica"}
+          </button>
+        </div>
       </form>
     </div>
   );
