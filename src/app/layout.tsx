@@ -1,17 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Cormorant_Garamond } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const dmSans = DM_Sans({
+// Fontes auto-hospedadas (não `next/font/google`) de propósito: build
+// deixa de depender de rede pra buscar fonte - uma falha passageira nesse
+// fetch foi o que travou o deploy automático de produção em 16/08. Arquivos
+// são o mesmo variable font que o Google serve (cobre os pesos usados).
+const dmSans = localFont({
+  src: "../fonts/dm-sans.woff2",
   variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: "400 700",
+  display: "swap",
 });
 
-const cormorant = Cormorant_Garamond({
+const cormorant = localFont({
+  src: "../fonts/cormorant-garamond.woff2",
   variable: "--font-cormorant",
-  subsets: ["latin"],
-  weight: ["600", "700"],
+  weight: "600 700",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
