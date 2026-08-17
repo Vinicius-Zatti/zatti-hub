@@ -28,8 +28,14 @@ export default async function EditarFichaTecnicaPage({ params }: { params: Promi
     <FichaTecnicaForm
       existente={ficha}
       categorias={categorias}
-      produtos={produtos.map((p) => ({ sku: p.sku, nome: p.nome, unidadeBase: p.unidadeBase }))}
-      fichasDisponiveis={fichas.map((f) => ({ id: f.id, nome: f.nome, sku: f.sku }))}
+      produtos={produtos.map((p) => ({ sku: p.sku, nome: p.nome, unidadeBase: p.unidadeBase, custoUnitario: p.precoUnitario }))}
+      fichasDisponiveis={fichas.map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        sku: f.sku,
+        rendimentoUnidade: f.rendimentoUnidade,
+        custoPorUnidade: f.custo.custoPorUnidade,
+      }))}
     />
   );
 }

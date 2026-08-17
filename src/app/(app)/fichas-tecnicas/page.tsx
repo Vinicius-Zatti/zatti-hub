@@ -16,7 +16,7 @@ export default async function FichasTecnicasPage() {
           Piloto exclusivo - receitas de pré-preparo (uso interno) e itens vendáveis.
         </p>
       </div>
-      <ListaFichasTecnicas fichas={fichas} />
+      <ListaFichasTecnicas fichas={fichas} podeGerir={acesso.role !== "operacional"} />
     </div>
   );
 }

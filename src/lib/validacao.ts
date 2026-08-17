@@ -259,7 +259,6 @@ export const fichaTecnicaEntradaSchema = z
     nome: textoObrigatorio(160),
     rendimentoQuantidade: quantidadePositiva,
     rendimentoUnidade: rendimentoUnidadeFichaSchema,
-    precoVenda: dinheiroOuNull,
     tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
     fotoPath: texto(500).nullable(),
     observacoesOperacionais: texto(2_000),

@@ -55,6 +55,35 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
         </div>
       </div>
 
+      {podeGerir && (
+        <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Custo</div>
+          {ficha.custo.custoTotal === null ? (
+            <p className="text-sm text-cinza-medio">Sem componentes com preço cadastrado ainda.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-cinza-medio">Total da receita</span>
+                <span className="font-display text-lg font-bold text-azul-noite">
+                  {ficha.custo.custoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+              </div>
+              {ficha.custo.custoPorUnidade !== null && (
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm text-cinza-medio">Por {ficha.rendimentoUnidade}</span>
+                  <span className="font-semibold text-azul-noite">
+                    {ficha.custo.custoPorUnidade.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+              )}
+              {!ficha.custo.completo && (
+                <p className="mt-2 text-xs text-ambar">Custo parcial - algum componente ainda não tem preço no Estoque.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="rounded-lg border border-cinza-claro bg-branco p-4">
         <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
           Componentes ({ficha.componentes.length})
@@ -103,17 +132,10 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
         </div>
       )}
 
-      {podeGerir && (ficha.observacoesGerenciais || ficha.precoVenda !== null) && (
+      {podeGerir && ficha.observacoesGerenciais && (
         <div className="rounded-lg border border-ambar/60 bg-ambar/5 p-4">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ambar">Gerencial</div>
-          {ficha.precoVenda !== null && (
-            <p className="text-sm text-cinza">
-              Preço de venda: <span className="font-bold text-azul-noite">{ficha.precoVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-            </p>
-          )}
-          {ficha.observacoesGerenciais && (
-            <p className="mt-1 text-sm leading-relaxed text-cinza">{ficha.observacoesGerenciais}</p>
-          )}
+          <p className="text-sm leading-relaxed text-cinza">{ficha.observacoesGerenciais}</p>
         </div>
       )}
     </div>

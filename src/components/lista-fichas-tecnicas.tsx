@@ -17,7 +17,11 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
   inativa: "Inativa",
 };
 
-export function ListaFichasTecnicas({ fichas }: { fichas: FichaTecnicaResumo[] }) {
+function brl(n: number): string {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export function ListaFichasTecnicas({ fichas, podeGerir }: { fichas: FichaTecnicaResumo[]; podeGerir: boolean }) {
   const [camada, setCamada] = useState<CamadaFicha>("PRE");
   const daCamada = fichas.filter((f) => f.camada === camada);
   const grupos = agruparFichasPorCategoria(daCamada);
@@ -60,6 +64,12 @@ export function ListaFichasTecnicas({ fichas }: { fichas: FichaTecnicaResumo[] }
                   <div className="text-xs text-cinza-medio">
                     {ficha.sku} · Rende {ficha.rendimentoQuantidade} {ficha.rendimentoUnidade}
                   </div>
+                  {podeGerir && ficha.custo.custoPorUnidade !== null && (
+                    <div className="text-xs font-semibold text-azul-petroleo">
+                      {brl(ficha.custo.custoPorUnidade)}/{ficha.rendimentoUnidade}
+                      {!ficha.custo.completo && " (parcial)"}
+                    </div>
+                  )}
                 </div>
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_TONE[ficha.status]}`}>
                   {STATUS_LABEL[ficha.status]}

@@ -1,4 +1,4 @@
-import type { CamadaFicha, ComponenteFicha, EtapaFicha, FichaTecnicaResumo } from "@/lib/types";
+import type { CamadaFicha, ComponenteFicha, CustoFicha, EtapaFicha, FichaTecnicaResumo } from "@/lib/types";
 
 /** Funções puras (sem I/O) de propósito - usadas tanto no servidor quanto em
  * componente client, não podem puxar nada de `lib/banco/*` nem `lib/sheets/*`
@@ -44,4 +44,35 @@ export function reordenarComponentes(itens: ComponenteFicha[]): ComponenteFicha[
 
 export function reordenarEtapas(itens: EtapaFicha[]): EtapaFicha[] {
   return itens.map((item, indice) => ({ ...item, ordem: indice }));
+}
+
+/** Estimativa de custo ao vivo, enquanto a ficha ainda está sendo montada no
+ * formulário (antes de salvar) - mesma lógica de `calcularCustoFicha` no
+ * servidor, mas usando preços já resolvidos (produto direto, sub-receita já
+ * com custo por unidade calculado) em vez de consultar o banco de novo. */
+export function calcularCustoEstimado(
+  componentes: Pick<ComponenteFicha, "tipo" | "produtoSku" | "fichaComponenteId" | "quantidade">[],
+  custosPorProdutoSku: Map<string, number | null>,
+  custosPorFichaId: Map<string, number | null>,
+  rendimentoQuantidade: number,
+): CustoFicha {
+  if (componentes.length === 0) return { custoTotal: null, custoPorUnidade: null, completo: false };
+
+  let total = 0;
+  let completo = true;
+  for (const c of componentes) {
+    const custoUnitario =
+      c.tipo === "produto" ? (custosPorProdutoSku.get(c.produtoSku ?? "") ?? null) : (custosPorFichaId.get(c.fichaComponenteId ?? "") ?? null);
+    if (custoUnitario === null) {
+      completo = false;
+      continue;
+    }
+    total += custoUnitario * c.quantidade;
+  }
+
+  return {
+    custoTotal: total,
+    custoPorUnidade: rendimentoQuantidade > 0 ? total / rendimentoQuantidade : null,
+    completo,
+  };
 }

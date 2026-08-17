@@ -196,6 +196,18 @@ export type EtapaFicha = {
   descricao: string;
 };
 
+/** Custo calculado na hora da leitura (nunca guardado em coluna) - soma o
+ * custo de cada componente (preço do Cadastro pro produto, custo por
+ * unidade já calculado pra sub-receita) e divide pelo rendimento.
+ * `completo = false` quando algum componente não tem preço cadastrado -
+ * `custoTotal`/`custoPorUnidade` ainda mostram a soma parcial do que dá pra
+ * calcular, nunca escondem o problema. */
+export type CustoFicha = {
+  custoTotal: number | null;
+  custoPorUnidade: number | null;
+  completo: boolean;
+};
+
 export type FichaTecnicaResumo = {
   id: string;
   sku: string;
@@ -205,8 +217,8 @@ export type FichaTecnicaResumo = {
   nome: string;
   rendimentoQuantidade: number;
   rendimentoUnidade: UnidadeRendimentoFicha;
-  precoVenda: number | null;
   status: StatusFicha;
+  custo: CustoFicha;
   atualizadoEm: string;
 };
 

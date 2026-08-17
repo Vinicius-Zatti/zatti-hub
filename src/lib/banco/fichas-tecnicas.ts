@@ -4,6 +4,7 @@ import type {
   CamadaFicha,
   CategoriaFicha,
   ComponenteFicha,
+  CustoFicha,
   EtapaFicha,
   FichaTecnica,
   FichaTecnicaResumo,
@@ -126,7 +127,6 @@ type FichaRow = {
   nome: string;
   rendimento_quantidade: number;
   rendimento_unidade: UnidadeRendimentoFicha;
-  preco_venda: number | null;
   tempo_preparo_minutos: number | null;
   foto_path: string | null;
   observacoes_operacionais: string;
@@ -141,13 +141,12 @@ type FichaRow = {
 
 type FichaResumoRow = Pick<
   FichaRow,
-  "id" | "categoria_id" | "sku" | "camada" | "nome" | "rendimento_quantidade" | "rendimento_unidade" | "preco_venda" | "status" | "atualizado_em"
+  "id" | "categoria_id" | "sku" | "camada" | "nome" | "rendimento_quantidade" | "rendimento_unidade" | "status" | "atualizado_em"
 >;
 
-const RESUMO_COLUNAS =
-  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, status, atualizado_em";
+const RESUMO_COLUNAS = "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, status, atualizado_em";
 
-function resumoDaLinha(row: FichaResumoRow, categoriaNome: string): FichaTecnicaResumo {
+function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoFicha): FichaTecnicaResumo {
   return {
     id: row.id,
     sku: row.sku,
@@ -157,14 +156,15 @@ function resumoDaLinha(row: FichaResumoRow, categoriaNome: string): FichaTecnica
     nome: row.nome,
     rendimentoQuantidade: Number(row.rendimento_quantidade),
     rendimentoUnidade: row.rendimento_unidade,
-    precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
     status: row.status,
+    custo,
     atualizadoEm: row.atualizado_em,
   };
 }
 
 /** Listagem visível a todos os papéis (Operacional inclusive - é quem
- * consulta a ficha no celular durante o preparo). */
+ * consulta a ficha no celular durante o preparo). Custo é recalculado por
+ * ficha a cada leitura - volume do piloto não justifica cache/coluna. */
 export async function listarFichasTecnicas(
   unidadeId: string,
   filtro?: { camada?: CamadaFicha },
@@ -183,7 +183,93 @@ export async function listarFichasTecnicas(
     unidadeId,
     linhas.map((l) => l.categoria_id),
   );
-  return linhas.map((row) => resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria"));
+  return Promise.all(
+    linhas.map(async (row) =>
+      resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria", await calcularCustoFicha(unidadeId, row.id)),
+    ),
+  );
+}
+
+async function precosProdutosPorSku(
+  supabase: SupabaseClient,
+  unidadeId: string,
+  skus: string[],
+): Promise<Map<string, number | null>> {
+  const skusUnicos = Array.from(new Set(skus));
+  if (skusUnicos.length === 0) return new Map();
+  const { data } = await supabase
+    .from("produtos")
+    .select("sku, preco_unitario")
+    .eq("unidade_id", unidadeId)
+    .in("sku", skusUnicos);
+  const mapa = new Map<string, number | null>();
+  for (const p of (data as { sku: string; preco_unitario: number | null }[] | null) ?? []) {
+    mapa.set(p.sku, p.preco_unitario === null ? null : Number(p.preco_unitario));
+  }
+  return mapa;
+}
+
+const PROFUNDIDADE_MAXIMA_CUSTO = 20;
+
+/** Custo calculado na leitura, nunca guardado em coluna (preço do produto
+ * muda com o tempo, custo salvo ficaria velho). Soma o custo de cada
+ * componente - preço do Cadastro pro produto, custo por unidade já
+ * calculado pra sub-receita (recursivo) - e divide pelo rendimento.
+ * `completo=false` sempre que algum componente não tem preço cadastrado
+ * ainda, mesmo assim devolve a soma parcial do que dá pra calcular, nunca
+ * esconde o problema (mesmo princípio do "cadastro incompleto" em Produtos).
+ * Ciclo entre fichas é bloqueado no trigger de escrita - a profundidade
+ * máxima aqui é só uma rede de segurança a mais. */
+export async function calcularCustoFicha(unidadeId: string, fichaId: string, profundidade = 0): Promise<CustoFicha> {
+  const supabase = await createClient();
+  if (profundidade >= PROFUNDIDADE_MAXIMA_CUSTO) return { custoTotal: null, custoPorUnidade: null, completo: false };
+
+  const [{ data: fichaRow }, { data: componentesData }] = await Promise.all([
+    supabase.from("fichas_tecnicas").select("rendimento_quantidade").eq("unidade_id", unidadeId).eq("id", fichaId).maybeSingle(),
+    supabase
+      .from("ficha_componentes")
+      .select("produto_sku, ficha_componente_id, quantidade")
+      .eq("unidade_id", unidadeId)
+      .eq("ficha_id", fichaId),
+  ]);
+  if (!fichaRow) return { custoTotal: null, custoPorUnidade: null, completo: false };
+
+  const componentes =
+    (componentesData as { produto_sku: string | null; ficha_componente_id: string | null; quantidade: number }[] | null) ?? [];
+  if (componentes.length === 0) return { custoTotal: null, custoPorUnidade: null, completo: false };
+
+  const produtoSkus = componentes.map((c) => c.produto_sku).filter((sku): sku is string => sku !== null);
+  const fichaIds = Array.from(
+    new Set(componentes.map((c) => c.ficha_componente_id).filter((id): id is string => id !== null)),
+  );
+
+  const [precos, custosSubFichasLista] = await Promise.all([
+    precosProdutosPorSku(supabase, unidadeId, produtoSkus),
+    Promise.all(fichaIds.map(async (id) => [id, await calcularCustoFicha(unidadeId, id, profundidade + 1)] as const)),
+  ]);
+  const custosPorFichaId = new Map(custosSubFichasLista);
+
+  let total = 0;
+  let completo = true;
+  for (const c of componentes) {
+    let custoUnitario: number | null;
+    if (c.produto_sku) {
+      custoUnitario = precos.get(c.produto_sku) ?? null;
+      if (custoUnitario === null) completo = false;
+    } else {
+      const sub = custosPorFichaId.get(c.ficha_componente_id ?? "");
+      custoUnitario = sub?.custoPorUnidade ?? null;
+      if (custoUnitario === null || !sub?.completo) completo = false;
+    }
+    if (custoUnitario !== null) total += custoUnitario * Number(c.quantidade);
+  }
+
+  const rendimento = Number((fichaRow as { rendimento_quantidade: number }).rendimento_quantidade);
+  return {
+    custoTotal: total,
+    custoPorUnidade: rendimento > 0 ? total / rendimento : null,
+    completo,
+  };
 }
 
 type ComponenteRow = {
@@ -256,6 +342,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   }));
 
   const etapas: EtapaFicha[] = etapasRows.map((e) => ({ ordem: e.ordem, descricao: e.descricao }));
+  const custo = await calcularCustoFicha(unidadeId, id);
 
   return {
     id: row.id,
@@ -266,7 +353,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     nome: row.nome,
     rendimentoQuantidade: Number(row.rendimento_quantidade),
     rendimentoUnidade: row.rendimento_unidade,
-    precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
+    custo,
     tempoPreparoMinutos: row.tempo_preparo_minutos,
     fotoPath: row.foto_path,
     observacoesOperacionais: row.observacoes_operacionais,
@@ -300,7 +387,6 @@ export type EntradaFichaTecnica = {
   nome: string;
   rendimentoQuantidade: number;
   rendimentoUnidade: UnidadeRendimentoFicha;
-  precoVenda: number | null;
   tempoPreparoMinutos: number | null;
   fotoPath: string | null;
   observacoesOperacionais: string;
@@ -339,7 +425,9 @@ export async function salvarFichaTecnica(params: {
     p_nome: entrada.nome,
     p_rendimento_quantidade: entrada.rendimentoQuantidade,
     p_rendimento_unidade: entrada.rendimentoUnidade,
-    p_preco_venda: entrada.precoVenda,
+    // Preço de venda não é definido na Ficha Técnica (isso é de outra parte
+    // do sistema) - coluna fica sempre nula por aqui.
+    p_preco_venda: null,
     p_tempo_preparo_minutos: entrada.tempoPreparoMinutos,
     p_foto_path: entrada.fotoPath,
     p_observacoes_operacionais: entrada.observacoesOperacionais,

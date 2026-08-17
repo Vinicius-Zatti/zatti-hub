@@ -4,8 +4,8 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CampoNumero } from "@/components/campo-numero";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
-import { salvarFichaTecnicaAction } from "@/app/(app)/fichas-tecnicas/actions";
-import { CAMADA_LABEL, reordenarComponentes, reordenarEtapas } from "@/lib/fichas-tecnicas";
+import { criarCategoriaFichaAction, salvarFichaTecnicaAction } from "@/app/(app)/fichas-tecnicas/actions";
+import { CAMADA_LABEL, calcularCustoEstimado, reordenarComponentes, reordenarEtapas } from "@/lib/fichas-tecnicas";
 import type {
   CamadaFicha,
   CategoriaFicha,
@@ -25,8 +25,18 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
 
 const MENSAGEM_GUARDA = "Você tem uma ficha técnica não salva. Se sair agora, ela se perde.";
 
-export type OpcaoProduto = { sku: string; nome: string; unidadeBase: string };
-export type OpcaoFicha = { id: string; nome: string; sku: string };
+export type OpcaoProduto = { sku: string; nome: string; unidadeBase: string; custoUnitario: number | null };
+export type OpcaoFicha = {
+  id: string;
+  nome: string;
+  sku: string;
+  rendimentoUnidade: UnidadeRendimentoFicha;
+  custoPorUnidade: number | null;
+};
+
+function brl(n: number): string {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 function novoComponente(ordem: number): ComponenteFicha {
   return {
@@ -48,7 +58,7 @@ function novaEtapa(ordem: number): EtapaFicha {
 
 export function FichaTecnicaForm({
   existente,
-  categorias,
+  categorias: categoriasIniciais,
   produtos,
   fichasDisponiveis,
 }: {
@@ -63,6 +73,7 @@ export function FichaTecnicaForm({
   const [erro, setErro] = useState<string | null>(null);
 
   const [camada, setCamada] = useState<CamadaFicha>(existente?.camada ?? "PRE");
+  const [categorias, setCategorias] = useState<CategoriaFicha[]>(categoriasIniciais);
   const [categoriaId, setCategoriaId] = useState(existente?.categoriaId ?? "");
   const [nome, setNome] = useState(existente?.nome ?? "");
   const [rendimentoQuantidade, setRendimentoQuantidade] = useState<number | null>(
@@ -71,7 +82,6 @@ export function FichaTecnicaForm({
   const [rendimentoUnidade, setRendimentoUnidade] = useState<UnidadeRendimentoFicha>(
     existente?.rendimentoUnidade ?? "KG",
   );
-  const [precoVenda, setPrecoVenda] = useState<number | null>(existente?.precoVenda ?? null);
   const [tempoPreparoMinutos, setTempoPreparoMinutos] = useState<number | null>(
     existente?.tempoPreparoMinutos ?? null,
   );
@@ -81,8 +91,18 @@ export function FichaTecnicaForm({
   const [componentes, setComponentes] = useState<ComponenteFicha[]>(existente?.componentes ?? []);
   const [etapas, setEtapas] = useState<EtapaFicha[]>(existente?.etapas ?? []);
 
+  const [criandoCategoria, setCriandoCategoria] = useState(false);
+  const [codigoCategoria, setCodigoCategoria] = useState("");
+  const [nomeCategoria, setNomeCategoria] = useState("");
+  const [erroCategoria, setErroCategoria] = useState<string | null>(null);
+  const [salvandoCategoria, startTransitionCategoria] = useTransition();
+
   const categoriasFiltradas = categorias.filter((c) => c.camada === camada && c.ativo);
   const fichasParaEscolher = fichasDisponiveis.filter((f) => f.id !== existente?.id);
+
+  const custosPorProdutoSku = new Map(produtos.map((p) => [p.sku, p.custoUnitario]));
+  const custosPorFichaId = new Map(fichasParaEscolher.map((f) => [f.id, f.custoPorUnidade]));
+  const custoEstimado = calcularCustoEstimado(componentes, custosPorProdutoSku, custosPorFichaId, rendimentoQuantidade ?? 0);
 
   function editar<T>(setter: (v: T) => void, valor: T) {
     setter(valor);
@@ -94,6 +114,23 @@ export function FichaTecnicaForm({
     if (!categorias.some((c) => c.camada === valor && c.id === categoriaId)) {
       setCategoriaId("");
     }
+  }
+
+  function criarCategoriaInline(e: FormEvent) {
+    e.preventDefault();
+    setErroCategoria(null);
+    startTransitionCategoria(async () => {
+      const resultado = await criarCategoriaFichaAction({ camada, codigo: codigoCategoria, nome: nomeCategoria });
+      if (!resultado.ok) {
+        setErroCategoria(resultado.mensagem);
+        return;
+      }
+      setCategorias((atual) => [...atual, resultado.categoria]);
+      editar(setCategoriaId, resultado.categoria.id);
+      setCodigoCategoria("");
+      setNomeCategoria("");
+      setCriandoCategoria(false);
+    });
   }
 
   function atualizarComponente(indice: number, valor: ComponenteFicha) {
@@ -144,7 +181,6 @@ export function FichaTecnicaForm({
       nome,
       rendimentoQuantidade: rendimentoQuantidade ?? 0,
       rendimentoUnidade,
-      precoVenda,
       tempoPreparoMinutos,
       fotoPath: existente?.fotoPath ?? null,
       observacoesOperacionais: obsOperacionais,
@@ -206,29 +242,77 @@ export function FichaTecnicaForm({
               </select>
             </label>
 
-            <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-              Categoria
-              <select
-                required
-                value={categoriaId}
-                onChange={(e) => editar(setCategoriaId, e.target.value)}
-                className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-              >
-                <option value="" disabled>
-                  Selecione uma categoria
-                </option>
-                {categoriasFiltradas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+                Categoria
+                <select
+                  required
+                  value={categoriaId}
+                  onChange={(e) => editar(setCategoriaId, e.target.value)}
+                  className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+                >
+                  <option value="" disabled>
+                    Selecione uma categoria
                   </option>
-                ))}
-              </select>
-              {categoriasFiltradas.length === 0 && (
-                <span className="text-xs text-ambar">
-                  Nenhuma categoria cadastrada pra essa camada ainda - crie uma em Categorias.
-                </span>
+                  {categoriasFiltradas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!criandoCategoria ? (
+                <button
+                  type="button"
+                  onClick={() => setCriandoCategoria(true)}
+                  className="self-start text-xs font-semibold text-azul-noite underline"
+                >
+                  + Nova categoria
+                </button>
+              ) : (
+                <div className="mt-1 flex flex-col gap-2 rounded-md border border-cinza-claro bg-off-white p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={codigoCategoria}
+                      onChange={(e) => setCodigoCategoria(e.target.value.toUpperCase())}
+                      maxLength={3}
+                      placeholder="Código (3 letras)"
+                      className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm uppercase text-cinza"
+                    />
+                    <input
+                      value={nomeCategoria}
+                      onChange={(e) => setNomeCategoria(e.target.value)}
+                      placeholder="Nome"
+                      className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+                    />
+                  </div>
+                  {erroCategoria && <p className="text-xs text-vermelho">{erroCategoria}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={criarCategoriaInline}
+                      disabled={salvandoCategoria}
+                      className="rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco disabled:opacity-50"
+                    >
+                      {salvandoCategoria ? "Salvando..." : "Adicionar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCriandoCategoria(false);
+                        setErroCategoria(null);
+                      }}
+                      className="rounded-md border border-cinza-claro px-3 py-1.5 text-xs font-semibold text-cinza-medio"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
               )}
-            </label>
+              {categoriasFiltradas.length === 0 && !criandoCategoria && (
+                <span className="text-xs text-ambar">Nenhuma categoria cadastrada pra essa camada ainda.</span>
+              )}
+            </div>
 
             <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
               Nome da ficha
@@ -258,11 +342,11 @@ export function FichaTecnicaForm({
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Rendimento e custo</div>
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Rendimento</div>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-              Rendimento
-              <CampoNumero value={rendimentoQuantidade} onChange={(v) => editar(setRendimentoQuantidade, v)} />
+              Quantidade
+              <CampoNumero value={rendimentoQuantidade} onChange={(v) => editar(setRendimentoQuantidade, v)} decimais={3} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
               Unidade
@@ -276,11 +360,7 @@ export function FichaTecnicaForm({
                 <option value="UN">UN</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-              Preço de venda
-              <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
               Tempo de preparo (min)
               <CampoNumero
                 value={tempoPreparoMinutos}
@@ -321,6 +401,31 @@ export function FichaTecnicaForm({
               />
             ))}
           </div>
+        </div>
+
+        <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Custo estimado</div>
+          {custoEstimado.custoTotal === null ? (
+            <p className="text-sm text-cinza-medio">Adicione componentes com preço cadastrado pra ver o custo.</p>
+          ) : (
+            <>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm text-cinza-medio">Total da receita</span>
+                <span className="font-display text-lg font-bold text-azul-noite">{brl(custoEstimado.custoTotal)}</span>
+              </div>
+              {custoEstimado.custoPorUnidade !== null && (
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm text-cinza-medio">Custo por {rendimentoUnidade}</span>
+                  <span className="font-semibold text-azul-noite">{brl(custoEstimado.custoPorUnidade)}</span>
+                </div>
+              )}
+              {!custoEstimado.completo && (
+                <p className="mt-2 text-xs text-ambar">
+                  Custo parcial - algum componente ainda não tem preço cadastrado no Estoque.
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
@@ -386,7 +491,7 @@ export function FichaTecnicaForm({
             />
           </label>
           <label className="mt-3 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-            Gerenciais (custo, fornecedor alternativo etc.)
+            Gerenciais (fornecedor alternativo, observação de custo etc.)
             <textarea
               value={obsGerenciais}
               onChange={(e) => editar(setObsGerenciais, e.target.value)}
@@ -442,6 +547,7 @@ function LinhaComponente({
               tipo: e.target.value as "produto" | "ficha",
               produtoSku: "",
               fichaComponenteId: null,
+              unidadeUso: "",
             })
           }
           className="rounded-md border border-cinza-claro px-2 py-1 text-xs font-semibold text-cinza"
@@ -466,7 +572,11 @@ function LinhaComponente({
         <select
           required
           value={componente.produtoSku ?? ""}
-          onChange={(e) => onChange({ ...componente, produtoSku: e.target.value })}
+          onChange={(e) => {
+            const sku = e.target.value;
+            const produto = produtos.find((p) => p.sku === sku);
+            onChange({ ...componente, produtoSku: sku, unidadeUso: produto?.unidadeBase ?? "" });
+          }}
           className="mt-2 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
         >
           <option value="" disabled>
@@ -482,7 +592,11 @@ function LinhaComponente({
         <select
           required
           value={componente.fichaComponenteId ?? ""}
-          onChange={(e) => onChange({ ...componente, fichaComponenteId: e.target.value })}
+          onChange={(e) => {
+            const id = e.target.value;
+            const ficha = fichasDisponiveis.find((f) => f.id === id);
+            onChange({ ...componente, fichaComponenteId: id, unidadeUso: ficha?.rendimentoUnidade ?? "" });
+          }}
           className="mt-2 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
         >
           <option value="" disabled>
@@ -499,18 +613,14 @@ function LinhaComponente({
       <div className="mt-2 grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-xs text-cinza-medio">
           Quantidade
-          <CampoNumero value={componente.quantidade} onChange={(v) => onChange({ ...componente, quantidade: v ?? 0 })} />
+          <CampoNumero value={componente.quantidade} onChange={(v) => onChange({ ...componente, quantidade: v ?? 0 })} decimais={3} />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-cinza-medio">
-          Unidade de uso
-          <input
-            required
-            value={componente.unidadeUso}
-            onChange={(e) => onChange({ ...componente, unidadeUso: e.target.value.toUpperCase() })}
-            placeholder="KG, UN, ML..."
-            className="rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          />
-        </label>
+        <div className="flex flex-col gap-1 text-xs text-cinza-medio">
+          Unidade
+          <div className="flex h-[34px] items-center rounded-md border border-cinza-claro bg-off-white px-3 text-sm text-cinza">
+            {componente.unidadeUso || "-"}
+          </div>
+        </div>
       </div>
 
       <input
