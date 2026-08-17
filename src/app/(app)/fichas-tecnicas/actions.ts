@@ -126,6 +126,7 @@ export async function salvarConversaoProdutoAction(input: {
   produtoSku: string;
   unidadeSaida: string;
   fatorPorUnidadeBase: number;
+  fatorCorrecao: number;
   descricao: string;
 }): Promise<ResultadoAcao> {
   const acesso = await requireGestaoFichasTecnicas();

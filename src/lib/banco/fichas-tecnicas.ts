@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { listarProdutosBanco } from "@/lib/banco/estoque";
+import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
 import type {
   CamadaFicha,
   CategoriaFicha,
@@ -192,10 +193,12 @@ export async function listarFichasTecnicas(
 }
 
 /** Preço já convertido pra unidade que a ficha técnica realmente usa (ex:
- * óleo de soja cadastrado em UND no Estoque, mas usado em ML na receita -
- * `produto_conversoes` guarda o fator). Sem conversão cadastrada, assume
- * unidade de uso = unidade base do produto (fator 1, comportamento de
- * hoje). */
+ * óleo de soja cadastrado em UND no Estoque, mas usado em LT na receita -
+ * `produto_conversoes` guarda quantas unidades de saída cabem em 1 unidade
+ * base) e pelo fator de correção (perda de preparo, ex: tomate limpo rende
+ * menos peso que o comprado - dimensão separada, se aplica mesmo sem trocar
+ * de unidade). Sem conversão cadastrada, os dois fatores ficam em 1
+ * (comportamento de hoje: preço do Cadastro direto). */
 async function custosUnitariosProdutos(
   supabase: SupabaseClient,
   unidadeId: string,
@@ -207,13 +210,17 @@ async function custosUnitariosProdutos(
     supabase.from("produtos").select("sku, preco_unitario").eq("unidade_id", unidadeId).in("sku", skusUnicos),
     supabase
       .from("produto_conversoes")
-      .select("produto_sku, fator_por_unidade_base")
+      .select("produto_sku, fator_por_unidade_base, fator_correcao")
       .eq("unidade_id", unidadeId)
       .in("produto_sku", skusUnicos),
   ]);
-  const fatorPorSku = new Map<string, number>();
-  for (const c of (conversoesData as { produto_sku: string; fator_por_unidade_base: number }[] | null) ?? []) {
-    fatorPorSku.set(c.produto_sku, Number(c.fator_por_unidade_base));
+  const conversaoPorSku = new Map<string, { fator: number; fatorCorrecao: number }>();
+  for (const c of (conversoesData as { produto_sku: string; fator_por_unidade_base: number; fator_correcao: number }[] | null) ??
+    []) {
+    conversaoPorSku.set(c.produto_sku, {
+      fator: Number(c.fator_por_unidade_base),
+      fatorCorrecao: Number(c.fator_correcao),
+    });
   }
   const mapa = new Map<string, number | null>();
   for (const p of (produtosData as { sku: string; preco_unitario: number | null }[] | null) ?? []) {
@@ -221,8 +228,10 @@ async function custosUnitariosProdutos(
       mapa.set(p.sku, null);
       continue;
     }
-    const fator = fatorPorSku.get(p.sku);
-    mapa.set(p.sku, fator ? Number(p.preco_unitario) / fator : Number(p.preco_unitario));
+    const conversao = conversaoPorSku.get(p.sku);
+    const fator = conversao?.fator ?? 1;
+    const fatorCorrecao = conversao?.fatorCorrecao ?? 1;
+    mapa.set(p.sku, (Number(p.preco_unitario) / fator) * fatorCorrecao);
   }
   return mapa;
 }
@@ -497,28 +506,33 @@ export type OpcaoProdutoFicha = {
   custoUnitario: number | null;
 };
 
-/** Produtos do Estoque prontos pra virar componente de ficha - já com a
- * unidade e o custo convertidos via `produto_conversoes` quando existir
- * (ver `listarConversoesProduto`). */
+/** Produtos do Estoque prontos pra virar componente de ficha - só ativos,
+ * sem os grupos que nunca entram em receita (ver `GRUPOS_FORA_DE_FICHA`),
+ * já com a unidade e o custo convertidos via `produto_conversoes` quando
+ * existir (ver `listarConversoesProduto`). */
 export async function listarProdutosParaFicha(unidadeId: string): Promise<OpcaoProdutoFicha[]> {
   const [produtos, conversoes] = await Promise.all([listarProdutosBanco(unidadeId), listarConversoesProduto(unidadeId)]);
   const conversaoPorSku = new Map(conversoes.map((c) => [c.produtoSku, c]));
-  return produtos.map((p) => {
-    const conversao = conversaoPorSku.get(p.sku);
-    return {
-      sku: p.sku,
-      nome: p.nome,
-      unidadeUso: conversao?.unidadeSaida ?? p.unidadeBase,
-      custoUnitario:
-        p.precoUnitario === null ? null : conversao ? p.precoUnitario / conversao.fatorPorUnidadeBase : p.precoUnitario,
-    };
-  });
+  return produtos
+    .filter((p) => p.ativo && !GRUPOS_FORA_DE_FICHA.has(p.grupo))
+    .map((p) => {
+      const conversao = conversaoPorSku.get(p.sku);
+      const fator = conversao?.fatorPorUnidadeBase ?? 1;
+      const fatorCorrecao = conversao?.fatorCorrecao ?? 1;
+      return {
+        sku: p.sku,
+        nome: p.nome,
+        unidadeUso: conversao?.unidadeSaida ?? p.unidadeBase,
+        custoUnitario: p.precoUnitario === null ? null : (p.precoUnitario / fator) * fatorCorrecao,
+      };
+    });
 }
 
 export type ConversaoProduto = {
   produtoSku: string;
   unidadeSaida: string;
   fatorPorUnidadeBase: number;
+  fatorCorrecao: number;
   descricao: string;
 };
 
@@ -526,28 +540,34 @@ export async function listarConversoesProduto(unidadeId: string): Promise<Conver
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("produto_conversoes")
-    .select("produto_sku, unidade_saida, fator_por_unidade_base, descricao")
+    .select("produto_sku, unidade_saida, fator_por_unidade_base, fator_correcao, descricao")
     .eq("unidade_id", unidadeId);
   if (error) throw new Error(`Não foi possível carregar as conversões: ${error.message}`);
   return (
-    (data as { produto_sku: string; unidade_saida: string; fator_por_unidade_base: number; descricao: string }[] | null) ?? []
+    (data as
+      | { produto_sku: string; unidade_saida: string; fator_por_unidade_base: number; fator_correcao: number; descricao: string }[]
+      | null) ?? []
   ).map((r) => ({
     produtoSku: r.produto_sku,
     unidadeSaida: r.unidade_saida,
     fatorPorUnidadeBase: Number(r.fator_por_unidade_base),
+    fatorCorrecao: Number(r.fator_correcao),
     descricao: r.descricao,
   }));
 }
 
 /** Só chamado atrás de `requireGestaoFichasTecnicas()`. Uma conversão por
- * produto (upsert pela chave unidade+sku) - "quantas unidades de saída
- * cabem em 1 unidade base do produto" (ex: óleo de soja, 1 UND = 900 ML ->
- * fator 900, unidade de saída ML). */
+ * produto (upsert pela chave unidade+sku): `fatorPorUnidadeBase` é "quantas
+ * unidades de saída cabem em 1 unidade base do produto" (ex: óleo de soja,
+ * 1 UND = 0,9 LT -> fator 0,9, unidade de saída LT); `fatorCorrecao` é
+ * perda de preparo, independente de trocar unidade (ex: tomate perde peso
+ * ao limpar - preço efetivo por kg fica maior). */
 export async function salvarConversaoProduto(params: {
   unidadeId: string;
   produtoSku: string;
   unidadeSaida: string;
   fatorPorUnidadeBase: number;
+  fatorCorrecao: number;
   descricao: string;
 }): Promise<void> {
   const supabase = await createClient();
@@ -556,6 +576,7 @@ export async function salvarConversaoProduto(params: {
     produto_sku: params.produtoSku,
     unidade_saida: params.unidadeSaida,
     fator_por_unidade_base: params.fatorPorUnidadeBase,
+    fator_correcao: params.fatorCorrecao,
     descricao: params.descricao,
   });
   if (error) throw new Error(error.message);

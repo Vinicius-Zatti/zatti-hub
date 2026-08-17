@@ -9,6 +9,12 @@ export const CAMADA_LABEL: Record<CamadaFicha, string> = {
   VEN: "Venda",
 };
 
+/** Grupos de produto (ver `src/lib/skus/sugerir.ts`) que nunca entram numa
+ * receita - limpeza e material de escritório não são insumo de ficha
+ * técnica. Usado tanto pro seletor de componente quanto pra tabela de
+ * Conversões, os dois não devem nem listar esses produtos. */
+export const GRUPOS_FORA_DE_FICHA = new Set(["LIM", "OPE"]);
+
 export type GrupoFichasPorCategoria = {
   categoriaId: string;
   categoriaNome: string;

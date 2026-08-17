@@ -219,6 +219,7 @@ export const conversaoProdutoEntradaSchema = z
     produtoSku: identificador,
     unidadeSaida: unidadeUsoSchema,
     fatorPorUnidadeBase: z.number().finite().min(0.0001).max(LIMITE_QUANTIDADE),
+    fatorCorrecao: z.number().finite().min(0.0001).max(1000),
     descricao: texto(200),
   })
   .strict();
