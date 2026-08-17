@@ -4,17 +4,26 @@ import { revalidatePath } from "next/cache";
 import { requireGestaoFichasTecnicas, registrarAuditoria } from "@/lib/acesso";
 import {
   criarCategoriaFicha,
+  excluirFichaTecnica,
   getFichaTecnicaCompleta,
+  salvarConversaoProduto,
   salvarFichaTecnica,
   type EntradaFichaTecnica,
 } from "@/lib/banco/fichas-tecnicas";
-import { categoriaFichaEntradaSchema, fichaTecnicaEntradaSchema, idUuidSchema, validarEntrada } from "@/lib/validacao";
+import {
+  categoriaFichaEntradaSchema,
+  conversaoProdutoEntradaSchema,
+  fichaTecnicaEntradaSchema,
+  idUuidSchema,
+  validarEntrada,
+} from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
 import type { CategoriaFicha } from "@/lib/types";
 
 export type ResultadoSalvarFicha = { ok: true; id: string; sku: string } | { ok: false; mensagem: string };
 export type ResultadoCategoria = { ok: true; categoria: CategoriaFicha } | { ok: false; mensagem: string };
+export type ResultadoAcao = { ok: true } | { ok: false; mensagem: string };
 
 function revalidarListagem() {
   revalidatePath("/fichas-tecnicas");
@@ -82,5 +91,61 @@ export async function criarCategoriaFichaAction(input: {
     return { ok: true, categoria };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a categoria.") };
+  }
+}
+
+/** Bloqueado pelo banco (on delete restrict) se a ficha estiver em uso como
+ * componente de outra - a mensagem já vem traduzida de `excluirFichaTecnica`. */
+export async function excluirFichaTecnicaAction(id: string): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_excluir");
+    const idValidado = validarEntrada(idUuidSchema, id);
+    const antes = await getFichaTecnicaCompleta(acesso.unidadeId, idValidado);
+    await excluirFichaTecnica(acesso.unidadeId, idValidado);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "excluir",
+      entidade: "ficha_tecnica",
+      entidadeId: idValidado,
+      dadosAntigos: antes,
+    });
+
+    revalidarListagem();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível excluir a ficha técnica.") };
+  }
+}
+
+/** Conversão de unidade por produto (Estoque -> uso na ficha) - só
+ * Gestão/master, uma conversão por produto (upsert). */
+export async function salvarConversaoProdutoAction(input: {
+  produtoSku: string;
+  unidadeSaida: string;
+  fatorPorUnidadeBase: number;
+  descricao: string;
+}): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("conversao_produto_salvar");
+    const entrada = validarEntrada(conversaoProdutoEntradaSchema, input);
+    await salvarConversaoProduto({ unidadeId: acesso.unidadeId, ...entrada });
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "produto_conversao",
+      entidadeId: entrada.produtoSku,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath("/fichas-tecnicas/conversoes");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a conversão.") };
   }
 }

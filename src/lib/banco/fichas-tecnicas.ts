@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
+import { listarProdutosBanco } from "@/lib/banco/estoque";
 import type {
   CamadaFicha,
   CategoriaFicha,
@@ -190,21 +191,38 @@ export async function listarFichasTecnicas(
   );
 }
 
-async function precosProdutosPorSku(
+/** Preço já convertido pra unidade que a ficha técnica realmente usa (ex:
+ * óleo de soja cadastrado em UND no Estoque, mas usado em ML na receita -
+ * `produto_conversoes` guarda o fator). Sem conversão cadastrada, assume
+ * unidade de uso = unidade base do produto (fator 1, comportamento de
+ * hoje). */
+async function custosUnitariosProdutos(
   supabase: SupabaseClient,
   unidadeId: string,
   skus: string[],
 ): Promise<Map<string, number | null>> {
   const skusUnicos = Array.from(new Set(skus));
   if (skusUnicos.length === 0) return new Map();
-  const { data } = await supabase
-    .from("produtos")
-    .select("sku, preco_unitario")
-    .eq("unidade_id", unidadeId)
-    .in("sku", skusUnicos);
+  const [{ data: produtosData }, { data: conversoesData }] = await Promise.all([
+    supabase.from("produtos").select("sku, preco_unitario").eq("unidade_id", unidadeId).in("sku", skusUnicos),
+    supabase
+      .from("produto_conversoes")
+      .select("produto_sku, fator_por_unidade_base")
+      .eq("unidade_id", unidadeId)
+      .in("produto_sku", skusUnicos),
+  ]);
+  const fatorPorSku = new Map<string, number>();
+  for (const c of (conversoesData as { produto_sku: string; fator_por_unidade_base: number }[] | null) ?? []) {
+    fatorPorSku.set(c.produto_sku, Number(c.fator_por_unidade_base));
+  }
   const mapa = new Map<string, number | null>();
-  for (const p of (data as { sku: string; preco_unitario: number | null }[] | null) ?? []) {
-    mapa.set(p.sku, p.preco_unitario === null ? null : Number(p.preco_unitario));
+  for (const p of (produtosData as { sku: string; preco_unitario: number | null }[] | null) ?? []) {
+    if (p.preco_unitario === null) {
+      mapa.set(p.sku, null);
+      continue;
+    }
+    const fator = fatorPorSku.get(p.sku);
+    mapa.set(p.sku, fator ? Number(p.preco_unitario) / fator : Number(p.preco_unitario));
   }
   return mapa;
 }
@@ -244,7 +262,7 @@ export async function calcularCustoFicha(unidadeId: string, fichaId: string, pro
   );
 
   const [precos, custosSubFichasLista] = await Promise.all([
-    precosProdutosPorSku(supabase, unidadeId, produtoSkus),
+    custosUnitariosProdutos(supabase, unidadeId, produtoSkus),
     Promise.all(fichaIds.map(async (id) => [id, await calcularCustoFicha(unidadeId, id, profundidade + 1)] as const)),
   ]);
   const custosPorFichaId = new Map(custosSubFichasLista);
@@ -455,4 +473,100 @@ export async function salvarFichaTecnica(params: {
   const salva = await getFichaTecnicaCompleta(params.unidadeId, resultado.id);
   if (!salva) throw new Error("Ficha salva mas não encontrada na releitura");
   return salva;
+}
+
+/** Só chamado atrás de `requireGestaoFichasTecnicas()` - o trigger de
+ * `ficha_componentes` bloqueia (on delete restrict) excluir uma ficha que
+ * está em uso como sub-receita de outra, o erro do Postgres é traduzido
+ * pra mensagem pública abaixo. */
+export async function excluirFichaTecnica(unidadeId: string, id: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("fichas_tecnicas").delete().eq("unidade_id", unidadeId).eq("id", id);
+  if (error) {
+    if (error.code === "23503") {
+      throw new ErroPublico("Essa ficha está sendo usada como componente de outra ficha - remova essa dependência antes de excluir.");
+    }
+    throw new Error(error.message);
+  }
+}
+
+export type OpcaoProdutoFicha = {
+  sku: string;
+  nome: string;
+  unidadeUso: string;
+  custoUnitario: number | null;
+};
+
+/** Produtos do Estoque prontos pra virar componente de ficha - já com a
+ * unidade e o custo convertidos via `produto_conversoes` quando existir
+ * (ver `listarConversoesProduto`). */
+export async function listarProdutosParaFicha(unidadeId: string): Promise<OpcaoProdutoFicha[]> {
+  const [produtos, conversoes] = await Promise.all([listarProdutosBanco(unidadeId), listarConversoesProduto(unidadeId)]);
+  const conversaoPorSku = new Map(conversoes.map((c) => [c.produtoSku, c]));
+  return produtos.map((p) => {
+    const conversao = conversaoPorSku.get(p.sku);
+    return {
+      sku: p.sku,
+      nome: p.nome,
+      unidadeUso: conversao?.unidadeSaida ?? p.unidadeBase,
+      custoUnitario:
+        p.precoUnitario === null ? null : conversao ? p.precoUnitario / conversao.fatorPorUnidadeBase : p.precoUnitario,
+    };
+  });
+}
+
+export type ConversaoProduto = {
+  produtoSku: string;
+  unidadeSaida: string;
+  fatorPorUnidadeBase: number;
+  descricao: string;
+};
+
+export async function listarConversoesProduto(unidadeId: string): Promise<ConversaoProduto[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("produto_conversoes")
+    .select("produto_sku, unidade_saida, fator_por_unidade_base, descricao")
+    .eq("unidade_id", unidadeId);
+  if (error) throw new Error(`Não foi possível carregar as conversões: ${error.message}`);
+  return (
+    (data as { produto_sku: string; unidade_saida: string; fator_por_unidade_base: number; descricao: string }[] | null) ?? []
+  ).map((r) => ({
+    produtoSku: r.produto_sku,
+    unidadeSaida: r.unidade_saida,
+    fatorPorUnidadeBase: Number(r.fator_por_unidade_base),
+    descricao: r.descricao,
+  }));
+}
+
+/** Só chamado atrás de `requireGestaoFichasTecnicas()`. Uma conversão por
+ * produto (upsert pela chave unidade+sku) - "quantas unidades de saída
+ * cabem em 1 unidade base do produto" (ex: óleo de soja, 1 UND = 900 ML ->
+ * fator 900, unidade de saída ML). */
+export async function salvarConversaoProduto(params: {
+  unidadeId: string;
+  produtoSku: string;
+  unidadeSaida: string;
+  fatorPorUnidadeBase: number;
+  descricao: string;
+}): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("produto_conversoes").upsert({
+    unidade_id: params.unidadeId,
+    produto_sku: params.produtoSku,
+    unidade_saida: params.unidadeSaida,
+    fator_por_unidade_base: params.fatorPorUnidadeBase,
+    descricao: params.descricao,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function removerConversaoProduto(unidadeId: string, produtoSku: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("produto_conversoes")
+    .delete()
+    .eq("unidade_id", unidadeId)
+    .eq("produto_sku", produtoSku);
+  if (error) throw new Error(error.message);
 }

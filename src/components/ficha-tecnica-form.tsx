@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
 
 const MENSAGEM_GUARDA = "Você tem uma ficha técnica não salva. Se sair agora, ela se perde.";
 
-export type OpcaoProduto = { sku: string; nome: string; unidadeBase: string; custoUnitario: number | null };
+export type OpcaoProduto = { sku: string; nome: string; unidadeUso: string; custoUnitario: number | null };
 export type OpcaoFicha = {
   id: string;
   nome: string;
@@ -202,6 +202,14 @@ export function FichaTecnicaForm({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErro(null);
+    if (!categoriaId) {
+      setErro("Selecione uma categoria.");
+      return;
+    }
+    if (componentes.some((c) => (c.tipo === "produto" ? !c.produtoSku : !c.fichaComponenteId))) {
+      setErro("Selecione um produto ou ficha pra cada componente antes de salvar.");
+      return;
+    }
     startTransition(async () => {
       const resultado = await salvarFichaTecnicaAction(existente?.id ?? null, montarInput());
       if (resultado.ok) {
@@ -372,16 +380,7 @@ export function FichaTecnicaForm({
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Componentes</span>
-            <button
-              type="button"
-              onClick={() => editar(setComponentes, [...componentes, novoComponente(componentes.length)])}
-              className="rounded-md border border-azul-noite px-2 py-1 text-xs font-semibold text-azul-noite"
-            >
-              + Adicionar
-            </button>
-          </div>
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Componentes</div>
           {componentes.length === 0 && (
             <p className="text-sm text-cinza-medio">Nenhum componente ainda - adicione o primeiro insumo.</p>
           )}
@@ -401,6 +400,13 @@ export function FichaTecnicaForm({
               />
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => editar(setComponentes, [...componentes, novoComponente(componentes.length)])}
+            className="mt-3 w-full rounded-md border border-azul-noite px-2 py-2 text-xs font-semibold text-azul-noite"
+          >
+            + Adicionar componente
+          </button>
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
@@ -429,16 +435,7 @@ export function FichaTecnicaForm({
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Modo de preparo</span>
-            <button
-              type="button"
-              onClick={() => editar(setEtapas, [...etapas, novaEtapa(etapas.length)])}
-              className="rounded-md border border-azul-noite px-2 py-1 text-xs font-semibold text-azul-noite"
-            >
-              + Adicionar etapa
-            </button>
-          </div>
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Modo de preparo</div>
           {etapas.length === 0 && <p className="text-sm text-cinza-medio">Nenhuma etapa ainda.</p>}
           <div className="flex flex-col gap-3">
             {etapas.map((etapa, indice) => (
@@ -477,6 +474,13 @@ export function FichaTecnicaForm({
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => editar(setEtapas, [...etapas, novaEtapa(etapas.length)])}
+            className="mt-3 w-full rounded-md border border-azul-noite px-2 py-2 text-xs font-semibold text-azul-noite"
+          >
+            + Adicionar etapa
+          </button>
         </div>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
@@ -536,6 +540,9 @@ function LinhaComponente({
   podeSubir: boolean;
   podeDescer: boolean;
 }) {
+  const produtosOrdenados = [...produtos].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const fichasOrdenadas = [...fichasDisponiveis].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
   return (
     <div className="rounded-md border border-cinza-claro p-3">
       <div className="flex items-center justify-between gap-2">
@@ -553,7 +560,7 @@ function LinhaComponente({
           className="rounded-md border border-cinza-claro px-2 py-1 text-xs font-semibold text-cinza"
         >
           <option value="produto">Produto do Estoque</option>
-          <option value="ficha">Sub-receita (outra ficha)</option>
+          <option value="ficha">Receita (outra ficha - pré-preparo ou venda)</option>
         </select>
         <div className="flex items-center gap-1">
           <button type="button" onClick={onSubir} disabled={!podeSubir} className="rounded border border-cinza-claro px-2 py-0.5 text-xs disabled:opacity-30">
@@ -569,45 +576,29 @@ function LinhaComponente({
       </div>
 
       {componente.tipo === "produto" ? (
-        <select
-          required
-          value={componente.produtoSku ?? ""}
-          onChange={(e) => {
-            const sku = e.target.value;
-            const produto = produtos.find((p) => p.sku === sku);
-            onChange({ ...componente, produtoSku: sku, unidadeUso: produto?.unidadeBase ?? "" });
-          }}
-          className="mt-2 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-        >
-          <option value="" disabled>
-            Selecione um produto
-          </option>
-          {produtos.map((p) => (
-            <option key={p.sku} value={p.sku}>
-              {p.nome} ({p.unidadeBase})
-            </option>
-          ))}
-        </select>
+        <div className="mt-2">
+          <SeletorBusca
+            opcoes={produtosOrdenados.map((p) => ({ valor: p.sku, rotulo: `${p.nome} (${p.unidadeUso})` }))}
+            valorSelecionado={componente.produtoSku ?? ""}
+            placeholder="Buscar produto..."
+            onSelecionar={(sku) => {
+              const produto = produtos.find((p) => p.sku === sku);
+              onChange({ ...componente, produtoSku: sku, unidadeUso: produto?.unidadeUso ?? "" });
+            }}
+          />
+        </div>
       ) : (
-        <select
-          required
-          value={componente.fichaComponenteId ?? ""}
-          onChange={(e) => {
-            const id = e.target.value;
-            const ficha = fichasDisponiveis.find((f) => f.id === id);
-            onChange({ ...componente, fichaComponenteId: id, unidadeUso: ficha?.rendimentoUnidade ?? "" });
-          }}
-          className="mt-2 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-        >
-          <option value="" disabled>
-            Selecione uma ficha
-          </option>
-          {fichasDisponiveis.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.nome} ({f.sku})
-            </option>
-          ))}
-        </select>
+        <div className="mt-2">
+          <SeletorBusca
+            opcoes={fichasOrdenadas.map((f) => ({ valor: f.id, rotulo: `${f.nome} (${f.sku})` }))}
+            valorSelecionado={componente.fichaComponenteId ?? ""}
+            placeholder="Buscar ficha..."
+            onSelecionar={(id) => {
+              const ficha = fichasDisponiveis.find((f) => f.id === id);
+              onChange({ ...componente, fichaComponenteId: id, unidadeUso: ficha?.rendimentoUnidade ?? "" });
+            }}
+          />
+        </div>
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -629,6 +620,66 @@ function LinhaComponente({
         placeholder="Observação (opcional)"
         className="mt-2 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
       />
+    </div>
+  );
+}
+
+/** Campo de busca com lista embaixo (celular não tem espaço pra rolar um
+ * select nativo com centenas de produtos, e ele não tem busca por texto) -
+ * digita, filtra pelo nome, toca pra selecionar. Lista já vem ordenada
+ * alfabeticamente por quem chama. */
+function SeletorBusca({
+  opcoes,
+  valorSelecionado,
+  onSelecionar,
+  placeholder,
+}: {
+  opcoes: { valor: string; rotulo: string }[];
+  valorSelecionado: string;
+  onSelecionar: (valor: string) => void;
+  placeholder: string;
+}) {
+  const [busca, setBusca] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const selecionado = opcoes.find((o) => o.valor === valorSelecionado);
+  const termo = busca.trim().toLowerCase();
+  const filtradas = (termo ? opcoes.filter((o) => o.rotulo.toLowerCase().includes(termo)) : opcoes).slice(0, 30);
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        required={!valorSelecionado}
+        value={aberto ? busca : (selecionado?.rotulo ?? "")}
+        onFocus={() => {
+          setAberto(true);
+          setBusca("");
+        }}
+        onChange={(e) => setBusca(e.target.value)}
+        onBlur={() => setTimeout(() => setAberto(false), 150)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+      />
+      {aberto && (
+        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-cinza-claro bg-branco shadow-lg">
+          {filtradas.length === 0 && <div className="p-2 text-sm text-cinza-medio">Nada encontrado</div>}
+          {filtradas.map((o) => (
+            <button
+              key={o.valor}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onSelecionar(o.valor);
+                setAberto(false);
+                setBusca("");
+              }}
+              className="block w-full px-3 py-2 text-left text-sm text-cinza hover:bg-off-white"
+            >
+              {o.rotulo}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

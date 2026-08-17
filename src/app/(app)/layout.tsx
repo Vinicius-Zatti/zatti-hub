@@ -83,6 +83,7 @@ export default async function AppLayout({
           ? [
               { label: "Nova ficha", href: "/fichas-tecnicas/nova" },
               { label: "Categorias", href: "/fichas-tecnicas/categorias" },
+              { label: "Conversões de unidade", href: "/fichas-tecnicas/conversoes" },
             ]
           : []),
       ],

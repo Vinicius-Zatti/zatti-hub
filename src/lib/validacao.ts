@@ -214,6 +214,15 @@ export const camadaFichaSchema = z.enum(["PRE", "VEN"]);
 export const statusFichaSchema = z.enum(["rascunho", "ativa", "inativa"]);
 export const rendimentoUnidadeFichaSchema = z.enum(["KG", "LT", "UN"]);
 
+export const conversaoProdutoEntradaSchema = z
+  .object({
+    produtoSku: identificador,
+    unidadeSaida: unidadeUsoSchema,
+    fatorPorUnidadeBase: z.number().finite().min(0.0001).max(LIMITE_QUANTIDADE),
+    descricao: texto(200),
+  })
+  .strict();
+
 export const categoriaFichaEntradaSchema = z
   .object({
     camada: camadaFichaSchema,

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getAcessoAtual } from "@/lib/acesso";
 import { getFichaTecnicaCompleta } from "@/lib/banco/fichas-tecnicas";
 import { CAMADA_LABEL } from "@/lib/fichas-tecnicas";
+import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,15 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
           </p>
         </div>
         {podeGerir && (
-          <Link
-            href={`/fichas-tecnicas/${ficha.id}/editar`}
-            className="shrink-0 rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco hover:bg-azul-petroleo"
-          >
-            Editar
-          </Link>
+          <div className="flex shrink-0 items-start gap-2">
+            <Link
+              href={`/fichas-tecnicas/${ficha.id}/editar`}
+              className="rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco hover:bg-azul-petroleo"
+            >
+              Editar
+            </Link>
+            <ExcluirFichaTecnicaBotao id={ficha.id} />
+          </div>
         )}
       </div>
 
