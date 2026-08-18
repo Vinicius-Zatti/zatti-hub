@@ -19,7 +19,16 @@ export function toNumeroBR(v: unknown): number | null {
 
 /** Arredonda valor monetário pra exatamente 2 casas, sempre pra cima -
  * nunca deixa sobrar dízima de multiplicar/dividir preço por quantidade de
- * embalagem (base↔fornecedor, nos dois sentidos). */
+ * embalagem (base↔fornecedor, nos dois sentidos).
+ *
+ * Épsilon subtraído antes do `ceil` de propósito: quando o resultado
+ * matemático "certo" já é um número redondo de centavos (ex: 75 × 1), o
+ * erro de ponto flutuante de multiplicar/dividir pode empurrar o valor uma
+ * fração acima do inteiro (ex: 7500.000000000001) - sem o épsilon, o
+ * `Math.ceil` lê isso como "passou de 7500" e soma 1 centavo à toa (75,00
+ * virava 75,01 num item com fornecedor na mesma unidade, achado em
+ * produção). 1e-9 é pequeno o bastante pra nunca mudar um arredondamento
+ * genuíno pra cima (nenhum preço digitado à mão chega perto dessa casa). */
 export function arredondarPrecoCima(v: number): number {
-  return Math.ceil(v * 100) / 100;
+  return Math.ceil(v * 100 - 1e-9) / 100;
 }

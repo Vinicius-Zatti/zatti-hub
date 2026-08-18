@@ -52,7 +52,10 @@ export default async function EditorEspelhosPage({
     return <ConectarPlanilha erro="Nao foi possivel carregar as cotacoes." />;
   }
 
-  const itensPorFornecedorFresco = agruparPorFornecedor(resultado.itens);
+  const nomesFornecedoresCadastro = fornecedoresCadastro
+    .map((f) => f.nomeFantasia || f.razaoSocial)
+    .filter(Boolean);
+  const itensPorFornecedorFresco = agruparPorFornecedor(resultado.itens, nomesFornecedoresCadastro);
 
   // Pedidos já salvos nessa contagem base - garante que um fornecedor com
   // pedido salvo continue aparecendo mesmo se o recálculo fresco não achar

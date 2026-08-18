@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import type { Pedido, PedidoItem } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
@@ -41,10 +42,24 @@ function precoTotalDe(item: PedidoItem): number | null {
 export function PedidosFeitos({
   pedidos,
   podeEditarQuantidade,
+  dataUsada,
+  datasDisponiveis,
 }: {
   pedidos: Pedido[];
   podeEditarQuantidade: boolean;
+  dataUsada: string;
+  datasDisponiveis: string[];
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  function trocarData(novaData: string) {
+    const params = new URLSearchParams();
+    if (novaData) params.set("data", novaData);
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
+
   // Texto exatamente como digitado (não o número já convertido) - mesmo
   // motivo do Editor de Espelhos: campo controlado pelo número redesenha e
   // apaga a vírgula no meio da digitação.
@@ -86,16 +101,39 @@ export function PedidosFeitos({
     setTimeout(() => setStatus((s) => ({ ...s, [pedido.id]: "" })), 4000);
   }
 
+  const seletorData = datasDisponiveis.length > 0 && (
+    <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">
+      <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+        Contagem base
+        <select
+          value={dataUsada}
+          onChange={(e) => trocarData(e.target.value)}
+          className="rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
+        >
+          {datasDisponiveis.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+
   if (pedidos.length === 0) {
     return (
-      <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
-        Nenhum pedido salvo ainda. Fecha um no Editor de Espelhos de Compras primeiro.
+      <div className="flex flex-col gap-4">
+        {seletorData}
+        <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
+          Nenhum pedido salvo ainda. Fecha um no Editor de Espelhos de Compras primeiro.
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4 pb-10">
+      {seletorData}
       {pedidos.map((pedido) => {
         const totalVolumes = pedido.itens.reduce((soma, it) => soma + it.quantidadePedida, 0);
         const totalPedido = pedido.itens.reduce((soma, it) => soma + (precoTotalDe(it) ?? 0), 0);

@@ -147,7 +147,14 @@ export function PedidoCompras({
   const porGrupo = useMemo(() => agruparPorGrupo(itensEfetivos), [itensEfetivos]);
   const grupos = ordenarGrupos(Object.keys(porGrupo));
 
-  const porFornecedor = useMemo(() => agruparPorFornecedor(itensEfetivos), [itensEfetivos]);
+  const nomesFornecedoresCadastro = useMemo(
+    () => fornecedoresCadastro.map((f) => f.nomeFantasia || f.razaoSocial).filter(Boolean),
+    [fornecedoresCadastro]
+  );
+  const porFornecedor = useMemo(
+    () => agruparPorFornecedor(itensEfetivos, nomesFornecedoresCadastro),
+    [itensEfetivos, nomesFornecedoresCadastro]
+  );
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
   const totalGeral = itens.reduce((soma, item) => {

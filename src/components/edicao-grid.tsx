@@ -661,17 +661,30 @@ const LinhaProduto = memo(function LinhaProduto({
   // (base × qtd); mudar o Preço Fornecedor direto recalcula o Preço Base
   // (fornecedor ÷ qtd). Sempre arredondado pra cima em 2 casas - preço é
   // dinheiro, nunca sobra terceira casa.
+  //
+  // Item cadastrado com Unidade Embalagem Fornecedor igual à Unidade Base
+  // (compra na mesma unidade que usa pro estoque) não tem conversão
+  // nenhuma pra fazer - mas quem cadastra tende a deixar Qtd. Base/Embalagem
+  // em branco justamente por não ter "conta" pra fazer, e isso zerava o
+  // cálculo automático (a razão contava como ausente). Nesse caso a razão é
+  // 1 mesmo sem estar preenchida explicitamente - qualquer outra combinação
+  // sem Qtd. Base/Embalagem preenchida continua sem cálculo, por falta de
+  // dado real pra converter.
+  const razaoEmbalagem =
+    editado.qtdUnidadeBasePorEmbalagem ||
+    (editado.unidadeEmbalagemFornecedor && editado.unidadeEmbalagemFornecedor === editado.unidadeBase ? 1 : null);
+
   function aoMudarPrecoBase(v: number | null) {
     campo("precoUnitario", v);
-    if (v !== null && editado.qtdUnidadeBasePorEmbalagem) {
-      campo("precoFornecedor", arredondarPrecoCima(v * editado.qtdUnidadeBasePorEmbalagem));
+    if (v !== null && razaoEmbalagem) {
+      campo("precoFornecedor", arredondarPrecoCima(v * razaoEmbalagem));
     }
   }
 
   function aoMudarPrecoFornecedor(v: number | null) {
     campo("precoFornecedor", v);
-    if (v !== null && editado.qtdUnidadeBasePorEmbalagem) {
-      campo("precoUnitario", arredondarPrecoCima(v / editado.qtdUnidadeBasePorEmbalagem));
+    if (v !== null && razaoEmbalagem) {
+      campo("precoUnitario", arredondarPrecoCima(v / razaoEmbalagem));
     }
   }
 
