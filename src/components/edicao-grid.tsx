@@ -5,7 +5,7 @@ import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
-import { arredondarPrecoCima } from "@/lib/sheets/numero";
+import { arredondarPreco } from "@/lib/sheets/numero";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
@@ -31,6 +31,18 @@ type StatusLinha = { tipo: "salvando" | "ok" | "erro"; msg?: string } | undefine
 // editável se quiser um nome diferente do que o fornecedor chama.
 function comNomeCompraPadrao(p: Produto): Produto {
   return p.nomeCompra.trim() ? p : { ...p, nomeCompra: p.nome };
+}
+
+// Item cadastrado com Unidade Embalagem Fornecedor igual à Unidade Base
+// (compra na mesma unidade que usa pro estoque) não tem conversão nenhuma
+// pra fazer - mas quem cadastra tende a deixar Qtd. Base/Embalagem em
+// branco justamente por não ter "conta" pra fazer, e isso zerava o cálculo
+// automático (a razão contava como ausente). Nesse caso a razão é 1 mesmo
+// sem estar preenchida explicitamente - qualquer outra combinação sem
+// Qtd. Base/Embalagem preenchida continua sem cálculo, por falta de dado
+// real pra converter.
+function razaoEmbalagemDe(p: Produto): number | null {
+  return p.qtdUnidadeBasePorEmbalagem || (p.unidadeEmbalagemFornecedor && p.unidadeEmbalagemFornecedor === p.unidadeBase ? 1 : null);
 }
 
 function produtoIncompleto(p: Produto): boolean {
@@ -150,6 +162,35 @@ function CadastroSection({
     setEstado((e) => ({ ...e, [sku]: { ...e[sku], [key]: value } }));
     setStatusPorSku((s) => ({ ...s, [sku]: undefined }));
   }, []);
+
+  const [recalculados, setRecalculados] = useState<number | null>(null);
+
+  // Preço Base/Preço Fornecedor zerado em produto cadastrado antes do
+  // cálculo automático existir (ou importado direto da planilha, sem
+  // ninguém nunca ter reeditado o campo no app) nunca foi recalculado de
+  // verdade - o triângulo só dispara ao digitar. Acha, pra cada produto
+  // carregado, o lado que falta (0 ou vazio) quando o outro lado + a razão
+  // de embalagem existem, e preenche igual o "Salvar todos" faria se
+  // alguém reeditasse célula por célula. Só marca como alterado (não salva
+  // sozinho) - revisão e "Salvar todos" continuam manuais.
+  function recalcularPrecosEmBranco() {
+    let afetados = 0;
+    for (const p of produtos) {
+      const atual = estado[p.sku] ?? p;
+      const razao = razaoEmbalagemDe(atual);
+      if (!razao) continue;
+      const semBase = !atual.precoUnitario;
+      const semFornecedor = !atual.precoFornecedor;
+      if (semBase && !semFornecedor) {
+        campo(p.sku, "precoUnitario", arredondarPreco((atual.precoFornecedor as number) / razao));
+        afetados++;
+      } else if (semFornecedor && !semBase) {
+        campo(p.sku, "precoFornecedor", arredondarPreco((atual.precoUnitario as number) * razao));
+        afetados++;
+      }
+    }
+    setRecalculados(afetados);
+  }
 
   const salvarUm = useCallback(
     async (sku: string) => {
@@ -276,6 +317,13 @@ function CadastroSection({
             />
             <button
               type="button"
+              onClick={recalcularPrecosEmBranco}
+              className="shrink-0 rounded-md border border-azul-noite px-3 py-1.5 text-sm font-semibold text-azul-noite hover:bg-azul-noite/5"
+            >
+              Recalcular preços em branco
+            </button>
+            <button
+              type="button"
               onClick={salvarTodos}
               disabled={alterados.length === 0 || salvandoTodos}
               className="shrink-0 rounded-md bg-azul-noite px-4 py-1.5 text-sm font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
@@ -285,6 +333,13 @@ function CadastroSection({
             <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
+        {recalculados !== null && (
+          <p className="text-xs font-semibold text-ambar">
+            {recalculados > 0
+              ? `${recalculados} produto${recalculados > 1 ? "s" : ""} com Preço Base ou Preço Fornecedor calculado a partir do outro - revise as linhas destacadas e clique em "Salvar todos" pra gravar.`
+              : "Nenhum produto tinha o que recalcular (ou falta Qtd. Base/Embalagem pra saber a conversão)."}
+          </p>
+        )}
         <p className="text-xs text-cinza-medio">
           Células em destaque estão vazias. Segura o fundo da tabela (ou a barra de espaço, fora de
           um campo) pra arrastar e rolar.
@@ -659,32 +714,21 @@ const LinhaProduto = memo(function LinhaProduto({
   // Preço Base, Qtd. Base/Embalagem e Preço Fornecedor formam um triângulo -
   // mudar qualquer um dos dois primeiros recalcula o Preço Fornecedor
   // (base × qtd); mudar o Preço Fornecedor direto recalcula o Preço Base
-  // (fornecedor ÷ qtd). Sempre arredondado pra cima em 2 casas - preço é
-  // dinheiro, nunca sobra terceira casa.
-  //
-  // Item cadastrado com Unidade Embalagem Fornecedor igual à Unidade Base
-  // (compra na mesma unidade que usa pro estoque) não tem conversão
-  // nenhuma pra fazer - mas quem cadastra tende a deixar Qtd. Base/Embalagem
-  // em branco justamente por não ter "conta" pra fazer, e isso zerava o
-  // cálculo automático (a razão contava como ausente). Nesse caso a razão é
-  // 1 mesmo sem estar preenchida explicitamente - qualquer outra combinação
-  // sem Qtd. Base/Embalagem preenchida continua sem cálculo, por falta de
-  // dado real pra converter.
-  const razaoEmbalagem =
-    editado.qtdUnidadeBasePorEmbalagem ||
-    (editado.unidadeEmbalagemFornecedor && editado.unidadeEmbalagemFornecedor === editado.unidadeBase ? 1 : null);
+  // (fornecedor ÷ qtd). Sempre arredondado pro centavo mais próximo - preço
+  // é dinheiro, nunca sobra terceira casa.
+  const razaoEmbalagem = razaoEmbalagemDe(editado);
 
   function aoMudarPrecoBase(v: number | null) {
     campo("precoUnitario", v);
     if (v !== null && razaoEmbalagem) {
-      campo("precoFornecedor", arredondarPrecoCima(v * razaoEmbalagem));
+      campo("precoFornecedor", arredondarPreco(v * razaoEmbalagem));
     }
   }
 
   function aoMudarPrecoFornecedor(v: number | null) {
     campo("precoFornecedor", v);
     if (v !== null && razaoEmbalagem) {
-      campo("precoUnitario", arredondarPrecoCima(v / razaoEmbalagem));
+      campo("precoUnitario", arredondarPreco(v / razaoEmbalagem));
     }
   }
 
@@ -692,9 +736,9 @@ const LinhaProduto = memo(function LinhaProduto({
     campo("qtdUnidadeBasePorEmbalagem", v);
     if (v) {
       if (editado.precoUnitario !== null) {
-        campo("precoFornecedor", arredondarPrecoCima(editado.precoUnitario * v));
+        campo("precoFornecedor", arredondarPreco(editado.precoUnitario * v));
       } else if (editado.precoFornecedor !== null) {
-        campo("precoUnitario", arredondarPrecoCima(editado.precoFornecedor / v));
+        campo("precoUnitario", arredondarPreco(editado.precoFornecedor / v));
       }
     }
   }

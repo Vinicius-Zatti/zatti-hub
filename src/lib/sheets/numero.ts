@@ -17,18 +17,21 @@ export function toNumeroBR(v: unknown): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
-/** Arredonda valor monetário pra exatamente 2 casas, sempre pra cima -
- * nunca deixa sobrar dízima de multiplicar/dividir preço por quantidade de
- * embalagem (base↔fornecedor, nos dois sentidos).
+/** Arredonda valor monetário pra exatamente 2 casas pelo centavo mais
+ * próximo (regra fechada com o Vinícius, 18/08): milésimo 0 não muda nada;
+ * 1 a 4 arredonda pra baixo; 5 a 9 arredonda pra cima. Não é "sempre pra
+ * cima" - multiplicar/dividir preço por quantidade de embalagem
+ * (base↔fornecedor) pode fechar num valor redondo (ex: 75 × 1 = 75,00) e
+ * esse caso tem que continuar exatamente redondo, nunca subir sozinho pro
+ * centavo seguinte.
  *
- * Épsilon subtraído antes do `ceil` de propósito: quando o resultado
- * matemático "certo" já é um número redondo de centavos (ex: 75 × 1), o
- * erro de ponto flutuante de multiplicar/dividir pode empurrar o valor uma
- * fração acima do inteiro (ex: 7500.000000000001) - sem o épsilon, o
- * `Math.ceil` lê isso como "passou de 7500" e soma 1 centavo à toa (75,00
- * virava 75,01 num item com fornecedor na mesma unidade, achado em
- * produção). 1e-9 é pequeno o bastante pra nunca mudar um arredondamento
- * genuíno pra cima (nenhum preço digitado à mão chega perto dessa casa). */
-export function arredondarPrecoCima(v: number): number {
-  return Math.ceil(v * 100 - 1e-9) / 100;
+ * Épsilon somado antes do `round` de propósito: multiplicar/dividir ponto
+ * flutuante raramente cai num número exato - 75 × 1 pode virar
+ * 74.99999999999999 por dentro, e sem a margem o `Math.round` erra o
+ * centavo de verdade só por causa da imprecisão binária (75,00 virando
+ * 74,99 num item sem conversão nenhuma, achado em produção). 1e-9 é pequeno
+ * o bastante pra nunca mudar o resultado de um arredondamento genuíno
+ * (nenhum preço digitado à mão chega perto dessa casa decimal). */
+export function arredondarPreco(v: number): number {
+  return Math.round(v * 100 + 1e-9) / 100;
 }

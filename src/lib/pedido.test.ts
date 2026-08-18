@@ -1,6 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { agruparPorFornecedor, ordenarDatasContagemBase, ordenarFornecedores, SEM_FORNECEDOR } from "./pedido";
-import type { SugestaoCompra } from "@/lib/types";
+import {
+  agruparPorFornecedor,
+  mesclarPedidosPorFornecedorCanonico,
+  nomeFornecedorCanonico,
+  ordenarDatasContagemBase,
+  ordenarFornecedores,
+  SEM_FORNECEDOR,
+} from "./pedido";
+import type { Pedido, PedidoItem, SugestaoCompra } from "@/lib/types";
+
+function pedidoItem(sku: string): PedidoItem {
+  return {
+    sku,
+    nome: sku,
+    nomeCompra: sku,
+    unidadeBase: "UN",
+    quantidadePedida: 1,
+    quantidadeRecebida: null,
+    precoAntigo: null,
+    precoAtualizado: null,
+    precoConfirmado: false,
+    vencedorConfirmado: true,
+  };
+}
+
+function pedido(fornecedor: string, atualizadoEm: string, itens: PedidoItem[]): Pedido {
+  return {
+    id: `pedido-${fornecedor}-${atualizadoEm}`,
+    fornecedor,
+    dataContagemBase: "18/08/2026",
+    previsaoEntrega: null,
+    observacaoEntrega: null,
+    recebido: false,
+    criadoEm: atualizadoEm,
+    atualizadoEm,
+    itens,
+  };
+}
 
 function item(sku: string, fornecedores: string[], precisaComprar = true): SugestaoCompra {
   return {
@@ -54,6 +90,38 @@ describe("agruparPorFornecedor", () => {
 
     const semNecessidade = agruparPorFornecedor([item("B", [], false)]);
     expect(Object.keys(semNecessidade)).toEqual([]);
+  });
+});
+
+describe("nomeFornecedorCanonico", () => {
+  it("resolve variação de espaço/maiúscula pro nome exato do cadastro", () => {
+    expect(nomeFornecedorCanonico("sem limite ", ["Sem Limite"])).toBe("Sem Limite");
+  });
+
+  it("mantém o nome como veio quando não acha correspondência", () => {
+    expect(nomeFornecedorCanonico("Distribuidora Fantasma", ["Sem Limite"])).toBe("Distribuidora Fantasma");
+  });
+});
+
+describe("mesclarPedidosPorFornecedorCanonico", () => {
+  it("renomeia pedido salvo com grafia velha pro nome canônico, sem duplicar bloco", () => {
+    // Achado real no Editor de Espelhos: pedido confirmado sob a grafia
+    // antiga ("sem limite ") ficava órfão do nome atual do cadastro e
+    // aparecia ao lado de um bloco vazio com o nome certo.
+    const pedidos = [pedido("sem limite ", "2026-08-18T10:00:00Z", [pedidoItem("CERV-BUD")])];
+    const resultado = mesclarPedidosPorFornecedorCanonico(pedidos, ["Sem Limite"]);
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].fornecedor).toBe("Sem Limite");
+    expect(resultado[0].itens.map((i) => i.sku)).toEqual(["CERV-BUD"]);
+  });
+
+  it("une os itens de 2 pedidos salvos que canonizam pro mesmo fornecedor, sem perder nenhum", () => {
+    const antigo = pedido("Sem  Limite", "2026-08-10T10:00:00Z", [pedidoItem("CERV-BUD")]);
+    const novo = pedido("Sem Limite", "2026-08-18T10:00:00Z", [pedidoItem("CERV-SKOL")]);
+    const resultado = mesclarPedidosPorFornecedorCanonico([antigo, novo], ["Sem Limite"]);
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].id).toBe(novo.id); // pedido mais recente empresta id/metadados
+    expect(resultado[0].itens.map((i) => i.sku).sort()).toEqual(["CERV-BUD", "CERV-SKOL"]);
   });
 });
 

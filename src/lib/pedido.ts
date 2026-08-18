@@ -1,4 +1,4 @@
-import type { SugestaoCompra } from "@/lib/types";
+import type { Pedido, PedidoItem, SugestaoCompra } from "@/lib/types";
 import { GRUPO_ORDEM } from "@/lib/grupos";
 
 export const SEM_FORNECEDOR = "Sem fornecedor cadastrado";
@@ -7,19 +7,30 @@ function chaveNormalizada(nome: string): string {
   return nome.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Resolve o nome bruto de um fornecedor (texto copiado no momento da
+ * seleção em Produtos, ou já salvo num Pedido antigo) pro nome canônico
+ * atual do cadastro, se achar correspondência ignorando espaço/maiúscula -
+ * sem isso, renomear um fornecedor (ou uma variação de digitação entre
+ * produtos) deixa produto/pedido antigo "órfão" do nome atual. Sem
+ * correspondência no cadastro, devolve o nome como veio (não inventa
+ * fornecedor que não existe). */
+export function nomeFornecedorCanonico(nome: string, fornecedoresCadastro: string[]): string {
+  const chave = chaveNormalizada(nome);
+  for (const candidato of fornecedoresCadastro) {
+    if (chaveNormalizada(candidato) === chave) return candidato;
+  }
+  return nome;
+}
+
 /** Agrupa por fornecedor, pra montar a lista de cotação/pedido de cada um.
  * Sem fornecedor cadastrado só entra no grupo avulso se realmente precisa
  * comprar - senão o grupo vira ruído de produto que nem precisa de pedido.
  *
- * `fornecedoresCadastro` (nomes vindos do cadastro de Fornecedores, mesmo
- * texto usado no seletor de Produtos) normaliza o nome bruto de cada
- * produto contra ele antes de agrupar - Fornecedor 1-4 é texto copiado na
- * hora da seleção, não uma referência viva ao cadastro, então renomear um
- * fornecedor (ou um espaço/maiúscula digitado diferente entre produtos)
- * deixava produto antigo apontando pro nome velho, e Pedidos mostrava dois
- * blocos pro mesmo fornecedor - achado real com "Sem Limite" duplicado
- * mesmo com só 1 registro em Fornecedores. Sem essa lista (chamada sem o
- * segundo argumento) agrupa pelo nome bruto mesmo, igual antes.
+ * `fornecedoresCadastro` normaliza o nome bruto de cada produto contra o
+ * cadastro atual antes de agrupar - achado real com "Sem Limite"
+ * duplicado em Pedidos mesmo com só 1 registro em Fornecedores. Sem essa
+ * lista (chamada sem o segundo argumento) agrupa pelo nome bruto mesmo,
+ * igual antes.
  *
  * Funções puras (sem I/O) de propósito - usadas tanto no servidor quanto em
  * componente client, não podem puxar nada de `lib/sheets/*`. */
@@ -27,11 +38,6 @@ export function agruparPorFornecedor(
   itens: SugestaoCompra[],
   fornecedoresCadastro: string[] = []
 ): Record<string, SugestaoCompra[]> {
-  const canonicoPorChave = new Map(fornecedoresCadastro.map((nome) => [chaveNormalizada(nome), nome]));
-  function canonico(nome: string): string {
-    return canonicoPorChave.get(chaveNormalizada(nome)) ?? nome;
-  }
-
   const grupos: Record<string, SugestaoCompra[]> = {};
   for (const item of itens) {
     const fornecedores = item.fornecedores.length
@@ -42,13 +48,51 @@ export function agruparPorFornecedor(
     // Set pra não duplicar a linha do item se, por engano, dois dos quatro
     // campos Fornecedor 1-4 do mesmo produto apontarem pro mesmo fornecedor
     // (direto ou via normalização acima).
-    const nomesCanonicos = new Set(fornecedores.map(canonico));
+    const nomesCanonicos = new Set(fornecedores.map((f) => nomeFornecedorCanonico(f, fornecedoresCadastro)));
     for (const f of nomesCanonicos) {
       if (!grupos[f]) grupos[f] = [];
       grupos[f].push(item);
     }
   }
   return grupos;
+}
+
+/** Reconcilia Pedidos já salvos com o nome canônico atual do fornecedor -
+ * mesmo problema de `agruparPorFornecedor`, mas do lado do que já foi
+ * confirmado: Pedido salvo grava o texto exato do fornecedor no momento da
+ * confirmação, então uma variação de espaço/maiúscula (ou o fornecedor
+ * renomeado no cadastro depois) deixava o pedido antigo "órfão" do nome
+ * atual - Editor de Espelhos mostrava um bloco vazio com o nome certo (só
+ * a sugestão fresca, sem o que já foi confirmado) ao lado de outro bloco
+ * com o nome velho e o pedido de verdade dentro, os dois pro mesmo
+ * fornecedor real. Se dois Pedidos salvos canonizarem pro mesmo nome (caso
+ * raro, mas possível: nada impedia 2 grafias diferentes de cada uma ter
+ * sua própria linha), une os itens dos dois em vez de mostrar só um e
+ * esconder o outro - o Pedido mais recente (`atualizadoEm`) empresta
+ * id/previsão de entrega/recebido pro bloco combinado. */
+export function mesclarPedidosPorFornecedorCanonico(pedidos: Pedido[], fornecedoresCadastro: string[]): Pedido[] {
+  const porCanonico = new Map<string, Pedido[]>();
+  for (const pedido of pedidos) {
+    const nome = nomeFornecedorCanonico(pedido.fornecedor, fornecedoresCadastro);
+    const lista = porCanonico.get(nome) ?? [];
+    lista.push(pedido);
+    porCanonico.set(nome, lista);
+  }
+
+  const resultado: Pedido[] = [];
+  for (const [fornecedor, lista] of porCanonico) {
+    if (lista.length === 1) {
+      resultado.push({ ...lista[0], fornecedor });
+      continue;
+    }
+    const maisRecente = lista.reduce((a, b) => (b.atualizadoEm > a.atualizadoEm ? b : a));
+    const itensPorSku = new Map<string, PedidoItem>();
+    for (const p of [...lista].sort((a, b) => a.atualizadoEm.localeCompare(b.atualizadoEm))) {
+      for (const item of p.itens) itensPorSku.set(item.sku, item);
+    }
+    resultado.push({ ...maisRecente, fornecedor, itens: Array.from(itensPorSku.values()) });
+  }
+  return resultado;
 }
 
 /** Fornecedores em ordem alfabética, com "Sem fornecedor cadastrado" sempre

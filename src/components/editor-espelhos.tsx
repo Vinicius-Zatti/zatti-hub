@@ -18,7 +18,7 @@ import {
   CompartilharCancelado,
   type LinhaPedido,
 } from "@/lib/canvas-tabela";
-import { toNumeroBR, arredondarPrecoCima } from "@/lib/sheets/numero";
+import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
 
 function formatMoeda(v: number): string {
@@ -205,7 +205,7 @@ export function EditorEspelhos({
         const precoBase = toNumeroBR(precosTexto[k]);
         inicial[k] =
           precoBase !== null && item.qtdUnidadeBasePorEmbalagem
-            ? formatNumero(arredondarPrecoCima(precoBase * item.qtdUnidadeBasePorEmbalagem))
+            ? formatNumero(arredondarPreco(precoBase * item.qtdUnidadeBasePorEmbalagem))
             : "";
       }
     }
@@ -352,14 +352,14 @@ export function EditorEspelhos({
     if (raw === "" || Number.isNaN(num) || num < 0) return;
 
     const modoAtual = modo[fornecedor] ?? "interno";
-    const novoPrecoBase = arredondarPrecoCima(
+    const novoPrecoBase = arredondarPreco(
       modoAtual === "interno" ? num : item.qtdUnidadeBasePorEmbalagem ? num / item.qtdUnidadeBasePorEmbalagem : num
     );
     setPrecosTexto((p) => ({ ...p, [k]: formatNumero(novoPrecoBase) }));
     if (item.qtdUnidadeBasePorEmbalagem) {
       setPrecosTextoEmbalagem((p) => ({
         ...p,
-        [k]: formatNumero(arredondarPrecoCima(novoPrecoBase * (item.qtdUnidadeBasePorEmbalagem as number))),
+        [k]: formatNumero(arredondarPreco(novoPrecoBase * (item.qtdUnidadeBasePorEmbalagem as number))),
       }));
     }
     const salvou = await persistirItem(
@@ -458,7 +458,7 @@ export function EditorEspelhos({
           delete novo[k];
         } else {
           novo[k] = formatNumero(
-            arredondarPrecoCima(precoAtualCadastro * concorrente.qtdUnidadeBasePorEmbalagem)
+            arredondarPreco(precoAtualCadastro * concorrente.qtdUnidadeBasePorEmbalagem)
           );
         }
       }
@@ -705,15 +705,15 @@ export function EditorEspelhos({
                         modoAtual === "interno" || !item.qtdUnidadeBasePorEmbalagem
                           ? item.precoNaContagem
                           : item.precoNaContagem !== null
-                             ? arredondarPrecoCima(item.precoNaContagem * item.qtdUnidadeBasePorEmbalagem)
+                             ? arredondarPreco(item.precoNaContagem * item.qtdUnidadeBasePorEmbalagem)
                              : null;
                       const diferencaExibida =
                         diferencaDoMelhor !== null &&
                         preco !== null &&
                         modoAtual === "fornecedor" &&
                         item.qtdUnidadeBasePorEmbalagem
-                          ? arredondarPrecoCima(preco * item.qtdUnidadeBasePorEmbalagem) -
-                            arredondarPrecoCima(menorPreco * item.qtdUnidadeBasePorEmbalagem)
+                          ? arredondarPreco(preco * item.qtdUnidadeBasePorEmbalagem) -
+                            arredondarPreco(menorPreco * item.qtdUnidadeBasePorEmbalagem)
                           : diferencaDoMelhor;
                       const precoAtualizadoExibido =
                         modoAtual === "interno"

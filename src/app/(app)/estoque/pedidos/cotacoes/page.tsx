@@ -3,7 +3,7 @@ import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
-import { agruparPorFornecedor, ordenarFornecedores } from "@/lib/pedido";
+import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarFornecedores } from "@/lib/pedido";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
@@ -60,8 +60,15 @@ export default async function EditorEspelhosPage({
   // Pedidos já salvos nessa contagem base - garante que um fornecedor com
   // pedido salvo continue aparecendo mesmo se o recálculo fresco não achar
   // mais nenhum item precisando comprar pra ele (ex: item sem fornecedor
-  // cadastrado, adicionado manualmente em Criar Cotação).
-  const pedidosSalvos = await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada);
+  // cadastrado, adicionado manualmente em Criar Cotação). Reconciliado com
+  // o nome canônico do cadastro antes de qualquer outro uso - sem isso,
+  // Pedido salvo com o nome antigo do fornecedor (antes de uma renomeação,
+  // ou com variação de espaço/maiúscula) virava um segundo bloco vazio ao
+  // lado do bloco com o pedido de verdade.
+  const pedidosSalvos = mesclarPedidosPorFornecedorCanonico(
+    await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada),
+    nomesFornecedoresCadastro
+  );
 
   const fornecedores = ordenarFornecedores(
     Array.from(new Set([...Object.keys(itensPorFornecedorFresco), ...pedidosSalvos.map((p) => p.fornecedor)]))
