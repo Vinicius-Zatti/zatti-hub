@@ -15,6 +15,13 @@ export const CAMADA_LABEL: Record<CamadaFicha, string> = {
  * Conversões, os dois não devem nem listar esses produtos. */
 export const GRUPOS_FORA_DE_FICHA = new Set(["LIM", "OPE"]);
 
+/** Toda quantidade de Ficha Técnica (rendimento, componente) mostra sempre
+ * 3 casas decimais em português (vírgula) - nunca `{numero}` cru no JSX,
+ * que sai em ponto e sem casa fixa (bug real: "0.9" em vez de "0,900"). */
+export function formatarQuantidade(valor: number): string {
+  return valor.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 export type GrupoFichasPorCategoria = {
   categoriaId: string;
   categoriaNome: string;

@@ -6,8 +6,10 @@ import { excluirFichaTecnicaAction } from "@/app/(app)/fichas-tecnicas/actions";
 
 /** Confirmação em duas etapas (sem modal/confirm nativo) - primeiro toque
  * troca o botão por "Confirmar exclusão"/"Cancelar", só o segundo toque
- * exclui de verdade. */
-export function ExcluirFichaTecnicaBotao({ id }: { id: string }) {
+ * exclui de verdade. `aoExcluir` opcional: sem ele (uso na rota
+ * `/fichas-tecnicas/[id]`) navega de volta pra listagem; dentro da janela
+ * sobreposta, quem chama decide (fechar a janela). */
+export function ExcluirFichaTecnicaBotao({ id, aoExcluir }: { id: string; aoExcluir?: () => void }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -20,6 +22,10 @@ export function ExcluirFichaTecnicaBotao({ id }: { id: string }) {
       if (!resultado.ok) {
         setErro(resultado.mensagem);
         setConfirmando(false);
+        return;
+      }
+      if (aoExcluir) {
+        aoExcluir();
         return;
       }
       router.push("/fichas-tecnicas");

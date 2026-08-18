@@ -618,3 +618,40 @@ export async function removerConversaoProduto(unidadeId: string, produtoSku: str
     .eq("produto_sku", produtoSku);
   if (error) throw new Error(error.message);
 }
+
+export type FichaTecnicaParaExibir = {
+  ficha: FichaTecnica;
+  categorias: CategoriaFicha[];
+  produtos: OpcaoProdutoFicha[];
+  fichasDisponiveis: { id: string; nome: string; sku: string; rendimentoUnidade: UnidadeRendimentoFicha; custoPorUnidade: number | null }[];
+};
+
+/** Tudo que a tela de detalhe (rota `/fichas-tecnicas/[id]` ou a janela
+ * sobreposta na listagem) precisa pra exibir e, se `podeGerir`, editar em
+ * seguida sem outra ida ao banco. Usado tanto pela página quanto pela
+ * Server Action que a listagem chama pra abrir a janela sobreposta. */
+export async function carregarFichaTecnicaParaExibir(
+  unidadeId: string,
+  id: string,
+  podeGerir: boolean,
+): Promise<FichaTecnicaParaExibir | null> {
+  const [ficha, categorias, produtos, fichas] = await Promise.all([
+    getFichaTecnicaCompleta(unidadeId, id),
+    podeGerir ? listarCategoriasFicha(unidadeId) : Promise.resolve([]),
+    podeGerir ? listarProdutosParaFicha(unidadeId) : Promise.resolve([]),
+    podeGerir ? listarFichasTecnicas(unidadeId) : Promise.resolve([]),
+  ]);
+  if (!ficha) return null;
+  return {
+    ficha,
+    categorias,
+    produtos,
+    fichasDisponiveis: fichas.map((f) => ({
+      id: f.id,
+      nome: f.nome,
+      sku: f.sku,
+      rendimentoUnidade: f.rendimentoUnidade,
+      custoPorUnidade: f.custo.custoPorUnidade,
+    })),
+  };
+}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CAMADA_LABEL } from "@/lib/fichas-tecnicas";
+import { CAMADA_LABEL, formatarQuantidade } from "@/lib/fichas-tecnicas";
 import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
 import type { CategoriaFicha, FichaTecnica } from "@/lib/types";
@@ -12,22 +12,38 @@ const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" 
 /** Editar troca a própria tela de detalhe pelo formulário, no mesmo lugar -
  * sem navegar pra outra URL. Categorias/produtos/fichas pra editar só vêm
  * preenchidas quando `podeGerir` (Operacional nunca edita, não precisa
- * carregar isso). */
+ * carregar isso).
+ *
+ * `aoFechar`/`aoSalvar` são opcionais - sem eles (uso direto na rota
+ * `/fichas-tecnicas/[id]`), "Voltar" chama `router.back()` (preserva a
+ * posição de rolagem da listagem, é navegação de verdade pelo histórico) e
+ * salvar dá `router.refresh()`. Com eles (uso dentro da janela sobreposta
+ * na listagem, ver `ListaFichasTecnicas`), o botão vira "Fechar" e quem
+ * decide o que fazer é o componente pai. */
 export function FichaTecnicaDetalhe({
   ficha,
   podeGerir,
   categorias,
   produtos,
   fichasDisponiveis,
+  aoFechar,
+  aoSalvar,
 }: {
   ficha: FichaTecnica;
   podeGerir: boolean;
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
+  aoFechar?: () => void;
+  aoSalvar?: (id: string) => void;
 }) {
   const router = useRouter();
   const [editando, setEditando] = useState(false);
+
+  function fechar() {
+    if (aoFechar) aoFechar();
+    else router.back();
+  }
 
   if (editando) {
     return (
@@ -36,9 +52,10 @@ export function FichaTecnicaDetalhe({
         categorias={categorias}
         produtos={produtos}
         fichasDisponiveis={fichasDisponiveis}
-        onSalvo={() => {
+        onSalvo={(id) => {
           setEditando(false);
-          router.refresh();
+          if (aoSalvar) aoSalvar(id);
+          else router.refresh();
         }}
         onCancelar={() => setEditando(false)}
       />
@@ -47,6 +64,14 @@ export function FichaTecnicaDetalhe({
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-5 pb-10">
+      <button
+        type="button"
+        onClick={fechar}
+        className="flex w-fit items-center gap-1 text-sm font-semibold text-azul-petroleo"
+      >
+        ← {aoFechar ? "Fechar" : "Voltar"}
+      </button>
+
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">{ficha.nome}</h1>
@@ -63,7 +88,7 @@ export function FichaTecnicaDetalhe({
             >
               Editar
             </button>
-            <ExcluirFichaTecnicaBotao id={ficha.id} />
+            <ExcluirFichaTecnicaBotao id={ficha.id} aoExcluir={aoFechar} />
           </div>
         )}
       </div>
@@ -72,7 +97,7 @@ export function FichaTecnicaDetalhe({
         <div className="rounded-lg border border-cinza-claro bg-branco p-3">
           <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Rendimento</div>
           <div className="mt-1 text-lg font-bold text-azul-noite">
-            {ficha.rendimentoQuantidade} {ficha.rendimentoUnidade}
+            {formatarQuantidade(ficha.rendimentoQuantidade)} {ficha.rendimentoUnidade}
           </div>
         </div>
         <div className="rounded-lg border border-cinza-claro bg-branco p-3">
@@ -127,7 +152,7 @@ export function FichaTecnicaDetalhe({
                   {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
                 </div>
                 <span className="shrink-0 text-sm font-bold text-azul-noite">
-                  {c.quantidade} {c.unidadeUso}
+                  {formatarQuantidade(c.quantidade)} {c.unidadeUso}
                 </span>
               </li>
             ))}

@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
+import { getAcessoAtual, requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import {
+  carregarFichaTecnicaParaExibir,
   criarCategoriaFicha,
   excluirFichaTecnica,
   getFichaTecnicaCompleta,
@@ -10,6 +11,7 @@ import {
   salvarConversoesProduto,
   salvarFichaTecnica,
   type EntradaFichaTecnica,
+  type FichaTecnicaParaExibir,
 } from "@/lib/banco/fichas-tecnicas";
 import {
   categoriaFichaEntradaSchema,
@@ -177,5 +179,25 @@ export async function salvarConversoesProdutoAction(
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar as conversões.") };
+  }
+}
+
+export type ResultadoAbrirFicha =
+  | { ok: true; dados: FichaTecnicaParaExibir; podeGerir: boolean }
+  | { ok: false; mensagem: string };
+
+/** Busca do cliente pra abrir a ficha numa janela sobreposta à listagem
+ * (sem navegar pra outra URL) - consulta é liberada a todos os papéis. */
+export async function abrirFichaTecnicaAction(id: string): Promise<ResultadoAbrirFicha> {
+  const acesso = await getAcessoAtual();
+  const podeGerir = acesso.role !== "operacional";
+
+  try {
+    const idValidado = validarEntrada(idUuidSchema, id);
+    const dados = await carregarFichaTecnicaParaExibir(acesso.unidadeId, idValidado, podeGerir);
+    if (!dados) return { ok: false, mensagem: "Ficha técnica não encontrada." };
+    return { ok: true, dados, podeGerir };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar a ficha técnica.") };
   }
 }
