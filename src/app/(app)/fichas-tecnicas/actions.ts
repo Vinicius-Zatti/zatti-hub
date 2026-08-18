@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFichasTecnicas, registrarAuditoria } from "@/lib/acesso";
+import { requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import {
   criarCategoriaFicha,
   excluirFichaTecnica,
   getFichaTecnicaCompleta,
   salvarConversaoProduto,
+  salvarConversoesProduto,
   salvarFichaTecnica,
   type EntradaFichaTecnica,
 } from "@/lib/banco/fichas-tecnicas";
@@ -148,5 +149,33 @@ export async function salvarConversaoProdutoAction(input: {
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a conversão.") };
+  }
+}
+
+/** "Salvar todos" da grade de Conversões. */
+export async function salvarConversoesProdutoAction(
+  entradas: { produtoSku: string; unidadeSaida: string; fatorPorUnidadeBase: number; fatorCorrecao: number; descricao: string }[],
+): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("conversao_produto_salvar");
+    const entradasValidadas = entradas.map((entrada) => validarEntrada(conversaoProdutoEntradaSchema, entrada));
+    await salvarConversoesProduto({ unidadeId: acesso.unidadeId, entradas: entradasValidadas });
+
+    await registrarAuditoriaBatch(
+      entradasValidadas.map((entrada) => ({
+        acesso,
+        acao: "salvar",
+        entidade: "produto_conversao",
+        entidadeId: entrada.produtoSku,
+        dadosNovos: entrada,
+      })),
+    );
+
+    revalidatePath("/fichas-tecnicas/conversoes");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar as conversões.") };
   }
 }

@@ -582,6 +582,33 @@ export async function salvarConversaoProduto(params: {
   if (error) throw new Error(error.message);
 }
 
+/** "Salvar todos" da grade de Conversões - um upsert só com todas as linhas
+ * alteradas, mesmo padrão de `salvarProdutosBanco`. */
+export async function salvarConversoesProduto(params: {
+  unidadeId: string;
+  entradas: {
+    produtoSku: string;
+    unidadeSaida: string;
+    fatorPorUnidadeBase: number;
+    fatorCorrecao: number;
+    descricao: string;
+  }[];
+}): Promise<void> {
+  if (params.entradas.length === 0) return;
+  const supabase = await createClient();
+  const { error } = await supabase.from("produto_conversoes").upsert(
+    params.entradas.map((e) => ({
+      unidade_id: params.unidadeId,
+      produto_sku: e.produtoSku,
+      unidade_saida: e.unidadeSaida,
+      fator_por_unidade_base: e.fatorPorUnidadeBase,
+      fator_correcao: e.fatorCorrecao,
+      descricao: e.descricao,
+    })),
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function removerConversaoProduto(unidadeId: string, produtoSku: string): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase

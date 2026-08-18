@@ -18,6 +18,7 @@ export default async function ConversoesProdutoPage() {
     .map((p) => ({
       sku: p.sku,
       nome: p.nome,
+      grupo: p.grupo,
       unidadeBase: p.unidadeBase,
       precoUnitario: p.precoUnitario,
       conversao: conversaoPorSku.get(p.sku) ?? null,

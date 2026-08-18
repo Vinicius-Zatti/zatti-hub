@@ -217,7 +217,7 @@ export const rendimentoUnidadeFichaSchema = z.enum(["KG", "LT", "UN"]);
 export const conversaoProdutoEntradaSchema = z
   .object({
     produtoSku: identificador,
-    unidadeSaida: unidadeUsoSchema,
+    unidadeSaida: rendimentoUnidadeFichaSchema,
     fatorPorUnidadeBase: z.number().finite().min(0.0001).max(LIMITE_QUANTIDADE),
     fatorCorrecao: z.number().finite().min(0.0001).max(1000),
     descricao: texto(200),
