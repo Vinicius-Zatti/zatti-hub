@@ -6,6 +6,7 @@ import type {
   CamadaFicha,
   CategoriaFicha,
   ComponenteFicha,
+  ConfiguracaoFinanceira,
   CustoFicha,
   EtapaFicha,
   FichaTecnica,
@@ -129,6 +130,7 @@ type FichaRow = {
   nome: string;
   rendimento_quantidade: number;
   rendimento_unidade: UnidadeRendimentoFicha;
+  preco_venda: number | null;
   tempo_preparo_minutos: number | null;
   foto_path: string | null;
   observacoes_operacionais: string;
@@ -143,10 +145,20 @@ type FichaRow = {
 
 type FichaResumoRow = Pick<
   FichaRow,
-  "id" | "categoria_id" | "sku" | "camada" | "nome" | "rendimento_quantidade" | "rendimento_unidade" | "status" | "atualizado_em"
+  | "id"
+  | "categoria_id"
+  | "sku"
+  | "camada"
+  | "nome"
+  | "rendimento_quantidade"
+  | "rendimento_unidade"
+  | "preco_venda"
+  | "status"
+  | "atualizado_em"
 >;
 
-const RESUMO_COLUNAS = "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, status, atualizado_em";
+const RESUMO_COLUNAS =
+  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, status, atualizado_em";
 
 function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoFicha): FichaTecnicaResumo {
   return {
@@ -157,6 +169,7 @@ function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoF
     categoriaNome,
     nome: row.nome,
     rendimentoQuantidade: Number(row.rendimento_quantidade),
+    precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
     rendimentoUnidade: row.rendimento_unidade,
     status: row.status,
     custo,
@@ -380,6 +393,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     nome: row.nome,
     rendimentoQuantidade: Number(row.rendimento_quantidade),
     rendimentoUnidade: row.rendimento_unidade,
+    precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
     custo,
     tempoPreparoMinutos: row.tempo_preparo_minutos,
     fotoPath: row.foto_path,
@@ -414,6 +428,9 @@ export type EntradaFichaTecnica = {
   nome: string;
   rendimentoQuantidade: number;
   rendimentoUnidade: UnidadeRendimentoFicha;
+  /** Só preenchido de verdade quando camada é VEN - PRE sempre manda null
+   * (ver comentário em `FichaTecnicaResumo`). */
+  precoVenda: number | null;
   tempoPreparoMinutos: number | null;
   fotoPath: string | null;
   observacoesOperacionais: string;
@@ -452,9 +469,7 @@ export async function salvarFichaTecnica(params: {
     p_nome: entrada.nome,
     p_rendimento_quantidade: entrada.rendimentoQuantidade,
     p_rendimento_unidade: entrada.rendimentoUnidade,
-    // Preço de venda não é definido na Ficha Técnica (isso é de outra parte
-    // do sistema) - coluna fica sempre nula por aqui.
-    p_preco_venda: null,
+    p_preco_venda: entrada.precoVenda,
     p_tempo_preparo_minutos: entrada.tempoPreparoMinutos,
     p_foto_path: entrada.fotoPath,
     p_observacoes_operacionais: entrada.observacoesOperacionais,
@@ -654,4 +669,34 @@ export async function carregarFichaTecnicaParaExibir(
       custoPorUnidade: f.custo.custoPorUnidade,
     })),
   };
+}
+
+/** 1 linha por unidade, nasce zerada até a Gestão preencher a primeira vez -
+ * sempre existe algo pra devolver (nunca null). */
+export async function getConfiguracaoFinanceira(unidadeId: string): Promise<ConfiguracaoFinanceira> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("configuracao_financeira")
+    .select("faturamento_medio_mensal, custo_fixo_medio_mensal, lucro_desejado_valor")
+    .eq("unidade_id", unidadeId)
+    .maybeSingle();
+  if (!data) return { faturamentoMedioMensal: 0, custoFixoMedioMensal: 0, lucroDesejadoValor: 0 };
+  const row = data as { faturamento_medio_mensal: number; custo_fixo_medio_mensal: number; lucro_desejado_valor: number };
+  return {
+    faturamentoMedioMensal: Number(row.faturamento_medio_mensal),
+    custoFixoMedioMensal: Number(row.custo_fixo_medio_mensal),
+    lucroDesejadoValor: Number(row.lucro_desejado_valor),
+  };
+}
+
+/** Só chamado atrás de `requireGestaoFichasTecnicas()`. */
+export async function salvarConfiguracaoFinanceira(unidadeId: string, config: ConfiguracaoFinanceira): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("configuracao_financeira").upsert({
+    unidade_id: unidadeId,
+    faturamento_medio_mensal: config.faturamentoMedioMensal,
+    custo_fixo_medio_mensal: config.custoFixoMedioMensal,
+    lucro_desejado_valor: config.lucroDesejadoValor,
+  });
+  if (error) throw new Error(error.message);
 }

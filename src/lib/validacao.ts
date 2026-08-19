@@ -269,6 +269,7 @@ export const fichaTecnicaEntradaSchema = z
     nome: textoObrigatorio(160),
     rendimentoQuantidade: quantidadePositiva,
     rendimentoUnidade: rendimentoUnidadeFichaSchema,
+    precoVenda: dinheiroOuNull,
     tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
     fotoPath: texto(500).nullable(),
     observacoesOperacionais: texto(2_000),
@@ -276,6 +277,16 @@ export const fichaTecnicaEntradaSchema = z
     status: statusFichaSchema,
     componentes: z.array(componenteFichaEntradaSchema).max(200),
     etapas: z.array(etapaFichaEntradaSchema).max(200),
+  })
+  .strict();
+
+const dinheiroObrigatorio = z.number().finite().min(0).max(LIMITE_DINHEIRO);
+
+export const configuracaoFinanceiraEntradaSchema = z
+  .object({
+    faturamentoMedioMensal: dinheiroObrigatorio,
+    custoFixoMedioMensal: dinheiroObrigatorio,
+    lucroDesejadoValor: dinheiroObrigatorio,
   })
   .strict();
 

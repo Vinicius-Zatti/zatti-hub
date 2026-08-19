@@ -89,6 +89,7 @@ export function FichaTecnicaForm({
   const [rendimentoUnidade, setRendimentoUnidade] = useState<UnidadeRendimentoFicha>(
     existente?.rendimentoUnidade ?? "KG",
   );
+  const [precoVenda, setPrecoVenda] = useState<number | null>(existente?.precoVenda ?? null);
   const [tempoPreparoMinutos, setTempoPreparoMinutos] = useState<number | null>(
     existente?.tempoPreparoMinutos ?? null,
   );
@@ -188,6 +189,7 @@ export function FichaTecnicaForm({
       nome,
       rendimentoQuantidade: rendimentoQuantidade ?? 0,
       rendimentoUnidade,
+      precoVenda: camada === "VEN" ? precoVenda : null,
       tempoPreparoMinutos,
       fotoPath: existente?.fotoPath ?? null,
       observacoesOperacionais: obsOperacionais,
@@ -392,6 +394,12 @@ export function FichaTecnicaForm({
                 decimais={0}
               />
             </label>
+            {camada === "VEN" && (
+              <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+                Preço de venda (opcional - pode preencher depois)
+                <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
+              </label>
+            )}
           </div>
         </div>
 

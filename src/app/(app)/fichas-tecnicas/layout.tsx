@@ -6,11 +6,18 @@ const SUB_ITEMS = [
   { label: "Nova Ficha", href: "/fichas-tecnicas/nova" },
   { label: "Categorias", href: "/fichas-tecnicas/categorias" },
   { label: "Conversões", href: "/fichas-tecnicas/conversoes" },
+  { label: "Margem de Contribuição", href: "/fichas-tecnicas/calculadora" },
 ];
 
-// Nova ficha, Categorias e Conversões são só Gestão/master - Operacional só
-// consulta (mesmo padrão de `financeiro/layout.tsx` com o Dashboard).
-const SOMENTE_GESTAO = ["/fichas-tecnicas/nova", "/fichas-tecnicas/categorias", "/fichas-tecnicas/conversoes"];
+// Nova ficha, Categorias, Conversões e a Calculadora são só Gestão/master -
+// Operacional só consulta (mesmo padrão de `financeiro/layout.tsx` com o
+// Dashboard).
+const SOMENTE_GESTAO = [
+  "/fichas-tecnicas/nova",
+  "/fichas-tecnicas/categorias",
+  "/fichas-tecnicas/conversoes",
+  "/fichas-tecnicas/calculadora",
+];
 
 export default async function FichasTecnicasLayout({ children }: { children: React.ReactNode }) {
   // Defesa em profundidade: redireciona pra fora igual `requireGestao` faz

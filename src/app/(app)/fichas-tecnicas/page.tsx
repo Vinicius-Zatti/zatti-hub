@@ -1,12 +1,19 @@
 import { getAcessoAtual } from "@/lib/acesso";
-import { listarFichasTecnicas } from "@/lib/banco/fichas-tecnicas";
+import { getConfiguracaoFinanceira, listarFichasTecnicas } from "@/lib/banco/fichas-tecnicas";
+import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { ListaFichasTecnicas } from "@/components/lista-fichas-tecnicas";
 
 export const dynamic = "force-dynamic";
 
 export default async function FichasTecnicasPage() {
   const acesso = await getAcessoAtual();
-  const fichas = await listarFichasTecnicas(acesso.unidadeId);
+  const podeGerir = acesso.role !== "operacional";
+
+  const [fichas, configuracao] = await Promise.all([
+    listarFichasTecnicas(acesso.unidadeId),
+    podeGerir ? getConfiguracaoFinanceira(acesso.unidadeId) : Promise.resolve(null),
+  ]);
+  const margemNecessaria = configuracao ? calcularMargemContribuicao(configuracao).margemNecessaria : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -16,7 +23,7 @@ export default async function FichasTecnicasPage() {
           Piloto exclusivo - receitas de pré-preparo (uso interno) e itens vendáveis.
         </p>
       </div>
-      <ListaFichasTecnicas fichas={fichas} podeGerir={acesso.role !== "operacional"} />
+      <ListaFichasTecnicas fichas={fichas} podeGerir={podeGerir} margemNecessaria={margemNecessaria} />
     </div>
   );
 }

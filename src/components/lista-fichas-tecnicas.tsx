@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Th } from "@/components/tabela";
+import { ControlesTabela } from "@/components/tabela-rolavel";
+import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
+import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import type { CamadaFicha, FichaTecnicaResumo, StatusFicha } from "@/lib/types";
-import { agruparFichasPorCategoria, CAMADA_LABEL, formatarQuantidade } from "@/lib/fichas-tecnicas";
+import { CAMADA_LABEL, calcularCmv, calcularPrecoVendaSugerido, formatarQuantidade } from "@/lib/fichas-tecnicas";
 import { abrirFichaTecnicaAction, type ResultadoAbrirFicha } from "@/app/(app)/fichas-tecnicas/actions";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
 
@@ -23,16 +27,41 @@ function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export function ListaFichasTecnicas({ fichas, podeGerir }: { fichas: FichaTecnicaResumo[]; podeGerir: boolean }) {
+function pct(n: number | null): string {
+  return n === null ? "-" : `${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+export function ListaFichasTecnicas({
+  fichas,
+  podeGerir,
+  margemNecessaria,
+}: {
+  fichas: FichaTecnicaResumo[];
+  podeGerir: boolean;
+  margemNecessaria: number | null;
+}) {
   const router = useRouter();
   const [camada, setCamada] = useState<CamadaFicha>("PRE");
+  const [busca, setBusca] = useState("");
+  const { expandido, alternar } = useTabelaExpansivel();
+  const { scrollRef, handlers, arrastando } = useArrastarParaRolar<HTMLDivElement>();
+
   const [fichaAbertaId, setFichaAbertaId] = useState<string | null>(null);
   const [dadosAbertos, setDadosAbertos] = useState<ResultadoAbrirFicha & { ok: true }>();
   const [carregando, setCarregando] = useState(false);
   const [erroAbertura, setErroAbertura] = useState<string | null>(null);
 
-  const daCamada = fichas.filter((f) => f.camada === camada);
-  const grupos = agruparFichasPorCategoria(daCamada);
+  const daCamada = useMemo(() => fichas.filter((f) => f.camada === camada), [fichas, camada]);
+  const filtradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return daCamada;
+    return daCamada.filter(
+      (f) =>
+        f.nome.toLowerCase().includes(termo) ||
+        f.sku.toLowerCase().includes(termo) ||
+        f.categoriaNome.toLowerCase().includes(termo),
+    );
+  }, [daCamada, busca]);
 
   async function carregar(id: string) {
     setCarregando(true);
@@ -76,43 +105,116 @@ export function ListaFichasTecnicas({ fichas, podeGerir }: { fichas: FichaTecnic
         ))}
       </div>
 
-      {grupos.length === 0 && (
-        <p className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-sm text-cinza-medio">
-          Nenhuma ficha cadastrada em {CAMADA_LABEL[camada]} ainda.
-        </p>
-      )}
-
-      {grupos.map((grupo) => (
-        <div key={grupo.categoriaId} className="flex flex-col gap-2">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">{grupo.categoriaNome}</div>
-          <div className="flex flex-col gap-2">
-            {grupo.fichas.map((ficha) => (
-              <button
-                key={ficha.id}
-                type="button"
-                onClick={() => abrir(ficha.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-cinza-claro bg-branco p-4 text-left"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-azul-noite">{ficha.nome}</div>
-                  <div className="text-xs text-cinza-medio">
-                    {ficha.sku} · Rende {formatarQuantidade(ficha.rendimentoQuantidade)} {ficha.rendimentoUnidade}
-                  </div>
-                  {podeGerir && ficha.custo.custoPorUnidade !== null && (
-                    <div className="text-xs font-semibold text-azul-petroleo">
-                      {brl(ficha.custo.custoPorUnidade)}/{ficha.rendimentoUnidade}
-                      {!ficha.custo.completo && " (parcial)"}
-                    </div>
-                  )}
-                </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_TONE[ficha.status]}`}>
-                  {STATUS_LABEL[ficha.status]}
-                </span>
-              </button>
-            ))}
+      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : "flex flex-col gap-2"}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-bold text-azul-noite">
+            {filtradas.length}
+            {filtradas.length !== daCamada.length ? ` de ${daCamada.length}` : ""} fichas
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por nome, SKU ou categoria..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full max-w-[220px] rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-xs focus:border-ambar focus:outline-none"
+            />
+            <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
-      ))}
+
+        <div
+          ref={scrollRef}
+          {...handlers}
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
+            arrastando ? "cursor-grabbing" : "cursor-grab"
+          }`}
+        >
+          <table className="w-full min-w-[480px] text-xs">
+            <thead>
+              <tr className="bg-azul-petroleo text-branco">
+                <Th fixo>Nome</Th>
+                {camada === "PRE" ? (
+                  <>
+                    <Th align="right">Rende</Th>
+                    {podeGerir && <Th align="right">Valor da Unidade</Th>}
+                  </>
+                ) : (
+                  podeGerir && (
+                    <>
+                      <Th align="right">Custo Insumos</Th>
+                      <Th align="right">Preço Venda</Th>
+                      <Th align="right">CMV</Th>
+                      <Th align="right">Preço Sugerido</Th>
+                    </>
+                  )
+                )}
+                <Th align="center">Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-sm text-cinza-medio">
+                    Nenhuma ficha encontrada em {CAMADA_LABEL[camada]}.
+                  </td>
+                </tr>
+              )}
+              {filtradas.map((ficha) => {
+                const custoInsumos = ficha.custo.custoPorUnidade;
+                const cmv = custoInsumos !== null ? calcularCmv(custoInsumos, ficha.precoVenda) : null;
+                const precoSugerido = calcularPrecoVendaSugerido(custoInsumos, margemNecessaria);
+                return (
+                  <tr
+                    key={ficha.id}
+                    onClick={() => abrir(ficha.id)}
+                    className="cursor-pointer border-b border-cinza-claro last:border-0 hover:bg-off-white"
+                  >
+                    <td className="max-w-[160px] px-2 py-1.5 font-medium text-cinza">
+                      <div className="truncate">{ficha.nome}</div>
+                      <div className="truncate text-[10px] text-cinza-medio">
+                        {ficha.sku} · {ficha.categoriaNome}
+                      </div>
+                    </td>
+                    {camada === "PRE" ? (
+                      <>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
+                          {formatarQuantidade(ficha.rendimentoQuantidade)} {ficha.rendimentoUnidade}
+                        </td>
+                        {podeGerir && (
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">
+                            {custoInsumos !== null ? brl(custoInsumos) : "-"}
+                          </td>
+                        )}
+                      </>
+                    ) : (
+                      podeGerir && (
+                        <>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
+                            {custoInsumos !== null ? brl(custoInsumos) : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
+                            {ficha.precoVenda !== null ? brl(ficha.precoVenda) : "-"}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{pct(cmv)}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right text-azul-petroleo">
+                            {precoSugerido !== null ? brl(precoSugerido) : "-"}
+                          </td>
+                        </>
+                      )
+                    )}
+                    <td className="px-2 py-1.5 text-center">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_TONE[ficha.status]}`}>
+                        {STATUS_LABEL[ficha.status]}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {fichaAbertaId && (
         <div

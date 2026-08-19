@@ -217,6 +217,9 @@ export type FichaTecnicaResumo = {
   nome: string;
   rendimentoQuantidade: number;
   rendimentoUnidade: UnidadeRendimentoFicha;
+  /** Só faz sentido pra camada VEN (item vendável) - preenchido na criação
+   * é opcional, editável depois. PRE (receita interna) nunca pede isso. */
+  precoVenda: number | null;
   status: StatusFicha;
   custo: CustoFicha;
   atualizadoEm: string;
@@ -233,4 +236,22 @@ export type FichaTecnica = FichaTecnicaResumo & {
   criadoPorNome: string;
   criadoEm: string;
   atualizadoPorNome: string | null;
+};
+
+/** Entrada da Calculadora de Margem de Contribuição (1 config por unidade).
+ * Percentuais nunca são guardados - sempre derivados de faturamento, já
+ * que os dois (R$ e %) têm que bater e faturamento é a referência comum. */
+export type ConfiguracaoFinanceira = {
+  faturamentoMedioMensal: number;
+  custoFixoMedioMensal: number;
+  lucroDesejadoValor: number;
+};
+
+/** Os 4 resultados calculados a partir de `ConfiguracaoFinanceira` - `null`
+ * quando faturamento é 0 (divisão por zero, nada pra calcular ainda). */
+export type MargemContribuicao = {
+  percentualCustoFixo: number | null;
+  lucroDesejadoPercentual: number | null;
+  margemPontoEquilibrio: number | null;
+  margemNecessaria: number | null;
 };

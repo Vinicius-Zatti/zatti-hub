@@ -132,6 +132,28 @@ export function FichaTecnicaDetalhe({
               {!ficha.custo.completo && (
                 <p className="mt-2 text-xs text-ambar">Custo parcial - algum componente ainda não tem preço no Estoque.</p>
               )}
+              {ficha.camada === "VEN" && (
+                <>
+                  <div className="mt-2 flex items-center justify-between border-t border-cinza-claro pt-2">
+                    <span className="text-sm text-cinza-medio">Preço de venda</span>
+                    <span className="font-semibold text-azul-noite">
+                      {ficha.precoVenda !== null ? ficha.precoVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-"}
+                    </span>
+                  </div>
+                  {ficha.custo.custoPorUnidade !== null && ficha.precoVenda !== null && ficha.precoVenda > 0 && (
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-sm text-cinza-medio">CMV</span>
+                      <span className="font-semibold text-azul-noite">
+                        {((ficha.custo.custoPorUnidade / ficha.precoVenda) * 100).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                        %
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>

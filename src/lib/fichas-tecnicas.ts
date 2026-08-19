@@ -1,4 +1,12 @@
-import type { CamadaFicha, ComponenteFicha, CustoFicha, EtapaFicha, FichaTecnicaResumo } from "@/lib/types";
+import type {
+  CamadaFicha,
+  ComponenteFicha,
+  ConfiguracaoFinanceira,
+  CustoFicha,
+  EtapaFicha,
+  FichaTecnicaResumo,
+  MargemContribuicao,
+} from "@/lib/types";
 
 /** Funções puras (sem I/O) de propósito - usadas tanto no servidor quanto em
  * componente client, não podem puxar nada de `lib/banco/*` nem `lib/sheets/*`
@@ -88,4 +96,37 @@ export function calcularCustoEstimado(
     custoPorUnidade: rendimentoQuantidade > 0 ? total / rendimentoQuantidade : null,
     completo,
   };
+}
+
+/** Os 4 indicadores da Calculadora de Margem de Contribuição - `null` em
+ * tudo quando faturamento é 0 (nada pra dividir ainda, não é erro). */
+export function calcularMargemContribuicao(config: ConfiguracaoFinanceira): MargemContribuicao {
+  const { faturamentoMedioMensal, custoFixoMedioMensal, lucroDesejadoValor } = config;
+  if (faturamentoMedioMensal <= 0) {
+    return { percentualCustoFixo: null, lucroDesejadoPercentual: null, margemPontoEquilibrio: null, margemNecessaria: null };
+  }
+  const percentualCustoFixo = custoFixoMedioMensal / faturamentoMedioMensal;
+  const lucroDesejadoPercentual = lucroDesejadoValor / faturamentoMedioMensal;
+  return {
+    percentualCustoFixo,
+    lucroDesejadoPercentual,
+    margemPontoEquilibrio: percentualCustoFixo,
+    margemNecessaria: percentualCustoFixo + lucroDesejadoPercentual,
+  };
+}
+
+/** CMV = quanto do preço de venda é consumido pelo custo do insumo, em %.
+ * `null` sem preço de venda ou preço zerado (nada pra dividir). */
+export function calcularCmv(custoInsumos: number, precoVenda: number | null): number | null {
+  if (precoVenda === null || precoVenda <= 0) return null;
+  return (custoInsumos / precoVenda) * 100;
+}
+
+/** Preço que faz o custo do insumo representar exatamente `1 - margem` do
+ * preço de venda (a margem de contribuição necessária calculada acima) -
+ * `null` sem custo, sem margem calculada, ou margem >= 100% (impossível
+ * bater com preço nenhum). */
+export function calcularPrecoVendaSugerido(custoInsumos: number | null, margemNecessaria: number | null): number | null {
+  if (custoInsumos === null || margemNecessaria === null || margemNecessaria >= 1) return null;
+  return custoInsumos / (1 - margemNecessaria);
 }

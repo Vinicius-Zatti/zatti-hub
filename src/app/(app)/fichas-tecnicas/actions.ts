@@ -7,6 +7,7 @@ import {
   criarCategoriaFicha,
   excluirFichaTecnica,
   getFichaTecnicaCompleta,
+  salvarConfiguracaoFinanceira,
   salvarConversaoProduto,
   salvarConversoesProduto,
   salvarFichaTecnica,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/banco/fichas-tecnicas";
 import {
   categoriaFichaEntradaSchema,
+  configuracaoFinanceiraEntradaSchema,
   conversaoProdutoEntradaSchema,
   fichaTecnicaEntradaSchema,
   idUuidSchema,
@@ -22,7 +24,7 @@ import {
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
-import type { CategoriaFicha } from "@/lib/types";
+import type { CategoriaFicha, ConfiguracaoFinanceira } from "@/lib/types";
 
 export type ResultadoSalvarFicha = { ok: true; id: string; sku: string } | { ok: false; mensagem: string };
 export type ResultadoCategoria = { ok: true; categoria: CategoriaFicha } | { ok: false; mensagem: string };
@@ -199,5 +201,31 @@ export async function abrirFichaTecnicaAction(id: string): Promise<ResultadoAbri
     return { ok: true, dados, podeGerir };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar a ficha técnica.") };
+  }
+}
+
+/** Calculadora de Margem de Contribuição - só Gestão/master, tanto ver
+ * quanto editar (dado sensível: faturamento e lucro do cliente). */
+export async function salvarConfiguracaoFinanceiraAction(input: ConfiguracaoFinanceira): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("configuracao_financeira_salvar");
+    const entrada = validarEntrada(configuracaoFinanceiraEntradaSchema, input);
+    await salvarConfiguracaoFinanceira(acesso.unidadeId, entrada);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "configuracao_financeira",
+      entidadeId: acesso.unidadeId,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath("/fichas-tecnicas/calculadora");
+    revalidatePath("/fichas-tecnicas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a configuração financeira.") };
   }
 }
