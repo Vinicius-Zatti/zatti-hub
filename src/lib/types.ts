@@ -238,20 +238,31 @@ export type FichaTecnica = FichaTecnicaResumo & {
   atualizadoPorNome: string | null;
 };
 
-/** Entrada da Calculadora de Margem de Contribuição (1 config por unidade).
- * Percentuais nunca são guardados - sempre derivados de faturamento, já
- * que os dois (R$ e %) têm que bater e faturamento é a referência comum. */
+/** Entrada da Calculadora de Margem Ideal (1 config por unidade). Percentuais
+ * de lucro nunca são guardados - sempre derivados de faturamento, já que os
+ * dois (R$ e %) têm que bater e faturamento é a referência comum. Taxa de
+ * pagamento e alíquota de imposto já ficam guardadas como fração (0,13 =
+ * 13%) - essas não têm outra forma de entrada pra derivar. */
 export type ConfiguracaoFinanceira = {
   faturamentoMedioMensal: number;
   custoFixoMedioMensal: number;
   lucroDesejadoValor: number;
+  taxaPagamento: number;
+  aliquotaImposto: number;
 };
 
-/** Os 4 resultados calculados a partir de `ConfiguracaoFinanceira` - `null`
- * quando faturamento é 0 (divisão por zero, nada pra calcular ainda). */
+/** Resultados calculados a partir de `ConfiguracaoFinanceira` - `null`
+ * quando faturamento é 0 (divisão por zero, nada pra calcular ainda).
+ * `deducoesTotal` nunca é null (não depende de faturamento). */
 export type MargemContribuicao = {
   percentualCustoFixo: number | null;
   lucroDesejadoPercentual: number | null;
   margemPontoEquilibrio: number | null;
   margemNecessaria: number | null;
+  deducoesTotal: number;
 };
+
+/** Etiqueta ao lado do preço de venda de cada ficha VEN, comparando a
+ * margem de contribuição real do produto (depois de CMV e deduções) contra
+ * as duas referências da Calculadora de Margem Ideal. */
+export type ClassificacaoMargem = "lucro_ajustado" | "abaixo_do_lucro" | "prejuizo";

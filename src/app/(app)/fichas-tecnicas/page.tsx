@@ -13,7 +13,10 @@ export default async function FichasTecnicasPage() {
     listarFichasTecnicas(acesso.unidadeId),
     podeGerir ? getConfiguracaoFinanceira(acesso.unidadeId) : Promise.resolve(null),
   ]);
-  const margemNecessaria = configuracao ? calcularMargemContribuicao(configuracao).margemNecessaria : null;
+  const margem = configuracao ? calcularMargemContribuicao(configuracao) : null;
+  const margemNecessaria = margem?.margemNecessaria ?? null;
+  const margemPontoEquilibrio = margem?.margemPontoEquilibrio ?? null;
+  const deducoesTotal = margem?.deducoesTotal ?? 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -23,7 +26,13 @@ export default async function FichasTecnicasPage() {
           Piloto exclusivo - receitas de pré-preparo (uso interno) e itens vendáveis.
         </p>
       </div>
-      <ListaFichasTecnicas fichas={fichas} podeGerir={podeGerir} margemNecessaria={margemNecessaria} />
+      <ListaFichasTecnicas
+        fichas={fichas}
+        podeGerir={podeGerir}
+        margemNecessaria={margemNecessaria}
+        margemPontoEquilibrio={margemPontoEquilibrio}
+        deducoesTotal={deducoesTotal}
+      />
     </div>
   );
 }

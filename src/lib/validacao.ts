@@ -281,12 +281,22 @@ export const fichaTecnicaEntradaSchema = z
   .strict();
 
 const dinheiroObrigatorio = z.number().finite().min(0).max(LIMITE_DINHEIRO);
+const fracaoPercentual = z.number().finite().min(0).max(0.9999);
 
 export const configuracaoFinanceiraEntradaSchema = z
   .object({
     faturamentoMedioMensal: dinheiroObrigatorio,
     custoFixoMedioMensal: dinheiroObrigatorio,
     lucroDesejadoValor: dinheiroObrigatorio,
+    taxaPagamento: fracaoPercentual,
+    aliquotaImposto: fracaoPercentual,
+  })
+  .strict();
+
+export const precoVendaFichaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    precoVenda: dinheiroOuNull,
   })
   .strict();
 

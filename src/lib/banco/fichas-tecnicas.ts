@@ -681,15 +681,25 @@ export async function getConfiguracaoFinanceira(unidadeId: string): Promise<Conf
   const supabase = await createClient();
   const { data } = await supabase
     .from("configuracao_financeira")
-    .select("faturamento_medio_mensal, custo_fixo_medio_mensal, lucro_desejado_valor")
+    .select("faturamento_medio_mensal, custo_fixo_medio_mensal, lucro_desejado_valor, taxa_pagamento, aliquota_imposto")
     .eq("unidade_id", unidadeId)
     .maybeSingle();
-  if (!data) return { faturamentoMedioMensal: 0, custoFixoMedioMensal: 0, lucroDesejadoValor: 0 };
-  const row = data as { faturamento_medio_mensal: number; custo_fixo_medio_mensal: number; lucro_desejado_valor: number };
+  if (!data) {
+    return { faturamentoMedioMensal: 0, custoFixoMedioMensal: 0, lucroDesejadoValor: 0, taxaPagamento: 0, aliquotaImposto: 0 };
+  }
+  const row = data as {
+    faturamento_medio_mensal: number;
+    custo_fixo_medio_mensal: number;
+    lucro_desejado_valor: number;
+    taxa_pagamento: number;
+    aliquota_imposto: number;
+  };
   return {
     faturamentoMedioMensal: Number(row.faturamento_medio_mensal),
     custoFixoMedioMensal: Number(row.custo_fixo_medio_mensal),
     lucroDesejadoValor: Number(row.lucro_desejado_valor),
+    taxaPagamento: Number(row.taxa_pagamento),
+    aliquotaImposto: Number(row.aliquota_imposto),
   };
 }
 
@@ -701,6 +711,65 @@ export async function salvarConfiguracaoFinanceira(unidadeId: string, config: Co
     faturamento_medio_mensal: config.faturamentoMedioMensal,
     custo_fixo_medio_mensal: config.custoFixoMedioMensal,
     lucro_desejado_valor: config.lucroDesejadoValor,
+    taxa_pagamento: config.taxaPagamento,
+    aliquota_imposto: config.aliquotaImposto,
   });
   if (error) throw new Error(error.message);
+}
+
+/** Atualiza só o preço de venda (não passa pela transação completa de
+ * salvar_ficha_tecnica - não mexe em componente/etapa/versão). Usado pela
+ * edição direto na listagem. */
+export async function atualizarPrecoVendaFicha(unidadeId: string, fichaId: string, precoVenda: number | null): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fichas_tecnicas")
+    .update({ preco_venda: precoVenda })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId);
+  if (error) throw new Error(error.message);
+}
+
+/** "Salvar todos" da listagem - várias fichas de uma vez, cada uma com seu
+ * próprio update (preços diferentes por linha, upsert não serve aqui). */
+export async function atualizarPrecosVendaFichas(
+  unidadeId: string,
+  entradas: { id: string; precoVenda: number | null }[],
+): Promise<void> {
+  if (entradas.length === 0) return;
+  const supabase = await createClient();
+  const resultados = await Promise.all(
+    entradas.map((e) =>
+      supabase.from("fichas_tecnicas").update({ preco_venda: e.precoVenda }).eq("unidade_id", unidadeId).eq("id", e.id),
+    ),
+  );
+  const comErro = resultados.find((r) => r.error);
+  if (comErro?.error) throw new Error(comErro.error.message);
+}
+
+export type DadosNovaFichaTecnica = {
+  categorias: CategoriaFicha[];
+  produtos: OpcaoProdutoFicha[];
+  fichasDisponiveis: { id: string; nome: string; sku: string; rendimentoUnidade: UnidadeRendimentoFicha; custoPorUnidade: number | null }[];
+};
+
+/** Tudo que o formulário de criação precisa, pra abrir na janela sobreposta
+ * da listagem sem navegar pra outra página. */
+export async function carregarDadosNovaFichaTecnica(unidadeId: string): Promise<DadosNovaFichaTecnica> {
+  const [categorias, produtos, fichas] = await Promise.all([
+    listarCategoriasFicha(unidadeId),
+    listarProdutosParaFicha(unidadeId),
+    listarFichasTecnicas(unidadeId),
+  ]);
+  return {
+    categorias,
+    produtos,
+    fichasDisponiveis: fichas.map((f) => ({
+      id: f.id,
+      nome: f.nome,
+      sku: f.sku,
+      rendimentoUnidade: f.rendimentoUnidade,
+      custoPorUnidade: f.custo.custoPorUnidade,
+    })),
+  };
 }

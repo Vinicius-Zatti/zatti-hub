@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getAcessoAtual, requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import {
+  atualizarPrecoVendaFicha,
+  atualizarPrecosVendaFichas,
+  carregarDadosNovaFichaTecnica,
   carregarFichaTecnicaParaExibir,
   criarCategoriaFicha,
   excluirFichaTecnica,
@@ -11,6 +14,7 @@ import {
   salvarConversaoProduto,
   salvarConversoesProduto,
   salvarFichaTecnica,
+  type DadosNovaFichaTecnica,
   type EntradaFichaTecnica,
   type FichaTecnicaParaExibir,
 } from "@/lib/banco/fichas-tecnicas";
@@ -20,6 +24,7 @@ import {
   conversaoProdutoEntradaSchema,
   fichaTecnicaEntradaSchema,
   idUuidSchema,
+  precoVendaFichaEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -92,7 +97,7 @@ export async function criarCategoriaFichaAction(input: {
     });
 
     revalidatePath("/fichas-tecnicas/categorias");
-    revalidatePath("/fichas-tecnicas/nova");
+    revalidatePath("/fichas-tecnicas");
     return { ok: true, categoria };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a categoria.") };
@@ -227,5 +232,71 @@ export async function salvarConfiguracaoFinanceiraAction(input: ConfiguracaoFina
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a configuração financeira.") };
+  }
+}
+
+/** Edição direta do preço de venda na listagem (1 linha). */
+export async function atualizarPrecoVendaFichaAction(id: string, precoVenda: number | null): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_preco_venda_salvar");
+    const entrada = validarEntrada(precoVendaFichaEntradaSchema, { id, precoVenda });
+    await atualizarPrecoVendaFicha(acesso.unidadeId, entrada.id, entrada.precoVenda);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "ficha_tecnica_preco_venda",
+      entidadeId: entrada.id,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath("/fichas-tecnicas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar o preço de venda.") };
+  }
+}
+
+/** "Salvar todos" da listagem. */
+export async function atualizarPrecosVendaFichasAction(
+  entradas: { id: string; precoVenda: number | null }[],
+): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_preco_venda_salvar");
+    const entradasValidadas = entradas.map((entrada) => validarEntrada(precoVendaFichaEntradaSchema, entrada));
+    await atualizarPrecosVendaFichas(acesso.unidadeId, entradasValidadas);
+
+    await registrarAuditoriaBatch(
+      entradasValidadas.map((entrada) => ({
+        acesso,
+        acao: "salvar",
+        entidade: "ficha_tecnica_preco_venda",
+        entidadeId: entrada.id,
+        dadosNovos: entrada,
+      })),
+    );
+
+    revalidatePath("/fichas-tecnicas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar os preços de venda.") };
+  }
+}
+
+export type ResultadoNovaFicha = { ok: true; dados: DadosNovaFichaTecnica } | { ok: false; mensagem: string };
+
+/** Busca do cliente pra abrir "Criar Nova F.T" na janela sobreposta da
+ * listagem, sem navegar pra outra página. */
+export async function prepararNovaFichaTecnicaAction(): Promise<ResultadoNovaFicha> {
+  const acesso = await requireGestaoFichasTecnicas();
+  try {
+    const dados = await carregarDadosNovaFichaTecnica(acesso.unidadeId);
+    return { ok: true, dados };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar o formulário de nova ficha.") };
   }
 }

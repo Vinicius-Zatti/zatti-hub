@@ -14,12 +14,41 @@ function pct(n: number | null): string {
   return n === null ? "-" : `${(n * 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
+/** `taxaPagamento`/`aliquotaImposto` ficam guardadas como fração (0,13) mas o
+ * campo edita em percentual (13) - mais natural pro cliente digitar. */
+function paraPercentual(fracao: number): number {
+  return fracao * 100;
+}
+
+function paraFracao(percentual: number | null): number {
+  return percentual === null ? 0 : percentual / 100;
+}
+
+/** Variante clara do "!" de `info-icon.tsx`, que é feito só pra fundo escuro
+ * (branco translúcido sobre escuro) - aqui o fundo é claro. */
+function InfoIconClaro({ texto }: { texto: string }) {
+  return (
+    <span
+      title={texto}
+      className="inline-flex h-3.5 w-3.5 shrink-0 cursor-help items-center justify-center rounded-full bg-azul-noite/15 text-[9px] font-bold leading-none text-azul-noite"
+    >
+      !
+    </span>
+  );
+}
+
 type ModoLucro = "valor" | "percentual";
 
 export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configuracaoInicial: ConfiguracaoFinanceira }) {
   const [faturamento, setFaturamento] = useState<number | null>(configuracaoInicial.faturamentoMedioMensal || null);
   const [custoFixo, setCustoFixo] = useState<number | null>(configuracaoInicial.custoFixoMedioMensal || null);
   const [lucroValor, setLucroValor] = useState<number | null>(configuracaoInicial.lucroDesejadoValor || null);
+  const [taxaPagamentoPct, setTaxaPagamentoPct] = useState<number | null>(
+    configuracaoInicial.taxaPagamento ? paraPercentual(configuracaoInicial.taxaPagamento) : null,
+  );
+  const [aliquotaImpostoPct, setAliquotaImpostoPct] = useState<number | null>(
+    configuracaoInicial.aliquotaImposto ? paraPercentual(configuracaoInicial.aliquotaImposto) : null,
+  );
   const [modoLucro, setModoLucro] = useState<ModoLucro>("valor");
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -40,6 +69,8 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
     faturamentoMedioMensal: faturamento ?? 0,
     custoFixoMedioMensal: custoFixo ?? 0,
     lucroDesejadoValor: lucroValor ?? 0,
+    taxaPagamento: paraFracao(taxaPagamentoPct),
+    aliquotaImposto: paraFracao(aliquotaImpostoPct),
   });
 
   function salvar() {
@@ -50,6 +81,8 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
         faturamentoMedioMensal: faturamento ?? 0,
         custoFixoMedioMensal: custoFixo ?? 0,
         lucroDesejadoValor: lucroValor ?? 0,
+        taxaPagamento: paraFracao(taxaPagamentoPct),
+        aliquotaImposto: paraFracao(aliquotaImpostoPct),
       });
       if (!resposta.ok) {
         setErro(resposta.mensagem);
@@ -62,7 +95,7 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-5 pb-10">
       <div>
-        <h1 className="font-display text-2xl font-bold text-azul-noite">Calculadora de Margem de Contribuição</h1>
+        <h1 className="font-display text-2xl font-bold text-azul-noite">Calculadora de Margem Ideal</h1>
         <p className="text-sm text-cinza-medio">
           Mostra qual margem de contribuição o restaurante precisa ter pra pagar os custos fixos e
           bater o lucro mensal desejado. Essa margem alimenta o &ldquo;Preço de Venda Sugerido&rdquo;
@@ -141,6 +174,38 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
             )}
           </div>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+        <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Deduções</div>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            <span className="flex items-center gap-1.5">
+              Taxa de Pagamento
+              <InfoIconClaro texto="Média da cobrança da maquininha de cartão, somando todos os métodos de pagamento: Crédito, Débito e Pix." />
+            </span>
+            <CampoNumero
+              value={taxaPagamentoPct}
+              onChange={(v) => {
+                setTaxaPagamentoPct(v);
+                setSalvo(false);
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            <span className="flex items-center gap-1.5">
+              Alíquota de Imposto
+              <InfoIconClaro texto="Confira com o seu contador em qual alíquota você está." />
+            </span>
+            <CampoNumero
+              value={aliquotaImpostoPct}
+              onChange={(v) => {
+                setAliquotaImpostoPct(v);
+                setSalvo(false);
+              }}
+            />
+          </label>
+        </div>
 
         {erro && <p className="mt-3 text-sm text-vermelho">{erro}</p>}
 
@@ -160,6 +225,7 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
           <ResultadoLinha label="% Custo fixo sobre o faturamento" valor={pct(resultado.percentualCustoFixo)} />
           <ResultadoLinha label="% Lucro desejado sobre o faturamento" valor={pct(resultado.lucroDesejadoPercentual)} />
           <ResultadoLinha label="Margem necessária pro ponto de equilíbrio" valor={pct(resultado.margemPontoEquilibrio)} />
+          <ResultadoLinha label="Deduções (Taxa de Pagamento + Imposto)" valor={pct(resultado.deducoesTotal)} />
           <div className="flex items-center justify-between rounded-lg bg-azul-noite p-4 text-branco">
             <span className="text-sm font-semibold">Margem de contribuição necessária</span>
             <span className="font-display text-xl font-bold text-ambar">{pct(resultado.margemNecessaria)}</span>

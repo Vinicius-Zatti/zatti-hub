@@ -1,5 +1,6 @@
 import type {
   CamadaFicha,
+  ClassificacaoMargem,
   ComponenteFicha,
   ConfiguracaoFinanceira,
   CustoFicha,
@@ -98,12 +99,21 @@ export function calcularCustoEstimado(
   };
 }
 
-/** Os 4 indicadores da Calculadora de Margem de Contribuição - `null` em
- * tudo quando faturamento é 0 (nada pra dividir ainda, não é erro). */
+/** Indicadores da Calculadora de Margem Ideal - `null` nos que dependem de
+ * faturamento quando ele é 0 (nada pra dividir ainda, não é erro).
+ * `deducoesTotal` (taxa de pagamento + imposto) não depende de faturamento,
+ * por isso nunca é null. */
 export function calcularMargemContribuicao(config: ConfiguracaoFinanceira): MargemContribuicao {
-  const { faturamentoMedioMensal, custoFixoMedioMensal, lucroDesejadoValor } = config;
+  const { faturamentoMedioMensal, custoFixoMedioMensal, lucroDesejadoValor, taxaPagamento, aliquotaImposto } = config;
+  const deducoesTotal = (taxaPagamento ?? 0) + (aliquotaImposto ?? 0);
   if (faturamentoMedioMensal <= 0) {
-    return { percentualCustoFixo: null, lucroDesejadoPercentual: null, margemPontoEquilibrio: null, margemNecessaria: null };
+    return {
+      percentualCustoFixo: null,
+      lucroDesejadoPercentual: null,
+      margemPontoEquilibrio: null,
+      margemNecessaria: null,
+      deducoesTotal,
+    };
   }
   const percentualCustoFixo = custoFixoMedioMensal / faturamentoMedioMensal;
   const lucroDesejadoPercentual = lucroDesejadoValor / faturamentoMedioMensal;
@@ -112,6 +122,7 @@ export function calcularMargemContribuicao(config: ConfiguracaoFinanceira): Marg
     lucroDesejadoPercentual,
     margemPontoEquilibrio: percentualCustoFixo,
     margemNecessaria: percentualCustoFixo + lucroDesejadoPercentual,
+    deducoesTotal,
   };
 }
 
@@ -122,11 +133,44 @@ export function calcularCmv(custoInsumos: number, precoVenda: number | null): nu
   return (custoInsumos / precoVenda) * 100;
 }
 
-/** Preço que faz o custo do insumo representar exatamente `1 - margem` do
- * preço de venda (a margem de contribuição necessária calculada acima) -
- * `null` sem custo, sem margem calculada, ou margem >= 100% (impossível
+/** Margem de contribuição real do produto - preço de venda menos CMV menos
+ * as deduções (taxa de pagamento + imposto, que também incidem sobre o
+ * preço de venda). Fração (0,45 = 45%), não percentual. */
+export function calcularMargemProduto(
+  custoInsumos: number | null,
+  precoVenda: number | null,
+  deducoesTotal: number,
+): number | null {
+  if (custoInsumos === null || precoVenda === null || precoVenda <= 0) return null;
+  return 1 - custoInsumos / precoVenda - deducoesTotal;
+}
+
+/** Preço que faz o CMV representar exatamente `1 - margem necessária -
+ * deduções` do preço de venda - ex: margem necessária 50% + deduções 13%
+ * -> CMV alvo 37% -> preço = custo / 0,37. `null` sem custo, sem margem
+ * calculada, ou alvo <= 0 (deduções+margem somam 100% ou mais, impossível
  * bater com preço nenhum). */
-export function calcularPrecoVendaSugerido(custoInsumos: number | null, margemNecessaria: number | null): number | null {
-  if (custoInsumos === null || margemNecessaria === null || margemNecessaria >= 1) return null;
-  return custoInsumos / (1 - margemNecessaria);
+export function calcularPrecoVendaSugerido(
+  custoInsumos: number | null,
+  margemNecessaria: number | null,
+  deducoesTotal: number,
+): number | null {
+  if (custoInsumos === null || margemNecessaria === null) return null;
+  const cmvAlvo = 1 - margemNecessaria - deducoesTotal;
+  if (cmvAlvo <= 0) return null;
+  return custoInsumos / cmvAlvo;
+}
+
+/** Etiqueta ao lado do preço de venda - compara a margem real do produto
+ * contra a margem necessária (lucro batido) e a margem de ponto de
+ * equilíbrio (só cobre custo fixo, sem lucro). */
+export function classificarMargemProduto(
+  margemProduto: number | null,
+  margemNecessaria: number | null,
+  margemPontoEquilibrio: number | null,
+): ClassificacaoMargem | null {
+  if (margemProduto === null || margemNecessaria === null || margemPontoEquilibrio === null) return null;
+  if (margemProduto >= margemNecessaria) return "lucro_ajustado";
+  if (margemProduto >= margemPontoEquilibrio) return "abaixo_do_lucro";
+  return "prejuizo";
 }

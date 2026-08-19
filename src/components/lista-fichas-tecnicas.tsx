@@ -1,15 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
+import { CampoNumero } from "@/components/campo-numero";
 import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
-import type { CamadaFicha, FichaTecnicaResumo, StatusFicha } from "@/lib/types";
-import { CAMADA_LABEL, calcularCmv, calcularPrecoVendaSugerido, formatarQuantidade } from "@/lib/fichas-tecnicas";
-import { abrirFichaTecnicaAction, type ResultadoAbrirFicha } from "@/app/(app)/fichas-tecnicas/actions";
+import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
+import { FichaTecnicaForm } from "@/components/ficha-tecnica-form";
+import type { CamadaFicha, ClassificacaoMargem, FichaTecnicaResumo, StatusFicha } from "@/lib/types";
+import {
+  CAMADA_LABEL,
+  calcularCmv,
+  calcularMargemProduto,
+  calcularPrecoVendaSugerido,
+  classificarMargemProduto,
+  formatarQuantidade,
+} from "@/lib/fichas-tecnicas";
+import {
+  abrirFichaTecnicaAction,
+  atualizarPrecoVendaFichaAction,
+  atualizarPrecosVendaFichasAction,
+  prepararNovaFichaTecnicaAction,
+  type ResultadoAbrirFicha,
+} from "@/app/(app)/fichas-tecnicas/actions";
+import type { DadosNovaFichaTecnica } from "@/lib/banco/fichas-tecnicas";
 
 const STATUS_TONE: Record<StatusFicha, string> = {
   ativa: "bg-verde/10 text-verde",
@@ -23,6 +40,14 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
   inativa: "Inativa",
 };
 
+const CLASSIFICACAO_TAG: Record<ClassificacaoMargem, { label: string; classe: string }> = {
+  lucro_ajustado: { label: "Lucro Ajustado", classe: "bg-verde/10 text-verde" },
+  abaixo_do_lucro: { label: "Abaixo do Lucro", classe: "bg-ambar/10 text-ambar" },
+  prejuizo: { label: "Prejuízo", classe: "bg-vermelho/10 text-vermelho" },
+};
+
+type StatusSalvar = "salvando" | "erro" | "salvo";
+
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -35,12 +60,17 @@ export function ListaFichasTecnicas({
   fichas,
   podeGerir,
   margemNecessaria,
+  margemPontoEquilibrio,
+  deducoesTotal,
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
   margemNecessaria: number | null;
+  margemPontoEquilibrio: number | null;
+  deducoesTotal: number;
 }) {
   const router = useRouter();
+  const { ativar, desativar } = useGuardaEdicao();
   const [camada, setCamada] = useState<CamadaFicha>("PRE");
   const [busca, setBusca] = useState("");
   const { expandido, alternar } = useTabelaExpansivel();
@@ -50,6 +80,38 @@ export function ListaFichasTecnicas({
   const [dadosAbertos, setDadosAbertos] = useState<ResultadoAbrirFicha & { ok: true }>();
   const [carregando, setCarregando] = useState(false);
   const [erroAbertura, setErroAbertura] = useState<string | null>(null);
+
+  const [criando, setCriando] = useState(false);
+  const [dadosNovo, setDadosNovo] = useState<DadosNovaFichaTecnica>();
+  const [carregandoNovo, setCarregandoNovo] = useState(false);
+  const [erroNovo, setErroNovo] = useState<string | null>(null);
+
+  // Preço de venda editável direto na listagem - `estado` só guarda as
+  // fichas que a pessoa mexeu (id -> valor digitado); o resto lê direto de
+  // `baseline`, derivado das fichas que vieram do servidor.
+  const fichasVenda = useMemo(() => fichas.filter((f) => f.camada === "VEN"), [fichas]);
+  const baseline = useMemo(
+    () => Object.fromEntries(fichasVenda.map((f) => [f.id, f.precoVenda])),
+    [fichasVenda],
+  );
+  const [estado, setEstado] = useState<Record<string, number | null>>({});
+  const [statusPorId, setStatusPorId] = useState<Record<string, StatusSalvar>>({});
+  const [erroPorId, setErroPorId] = useState<Record<string, string>>({});
+  const [salvandoTodos, setSalvandoTodos] = useState(false);
+
+  function valorPrecoVenda(id: string): number | null {
+    return id in estado ? estado[id] : (baseline[id] ?? null);
+  }
+
+  const alterados = useMemo(
+    () => Object.keys(estado).filter((id) => id in baseline && estado[id] !== baseline[id]),
+    [estado, baseline],
+  );
+
+  useEffect(() => {
+    if (alterados.length > 0) ativar("Você tem preços de venda não salvos. Se sair agora, eles se perdem.");
+    else desativar();
+  }, [alterados.length, ativar, desativar]);
 
   const daCamada = useMemo(() => fichas.filter((f) => f.camada === camada), [fichas, camada]);
   const filtradas = useMemo(() => {
@@ -88,21 +150,109 @@ export function ListaFichasTecnicas({
     router.refresh();
   }
 
+  async function abrirNovo() {
+    setCriando(true);
+    setDadosNovo(undefined);
+    setErroNovo(null);
+    setCarregandoNovo(true);
+    const resultado = await prepararNovaFichaTecnicaAction();
+    setCarregandoNovo(false);
+    if (!resultado.ok) {
+      setErroNovo(resultado.mensagem);
+      return;
+    }
+    setDadosNovo(resultado.dados);
+  }
+
+  function fecharNovo() {
+    setCriando(false);
+    setDadosNovo(undefined);
+    setErroNovo(null);
+  }
+
+  function atualizarPreco(id: string, valor: number | null) {
+    setEstado((atual) => ({ ...atual, [id]: valor }));
+    setStatusPorId((atual) => {
+      if (!(id in atual)) return atual;
+      const resto = { ...atual };
+      delete resto[id];
+      return resto;
+    });
+  }
+
+  async function salvarPreco(id: string) {
+    setStatusPorId((atual) => ({ ...atual, [id]: "salvando" }));
+    const resultado = await atualizarPrecoVendaFichaAction(id, valorPrecoVenda(id));
+    if (!resultado.ok) {
+      setStatusPorId((atual) => ({ ...atual, [id]: "erro" }));
+      setErroPorId((atual) => ({ ...atual, [id]: resultado.mensagem }));
+      return;
+    }
+    setStatusPorId((atual) => ({ ...atual, [id]: "salvo" }));
+    router.refresh();
+  }
+
+  async function salvarTodosPrecos() {
+    const ids = alterados;
+    if (ids.length === 0) return;
+    setSalvandoTodos(true);
+    setStatusPorId((atual) => {
+      const novo = { ...atual };
+      for (const id of ids) novo[id] = "salvando";
+      return novo;
+    });
+
+    const resultado = await atualizarPrecosVendaFichasAction(ids.map((id) => ({ id, precoVenda: valorPrecoVenda(id) })));
+    setSalvandoTodos(false);
+
+    if (!resultado.ok) {
+      setStatusPorId((atual) => {
+        const novo = { ...atual };
+        for (const id of ids) novo[id] = "erro";
+        return novo;
+      });
+      setErroPorId((atual) => {
+        const novo = { ...atual };
+        for (const id of ids) novo[id] = resultado.mensagem;
+        return novo;
+      });
+      return;
+    }
+
+    setStatusPorId((atual) => {
+      const novo = { ...atual };
+      for (const id of ids) novo[id] = "salvo";
+      return novo;
+    });
+    router.refresh();
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {(["PRE", "VEN"] as CamadaFicha[]).map((c) => (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2">
+          {(["PRE", "VEN"] as CamadaFicha[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCamada(c)}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
+                camada === c ? "bg-azul-noite text-branco" : "border border-cinza-claro text-cinza-medio"
+              }`}
+            >
+              {CAMADA_LABEL[c]}
+            </button>
+          ))}
+        </div>
+        {podeGerir && (
           <button
-            key={c}
             type="button"
-            onClick={() => setCamada(c)}
-            className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
-              camada === c ? "bg-azul-noite text-branco" : "border border-cinza-claro text-cinza-medio"
-            }`}
+            onClick={abrirNovo}
+            className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
           >
-            {CAMADA_LABEL[c]}
+            + Criar Nova F.T
           </button>
-        ))}
+        )}
       </div>
 
       <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : "flex flex-col gap-2"}>
@@ -119,6 +269,16 @@ export function ListaFichasTecnicas({
               onChange={(e) => setBusca(e.target.value)}
               className="w-full max-w-[220px] rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-xs focus:border-ambar focus:outline-none"
             />
+            {camada === "VEN" && podeGerir && (
+              <button
+                type="button"
+                onClick={salvarTodosPrecos}
+                disabled={alterados.length === 0 || salvandoTodos}
+                className="shrink-0 rounded-md bg-azul-noite px-3 py-1.5 text-xs font-bold text-branco hover:bg-azul-petroleo disabled:opacity-40"
+              >
+                {salvandoTodos ? "Salvando..." : `Salvar todos (${alterados.length})`}
+              </button>
+            )}
             <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
@@ -144,8 +304,10 @@ export function ListaFichasTecnicas({
                     <>
                       <Th align="right">Custo Insumos</Th>
                       <Th align="right">Preço Venda</Th>
+                      <Th align="center">Situação</Th>
                       <Th align="right">CMV</Th>
                       <Th align="right">Preço Sugerido</Th>
+                      <Th></Th>
                     </>
                   )
                 )}
@@ -155,15 +317,20 @@ export function ListaFichasTecnicas({
             <tbody>
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-sm text-cinza-medio">
+                  <td colSpan={9} className="p-6 text-center text-sm text-cinza-medio">
                     Nenhuma ficha encontrada em {CAMADA_LABEL[camada]}.
                   </td>
                 </tr>
               )}
               {filtradas.map((ficha) => {
                 const custoInsumos = ficha.custo.custoPorUnidade;
-                const cmv = custoInsumos !== null ? calcularCmv(custoInsumos, ficha.precoVenda) : null;
-                const precoSugerido = calcularPrecoVendaSugerido(custoInsumos, margemNecessaria);
+                const precoVendaAtual = camada === "VEN" ? valorPrecoVenda(ficha.id) : ficha.precoVenda;
+                const cmv = custoInsumos !== null ? calcularCmv(custoInsumos, precoVendaAtual) : null;
+                const precoSugerido = calcularPrecoVendaSugerido(custoInsumos, margemNecessaria, deducoesTotal);
+                const margemProduto = calcularMargemProduto(custoInsumos, precoVendaAtual, deducoesTotal);
+                const tag = classificarMargemProduto(margemProduto, margemNecessaria, margemPontoEquilibrio);
+                const mudou = alterados.includes(ficha.id);
+                const statusSalvar = statusPorId[ficha.id];
                 return (
                   <tr
                     key={ficha.id}
@@ -194,12 +361,41 @@ export function ListaFichasTecnicas({
                           <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
                             {custoInsumos !== null ? brl(custoInsumos) : "-"}
                           </td>
-                          <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
-                            {ficha.precoVenda !== null ? brl(ficha.precoVenda) : "-"}
+                          <td className="px-1.5 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+                            <CampoNumero
+                              value={precoVendaAtual}
+                              onChange={(v) => atualizarPreco(ficha.id, v)}
+                              className="w-24"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            {tag ? (
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${CLASSIFICACAO_TAG[tag].classe}`}>
+                                {CLASSIFICACAO_TAG[tag].label}
+                              </span>
+                            ) : (
+                              <span className="text-cinza-medio">-</span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{pct(cmv)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5 text-right text-azul-petroleo">
                             {precoSugerido !== null ? brl(precoSugerido) : "-"}
+                          </td>
+                          <td className="px-1.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => salvarPreco(ficha.id)}
+                                disabled={statusSalvar === "salvando" || !mudou}
+                                className="rounded-md bg-azul-noite px-2 py-1 text-xs font-semibold text-branco disabled:opacity-40"
+                              >
+                                {statusSalvar === "salvando" ? "..." : "Salvar"}
+                              </button>
+                              {statusSalvar === "salvo" && <span className="text-xs font-semibold text-verde">✓</span>}
+                            </div>
+                            {statusSalvar === "erro" && erroPorId[ficha.id] && (
+                              <p className="mt-1 max-w-[120px] text-xs text-vermelho">{erroPorId[ficha.id]}</p>
+                            )}
                           </td>
                         </>
                       )
@@ -246,6 +442,40 @@ export function ListaFichasTecnicas({
                 aoSalvar={() => {
                   if (fichaAbertaId) void carregar(fichaAbertaId);
                 }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {criando && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
+          onClick={fecharNovo}
+        >
+          <div
+            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {carregandoNovo && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
+            {erroNovo && (
+              <div className="flex flex-col items-start gap-3 p-2">
+                <p className="text-sm text-vermelho">{erroNovo}</p>
+                <button type="button" onClick={fecharNovo} className="text-sm font-semibold text-azul-petroleo">
+                  ← Fechar
+                </button>
+              </div>
+            )}
+            {dadosNovo && (
+              <FichaTecnicaForm
+                categorias={dadosNovo.categorias}
+                produtos={dadosNovo.produtos}
+                fichasDisponiveis={dadosNovo.fichasDisponiveis}
+                onSalvo={() => {
+                  fecharNovo();
+                  router.refresh();
+                }}
+                onCancelar={fecharNovo}
               />
             )}
           </div>
