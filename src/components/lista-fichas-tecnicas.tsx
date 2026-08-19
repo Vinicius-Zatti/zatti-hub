@@ -168,6 +168,7 @@ export function ListaFichasTecnicas({
                   <tr
                     key={ficha.id}
                     onClick={() => abrir(ficha.id)}
+                    data-nao-arrastar
                     className="cursor-pointer border-b border-cinza-claro last:border-0 hover:bg-off-white"
                   >
                     <td className="max-w-[160px] px-2 py-1.5 font-medium text-cinza">
