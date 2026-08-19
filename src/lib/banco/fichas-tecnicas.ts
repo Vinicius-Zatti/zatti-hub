@@ -440,12 +440,16 @@ export type EntradaFichaTecnica = {
   etapas: EntradaEtapaFicha[];
 };
 
-const MENSAGENS_PUBLICAS_RPC = new Set([
-  "Ficha tecnica nao encontrada",
-  "Sem permissao para editar esta ficha tecnica",
-  "Categoria e camada nao correspondem a ficha",
-  "SKU ja usado por um produto do estoque",
-]);
+/** Todo `raise exception 'texto'` sem errcode explícito nas funções/gatilhos
+ * de fichas técnicas (proteger_ficha_tecnica, salvar_ficha_tecnica) sai com
+ * SQLSTATE P0001 - são sempre mensagens que eu mesmo escrevi pra explicar
+ * pro usuário por que não salvou (nunca vazam detalhe interno), por isso dá
+ * pra confiar em qualquer uma delas em vez de manter uma lista de textos
+ * fixos que desatualiza sozinha toda vez que a mensagem muda no SQL (bug
+ * real: usuário via só "não foi possível salvar" mesmo quando o banco já
+ * tinha o motivo certo). Erro de infra (conexão, sintaxe etc.) vem com
+ * outro código e cai no fallback genérico normalmente. */
+const CODIGO_ERRO_VALIDACAO_SQL = "P0001";
 
 /** Só chamado atrás de `requireGestao()` na Server Action - `unidadeId`
  * sempre resolvido no servidor via `getAcessoAtual()`, nunca aceito do
@@ -487,7 +491,7 @@ export async function salvarFichaTecnica(params: {
   });
 
   if (error) {
-    if (MENSAGENS_PUBLICAS_RPC.has(error.message)) throw new ErroPublico(error.message);
+    if (error.code === CODIGO_ERRO_VALIDACAO_SQL) throw new ErroPublico(error.message);
     throw new Error(error.message);
   }
 
