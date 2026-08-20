@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
@@ -14,6 +15,7 @@ import { StatCard } from "@/components/stat-card";
 import { InfoIcon } from "@/components/info-icon";
 import { CampoNumero } from "@/components/campo-numero";
 import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
+import { ExcluirProdutoBotao } from "@/components/excluir-produto-botao";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
@@ -315,6 +317,12 @@ function CadastroSection({
               onChange={(e) => setBusca(e.target.value)}
               className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
             />
+            <Link
+              href="/estoque/produtos/novo"
+              className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-sm font-bold text-azul-noite hover:brightness-95"
+            >
+              + Adicionar produto
+            </Link>
             <button
               type="button"
               onClick={recalcularPrecosEmBranco}
@@ -423,6 +431,7 @@ function CadastroSection({
                 </div>
               </Th>
               <Th></Th>
+              <Th></Th>
             </tr>
           </thead>
           <tbody>
@@ -441,7 +450,7 @@ function CadastroSection({
             ))}
             {ordenados.length === 0 && (
               <tr>
-                <td colSpan={19} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={20} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -882,6 +891,9 @@ const LinhaProduto = memo(function LinhaProduto({
         {pending && <span className="text-[10px] text-cinza-medio">Salvando...</span>}
         {status?.tipo === "ok" && !mudou && <span className="text-[10px] font-semibold text-verde">Salvo ✓</span>}
         {status?.tipo === "erro" && <span className="block text-[10px] text-vermelho">{status.msg}</span>}
+      </td>
+      <td className="min-w-[80px] px-2 py-1.5 text-center">
+        <ExcluirProdutoBotao sku={sku} />
       </td>
     </tr>
   );

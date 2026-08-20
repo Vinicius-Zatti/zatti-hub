@@ -8,6 +8,8 @@ import {
   carregarDadosNovaFichaTecnica,
   carregarFichaTecnicaParaExibir,
   criarCategoriaFicha,
+  editarCategoriaFicha,
+  excluirCategoriaFicha,
   excluirFichaTecnica,
   getFichaTecnicaCompleta,
   salvarConfiguracaoFinanceira,
@@ -22,6 +24,7 @@ import {
   categoriaFichaEntradaSchema,
   configuracaoFinanceiraEntradaSchema,
   conversaoProdutoEntradaSchema,
+  editarCategoriaFichaEntradaSchema,
   fichaTecnicaEntradaSchema,
   idUuidSchema,
   precoVendaFichaEntradaSchema,
@@ -101,6 +104,64 @@ export async function criarCategoriaFichaAction(input: {
     return { ok: true, categoria };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a categoria.") };
+  }
+}
+
+export type ResultadoEditarCategoria = { ok: true; fichasAtualizadas: number } | { ok: false; mensagem: string };
+
+/** Trocar o código atualiza o SKU (chars 4-6) de toda ficha cadastrada
+ * nessa categoria - a UI avisa antes de chamar isso quando há fichas
+ * afetadas (ver `renomear_categoria_ficha` no Postgres). */
+export async function editarCategoriaFichaAction(input: {
+  id: string;
+  codigo: string;
+  nome: string;
+}): Promise<ResultadoEditarCategoria> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("categoria_ficha_editar");
+    const entrada = validarEntrada(editarCategoriaFichaEntradaSchema, input);
+    const resultado = await editarCategoriaFicha(acesso.unidadeId, entrada.id, entrada.codigo, entrada.nome);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "editar",
+      entidade: "categoria_ficha",
+      entidadeId: entrada.id,
+      dadosNovos: { codigo: resultado.codigo, nome: entrada.nome, fichasAtualizadas: resultado.fichasAtualizadas },
+    });
+
+    revalidatePath("/fichas-tecnicas/categorias");
+    revalidatePath("/fichas-tecnicas");
+    return { ok: true, fichasAtualizadas: resultado.fichasAtualizadas };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar a categoria.") };
+  }
+}
+
+/** Bloqueado pelo banco se a categoria tiver ficha técnica cadastrada - a
+ * mensagem já vem traduzida de `excluirCategoriaFicha`. */
+export async function excluirCategoriaFichaAction(id: string): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("categoria_ficha_excluir");
+    const idValidado = validarEntrada(idUuidSchema, id);
+    await excluirCategoriaFicha(acesso.unidadeId, idValidado);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "excluir",
+      entidade: "categoria_ficha",
+      entidadeId: idValidado,
+    });
+
+    revalidatePath("/fichas-tecnicas/categorias");
+    revalidatePath("/fichas-tecnicas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível excluir a categoria.") };
   }
 }
 

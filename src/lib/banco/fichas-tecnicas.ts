@@ -60,6 +60,62 @@ export async function criarCategoriaFicha(params: {
   return categoriaDaLinha(data as CategoriaRow);
 }
 
+/** Quantas fichas usam cada categoria - usado pra avisar antes de editar o
+ * código (que atualiza o SKU de todas elas) e pra explicar por que uma
+ * exclusão foi bloqueada. */
+export async function contarFichasPorCategoria(unidadeId: string): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("fichas_tecnicas").select("categoria_id").eq("unidade_id", unidadeId);
+  if (error) throw new Error(`Não foi possível contar as fichas por categoria: ${error.message}`);
+  const contagem: Record<string, number> = {};
+  for (const row of (data as { categoria_id: string }[] | null) ?? []) {
+    contagem[row.categoria_id] = (contagem[row.categoria_id] ?? 0) + 1;
+  }
+  return contagem;
+}
+
+/** Só chamado atrás de `requireGestaoFichasTecnicas()`. Delega pra
+ * `renomear_categoria_ficha` no Postgres, que troca o código/nome da
+ * categoria e, na mesma transação, atualiza o SKU (só os chars 4-6) de toda
+ * ficha cadastrada nela - ver 20260819120000_categorias_ficha_editar_excluir.sql. */
+export async function editarCategoriaFicha(
+  unidadeId: string,
+  categoriaId: string,
+  codigo: string,
+  nome: string,
+): Promise<{ codigo: string; fichasAtualizadas: number }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("renomear_categoria_ficha", {
+    p_unidade_id: unidadeId,
+    p_categoria_id: categoriaId,
+    p_novo_codigo: codigo,
+    p_novo_nome: nome,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      throw new ErroPublico("Esse código colidiria com o SKU de outra ficha já existente - escolha outro.");
+    }
+    if (error.code === CODIGO_ERRO_VALIDACAO_SQL) throw new ErroPublico(error.message);
+    throw new Error(error.message);
+  }
+  const resultado = data as { codigo: string; fichasAtualizadas: number };
+  return { codigo: resultado.codigo, fichasAtualizadas: resultado.fichasAtualizadas };
+}
+
+/** Bloqueado pelo banco (sem `on delete` em `fichas_tecnicas.categoria_id`,
+ * que equivale a restrict) se a categoria tiver alguma ficha cadastrada -
+ * mesmo padrão de `excluirFichaTecnica`. */
+export async function excluirCategoriaFicha(unidadeId: string, categoriaId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("categorias_ficha").delete().eq("unidade_id", unidadeId).eq("id", categoriaId);
+  if (error) {
+    if (error.code === "23503") {
+      throw new ErroPublico("Essa categoria tem ficha técnica cadastrada - mova ou exclua as fichas antes de excluir a categoria.");
+    }
+    throw new Error(error.message);
+  }
+}
+
 async function nomesCategoriasPorId(
   supabase: SupabaseClient,
   unidadeId: string,

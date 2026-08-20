@@ -135,6 +135,23 @@ export async function salvarProdutosBanco(
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
 }
 
+/** Exclui o produto e, na mesma transação, remove a conversão de unidade
+ * (se houver) e qualquer componente de Ficha Técnica que aponte pra esse
+ * SKU - o cliente pediu que excluir remova também da(s) F.T., em vez de
+ * bloquear (diferente de excluir uma ficha, que aí sim bloqueia se estiver
+ * em uso). Ver `excluir_produto_estoque` em
+ * 20260819130000_produtos_excluir.sql. Devolve quantos componentes de
+ * ficha foram removidos, pra UI avisar. */
+export async function excluirProdutoBanco(unidadeId: string, sku: string): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("excluir_produto_estoque", {
+    p_unidade_id: unidadeId,
+    p_sku: sku,
+  });
+  if (error) throw new Error(`Não foi possível excluir o produto: ${error.message}`);
+  return (data as number | null) ?? 0;
+}
+
 export async function listarFornecedoresBanco(unidadeId: string): Promise<Fornecedor[]> {
   const supabase = await createClient();
   const { data, error } = await supabase

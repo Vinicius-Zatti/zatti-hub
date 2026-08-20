@@ -1,6 +1,6 @@
 "use server";
 
-import { listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
+import { excluirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
@@ -11,6 +11,7 @@ import {
   nomeProdutoSchema,
   produtoSchema,
   produtosSchema,
+  skuSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -129,6 +130,33 @@ export async function definirFornecedor1Action(
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel definir o fornecedor.") };
+  }
+}
+
+/** Exclui o produto do cadastro - também remove ele de qualquer Ficha
+ * Técnica que o usa como componente (a Ficha Técnica bloqueia excluir uma
+ * ficha em uso, mas aqui é o cliente excluindo o produto: o pedido foi pra
+ * remover em cascata, não bloquear). A confirmação com esse aviso já
+ * acontece na UI antes de chamar isso. */
+export async function excluirProdutoAction(
+  sku: string
+): Promise<{ ok: true; fichasAfetadas: number } | { erro: string }> {
+  const acesso = await requireGestao();
+  try {
+    await exigirLimiteRequisicao("excluir_produto");
+    const skuValidado = validarEntrada(skuSchema, sku).toUpperCase().trim();
+    const fichasAfetadas = await excluirProduto(skuValidado, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "excluir",
+      entidade: "produto",
+      entidadeId: skuValidado,
+      dadosNovos: { fichasAfetadas },
+    });
+    revalidarTudo();
+    return { ok: true, fichasAfetadas };
+  } catch (err) {
+    return { erro: mensagemErroPublica(err, "Nao foi possivel excluir o produto.") };
   }
 }
 

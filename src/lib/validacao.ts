@@ -194,6 +194,7 @@ export const consolidadoSchema = z
   .strict();
 
 export const idUuidSchema = z.string().uuid();
+export const skuSchema = identificador;
 export const nomeProdutoSchema = textoObrigatorio(160);
 export const organizacaoIdSchema = identificador;
 export const fornecedor1Schema = z
@@ -227,6 +228,18 @@ export const conversaoProdutoEntradaSchema = z
 export const categoriaFichaEntradaSchema = z
   .object({
     camada: camadaFichaSchema,
+    codigo: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use 3 letras, ex: BUR"),
+    nome: textoObrigatorio(80),
+  })
+  .strict();
+
+export const editarCategoriaFichaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
     codigo: z
       .string()
       .trim()

@@ -2,8 +2,9 @@ import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
-import { listarProdutosBanco, salvarProdutosBanco } from "@/lib/banco/estoque";
+import { listarProdutosBanco, salvarProdutosBanco, excluirProdutoBanco } from "@/lib/banco/estoque";
 import { paraCelulaSegura } from "./seguranca";
+import { ErroPublico } from "@/lib/erros";
 
 const SHEET = "Cadastro de Produtos";
 const HEADER_ROW = 2;
@@ -152,4 +153,16 @@ async function upsertProdutosPlanilha(
       requestBody: { values: [produtoToRow(produto)] },
     });
   }
+}
+
+/** Exclui o produto - dá o mesmo dispatch por `fonte` de `upsertProduto`.
+ * Devolve quantos componentes de Ficha Técnica perderam esse produto (a
+ * Ficha Técnica sempre lê do banco, mesmo pra unidade que ainda está na
+ * planilha - ver `listarProdutosParaFicha`), pra UI avisar. */
+export async function excluirProduto(sku: string, spreadsheetId: string | null): Promise<number> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") return excluirProdutoBanco(fonte.unidadeId, sku);
+  throw new ErroPublico(
+    "Excluir produto ainda não está disponível para unidades na planilha - fale com o suporte."
+  );
 }
