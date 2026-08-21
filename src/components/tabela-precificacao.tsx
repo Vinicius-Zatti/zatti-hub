@@ -165,11 +165,21 @@ export function TabelaPrecificacao({
                 const label = canal === "salao" ? "Salão" : canal === "delivery_proprio" ? "Delivery Próprio" : canal === "ifood" ? "iFood" : "99Food";
                 return (
                   <Fragment key={canal}>
-                    <Th align="right">{label} · Custo Insumos</Th>
-                    <Th align="right">{label} · Preço Venda</Th>
-                    <Th align="center">{label} · Situação</Th>
-                    <Th align="right">{label} · CMV</Th>
-                    <Th align="right">{label} · Preço Sugerido</Th>
+                    <Th align="right" estreito>
+                      {label} Custo Insumos
+                    </Th>
+                    <Th align="right" estreito>
+                      {label} Preço Venda
+                    </Th>
+                    <Th align="center" estreito>
+                      {label} Situação
+                    </Th>
+                    <Th align="right" estreito>
+                      {label} CMV
+                    </Th>
+                    <Th align="right" estreito>
+                      {label} Preço Sugerido
+                    </Th>
                   </Fragment>
                 );
               })}
