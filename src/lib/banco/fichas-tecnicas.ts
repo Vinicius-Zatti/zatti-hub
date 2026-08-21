@@ -214,14 +214,66 @@ type FichaResumoRow = Pick<
   | "rendimento_quantidade"
   | "rendimento_unidade"
   | "preco_venda"
+  | "embalagem_ficha_id"
+  | "embalagem_produto_sku"
+  | "preco_venda_delivery_proprio"
+  | "preco_venda_ifood"
+  | "preco_venda_99food"
   | "status"
   | "atualizado_em"
 >;
 
 const RESUMO_COLUNAS =
-  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, status, atualizado_em";
+  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, embalagem_ficha_id, embalagem_produto_sku, preco_venda_delivery_proprio, preco_venda_ifood, preco_venda_99food, status, atualizado_em";
 
-function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoFicha): FichaTecnicaResumo {
+/** Soma o custo por unidade do Salão com o da embalagem vinculada (via ficha
+ * de Pré-preparo ou via produto direto do Estoque - nunca os dois) - `null`
+ * sem nenhuma embalagem linkada, a UI cai pro custo do Salão nos 3 canais de
+ * delivery (ver `montarPrecosPorCanal`). Reaproveitado tanto na listagem
+ * quanto na tela de detalhe (`getFichaTecnicaCompleta`). */
+async function resolverCustoComEmbalagem(
+  supabase: SupabaseClient,
+  unidadeId: string,
+  embalagemFichaId: string | null,
+  embalagemProdutoSku: string | null,
+  custoBase: CustoFicha,
+  rendimentoQuantidade: number,
+): Promise<CustoFicha | null> {
+  if (!embalagemFichaId && !embalagemProdutoSku) return null;
+
+  let custoEmbalagemPorUnidade: number | null;
+  let custoEmbalagemCompleto: boolean;
+  if (embalagemFichaId) {
+    const custoFichaEmbalagem = await calcularCustoFicha(unidadeId, embalagemFichaId);
+    custoEmbalagemPorUnidade = custoFichaEmbalagem.custoPorUnidade;
+    custoEmbalagemCompleto = custoFichaEmbalagem.completo;
+  } else {
+    const custos = await custosUnitariosProdutos(supabase, unidadeId, [embalagemProdutoSku as string]);
+    custoEmbalagemPorUnidade = custos.get(embalagemProdutoSku as string) ?? null;
+    custoEmbalagemCompleto = custoEmbalagemPorUnidade !== null;
+  }
+
+  return {
+    custoTotal:
+      custoBase.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
+        ? ((custoBase.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)) * rendimentoQuantidade
+        : null,
+    custoPorUnidade:
+      custoBase.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
+        ? (custoBase.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)
+        : null,
+    completo: custoBase.completo && custoEmbalagemCompleto,
+  };
+}
+
+function resumoDaLinha(
+  row: FichaResumoRow,
+  categoriaNome: string,
+  custo: CustoFicha,
+  custoComEmbalagem: CustoFicha | null,
+  nomesEmbalagemFichas: Map<string, string>,
+  nomesEmbalagemProdutos: Map<string, string>,
+): FichaTecnicaResumo {
   return {
     id: row.id,
     sku: row.sku,
@@ -234,6 +286,16 @@ function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoF
     rendimentoUnidade: row.rendimento_unidade,
     status: row.status,
     custo,
+    embalagemFichaId: row.embalagem_ficha_id,
+    embalagemNome: row.embalagem_ficha_id ? (nomesEmbalagemFichas.get(row.embalagem_ficha_id) ?? "Ficha removida") : null,
+    embalagemProdutoSku: row.embalagem_produto_sku,
+    embalagemProdutoNome: row.embalagem_produto_sku
+      ? (nomesEmbalagemProdutos.get(row.embalagem_produto_sku) ?? row.embalagem_produto_sku)
+      : null,
+    custoComEmbalagem,
+    precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
+    precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
+    precoVenda99Food: row.preco_venda_99food === null ? null : Number(row.preco_venda_99food),
     atualizadoEm: row.atualizado_em,
   };
 }
@@ -254,15 +316,36 @@ export async function listarFichasTecnicas(
   const linhas = (data as FichaResumoRow[] | null) ?? [];
   if (linhas.length === 0) return [];
 
-  const nomes = await nomesCategoriasPorId(
-    supabase,
-    unidadeId,
-    linhas.map((l) => l.categoria_id),
-  );
-  return Promise.all(
-    linhas.map(async (row) =>
-      resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria", await calcularCustoFicha(unidadeId, row.id)),
+  const [nomes, nomesEmbalagemFichas, nomesEmbalagemProdutos] = await Promise.all([
+    nomesCategoriasPorId(
+      supabase,
+      unidadeId,
+      linhas.map((l) => l.categoria_id),
     ),
+    nomesFichasPorId(
+      supabase,
+      unidadeId,
+      linhas.map((l) => l.embalagem_ficha_id).filter((fid): fid is string => fid !== null),
+    ),
+    nomesProdutosPorSku(
+      supabase,
+      unidadeId,
+      linhas.map((l) => l.embalagem_produto_sku).filter((sku): sku is string => sku !== null),
+    ),
+  ]);
+  return Promise.all(
+    linhas.map(async (row) => {
+      const custo = await calcularCustoFicha(unidadeId, row.id);
+      const custoComEmbalagem = await resolverCustoComEmbalagem(
+        supabase,
+        unidadeId,
+        row.embalagem_ficha_id,
+        row.embalagem_produto_sku,
+        custo,
+        Number(row.rendimento_quantidade),
+      );
+      return resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria", custo, custoComEmbalagem, nomesEmbalagemFichas, nomesEmbalagemProdutos);
+    }),
   );
 }
 
@@ -423,13 +506,11 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   if (row.embalagem_ficha_id) fichaIds.push(row.embalagem_ficha_id);
   if (row.embalagem_produto_sku) produtoSkus.push(row.embalagem_produto_sku);
 
-  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios, custoFichaEmbalagem, custosEmbalagemProduto] = await Promise.all([
+  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios] = await Promise.all([
     nomesProdutosPorSku(supabase, unidadeId, produtoSkus),
     nomesFichasPorId(supabase, unidadeId, fichaIds),
     nomesCategoriasPorId(supabase, unidadeId, [row.categoria_id]),
     nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean)),
-    row.embalagem_ficha_id ? calcularCustoFicha(unidadeId, row.embalagem_ficha_id) : Promise.resolve(null),
-    row.embalagem_produto_sku ? custosUnitariosProdutos(supabase, unidadeId, [row.embalagem_produto_sku]) : Promise.resolve(null),
   ]);
 
   const componentes: ComponenteFicha[] = componentesRows.map((c) => ({
@@ -448,34 +529,14 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
 
   const etapas: EtapaFicha[] = etapasRows.map((e) => ({ ordem: e.ordem, descricao: e.descricao }));
   const custo = await calcularCustoFicha(unidadeId, id);
-
-  // Custo por unidade do Salão + custo por unidade da embalagem (via ficha,
-  // rendimento dela representa "1 uso" - ex: 1 UN de caixa+saco; ou via
-  // produto direto, preço unitário do Cadastro) - soma direto, sem dividir
-  // de novo por rendimento nenhum. Sem embalagem linkada (nenhum dos dois),
-  // null - a UI cai pro custo do Salão nos 3 canais de delivery (ver
-  // `montarPrecosPorCanal`).
-  const custoEmbalagemPorUnidade = row.embalagem_ficha_id
-    ? (custoFichaEmbalagem?.custoPorUnidade ?? null)
-    : row.embalagem_produto_sku
-      ? (custosEmbalagemProduto?.get(row.embalagem_produto_sku) ?? null)
-      : null;
-  const custoEmbalagemCompleto = row.embalagem_ficha_id ? (custoFichaEmbalagem?.completo ?? false) : custoEmbalagemPorUnidade !== null;
-  const temEmbalagem = row.embalagem_ficha_id !== null || row.embalagem_produto_sku !== null;
-
-  const custoComEmbalagem: CustoFicha | null = temEmbalagem
-    ? {
-        custoTotal:
-          custo.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
-            ? ((custo.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)) * Number(row.rendimento_quantidade)
-            : null,
-        custoPorUnidade:
-          custo.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
-            ? (custo.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)
-            : null,
-        completo: custo.completo && custoEmbalagemCompleto,
-      }
-    : null;
+  const custoComEmbalagem = await resolverCustoComEmbalagem(
+    supabase,
+    unidadeId,
+    row.embalagem_ficha_id,
+    row.embalagem_produto_sku,
+    custo,
+    Number(row.rendimento_quantidade),
+  );
 
   return {
     id: row.id,
@@ -895,6 +956,40 @@ export async function atualizarPrecosCanaisFicha(
     .eq("unidade_id", unidadeId)
     .eq("id", fichaId);
   if (error) throw new Error(error.message);
+}
+
+/** "Salvar todos" da Tabela de Precificação - grava os 4 preços (Salão +
+ * 3 canais de delivery) de cada linha alterada num update só por ficha,
+ * em vez de duas idas separadas (`atualizarPrecosVendaFichas` +
+ * `atualizarPrecosCanaisFicha`). */
+export async function atualizarPrecosTodosCanaisFichas(
+  unidadeId: string,
+  entradas: {
+    id: string;
+    precoVenda: number | null;
+    precoVendaDeliveryProprio: number | null;
+    precoVendaIfood: number | null;
+    precoVenda99Food: number | null;
+  }[],
+): Promise<void> {
+  if (entradas.length === 0) return;
+  const supabase = await createClient();
+  const resultados = await Promise.all(
+    entradas.map((e) =>
+      supabase
+        .from("fichas_tecnicas")
+        .update({
+          preco_venda: e.precoVenda,
+          preco_venda_delivery_proprio: e.precoVendaDeliveryProprio,
+          preco_venda_ifood: e.precoVendaIfood,
+          preco_venda_99food: e.precoVenda99Food,
+        })
+        .eq("unidade_id", unidadeId)
+        .eq("id", e.id),
+    ),
+  );
+  const comErro = resultados.find((r) => r.error);
+  if (comErro?.error) throw new Error(comErro.error.message);
 }
 
 export type DadosNovaFichaTecnica = {

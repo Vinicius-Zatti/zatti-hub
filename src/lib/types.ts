@@ -218,10 +218,29 @@ export type FichaTecnicaResumo = {
   rendimentoQuantidade: number;
   rendimentoUnidade: UnidadeRendimentoFicha;
   /** Só faz sentido pra camada VEN (item vendável) - preenchido na criação
-   * é opcional, editável depois. PRE (receita interna) nunca pede isso. */
+   * é opcional, editável depois. PRE (receita interna) nunca pede isso.
+   * É o preço do canal Salão - os outros 3 canais ficam nos campos abaixo. */
   precoVenda: number | null;
   status: StatusFicha;
   custo: CustoFicha;
+  /** Os campos de embalagem/canais abaixo só fazem sentido pra camada VEN -
+   * embalagem usada na saída pro delivery é ou uma ficha de Pré-preparo
+   * (combo de itens) ou um produto direto do Estoque (tipicamente do grupo
+   * Embalagens) - nunca os dois ao mesmo tempo. Ambos `null` = prato não
+   * linkou embalagem (canais de delivery usam o mesmo custo do Salão). */
+  embalagemFichaId: string | null;
+  embalagemNome: string | null;
+  embalagemProdutoSku: string | null;
+  embalagemProdutoNome: string | null;
+  /** Custo (com o mesmo formato de `custo`) somando a embalagem vinculada -
+   * `null` quando não há embalagem linkada, e a UI cai pra `custo` mesmo
+   * nos canais de delivery. */
+  custoComEmbalagem: CustoFicha | null;
+  /** Preços praticados dos canais de delivery - `precoVenda` acima é o
+   * preço do Salão. */
+  precoVendaDeliveryProprio: number | null;
+  precoVendaIfood: number | null;
+  precoVenda99Food: number | null;
   atualizadoEm: string;
 };
 
@@ -236,24 +255,6 @@ export type FichaTecnica = FichaTecnicaResumo & {
   criadoPorNome: string;
   criadoEm: string;
   atualizadoPorNome: string | null;
-  /** Só faz sentido pra camada VEN - embalagem usada na saída pro delivery,
-   * ou uma ficha de Pré-preparo (combo de itens) ou um produto direto do
-   * Estoque (tipicamente do grupo Embalagens) - nunca os dois ao mesmo
-   * tempo. Ambos `null` = prato não linkou embalagem (canais de delivery
-   * usam o mesmo custo do Salão). */
-  embalagemFichaId: string | null;
-  embalagemNome: string | null;
-  embalagemProdutoSku: string | null;
-  embalagemProdutoNome: string | null;
-  /** Custo (com o mesmo formato de `custo`) somando a embalagem vinculada -
-   * `null` quando não há embalagem linkada, e a UI cai pra `custo` mesmo
-   * nos canais de delivery. */
-  custoComEmbalagem: CustoFicha | null;
-  /** Preços praticados dos canais de delivery - `precoVenda` (herdado de
-   * `FichaTecnicaResumo`) é o preço do Salão. */
-  precoVendaDeliveryProprio: number | null;
-  precoVendaIfood: number | null;
-  precoVenda99Food: number | null;
 };
 
 export type CanalVenda = "salao" | "delivery_proprio" | "ifood" | "99food";

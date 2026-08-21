@@ -331,6 +331,17 @@ export const precosCanalFichaEntradaSchema = z
   })
   .strict();
 
+/** Os 4 preços de uma vez - "Salvar todos" da Tabela de Precificação. */
+export const precosTodosCanaisFichaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    precoVenda: dinheiroOuNull,
+    precoVendaDeliveryProprio: dinheiroOuNull,
+    precoVendaIfood: dinheiroOuNull,
+    precoVenda99Food: dinheiroOuNull,
+  })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

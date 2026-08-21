@@ -5,6 +5,7 @@ import { getAcessoAtual, requireGestaoFichasTecnicas, registrarAuditoria, regist
 import {
   atualizarPrecoVendaFicha,
   atualizarPrecosCanaisFicha,
+  atualizarPrecosTodosCanaisFichas,
   atualizarPrecosVendaFichas,
   carregarDadosNovaFichaTecnica,
   carregarFichaTecnicaParaExibir,
@@ -30,6 +31,7 @@ import {
   idUuidSchema,
   precoVendaFichaEntradaSchema,
   precosCanalFichaEntradaSchema,
+  precosTodosCanaisFichaEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -378,6 +380,42 @@ export async function salvarPrecosCanaisFichaAction(input: {
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar os preços de delivery.") };
+  }
+}
+
+/** "Salvar todos" da Tabela de Precificação - grava os 4 preços (Salão +
+ * 3 canais de delivery) de cada linha alterada de uma vez. */
+export async function atualizarPrecosTodosCanaisFichasAction(
+  entradas: {
+    id: string;
+    precoVenda: number | null;
+    precoVendaDeliveryProprio: number | null;
+    precoVendaIfood: number | null;
+    precoVenda99Food: number | null;
+  }[],
+): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_preco_venda_salvar");
+    const entradasValidadas = entradas.map((entrada) => validarEntrada(precosTodosCanaisFichaEntradaSchema, entrada));
+    await atualizarPrecosTodosCanaisFichas(acesso.unidadeId, entradasValidadas);
+
+    await registrarAuditoriaBatch(
+      entradasValidadas.map((entrada) => ({
+        acesso,
+        acao: "salvar",
+        entidade: "ficha_tecnica_precos_canal",
+        entidadeId: entrada.id,
+        dadosNovos: entrada,
+      })),
+    );
+
+    revalidatePath("/fichas-tecnicas/precificacao");
+    revalidarListagem();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar os preços.") };
   }
 }
 

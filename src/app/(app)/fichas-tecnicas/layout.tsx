@@ -6,14 +6,17 @@ const SUB_ITEMS = [
   { label: "Categorias", href: "/fichas-tecnicas/categorias" },
   { label: "Conversões", href: "/fichas-tecnicas/conversoes" },
   { label: "Margem Ideal", href: "/fichas-tecnicas/calculadora" },
+  { label: "Precificação", href: "/fichas-tecnicas/precificacao" },
 ];
 
-// Categorias, Conversões e a Calculadora são só Gestão/master - Operacional
-// só consulta (mesmo padrão de `financeiro/layout.tsx` com o Dashboard).
+// Categorias, Conversões, a Calculadora e a Precificação são só Gestão/master
+// - Operacional só consulta (mesmo padrão de `financeiro/layout.tsx` com o
+// Dashboard).
 const SOMENTE_GESTAO = [
   "/fichas-tecnicas/categorias",
   "/fichas-tecnicas/conversoes",
   "/fichas-tecnicas/calculadora",
+  "/fichas-tecnicas/precificacao",
 ];
 
 export default async function FichasTecnicasLayout({ children }: { children: React.ReactNode }) {
