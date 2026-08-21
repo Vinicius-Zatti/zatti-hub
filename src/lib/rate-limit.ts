@@ -20,7 +20,8 @@ export type ChaveLimiteRequisicao =
   | "ficha_preco_venda_salvar"
   | "categoria_ficha_editar"
   | "categoria_ficha_excluir"
-  | "excluir_produto";
+  | "excluir_produto"
+  | "ficha_precos_canal_salvar";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do
  * banco estiver indisponivel, a mutacao nao continua sem protecao. */

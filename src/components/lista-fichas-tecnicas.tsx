@@ -10,9 +10,10 @@ import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
 import { FichaTecnicaForm } from "@/components/ficha-tecnica-form";
-import type { CamadaFicha, ClassificacaoMargem, FichaTecnicaResumo, StatusFicha } from "@/lib/types";
+import type { CamadaFicha, FichaTecnicaResumo, StatusFicha } from "@/lib/types";
 import {
   CAMADA_LABEL,
+  CLASSIFICACAO_TAG,
   calcularCmv,
   calcularMargemProduto,
   calcularPrecoVendaSugerido,
@@ -40,12 +41,6 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
   inativa: "Inativa",
 };
 
-const CLASSIFICACAO_TAG: Record<ClassificacaoMargem, { label: string; classe: string }> = {
-  lucro_ajustado: { label: "Lucro Ajustado", classe: "bg-verde/10 text-verde" },
-  abaixo_do_lucro: { label: "Abaixo do Lucro", classe: "bg-ambar/10 text-ambar" },
-  prejuizo: { label: "Prejuízo", classe: "bg-vermelho/10 text-vermelho" },
-};
-
 type StatusSalvar = "salvando" | "erro" | "salvo";
 
 function brl(n: number): string {
@@ -62,12 +57,16 @@ export function ListaFichasTecnicas({
   margemNecessaria,
   margemPontoEquilibrio,
   deducoesTotal,
+  deducoesIfood,
+  deducoes99Food,
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
   margemNecessaria: number | null;
   margemPontoEquilibrio: number | null;
   deducoesTotal: number;
+  deducoesIfood: number;
+  deducoes99Food: number;
 }) {
   const router = useRouter();
   const { ativar, desativar } = useGuardaEdicao();
@@ -438,6 +437,11 @@ export function ListaFichasTecnicas({
                 categorias={dadosAbertos.dados.categorias}
                 produtos={dadosAbertos.dados.produtos}
                 fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
+                margemNecessaria={margemNecessaria}
+                margemPontoEquilibrio={margemPontoEquilibrio}
+                deducoesSalao={deducoesTotal}
+                deducoesIfood={deducoesIfood}
+                deducoes99Food={deducoes99Food}
                 aoFechar={fechar}
                 aoSalvar={() => {
                   if (fichaAbertaId) void carregar(fichaAbertaId);

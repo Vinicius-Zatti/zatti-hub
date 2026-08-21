@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAcessoAtual, requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import {
   atualizarPrecoVendaFicha,
+  atualizarPrecosCanaisFicha,
   atualizarPrecosVendaFichas,
   carregarDadosNovaFichaTecnica,
   carregarFichaTecnicaParaExibir,
@@ -28,6 +29,7 @@ import {
   fichaTecnicaEntradaSchema,
   idUuidSchema,
   precoVendaFichaEntradaSchema,
+  precosCanalFichaEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -345,6 +347,37 @@ export async function atualizarPrecosVendaFichasAction(
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar os preços de venda.") };
+  }
+}
+
+/** Edição dos 3 preços praticados de delivery na seção "Preços por Canal" da
+ * tela de detalhe (Salão continua com `atualizarPrecoVendaFichaAction`). */
+export async function salvarPrecosCanaisFichaAction(input: {
+  id: string;
+  precoVendaDeliveryProprio: number | null;
+  precoVendaIfood: number | null;
+  precoVenda99Food: number | null;
+}): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_precos_canal_salvar");
+    const entrada = validarEntrada(precosCanalFichaEntradaSchema, input);
+    await atualizarPrecosCanaisFicha(acesso.unidadeId, entrada.id, entrada);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "ficha_tecnica_precos_canal",
+      entidadeId: entrada.id,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath(`/fichas-tecnicas/${entrada.id}`);
+    revalidarListagem();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar os preços de delivery.") };
   }
 }
 

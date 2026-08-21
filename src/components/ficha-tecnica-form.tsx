@@ -90,6 +90,7 @@ export function FichaTecnicaForm({
     existente?.rendimentoUnidade ?? "KG",
   );
   const [precoVenda, setPrecoVenda] = useState<number | null>(existente?.precoVenda ?? null);
+  const [embalagemFichaId, setEmbalagemFichaId] = useState<string | null>(existente?.embalagemFichaId ?? null);
   const [tempoPreparoMinutos, setTempoPreparoMinutos] = useState<number | null>(
     existente?.tempoPreparoMinutos ?? null,
   );
@@ -107,6 +108,9 @@ export function FichaTecnicaForm({
 
   const categoriasFiltradas = categorias.filter((c) => c.camada === camada && c.ativo);
   const fichasParaEscolher = fichasDisponiveis.filter((f) => f.id !== existente?.id);
+  // SKU sempre começa com a camada (PRE/VEN) - garantido pelo check
+  // constraint da tabela, mais barato que carregar a camada de cada opção.
+  const fichasEmbalagem = fichasParaEscolher.filter((f) => f.sku.startsWith("PRE"));
 
   const custosPorProdutoSku = new Map(produtos.map((p) => [p.sku, p.custoUnitario]));
   const custosPorFichaId = new Map(fichasParaEscolher.map((f) => [f.id, f.custoPorUnidade]));
@@ -190,6 +194,7 @@ export function FichaTecnicaForm({
       rendimentoQuantidade: rendimentoQuantidade ?? 0,
       rendimentoUnidade,
       precoVenda: camada === "VEN" ? precoVenda : null,
+      embalagemFichaId: camada === "VEN" ? embalagemFichaId : null,
       tempoPreparoMinutos,
       fotoPath: existente?.fotoPath ?? null,
       observacoesOperacionais: obsOperacionais,
@@ -395,10 +400,30 @@ export function FichaTecnicaForm({
               />
             </label>
             {camada === "VEN" && (
-              <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-                Preço de venda (opcional - pode preencher depois)
-                <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
-              </label>
+              <>
+                <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+                  Preço de venda - Salão (opcional - pode preencher depois)
+                  <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
+                </label>
+                <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+                  Embalagem de delivery (opcional)
+                  <SeletorBusca
+                    opcoes={[
+                      { valor: "", rotulo: "(nenhuma)" },
+                      ...fichasEmbalagem
+                        .slice()
+                        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+                        .map((f) => ({ valor: f.id, rotulo: `${f.nome} (${f.sku})` })),
+                    ]}
+                    valorSelecionado={embalagemFichaId ?? ""}
+                    placeholder="Buscar ficha de pré-preparo..."
+                    onSelecionar={(id) => editar(setEmbalagemFichaId, id === "" ? null : id)}
+                  />
+                  <span className="text-xs font-normal text-cinza-medio">
+                    Custo dela entra em Delivery Próprio, iFood e 99Food - nunca no Salão.
+                  </span>
+                </label>
+              </>
             )}
           </div>
         </div>

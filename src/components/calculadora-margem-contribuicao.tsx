@@ -49,6 +49,12 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
   const [aliquotaImpostoPct, setAliquotaImpostoPct] = useState<number | null>(
     configuracaoInicial.aliquotaImposto ? paraPercentual(configuracaoInicial.aliquotaImposto) : null,
   );
+  const [comissaoIfoodPct, setComissaoIfoodPct] = useState<number | null>(
+    configuracaoInicial.comissaoIfood ? paraPercentual(configuracaoInicial.comissaoIfood) : null,
+  );
+  const [comissao99FoodPct, setComissao99FoodPct] = useState<number | null>(
+    configuracaoInicial.comissao99Food ? paraPercentual(configuracaoInicial.comissao99Food) : null,
+  );
   const [modoLucro, setModoLucro] = useState<ModoLucro>("valor");
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -71,7 +77,11 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
     lucroDesejadoValor: lucroValor ?? 0,
     taxaPagamento: paraFracao(taxaPagamentoPct),
     aliquotaImposto: paraFracao(aliquotaImpostoPct),
+    comissaoIfood: paraFracao(comissaoIfoodPct),
+    comissao99Food: paraFracao(comissao99FoodPct),
   });
+  const deducoesIfood = paraFracao(comissaoIfoodPct) + paraFracao(aliquotaImpostoPct);
+  const deducoes99Food = paraFracao(comissao99FoodPct) + paraFracao(aliquotaImpostoPct);
 
   function salvar() {
     setErro(null);
@@ -83,6 +93,8 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
         lucroDesejadoValor: lucroValor ?? 0,
         taxaPagamento: paraFracao(taxaPagamentoPct),
         aliquotaImposto: paraFracao(aliquotaImpostoPct),
+        comissaoIfood: paraFracao(comissaoIfoodPct),
+        comissao99Food: paraFracao(comissao99FoodPct),
       });
       if (!resposta.ok) {
         setErro(resposta.mensagem);
@@ -205,6 +217,32 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
               }}
             />
           </label>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            <span className="flex items-center gap-1.5">
+              Comissão iFood
+              <InfoIconClaro texto="Substitui a Taxa de Pagamento na dedução do canal iFood - o iFood já retém e repassa o valor líquido, não cobra os dois juntos." />
+            </span>
+            <CampoNumero
+              value={comissaoIfoodPct}
+              onChange={(v) => {
+                setComissaoIfoodPct(v);
+                setSalvo(false);
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            <span className="flex items-center gap-1.5">
+              Comissão 99Food
+              <InfoIconClaro texto="Mesma lógica da comissão do iFood, só que pro canal 99Food." />
+            </span>
+            <CampoNumero
+              value={comissao99FoodPct}
+              onChange={(v) => {
+                setComissao99FoodPct(v);
+                setSalvo(false);
+              }}
+            />
+          </label>
         </div>
 
         {erro && <p className="mt-3 text-sm text-vermelho">{erro}</p>}
@@ -225,7 +263,9 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
           <ResultadoLinha label="% Custo fixo sobre o faturamento" valor={pct(resultado.percentualCustoFixo)} />
           <ResultadoLinha label="% Lucro desejado sobre o faturamento" valor={pct(resultado.lucroDesejadoPercentual)} />
           <ResultadoLinha label="Margem necessária pro ponto de equilíbrio" valor={pct(resultado.margemPontoEquilibrio)} />
-          <ResultadoLinha label="Deduções (Taxa de Pagamento + Imposto)" valor={pct(resultado.deducoesTotal)} />
+          <ResultadoLinha label="Deduções Salão/Delivery Próprio (Taxa de Pagamento + Imposto)" valor={pct(resultado.deducoesTotal)} />
+          <ResultadoLinha label="Deduções iFood (Comissão + Imposto)" valor={pct(deducoesIfood)} />
+          <ResultadoLinha label="Deduções 99Food (Comissão + Imposto)" valor={pct(deducoes99Food)} />
           <div className="flex items-center justify-between rounded-lg bg-azul-noite p-4 text-branco">
             <span className="text-sm font-semibold">Margem de contribuição necessária</span>
             <span className="font-display text-xl font-bold text-ambar">{pct(resultado.margemNecessaria)}</span>

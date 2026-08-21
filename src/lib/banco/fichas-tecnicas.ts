@@ -187,6 +187,10 @@ type FichaRow = {
   rendimento_quantidade: number;
   rendimento_unidade: UnidadeRendimentoFicha;
   preco_venda: number | null;
+  embalagem_ficha_id: string | null;
+  preco_venda_delivery_proprio: number | null;
+  preco_venda_ifood: number | null;
+  preco_venda_99food: number | null;
   tempo_preparo_minutos: number | null;
   foto_path: string | null;
   observacoes_operacionais: string;
@@ -415,12 +419,14 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   const fichaIds = componentesRows
     .map((c) => c.ficha_componente_id)
     .filter((fid): fid is string => fid !== null);
+  if (row.embalagem_ficha_id) fichaIds.push(row.embalagem_ficha_id);
 
-  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios] = await Promise.all([
+  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios, custoEmbalagem] = await Promise.all([
     nomesProdutosPorSku(supabase, unidadeId, produtoSkus),
     nomesFichasPorId(supabase, unidadeId, fichaIds),
     nomesCategoriasPorId(supabase, unidadeId, [row.categoria_id]),
     nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean)),
+    row.embalagem_ficha_id ? calcularCustoFicha(unidadeId, row.embalagem_ficha_id) : Promise.resolve(null),
   ]);
 
   const componentes: ComponenteFicha[] = componentesRows.map((c) => ({
@@ -440,6 +446,25 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   const etapas: EtapaFicha[] = etapasRows.map((e) => ({ ordem: e.ordem, descricao: e.descricao }));
   const custo = await calcularCustoFicha(unidadeId, id);
 
+  // Custo por unidade do Salão + custo por unidade da embalagem (rendimento
+  // dela representa "1 uso", ex: 1 UN de caixa+saco - soma direto, sem
+  // dividir de novo por rendimento nenhum). Sem embalagem linkada, null - a
+  // UI cai pro custo do Salão nos 3 canais de delivery (ver `montarPrecosPorCanal`).
+  const custoComEmbalagem: CustoFicha | null =
+    row.embalagem_ficha_id && custoEmbalagem
+      ? {
+          custoTotal:
+            custo.custoPorUnidade !== null && custoEmbalagem.custoPorUnidade !== null
+              ? (custo.custoPorUnidade + custoEmbalagem.custoPorUnidade) * Number(row.rendimento_quantidade)
+              : null,
+          custoPorUnidade:
+            custo.custoPorUnidade !== null || custoEmbalagem.custoPorUnidade !== null
+              ? (custo.custoPorUnidade ?? 0) + (custoEmbalagem.custoPorUnidade ?? 0)
+              : null,
+          completo: custo.completo && custoEmbalagem.completo,
+        }
+      : null;
+
   return {
     id: row.id,
     sku: row.sku,
@@ -451,6 +476,12 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     rendimentoUnidade: row.rendimento_unidade,
     precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
     custo,
+    embalagemFichaId: row.embalagem_ficha_id,
+    embalagemNome: row.embalagem_ficha_id ? (nomesFichas.get(row.embalagem_ficha_id) ?? "Ficha removida") : null,
+    custoComEmbalagem,
+    precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
+    precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
+    precoVenda99Food: row.preco_venda_99food === null ? null : Number(row.preco_venda_99food),
     tempoPreparoMinutos: row.tempo_preparo_minutos,
     fotoPath: row.foto_path,
     observacoesOperacionais: row.observacoes_operacionais,
@@ -487,6 +518,9 @@ export type EntradaFichaTecnica = {
   /** Só preenchido de verdade quando camada é VEN - PRE sempre manda null
    * (ver comentário em `FichaTecnicaResumo`). */
   precoVenda: number | null;
+  /** Idem - só VEN pode linkar embalagem, PRE sempre manda null (barrado
+   * também no trigger `proteger_ficha_tecnica`). */
+  embalagemFichaId: string | null;
   tempoPreparoMinutos: number | null;
   fotoPath: string | null;
   observacoesOperacionais: string;
@@ -530,6 +564,7 @@ export async function salvarFichaTecnica(params: {
     p_rendimento_quantidade: entrada.rendimentoQuantidade,
     p_rendimento_unidade: entrada.rendimentoUnidade,
     p_preco_venda: entrada.precoVenda,
+    p_embalagem_ficha_id: entrada.embalagemFichaId,
     p_tempo_preparo_minutos: entrada.tempoPreparoMinutos,
     p_foto_path: entrada.fotoPath,
     p_observacoes_operacionais: entrada.observacoesOperacionais,
@@ -737,11 +772,21 @@ export async function getConfiguracaoFinanceira(unidadeId: string): Promise<Conf
   const supabase = await createClient();
   const { data } = await supabase
     .from("configuracao_financeira")
-    .select("faturamento_medio_mensal, custo_fixo_medio_mensal, lucro_desejado_valor, taxa_pagamento, aliquota_imposto")
+    .select(
+      "faturamento_medio_mensal, custo_fixo_medio_mensal, lucro_desejado_valor, taxa_pagamento, aliquota_imposto, comissao_ifood, comissao_99food",
+    )
     .eq("unidade_id", unidadeId)
     .maybeSingle();
   if (!data) {
-    return { faturamentoMedioMensal: 0, custoFixoMedioMensal: 0, lucroDesejadoValor: 0, taxaPagamento: 0, aliquotaImposto: 0 };
+    return {
+      faturamentoMedioMensal: 0,
+      custoFixoMedioMensal: 0,
+      lucroDesejadoValor: 0,
+      taxaPagamento: 0,
+      aliquotaImposto: 0,
+      comissaoIfood: 0,
+      comissao99Food: 0,
+    };
   }
   const row = data as {
     faturamento_medio_mensal: number;
@@ -749,6 +794,8 @@ export async function getConfiguracaoFinanceira(unidadeId: string): Promise<Conf
     lucro_desejado_valor: number;
     taxa_pagamento: number;
     aliquota_imposto: number;
+    comissao_ifood: number;
+    comissao_99food: number;
   };
   return {
     faturamentoMedioMensal: Number(row.faturamento_medio_mensal),
@@ -756,6 +803,8 @@ export async function getConfiguracaoFinanceira(unidadeId: string): Promise<Conf
     lucroDesejadoValor: Number(row.lucro_desejado_valor),
     taxaPagamento: Number(row.taxa_pagamento),
     aliquotaImposto: Number(row.aliquota_imposto),
+    comissaoIfood: Number(row.comissao_ifood),
+    comissao99Food: Number(row.comissao_99food),
   };
 }
 
@@ -769,6 +818,8 @@ export async function salvarConfiguracaoFinanceira(unidadeId: string, config: Co
     lucro_desejado_valor: config.lucroDesejadoValor,
     taxa_pagamento: config.taxaPagamento,
     aliquota_imposto: config.aliquotaImposto,
+    comissao_ifood: config.comissaoIfood,
+    comissao_99food: config.comissao99Food,
   });
   if (error) throw new Error(error.message);
 }
@@ -801,6 +852,27 @@ export async function atualizarPrecosVendaFichas(
   );
   const comErro = resultados.find((r) => r.error);
   if (comErro?.error) throw new Error(comErro.error.message);
+}
+
+/** Atualiza os 3 preços praticados de delivery de uma vez (Salão continua
+ * com `atualizarPrecoVendaFicha`, que já existia) - mesmo update direto,
+ * sem passar pela transação completa de `salvar_ficha_tecnica`. */
+export async function atualizarPrecosCanaisFicha(
+  unidadeId: string,
+  fichaId: string,
+  precos: { precoVendaDeliveryProprio: number | null; precoVendaIfood: number | null; precoVenda99Food: number | null },
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fichas_tecnicas")
+    .update({
+      preco_venda_delivery_proprio: precos.precoVendaDeliveryProprio,
+      preco_venda_ifood: precos.precoVendaIfood,
+      preco_venda_99food: precos.precoVenda99Food,
+    })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId);
+  if (error) throw new Error(error.message);
 }
 
 export type DadosNovaFichaTecnica = {

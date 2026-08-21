@@ -283,6 +283,7 @@ export const fichaTecnicaEntradaSchema = z
     rendimentoQuantidade: quantidadePositiva,
     rendimentoUnidade: rendimentoUnidadeFichaSchema,
     precoVenda: dinheiroOuNull,
+    embalagemFichaId: idUuidSchema.nullable(),
     tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
     fotoPath: texto(500).nullable(),
     observacoesOperacionais: texto(2_000),
@@ -303,6 +304,8 @@ export const configuracaoFinanceiraEntradaSchema = z
     lucroDesejadoValor: dinheiroObrigatorio,
     taxaPagamento: fracaoPercentual,
     aliquotaImposto: fracaoPercentual,
+    comissaoIfood: fracaoPercentual,
+    comissao99Food: fracaoPercentual,
   })
   .strict();
 
@@ -310,6 +313,17 @@ export const precoVendaFichaEntradaSchema = z
   .object({
     id: idUuidSchema,
     precoVenda: dinheiroOuNull,
+  })
+  .strict();
+
+/** Preços praticados dos 3 canais de delivery (Salão fica com
+ * `precoVendaFichaEntradaSchema`, que já existia). */
+export const precosCanalFichaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    precoVendaDeliveryProprio: dinheiroOuNull,
+    precoVendaIfood: dinheiroOuNull,
+    precoVenda99Food: dinheiroOuNull,
   })
   .strict();
 

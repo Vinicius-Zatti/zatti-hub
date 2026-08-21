@@ -1,5 +1,6 @@
 import type {
   CamadaFicha,
+  CanalPrecoFicha,
   ClassificacaoMargem,
   ComponenteFicha,
   ConfiguracaoFinanceira,
@@ -16,6 +17,12 @@ import type {
 export const CAMADA_LABEL: Record<CamadaFicha, string> = {
   PRE: "Pré-preparo",
   VEN: "Venda",
+};
+
+export const CLASSIFICACAO_TAG: Record<ClassificacaoMargem, { label: string; classe: string }> = {
+  lucro_ajustado: { label: "Lucro Ajustado", classe: "bg-verde/10 text-verde" },
+  abaixo_do_lucro: { label: "Abaixo do Lucro", classe: "bg-ambar/10 text-ambar" },
+  prejuizo: { label: "Prejuízo", classe: "bg-vermelho/10 text-vermelho" },
 };
 
 /** Grupos de produto (ver `src/lib/skus/sugerir.ts`) que nunca entram numa
@@ -173,4 +180,57 @@ export function classificarMargemProduto(
   if (margemProduto >= margemNecessaria) return "lucro_ajustado";
   if (margemProduto >= margemPontoEquilibrio) return "abaixo_do_lucro";
   return "prejuizo";
+}
+
+/** As 4 linhas da seção "Preços por Canal" de uma ficha de Venda - Salão e
+ * Delivery Próprio usam a mesma dedução (taxa de pagamento + imposto), só
+ * trocando o custo (Delivery Próprio soma a embalagem); iFood/99Food usam a
+ * comissão do marketplace no lugar da taxa de pagamento, com o mesmo custo
+ * com embalagem. `custoComEmbalagem` null (sem embalagem linkada) cai pro
+ * mesmo custo do Salão nos 3 canais de delivery. */
+export function montarPrecosPorCanal(params: {
+  custoBase: number | null;
+  custoComEmbalagem: number | null;
+  precoVendaSalao: number | null;
+  precoVendaDeliveryProprio: number | null;
+  precoVendaIfood: number | null;
+  precoVenda99Food: number | null;
+  margemNecessaria: number | null;
+  margemPontoEquilibrio: number | null;
+  deducoesSalao: number;
+  deducoesIfood: number;
+  deducoes99Food: number;
+}): CanalPrecoFicha[] {
+  const custoDelivery = params.custoComEmbalagem ?? params.custoBase;
+  const linhas: { canal: CanalPrecoFicha["canal"]; label: string; custo: number | null; precoPraticado: number | null; deducoes: number }[] = [
+    { canal: "salao", label: "Salão", custo: params.custoBase, precoPraticado: params.precoVendaSalao, deducoes: params.deducoesSalao },
+    {
+      canal: "delivery_proprio",
+      label: "Delivery Próprio",
+      custo: custoDelivery,
+      precoPraticado: params.precoVendaDeliveryProprio,
+      deducoes: params.deducoesSalao,
+    },
+    { canal: "ifood", label: "iFood", custo: custoDelivery, precoPraticado: params.precoVendaIfood, deducoes: params.deducoesIfood },
+    {
+      canal: "99food",
+      label: "99Food",
+      custo: custoDelivery,
+      precoPraticado: params.precoVenda99Food,
+      deducoes: params.deducoes99Food,
+    },
+  ];
+
+  return linhas.map((l) => {
+    const precoSugerido = calcularPrecoVendaSugerido(l.custo, params.margemNecessaria, l.deducoes);
+    const margemProduto = calcularMargemProduto(l.custo, l.precoPraticado, l.deducoes);
+    return {
+      canal: l.canal,
+      label: l.label,
+      custoPorUnidade: l.custo,
+      precoSugerido,
+      precoPraticado: l.precoPraticado,
+      classificacao: classificarMargemProduto(margemProduto, params.margemNecessaria, params.margemPontoEquilibrio),
+    };
+  });
 }

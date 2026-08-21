@@ -17,6 +17,8 @@ export default async function FichasTecnicasPage() {
   const margemNecessaria = margem?.margemNecessaria ?? null;
   const margemPontoEquilibrio = margem?.margemPontoEquilibrio ?? null;
   const deducoesTotal = margem?.deducoesTotal ?? 0;
+  const deducoesIfood = (configuracao?.comissaoIfood ?? 0) + (configuracao?.aliquotaImposto ?? 0);
+  const deducoes99Food = (configuracao?.comissao99Food ?? 0) + (configuracao?.aliquotaImposto ?? 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -32,6 +34,8 @@ export default async function FichasTecnicasPage() {
         margemNecessaria={margemNecessaria}
         margemPontoEquilibrio={margemPontoEquilibrio}
         deducoesTotal={deducoesTotal}
+        deducoesIfood={deducoesIfood}
+        deducoes99Food={deducoes99Food}
       />
     </div>
   );

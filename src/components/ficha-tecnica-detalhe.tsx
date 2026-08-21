@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CAMADA_LABEL, formatarQuantidade } from "@/lib/fichas-tecnicas";
 import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
+import { PrecosCanalFicha } from "@/components/precos-canal-ficha";
 import type { CategoriaFicha, FichaTecnica } from "@/lib/types";
 
 const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" } as const;
@@ -26,6 +27,11 @@ export function FichaTecnicaDetalhe({
   categorias,
   produtos,
   fichasDisponiveis,
+  margemNecessaria,
+  margemPontoEquilibrio,
+  deducoesSalao,
+  deducoesIfood,
+  deducoes99Food,
   aoFechar,
   aoSalvar,
 }: {
@@ -34,6 +40,11 @@ export function FichaTecnicaDetalhe({
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
+  margemNecessaria: number | null;
+  margemPontoEquilibrio: number | null;
+  deducoesSalao: number;
+  deducoesIfood: number;
+  deducoes99Food: number;
   aoFechar?: () => void;
   aoSalvar?: (id: string) => void;
 }) {
@@ -135,7 +146,11 @@ export function FichaTecnicaDetalhe({
               {ficha.camada === "VEN" && (
                 <>
                   <div className="mt-2 flex items-center justify-between border-t border-cinza-claro pt-2">
-                    <span className="text-sm text-cinza-medio">Preço de venda</span>
+                    <span className="text-sm text-cinza-medio">Embalagem (delivery)</span>
+                    <span className="font-semibold text-azul-noite">{ficha.embalagemNome ?? "Nenhuma vinculada"}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm text-cinza-medio">Preço de venda (Salão)</span>
                     <span className="font-semibold text-azul-noite">
                       {ficha.precoVenda !== null ? ficha.precoVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-"}
                     </span>
@@ -157,6 +172,24 @@ export function FichaTecnicaDetalhe({
             </>
           )}
         </div>
+      )}
+
+      {podeGerir && ficha.camada === "VEN" && (
+        <PrecosCanalFicha
+          fichaId={ficha.id}
+          custoBase={ficha.custo.custoPorUnidade}
+          custoComEmbalagem={ficha.custoComEmbalagem?.custoPorUnidade ?? null}
+          temEmbalagem={ficha.embalagemFichaId !== null}
+          precoVendaSalao={ficha.precoVenda}
+          precoVendaDeliveryProprioInicial={ficha.precoVendaDeliveryProprio}
+          precoVendaIfoodInicial={ficha.precoVendaIfood}
+          precoVenda99FoodInicial={ficha.precoVenda99Food}
+          margemNecessaria={margemNecessaria}
+          margemPontoEquilibrio={margemPontoEquilibrio}
+          deducoesSalao={deducoesSalao}
+          deducoesIfood={deducoesIfood}
+          deducoes99Food={deducoes99Food}
+        />
       )}
 
       <div className="rounded-lg border border-cinza-claro bg-branco p-4">

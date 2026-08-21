@@ -236,19 +236,52 @@ export type FichaTecnica = FichaTecnicaResumo & {
   criadoPorNome: string;
   criadoEm: string;
   atualizadoPorNome: string | null;
+  /** Só faz sentido pra camada VEN - ficha de Pré-preparo usada só pra
+   * embalar o item na saída pro delivery. `null` = prato não linkou
+   * embalagem (canais de delivery usam o mesmo custo do Salão). */
+  embalagemFichaId: string | null;
+  embalagemNome: string | null;
+  /** Custo (com o mesmo formato de `custo`) somando a embalagem vinculada -
+   * `null` quando não há embalagem linkada, e a UI cai pra `custo` mesmo
+   * nos canais de delivery. */
+  custoComEmbalagem: CustoFicha | null;
+  /** Preços praticados dos canais de delivery - `precoVenda` (herdado de
+   * `FichaTecnicaResumo`) é o preço do Salão. */
+  precoVendaDeliveryProprio: number | null;
+  precoVendaIfood: number | null;
+  precoVenda99Food: number | null;
+};
+
+export type CanalVenda = "salao" | "delivery_proprio" | "ifood" | "99food";
+
+/** Uma linha da seção "Preços por Canal" da ficha de Venda - preço sugerido
+ * e classificação sempre recalculados na hora (nunca guardados), preço
+ * praticado é o que o cliente de fato cobra em cada canal. */
+export type CanalPrecoFicha = {
+  canal: CanalVenda;
+  label: string;
+  custoPorUnidade: number | null;
+  precoSugerido: number | null;
+  precoPraticado: number | null;
+  classificacao: ClassificacaoMargem | null;
 };
 
 /** Entrada da Calculadora de Margem Ideal (1 config por unidade). Percentuais
  * de lucro nunca são guardados - sempre derivados de faturamento, já que os
  * dois (R$ e %) têm que bater e faturamento é a referência comum. Taxa de
- * pagamento e alíquota de imposto já ficam guardadas como fração (0,13 =
- * 13%) - essas não têm outra forma de entrada pra derivar. */
+ * pagamento, alíquota de imposto e as comissões de marketplace já ficam
+ * guardadas como fração (0,13 = 13%) - essas não têm outra forma de entrada
+ * pra derivar. Comissão do iFood/99Food substitui a taxa de pagamento na
+ * dedução desses canais (o marketplace já retém o pagamento, não cobra os
+ * dois juntos) - ver `montarPrecosPorCanal`. */
 export type ConfiguracaoFinanceira = {
   faturamentoMedioMensal: number;
   custoFixoMedioMensal: number;
   lucroDesejadoValor: number;
   taxaPagamento: number;
   aliquotaImposto: number;
+  comissaoIfood: number;
+  comissao99Food: number;
 };
 
 /** Resultados calculados a partir de `ConfiguracaoFinanceira` - `null`
