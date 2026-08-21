@@ -147,7 +147,9 @@ export function FichaTecnicaDetalhe({
                 <>
                   <div className="mt-2 flex items-center justify-between border-t border-cinza-claro pt-2">
                     <span className="text-sm text-cinza-medio">Embalagem (delivery)</span>
-                    <span className="font-semibold text-azul-noite">{ficha.embalagemNome ?? "Nenhuma vinculada"}</span>
+                    <span className="font-semibold text-azul-noite">
+                      {ficha.embalagemNome ?? ficha.embalagemProdutoNome ?? "Nenhuma vinculada"}
+                    </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-sm text-cinza-medio">Preço de venda (Salão)</span>
@@ -179,7 +181,7 @@ export function FichaTecnicaDetalhe({
           fichaId={ficha.id}
           custoBase={ficha.custo.custoPorUnidade}
           custoComEmbalagem={ficha.custoComEmbalagem?.custoPorUnidade ?? null}
-          temEmbalagem={ficha.embalagemFichaId !== null}
+          temEmbalagem={ficha.embalagemFichaId !== null || ficha.embalagemProdutoSku !== null}
           precoVendaSalao={ficha.precoVenda}
           precoVendaDeliveryProprioInicial={ficha.precoVendaDeliveryProprio}
           precoVendaIfoodInicial={ficha.precoVendaIfood}

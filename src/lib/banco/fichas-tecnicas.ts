@@ -188,6 +188,7 @@ type FichaRow = {
   rendimento_unidade: UnidadeRendimentoFicha;
   preco_venda: number | null;
   embalagem_ficha_id: string | null;
+  embalagem_produto_sku: string | null;
   preco_venda_delivery_proprio: number | null;
   preco_venda_ifood: number | null;
   preco_venda_99food: number | null;
@@ -420,13 +421,15 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     .map((c) => c.ficha_componente_id)
     .filter((fid): fid is string => fid !== null);
   if (row.embalagem_ficha_id) fichaIds.push(row.embalagem_ficha_id);
+  if (row.embalagem_produto_sku) produtoSkus.push(row.embalagem_produto_sku);
 
-  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios, custoEmbalagem] = await Promise.all([
+  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios, custoFichaEmbalagem, custosEmbalagemProduto] = await Promise.all([
     nomesProdutosPorSku(supabase, unidadeId, produtoSkus),
     nomesFichasPorId(supabase, unidadeId, fichaIds),
     nomesCategoriasPorId(supabase, unidadeId, [row.categoria_id]),
     nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean)),
     row.embalagem_ficha_id ? calcularCustoFicha(unidadeId, row.embalagem_ficha_id) : Promise.resolve(null),
+    row.embalagem_produto_sku ? custosUnitariosProdutos(supabase, unidadeId, [row.embalagem_produto_sku]) : Promise.resolve(null),
   ]);
 
   const componentes: ComponenteFicha[] = componentesRows.map((c) => ({
@@ -446,24 +449,33 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   const etapas: EtapaFicha[] = etapasRows.map((e) => ({ ordem: e.ordem, descricao: e.descricao }));
   const custo = await calcularCustoFicha(unidadeId, id);
 
-  // Custo por unidade do Salão + custo por unidade da embalagem (rendimento
-  // dela representa "1 uso", ex: 1 UN de caixa+saco - soma direto, sem
-  // dividir de novo por rendimento nenhum). Sem embalagem linkada, null - a
-  // UI cai pro custo do Salão nos 3 canais de delivery (ver `montarPrecosPorCanal`).
-  const custoComEmbalagem: CustoFicha | null =
-    row.embalagem_ficha_id && custoEmbalagem
-      ? {
-          custoTotal:
-            custo.custoPorUnidade !== null && custoEmbalagem.custoPorUnidade !== null
-              ? (custo.custoPorUnidade + custoEmbalagem.custoPorUnidade) * Number(row.rendimento_quantidade)
-              : null,
-          custoPorUnidade:
-            custo.custoPorUnidade !== null || custoEmbalagem.custoPorUnidade !== null
-              ? (custo.custoPorUnidade ?? 0) + (custoEmbalagem.custoPorUnidade ?? 0)
-              : null,
-          completo: custo.completo && custoEmbalagem.completo,
-        }
+  // Custo por unidade do Salão + custo por unidade da embalagem (via ficha,
+  // rendimento dela representa "1 uso" - ex: 1 UN de caixa+saco; ou via
+  // produto direto, preço unitário do Cadastro) - soma direto, sem dividir
+  // de novo por rendimento nenhum. Sem embalagem linkada (nenhum dos dois),
+  // null - a UI cai pro custo do Salão nos 3 canais de delivery (ver
+  // `montarPrecosPorCanal`).
+  const custoEmbalagemPorUnidade = row.embalagem_ficha_id
+    ? (custoFichaEmbalagem?.custoPorUnidade ?? null)
+    : row.embalagem_produto_sku
+      ? (custosEmbalagemProduto?.get(row.embalagem_produto_sku) ?? null)
       : null;
+  const custoEmbalagemCompleto = row.embalagem_ficha_id ? (custoFichaEmbalagem?.completo ?? false) : custoEmbalagemPorUnidade !== null;
+  const temEmbalagem = row.embalagem_ficha_id !== null || row.embalagem_produto_sku !== null;
+
+  const custoComEmbalagem: CustoFicha | null = temEmbalagem
+    ? {
+        custoTotal:
+          custo.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
+            ? ((custo.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)) * Number(row.rendimento_quantidade)
+            : null,
+        custoPorUnidade:
+          custo.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
+            ? (custo.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)
+            : null,
+        completo: custo.completo && custoEmbalagemCompleto,
+      }
+    : null;
 
   return {
     id: row.id,
@@ -478,6 +490,8 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     custo,
     embalagemFichaId: row.embalagem_ficha_id,
     embalagemNome: row.embalagem_ficha_id ? (nomesFichas.get(row.embalagem_ficha_id) ?? "Ficha removida") : null,
+    embalagemProdutoSku: row.embalagem_produto_sku,
+    embalagemProdutoNome: row.embalagem_produto_sku ? (nomesProdutos.get(row.embalagem_produto_sku) ?? row.embalagem_produto_sku) : null,
     custoComEmbalagem,
     precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
     precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
@@ -519,8 +533,11 @@ export type EntradaFichaTecnica = {
    * (ver comentário em `FichaTecnicaResumo`). */
   precoVenda: number | null;
   /** Idem - só VEN pode linkar embalagem, PRE sempre manda null (barrado
-   * também no trigger `proteger_ficha_tecnica`). */
+   * também no trigger `proteger_ficha_tecnica`). Ficha e produto são
+   * mutuamente exclusivos (check constraint no banco) - a UI só permite
+   * preencher um dos dois por vez. */
   embalagemFichaId: string | null;
+  embalagemProdutoSku: string | null;
   tempoPreparoMinutos: number | null;
   fotoPath: string | null;
   observacoesOperacionais: string;
@@ -565,6 +582,7 @@ export async function salvarFichaTecnica(params: {
     p_rendimento_unidade: entrada.rendimentoUnidade,
     p_preco_venda: entrada.precoVenda,
     p_embalagem_ficha_id: entrada.embalagemFichaId,
+    p_embalagem_produto_sku: entrada.embalagemProdutoSku,
     p_tempo_preparo_minutos: entrada.tempoPreparoMinutos,
     p_foto_path: entrada.fotoPath,
     p_observacoes_operacionais: entrada.observacoesOperacionais,
@@ -614,6 +632,9 @@ export type OpcaoProdutoFicha = {
   nome: string;
   unidadeUso: string;
   custoUnitario: number | null;
+  /** Grupo do cadastro de Produtos (PRO, HOR, EMB...) - usado pra filtrar
+   * o seletor de "produto de embalagem" (grupo EMB) na ficha de Venda. */
+  grupo: string;
 };
 
 /** Produtos do Estoque prontos pra virar componente de ficha - só ativos,
@@ -634,6 +655,7 @@ export async function listarProdutosParaFicha(unidadeId: string): Promise<OpcaoP
         nome: p.nome,
         unidadeUso: conversao?.unidadeSaida ?? p.unidadeBase,
         custoUnitario: p.precoUnitario === null ? null : (p.precoUnitario / fator) * fatorCorrecao,
+        grupo: p.grupo,
       };
     });
 }

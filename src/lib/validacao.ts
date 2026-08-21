@@ -284,6 +284,7 @@ export const fichaTecnicaEntradaSchema = z
     rendimentoUnidade: rendimentoUnidadeFichaSchema,
     precoVenda: dinheiroOuNull,
     embalagemFichaId: idUuidSchema.nullable(),
+    embalagemProdutoSku: skuSchema.nullable(),
     tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
     fotoPath: texto(500).nullable(),
     observacoesOperacionais: texto(2_000),
@@ -292,7 +293,10 @@ export const fichaTecnicaEntradaSchema = z
     componentes: z.array(componenteFichaEntradaSchema).max(200),
     etapas: z.array(etapaFichaEntradaSchema).max(200),
   })
-  .strict();
+  .strict()
+  .refine((v) => !(v.embalagemFichaId && v.embalagemProdutoSku), {
+    message: "Escolha só um tipo de embalagem - ficha de pré-preparo ou produto, nunca os dois",
+  });
 
 const dinheiroObrigatorio = z.number().finite().min(0).max(LIMITE_DINHEIRO);
 const fracaoPercentual = z.number().finite().min(0).max(0.9999);

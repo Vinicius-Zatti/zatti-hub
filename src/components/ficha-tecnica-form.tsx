@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<StatusFicha, string> = {
 
 const MENSAGEM_GUARDA = "Você tem uma ficha técnica não salva. Se sair agora, ela se perde.";
 
-export type OpcaoProduto = { sku: string; nome: string; unidadeUso: string; custoUnitario: number | null };
+export type OpcaoProduto = { sku: string; nome: string; unidadeUso: string; custoUnitario: number | null; grupo: string };
 export type OpcaoFicha = {
   id: string;
   nome: string;
@@ -91,6 +91,10 @@ export function FichaTecnicaForm({
   );
   const [precoVenda, setPrecoVenda] = useState<number | null>(existente?.precoVenda ?? null);
   const [embalagemFichaId, setEmbalagemFichaId] = useState<string | null>(existente?.embalagemFichaId ?? null);
+  const [embalagemProdutoSku, setEmbalagemProdutoSku] = useState<string | null>(existente?.embalagemProdutoSku ?? null);
+  const [modoEmbalagem, setModoEmbalagem] = useState<"nenhuma" | "ficha" | "produto">(
+    existente?.embalagemProdutoSku ? "produto" : existente?.embalagemFichaId ? "ficha" : "nenhuma",
+  );
   const [tempoPreparoMinutos, setTempoPreparoMinutos] = useState<number | null>(
     existente?.tempoPreparoMinutos ?? null,
   );
@@ -111,6 +115,7 @@ export function FichaTecnicaForm({
   // SKU sempre começa com a camada (PRE/VEN) - garantido pelo check
   // constraint da tabela, mais barato que carregar a camada de cada opção.
   const fichasEmbalagem = fichasParaEscolher.filter((f) => f.sku.startsWith("PRE"));
+  const produtosEmbalagem = produtos.filter((p) => p.grupo === "EMB");
 
   const custosPorProdutoSku = new Map(produtos.map((p) => [p.sku, p.custoUnitario]));
   const custosPorFichaId = new Map(fichasParaEscolher.map((f) => [f.id, f.custoPorUnidade]));
@@ -126,6 +131,14 @@ export function FichaTecnicaForm({
     if (!categorias.some((c) => c.camada === valor && c.id === categoriaId)) {
       setCategoriaId("");
     }
+  }
+
+  /** Ficha e produto são mutuamente exclusivos (check constraint no banco) -
+   * trocar de modo sempre limpa o outro campo, nunca manda os dois juntos. */
+  function mudarModoEmbalagem(valor: "nenhuma" | "ficha" | "produto") {
+    editar(setModoEmbalagem, valor);
+    if (valor !== "ficha") setEmbalagemFichaId(null);
+    if (valor !== "produto") setEmbalagemProdutoSku(null);
   }
 
   function criarCategoriaInline(e: FormEvent) {
@@ -195,6 +208,7 @@ export function FichaTecnicaForm({
       rendimentoUnidade,
       precoVenda: camada === "VEN" ? precoVenda : null,
       embalagemFichaId: camada === "VEN" ? embalagemFichaId : null,
+      embalagemProdutoSku: camada === "VEN" ? embalagemProdutoSku : null,
       tempoPreparoMinutos,
       fotoPath: existente?.fotoPath ?? null,
       observacoesOperacionais: obsOperacionais,
@@ -405,24 +419,63 @@ export function FichaTecnicaForm({
                   Preço de venda - Salão (opcional - pode preencher depois)
                   <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
                 </label>
-                <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-                  Embalagem de delivery (opcional)
-                  <SeletorBusca
-                    opcoes={[
-                      { valor: "", rotulo: "(nenhuma)" },
-                      ...fichasEmbalagem
+                <div className="col-span-2 flex flex-col gap-1.5 text-sm font-semibold text-cinza-medio">
+                  <span className="flex items-center justify-between">
+                    Embalagem de delivery (opcional)
+                    <span className="flex gap-1">
+                      {(
+                        [
+                          { valor: "nenhuma", label: "Nenhuma" },
+                          { valor: "ficha", label: "Pré-preparo" },
+                          { valor: "produto", label: "Produto" },
+                        ] as const
+                      ).map((opcao) => (
+                        <button
+                          key={opcao.valor}
+                          type="button"
+                          onClick={() => mudarModoEmbalagem(opcao.valor)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            modoEmbalagem === opcao.valor
+                              ? "bg-azul-noite text-branco"
+                              : "border border-cinza-claro text-cinza-medio"
+                          }`}
+                        >
+                          {opcao.label}
+                        </button>
+                      ))}
+                    </span>
+                  </span>
+                  {modoEmbalagem === "ficha" && (
+                    <SeletorBusca
+                      opcoes={fichasEmbalagem
                         .slice()
                         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
-                        .map((f) => ({ valor: f.id, rotulo: `${f.nome} (${f.sku})` })),
-                    ]}
-                    valorSelecionado={embalagemFichaId ?? ""}
-                    placeholder="Buscar ficha de pré-preparo..."
-                    onSelecionar={(id) => editar(setEmbalagemFichaId, id === "" ? null : id)}
-                  />
+                        .map((f) => ({ valor: f.id, rotulo: `${f.nome} (${f.sku})` }))}
+                      valorSelecionado={embalagemFichaId ?? ""}
+                      placeholder="Buscar ficha de pré-preparo..."
+                      onSelecionar={(id) => editar(setEmbalagemFichaId, id)}
+                    />
+                  )}
+                  {modoEmbalagem === "produto" && (
+                    <SeletorBusca
+                      opcoes={produtosEmbalagem
+                        .slice()
+                        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+                        .map((p) => ({ valor: p.sku, rotulo: p.nome }))}
+                      valorSelecionado={embalagemProdutoSku ?? ""}
+                      placeholder="Buscar produto do grupo Embalagens..."
+                      onSelecionar={(sku) => editar(setEmbalagemProdutoSku, sku)}
+                    />
+                  )}
+                  {modoEmbalagem === "produto" && produtosEmbalagem.length === 0 && (
+                    <span className="text-xs font-normal text-ambar">
+                      Nenhum produto ativo no grupo Embalagens ainda - cadastre um em Produtos antes.
+                    </span>
+                  )}
                   <span className="text-xs font-normal text-cinza-medio">
                     Custo dela entra em Delivery Próprio, iFood e 99Food - nunca no Salão.
                   </span>
-                </label>
+                </div>
               </>
             )}
           </div>
