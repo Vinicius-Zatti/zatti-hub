@@ -348,3 +348,33 @@ export async function revogarVinculoAction(vinculoId: string): Promise<Resultado
 export async function reativarVinculoAction(vinculoId: string): Promise<Resultado> {
   return alterarStatusVinculo(vinculoId, "ativo");
 }
+
+/** Único jeito hoje de editar o nome de um usuário já cadastrado - o painel
+ * só definia isso no convite (`convidarEVincularAction`), sem forma nenhuma
+ * de corrigir depois. Upsert (não update) porque, em teoria, um `perfis`
+ * sem linha ainda (usuário criado antes da tabela existir) não deve travar
+ * a primeira edição. */
+export async function atualizarNomeUsuarioAction(userId: string, nome: string): Promise<Resultado> {
+  const acesso = await requireMaster();
+  const admin = createAdminClient();
+
+  const nomeLimpo = nome.trim();
+  if (nomeLimpo.length > 160) return { erro: "Nome muito longo (máximo 160 caracteres)." };
+
+  const { data: perfilAtual } = await admin.from("perfis").select("nome").eq("id", userId).maybeSingle();
+
+  const { error } = await admin.from("perfis").upsert({ id: userId, nome: nomeLimpo || null }, { onConflict: "id" });
+  if (error) return { erro: error.message };
+
+  await registrarAuditoria({
+    acesso,
+    acao: "editar_nome_usuario",
+    entidade: "usuario",
+    entidadeId: userId,
+    dadosAntigos: { nome: perfilAtual?.nome ?? null },
+    dadosNovos: { nome: nomeLimpo || null },
+  });
+
+  revalidarAcessos();
+  return { ok: true };
+}

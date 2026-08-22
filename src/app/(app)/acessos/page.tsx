@@ -1,5 +1,6 @@
 import { Th } from "@/components/tabela";
 import { AcoesVinculo } from "@/components/acoes-vinculo";
+import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { carregarPainelAcessos } from "./dados";
 
 const ROTULO_TIPO_CLIENTE: Record<string, string> = {
@@ -147,8 +148,8 @@ export default async function AcessosPage() {
               {vinculos.map((v) => (
                 <tr key={v.id} className="border-t border-cinza-claro odd:bg-off-white/50">
                   <td className="sticky left-0 bg-inherit px-3 py-2">
-                    <p className="font-medium text-azul-noite">{v.nome || v.email}</p>
-                    {v.nome && <p className="text-xs text-cinza-medio">{v.email}</p>}
+                    <EditarNomeVinculo userId={v.userId} nomeAtual={v.nome} />
+                    <p className="text-xs text-cinza-medio">{v.email}</p>
                   </td>
                   <td className="px-3 py-2">{v.organizacaoNome}</td>
                   <td className="px-3 py-2">{v.unidadeNome ?? "Todas as unidades"}</td>
