@@ -27,6 +27,7 @@ type ProdutoRow = {
   fornecedor_4: string;
   observacoes: string;
   ativo: boolean;
+  revenda: boolean;
 };
 
 type FornecedorRow = {
@@ -70,6 +71,7 @@ function produtoDaLinha(row: ProdutoRow): Produto {
     fornecedor4: row.fornecedor_4,
     observacoes: row.observacoes,
     ativo: row.ativo,
+    revenda: row.revenda,
   };
 }
 
@@ -94,7 +96,7 @@ export async function listarProdutosBanco(unidadeId: string): Promise<Produto[]>
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("produtos")
-    .select("sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo")
+    .select("sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo, revenda")
     .eq("unidade_id", unidadeId)
     .order("ordem");
   if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
@@ -128,6 +130,7 @@ export async function salvarProdutosBanco(
       fornecedor_4: produto.fornecedor4,
       observacoes: produto.observacoes,
       ativo: produto.ativo,
+      revenda: produto.revenda,
       atualizado_em: new Date().toISOString(),
     })),
     { onConflict: "unidade_id,sku" },

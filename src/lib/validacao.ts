@@ -57,6 +57,7 @@ export const produtoSchema = z
     fornecedor4: texto(160),
     observacoes: texto(2_000),
     ativo: z.boolean(),
+    revenda: z.boolean(),
   })
   .strict();
 
@@ -283,20 +284,16 @@ export const fichaTecnicaEntradaSchema = z
     rendimentoQuantidade: quantidadePositiva,
     rendimentoUnidade: rendimentoUnidadeFichaSchema,
     precoVenda: dinheiroOuNull,
-    embalagemFichaId: idUuidSchema.nullable(),
-    embalagemProdutoSku: skuSchema.nullable(),
     tempoPreparoMinutos: numeroInteiroNaoNegativo.nullable(),
     fotoPath: texto(500).nullable(),
     observacoesOperacionais: texto(2_000),
     observacoesGerenciais: texto(2_000),
     status: statusFichaSchema,
     componentes: z.array(componenteFichaEntradaSchema).max(200),
+    componentesDelivery: z.array(componenteFichaEntradaSchema).max(200),
     etapas: z.array(etapaFichaEntradaSchema).max(200),
   })
-  .strict()
-  .refine((v) => !(v.embalagemFichaId && v.embalagemProdutoSku), {
-    message: "Escolha só um tipo de embalagem - ficha de pré-preparo ou produto, nunca os dois",
-  });
+  .strict();
 
 const dinheiroObrigatorio = z.number().finite().min(0).max(LIMITE_DINHEIRO);
 const fracaoPercentual = z.number().finite().min(0).max(0.9999);

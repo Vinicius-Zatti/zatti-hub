@@ -17,6 +17,12 @@ export type Produto = {
   fornecedor4: string;
   observacoes: string;
   ativo: boolean;
+  /** Item revendido sem transformação (ex: lata de refrigerante) - marcar
+   * cria/reativa sozinho uma ficha técnica de Venda de 1 componente só
+   * (ver `sincronizarFichasRevenda`). Só tem efeito em unidade com Fichas
+   * Técnicas habilitado; unidade ainda na planilha guarda o valor mas nunca
+   * cria ficha nenhuma (não tem onde salvar). */
+  revenda: boolean;
 };
 
 export type ItemInventario = {
@@ -223,18 +229,10 @@ export type FichaTecnicaResumo = {
   precoVenda: number | null;
   status: StatusFicha;
   custo: CustoFicha;
-  /** Os campos de embalagem/canais abaixo só fazem sentido pra camada VEN -
-   * embalagem usada na saída pro delivery é ou uma ficha de Pré-preparo
-   * (combo de itens) ou um produto direto do Estoque (tipicamente do grupo
-   * Embalagens) - nunca os dois ao mesmo tempo. Ambos `null` = prato não
-   * linkou embalagem (canais de delivery usam o mesmo custo do Salão). */
-  embalagemFichaId: string | null;
-  embalagemNome: string | null;
-  embalagemProdutoSku: string | null;
-  embalagemProdutoNome: string | null;
-  /** Custo (com o mesmo formato de `custo`) somando a embalagem vinculada -
-   * `null` quando não há embalagem linkada, e a UI cai pra `custo` mesmo
-   * nos canais de delivery. */
+  /** Custo (com o mesmo formato de `custo`) somando os Componentes Delivery
+   * (ver `FichaTecnica.componentesDelivery`) - `null` quando a ficha não tem
+   * nenhum componente de delivery cadastrado, e a UI cai pra `custo` mesmo
+   * nos canais de delivery. Só faz sentido pra camada VEN. */
   custoComEmbalagem: CustoFicha | null;
   /** Preços praticados dos canais de delivery - `precoVenda` acima é o
    * preço do Salão. */
@@ -251,6 +249,11 @@ export type FichaTecnica = FichaTecnicaResumo & {
   observacoesGerenciais: string;
   versao: number;
   componentes: ComponenteFicha[];
+  /** Itens usados só na saída pro delivery (embalagem, adesivo, saquinho...)
+   * - mesmo formato de `componentes`, seção separada no form/detalhe.
+   * Custo deles nunca entra no Salão, só nos 3 canais de delivery (ver
+   * `custoComEmbalagem`). Só faz sentido pra camada VEN. */
+  componentesDelivery: ComponenteFicha[];
   etapas: EtapaFicha[];
   criadoPorNome: string;
   criadoEm: string;
@@ -269,6 +272,10 @@ export type CanalPrecoFicha = {
   precoSugerido: number | null;
   precoPraticado: number | null;
   classificacao: ClassificacaoMargem | null;
+  /** Margem de contribuição em R$ (preço praticado menos custo de insumo
+   * menos deduções do canal) - `null` nas mesmas condições de
+   * `calcularMargemProduto` (sem custo, sem preço praticado ou preço <= 0). */
+  margemContribuicaoValor: number | null;
 };
 
 /** Entrada da Calculadora de Margem Ideal (1 config por unidade). Percentuais

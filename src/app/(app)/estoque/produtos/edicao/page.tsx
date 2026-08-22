@@ -31,7 +31,12 @@ export default async function EdicaoDadosPage() {
           edita direto aqui e salva linha por linha ou tudo de uma vez.
         </p>
       </div>
-      <EdicaoGrid produtos={produtos} pendentes={pendentes} fornecedores={fornecedores} />
+      <EdicaoGrid
+        produtos={produtos}
+        pendentes={pendentes}
+        fornecedores={fornecedores}
+        mostrarRevenda={acesso.fichasTecnicasHabilitado}
+      />
     </div>
   );
 }

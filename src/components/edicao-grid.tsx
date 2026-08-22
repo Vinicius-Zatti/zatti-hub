@@ -64,10 +64,14 @@ export function EdicaoGrid({
   produtos,
   pendentes,
   fornecedores,
+  mostrarRevenda = false,
 }: {
   produtos: Produto[];
   pendentes: ItemPendente[];
   fornecedores: Fornecedor[];
+  /** Coluna Revenda só faz sentido em unidade com Fichas Técnicas habilitado
+   * - é lá que a ficha auto-criada aparece pra terminar de configurar. */
+  mostrarRevenda?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -88,7 +92,7 @@ export function EdicaoGrid({
         </div>
       )}
 
-      <CadastroSection produtos={produtos} fornecedores={fornecedores} />
+      <CadastroSection produtos={produtos} fornecedores={fornecedores} mostrarRevenda={mostrarRevenda} />
     </div>
   );
 }
@@ -96,9 +100,11 @@ export function EdicaoGrid({
 function CadastroSection({
   produtos,
   fornecedores,
+  mostrarRevenda,
 }: {
   produtos: Produto[];
   fornecedores: Fornecedor[];
+  mostrarRevenda: boolean;
 }) {
   const [busca, setBusca] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
@@ -430,6 +436,7 @@ function CadastroSection({
                   </select>
                 </div>
               </Th>
+              {mostrarRevenda && <Th align="center">Revenda</Th>}
               <Th></Th>
               <Th></Th>
             </tr>
@@ -446,11 +453,12 @@ function CadastroSection({
                 onChange={campo}
                 onSalvar={salvarUm}
                 onPedirNovoFornecedor={(campoFornecedor) => setNovoFornecedorPara({ sku: p.sku, campo: campoFornecedor })}
+                mostrarRevenda={mostrarRevenda}
               />
             ))}
             {ordenados.length === 0 && (
               <tr>
-                <td colSpan={20} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={mostrarRevenda ? 21 : 20} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -591,6 +599,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
       fornecedor4: "",
       observacoes: "",
       ativo: true,
+      revenda: false,
     }).then((r) => {
       setPending(false);
       if ("erro" in r) {
@@ -704,6 +713,7 @@ const LinhaProduto = memo(function LinhaProduto({
   onChange,
   onSalvar,
   onPedirNovoFornecedor,
+  mostrarRevenda,
 }: {
   sku: string;
   editado: Produto;
@@ -713,6 +723,7 @@ const LinhaProduto = memo(function LinhaProduto({
   onChange: <K extends keyof Produto>(sku: string, key: K, value: Produto[K]) => void;
   onSalvar: (sku: string) => void;
   onPedirNovoFornecedor: (campo: "fornecedor1" | "fornecedor2" | "fornecedor3" | "fornecedor4") => void;
+  mostrarRevenda: boolean;
 }) {
   const pending = status?.tipo === "salvando";
 
@@ -878,6 +889,16 @@ const LinhaProduto = memo(function LinhaProduto({
           onChange={(e) => campo("ativo", e.target.checked)}
         />
       </td>
+      {mostrarRevenda && (
+        <td className="px-2 py-1.5 text-center">
+          <input
+            type="checkbox"
+            checked={editado.revenda}
+            onChange={(e) => campo("revenda", e.target.checked)}
+            title="Item revendido sem transformação - marca e a ficha técnica de venda é criada sozinha"
+          />
+        </td>
+      )}
       <td className="min-w-[80px] px-2 py-1.5 text-center">
         {mudou && !pending && (
           <button

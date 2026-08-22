@@ -146,9 +146,9 @@ export function FichaTecnicaDetalhe({
               {ficha.camada === "VEN" && (
                 <>
                   <div className="mt-2 flex items-center justify-between border-t border-cinza-claro pt-2">
-                    <span className="text-sm text-cinza-medio">Embalagem (delivery)</span>
+                    <span className="text-sm text-cinza-medio">Componentes Delivery</span>
                     <span className="font-semibold text-azul-noite">
-                      {ficha.embalagemNome ?? ficha.embalagemProdutoNome ?? "Nenhuma vinculada"}
+                      {ficha.componentesDelivery.length > 0 ? `${ficha.componentesDelivery.length} item(ns)` : "Nenhum"}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
@@ -181,7 +181,7 @@ export function FichaTecnicaDetalhe({
           fichaId={ficha.id}
           custoBase={ficha.custo.custoPorUnidade}
           custoComEmbalagem={ficha.custoComEmbalagem?.custoPorUnidade ?? null}
-          temEmbalagem={ficha.embalagemFichaId !== null || ficha.embalagemProdutoSku !== null}
+          temEmbalagem={ficha.componentesDelivery.length > 0}
           precoVendaSalao={ficha.precoVenda}
           precoVendaDeliveryProprioInicial={ficha.precoVendaDeliveryProprio}
           precoVendaIfoodInicial={ficha.precoVendaIfood}
@@ -216,6 +216,31 @@ export function FichaTecnicaDetalhe({
           </ul>
         )}
       </div>
+
+      {ficha.camada === "VEN" && (
+        <div className="rounded-lg border border-cinza-claro bg-branco p-4">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+            Componentes Delivery ({ficha.componentesDelivery.length})
+          </div>
+          {ficha.componentesDelivery.length === 0 ? (
+            <p className="text-sm text-cinza-medio">Nenhum componente de delivery cadastrado.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-cinza-claro">
+              {ficha.componentesDelivery.map((c) => (
+                <li key={c.id ?? `${c.produtoSku}-${c.fichaComponenteId}`} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-cinza">{c.nomeExibicao}</div>
+                    {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
+                  </div>
+                  <span className="shrink-0 text-sm font-bold text-azul-noite">
+                    {formatarQuantidade(c.quantidade)} {c.unidadeUso}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="rounded-lg border border-cinza-claro bg-branco p-4">
         <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Modo de preparo</div>

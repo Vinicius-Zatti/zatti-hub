@@ -231,6 +231,7 @@ export function montarPrecosPorCanal(params: {
       precoSugerido,
       precoPraticado: l.precoPraticado,
       classificacao: classificarMargemProduto(margemProduto, params.margemNecessaria, params.margemPontoEquilibrio),
+      margemContribuicaoValor: margemProduto !== null && l.precoPraticado !== null ? margemProduto * l.precoPraticado : null,
     };
   });
 }

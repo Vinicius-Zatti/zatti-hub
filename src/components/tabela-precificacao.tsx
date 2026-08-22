@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Th } from "@/components/tabela";
 import { CampoNumero } from "@/components/campo-numero";
 import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
@@ -33,6 +32,18 @@ function brl(n: number | null): string {
 function pct(n: number | null): string {
   return n === null ? "-" : `${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
+
+/** Uma cor de fundo por canal no cabeçalho - a pessoa vê de longe onde um
+ * bloco de canal termina e o outro começa, sem precisar ler o rótulo de cada
+ * coluna pra saber que mudou de Salão pra iFood no meio da rolagem. */
+const CANAL_ESTILO: Record<CanalVenda, { bg: string; texto: string; rotulo: string }> = {
+  salao: { bg: "bg-azul-petroleo", texto: "text-branco", rotulo: "Salão" },
+  delivery_proprio: { bg: "bg-azul-noite", texto: "text-branco", rotulo: "Delivery Próprio" },
+  ifood: { bg: "bg-vermelho", texto: "text-branco", rotulo: "iFood" },
+  "99food": { bg: "bg-ambar", texto: "text-azul-noite", rotulo: "99Food" },
+};
+
+const COLUNAS_POR_CANAL = 6;
 
 /** Tabela de Precificação - todos os pratos de Venda de uma vez, Salão e os
  * 3 canais de delivery lado a lado. Preço de venda edita direto aqui, sem
@@ -157,29 +168,51 @@ export function TabelaPrecificacao({
           arrastando ? "cursor-grabbing" : "cursor-grab"
         }`}
       >
-        <table className="w-full min-w-[1900px] text-xs">
+        <table className="w-full min-w-[2300px] text-xs">
           <thead>
-            <tr className="bg-azul-petroleo text-branco">
-              <Th fixo>Nome</Th>
+            <tr>
+              <th
+                rowSpan={2}
+                className="sticky left-0 top-0 z-30 whitespace-nowrap bg-azul-petroleo px-3 py-2 text-left font-semibold text-branco"
+              >
+                Nome
+              </th>
               {(["salao", "delivery_proprio", "ifood", "99food"] as CanalVenda[]).map((canal) => {
-                const label = canal === "salao" ? "Salão" : canal === "delivery_proprio" ? "Delivery Próprio" : canal === "ifood" ? "iFood" : "99Food";
+                const estilo = CANAL_ESTILO[canal];
+                return (
+                  <th
+                    key={canal}
+                    colSpan={COLUNAS_POR_CANAL}
+                    className={`sticky top-0 z-20 h-8 whitespace-nowrap border-l-2 border-branco/30 px-3 text-center text-sm font-bold ${estilo.bg} ${estilo.texto}`}
+                  >
+                    {estilo.rotulo}
+                  </th>
+                );
+              })}
+            </tr>
+            <tr>
+              {(["salao", "delivery_proprio", "ifood", "99food"] as CanalVenda[]).map((canal) => {
+                const estilo = CANAL_ESTILO[canal];
                 return (
                   <Fragment key={canal}>
-                    <Th align="right" estreito>
-                      {label} Custo Insumos
-                    </Th>
-                    <Th align="right" estreito>
-                      {label} Preço Venda
-                    </Th>
-                    <Th align="center" estreito>
-                      {label} Situação
-                    </Th>
-                    <Th align="right" estreito>
-                      {label} CMV
-                    </Th>
-                    <Th align="right" estreito>
-                      {label} Preço Sugerido
-                    </Th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap border-l-2 border-branco/30 px-2 py-2 text-right font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      Custo Insumos
+                    </th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap px-2 py-2 text-right font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      Preço Venda
+                    </th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap px-2 py-2 text-right font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      CMV
+                    </th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap px-2 py-2 text-right font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      Margem Contrib.
+                    </th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap px-2 py-2 text-center font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      Situação
+                    </th>
+                    <th className={`sticky top-8 z-20 whitespace-nowrap px-2 py-2 text-right font-semibold ${estilo.bg} ${estilo.texto}`}>
+                      Preço Sugerido
+                    </th>
                   </Fragment>
                 );
               })}
@@ -188,7 +221,7 @@ export function TabelaPrecificacao({
           <tbody>
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={21} className="p-6 text-center text-cinza-medio">
+                <td colSpan={1 + 4 * COLUNAS_POR_CANAL} className="p-6 text-center text-cinza-medio">
                   Nenhum prato encontrado.
                 </td>
               </tr>
@@ -220,14 +253,18 @@ export function TabelaPrecificacao({
                     const cmv = canal.custoPorUnidade !== null ? calcularCmv(canal.custoPorUnidade, canal.precoPraticado) : null;
                     return (
                       <Fragment key={canal.canal}>
-                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">{brl(canal.custoPorUnidade)}</td>
+                        <td className="whitespace-nowrap border-l border-cinza-claro px-2 py-1.5 text-right text-cinza-medio">
+                          {brl(canal.custoPorUnidade)}
+                        </td>
                         <td className="px-1.5 py-1.5 text-right">
                           <CampoNumero
                             value={canal.precoPraticado}
                             onChange={(v) => atualizarCampo(ficha.id, CAMPO_POR_CANAL[canal.canal], v)}
-                            className="w-24"
+                            className="w-[8ch]"
                           />
                         </td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{pct(cmv)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">{brl(canal.margemContribuicaoValor)}</td>
                         <td className="px-2 py-1.5 text-center">
                           {canal.classificacao ? (
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${CLASSIFICACAO_TAG[canal.classificacao].classe}`}>
@@ -237,7 +274,6 @@ export function TabelaPrecificacao({
                             <span className="text-cinza-medio">-</span>
                           )}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{pct(cmv)}</td>
                         <td className="whitespace-nowrap px-2 py-1.5 text-right text-azul-petroleo">{brl(canal.precoSugerido)}</td>
                       </Fragment>
                     );

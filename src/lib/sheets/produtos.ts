@@ -35,6 +35,9 @@ function rowToProduto(row: string[]): Produto {
     fornecedor4: row[15] ?? "",
     observacoes: row[16] ?? "",
     ativo: (row[17] ?? "1") === "1",
+    // Revenda (auto-criação de ficha técnica) só existe pra unidade no banco
+    // - planilha não tem onde guardar isso nem Fichas Técnicas habilitado.
+    revenda: false,
   };
 }
 

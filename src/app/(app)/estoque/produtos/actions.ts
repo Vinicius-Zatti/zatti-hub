@@ -2,8 +2,9 @@
 
 import { excluirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
+import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import type { Produto } from "@/lib/types";
-import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, type AcessoAtual } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -22,6 +23,22 @@ function revalidarTudo() {
   revalidatePath("/estoque/produtos/edicao");
   revalidatePath("/estoque/pedidos");
   revalidatePath("/estoque/contagem");
+}
+
+/** Melhor esforço, depois que os produtos já foram salvos - unidade ainda na
+ * planilha (sem Fichas Técnicas) nunca cai aqui. Erro de sincronização não
+ * desfaz nem esconde que os produtos foram salvos - a grade já mostrou
+ * "Salvo" pro campo que importa de verdade pro usuário. */
+async function sincronizarRevendaMelhorEsforco(acesso: AcessoAtual, produtos: Produto[]) {
+  if (!acesso.fichasTecnicasHabilitado) return;
+  try {
+    await sincronizarFichasRevenda(
+      acesso.unidadeId,
+      produtos.map((p) => ({ sku: p.sku, nome: p.nome, unidadeUso: p.unidadeBase, revenda: p.revenda })),
+    );
+  } catch (err) {
+    console.error("Falha ao sincronizar ficha técnica de revenda:", err);
+  }
 }
 
 export async function sugerirSkuAction(
@@ -62,6 +79,7 @@ export async function criarProdutoAction(formData: FormData) {
     fornecedor4: "",
     observacoes: String(formData.get("observacoes") ?? ""),
     ativo: true,
+    revenda: false,
   });
 
   await upsertProduto(produto, acesso.spreadsheetId);
@@ -93,6 +111,7 @@ export async function salvarProdutoAction(
       dadosNovos: entrada,
     });
     revalidarTudo();
+    await sincronizarRevendaMelhorEsforco(acesso, [entrada]);
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
@@ -184,6 +203,7 @@ export async function salvarProdutosAction(
       }))
     );
     revalidarTudo();
+    await sincronizarRevendaMelhorEsforco(acesso, entradas);
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar os produtos.") };

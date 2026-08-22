@@ -84,6 +84,7 @@ export default async function AppLayout({
               { label: "Categorias", href: "/fichas-tecnicas/categorias" },
               { label: "Conversões de unidade", href: "/fichas-tecnicas/conversoes" },
               { label: "Margem Ideal", href: "/fichas-tecnicas/calculadora" },
+              { label: "Precificação", href: "/fichas-tecnicas/precificacao" },
             ]
           : []),
       ],
@@ -117,7 +118,7 @@ export default async function AppLayout({
       sections: secoesFinanceiro,
     },
     {
-      label: "Fichas Técnicas",
+      label: "Precificação",
       href: "/fichas-tecnicas",
       icone: "fichas",
       activePrefix: "/fichas-tecnicas",

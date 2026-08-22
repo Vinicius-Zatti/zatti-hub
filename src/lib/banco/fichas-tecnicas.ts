@@ -187,8 +187,6 @@ type FichaRow = {
   rendimento_quantidade: number;
   rendimento_unidade: UnidadeRendimentoFicha;
   preco_venda: number | null;
-  embalagem_ficha_id: string | null;
-  embalagem_produto_sku: string | null;
   preco_venda_delivery_proprio: number | null;
   preco_venda_ifood: number | null;
   preco_venda_99food: number | null;
@@ -214,8 +212,6 @@ type FichaResumoRow = Pick<
   | "rendimento_quantidade"
   | "rendimento_unidade"
   | "preco_venda"
-  | "embalagem_ficha_id"
-  | "embalagem_produto_sku"
   | "preco_venda_delivery_proprio"
   | "preco_venda_ifood"
   | "preco_venda_99food"
@@ -224,56 +220,82 @@ type FichaResumoRow = Pick<
 >;
 
 const RESUMO_COLUNAS =
-  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, embalagem_ficha_id, embalagem_produto_sku, preco_venda_delivery_proprio, preco_venda_ifood, preco_venda_99food, status, atualizado_em";
+  "id, categoria_id, sku, camada, nome, rendimento_quantidade, rendimento_unidade, preco_venda, preco_venda_delivery_proprio, preco_venda_ifood, preco_venda_99food, status, atualizado_em";
 
-/** Soma o custo por unidade do Salão com o da embalagem vinculada (via ficha
- * de Pré-preparo ou via produto direto do Estoque - nunca os dois) - `null`
- * sem nenhuma embalagem linkada, a UI cai pro custo do Salão nos 3 canais de
- * delivery (ver `montarPrecosPorCanal`). Reaproveitado tanto na listagem
- * quanto na tela de detalhe (`getFichaTecnicaCompleta`). */
-async function resolverCustoComEmbalagem(
-  supabase: SupabaseClient,
+type ComponenteDeliveryRow = { produto_sku: string | null; ficha_componente_id: string | null; quantidade: number };
+
+/** Soma o custo por unidade dos Componentes Delivery da ficha (produto direto
+ * do Estoque ou sub-ficha, cada um com sua quantidade) - `{itens: 0}` sem
+ * nenhum componente de delivery cadastrado, a UI cai pro custo do Salão nos 3
+ * canais (ver `montarPrecosPorCanal`). Mesmo formato de soma de
+ * `calcularCustoFicha`, só que sem dividir por rendimento (quantidade aqui já
+ * é "por unidade vendida", não "pro lote inteiro da receita"). */
+async function calcularCustoComponentesDelivery(
   unidadeId: string,
-  embalagemFichaId: string | null,
-  embalagemProdutoSku: string | null,
+  fichaId: string,
+): Promise<{ custoPorUnidade: number | null; completo: boolean; itens: number }> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("ficha_componentes")
+    .select("produto_sku, ficha_componente_id, quantidade")
+    .eq("unidade_id", unidadeId)
+    .eq("ficha_id", fichaId)
+    .eq("tipo_uso", "delivery");
+  const itens = (data as ComponenteDeliveryRow[] | null) ?? [];
+  if (itens.length === 0) return { custoPorUnidade: null, completo: true, itens: 0 };
+
+  const produtoSkus = itens.map((c) => c.produto_sku).filter((sku): sku is string => sku !== null);
+  const fichaIds = Array.from(new Set(itens.map((c) => c.ficha_componente_id).filter((id): id is string => id !== null)));
+  const [precos, custosSubFichasLista] = await Promise.all([
+    custosUnitariosProdutos(supabase, unidadeId, produtoSkus),
+    Promise.all(fichaIds.map(async (id) => [id, await calcularCustoFicha(unidadeId, id)] as const)),
+  ]);
+  const custosPorFichaId = new Map(custosSubFichasLista);
+
+  let total = 0;
+  let completo = true;
+  for (const item of itens) {
+    let custoUnitario: number | null;
+    if (item.produto_sku) {
+      custoUnitario = precos.get(item.produto_sku) ?? null;
+      if (custoUnitario === null) completo = false;
+    } else {
+      const sub = custosPorFichaId.get(item.ficha_componente_id ?? "");
+      custoUnitario = sub?.custoPorUnidade ?? null;
+      if (custoUnitario === null || !sub?.completo) completo = false;
+    }
+    if (custoUnitario !== null) total += custoUnitario * Number(item.quantidade);
+  }
+  return { custoPorUnidade: total, completo, itens: itens.length };
+}
+
+/** Soma o custo por unidade do Salão com o dos Componentes Delivery - `null`
+ * sem nenhum componente de delivery cadastrado, a UI cai pro custo do Salão
+ * nos 3 canais de delivery. Reaproveitado tanto na listagem quanto na tela
+ * de detalhe (`getFichaTecnicaCompleta`). */
+async function resolverCustoComEmbalagem(
+  unidadeId: string,
+  fichaId: string,
   custoBase: CustoFicha,
   rendimentoQuantidade: number,
 ): Promise<CustoFicha | null> {
-  if (!embalagemFichaId && !embalagemProdutoSku) return null;
-
-  let custoEmbalagemPorUnidade: number | null;
-  let custoEmbalagemCompleto: boolean;
-  if (embalagemFichaId) {
-    const custoFichaEmbalagem = await calcularCustoFicha(unidadeId, embalagemFichaId);
-    custoEmbalagemPorUnidade = custoFichaEmbalagem.custoPorUnidade;
-    custoEmbalagemCompleto = custoFichaEmbalagem.completo;
-  } else {
-    const custos = await custosUnitariosProdutos(supabase, unidadeId, [embalagemProdutoSku as string]);
-    custoEmbalagemPorUnidade = custos.get(embalagemProdutoSku as string) ?? null;
-    custoEmbalagemCompleto = custoEmbalagemPorUnidade !== null;
-  }
+  const delivery = await calcularCustoComponentesDelivery(unidadeId, fichaId);
+  if (delivery.itens === 0) return null;
 
   return {
     custoTotal:
-      custoBase.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
-        ? ((custoBase.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)) * rendimentoQuantidade
+      custoBase.custoPorUnidade !== null || delivery.custoPorUnidade !== null
+        ? ((custoBase.custoPorUnidade ?? 0) + (delivery.custoPorUnidade ?? 0)) * rendimentoQuantidade
         : null,
     custoPorUnidade:
-      custoBase.custoPorUnidade !== null || custoEmbalagemPorUnidade !== null
-        ? (custoBase.custoPorUnidade ?? 0) + (custoEmbalagemPorUnidade ?? 0)
+      custoBase.custoPorUnidade !== null || delivery.custoPorUnidade !== null
+        ? (custoBase.custoPorUnidade ?? 0) + (delivery.custoPorUnidade ?? 0)
         : null,
-    completo: custoBase.completo && custoEmbalagemCompleto,
+    completo: custoBase.completo && delivery.completo,
   };
 }
 
-function resumoDaLinha(
-  row: FichaResumoRow,
-  categoriaNome: string,
-  custo: CustoFicha,
-  custoComEmbalagem: CustoFicha | null,
-  nomesEmbalagemFichas: Map<string, string>,
-  nomesEmbalagemProdutos: Map<string, string>,
-): FichaTecnicaResumo {
+function resumoDaLinha(row: FichaResumoRow, categoriaNome: string, custo: CustoFicha, custoComEmbalagem: CustoFicha | null): FichaTecnicaResumo {
   return {
     id: row.id,
     sku: row.sku,
@@ -286,12 +308,6 @@ function resumoDaLinha(
     rendimentoUnidade: row.rendimento_unidade,
     status: row.status,
     custo,
-    embalagemFichaId: row.embalagem_ficha_id,
-    embalagemNome: row.embalagem_ficha_id ? (nomesEmbalagemFichas.get(row.embalagem_ficha_id) ?? "Ficha removida") : null,
-    embalagemProdutoSku: row.embalagem_produto_sku,
-    embalagemProdutoNome: row.embalagem_produto_sku
-      ? (nomesEmbalagemProdutos.get(row.embalagem_produto_sku) ?? row.embalagem_produto_sku)
-      : null,
     custoComEmbalagem,
     precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
     precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
@@ -316,35 +332,16 @@ export async function listarFichasTecnicas(
   const linhas = (data as FichaResumoRow[] | null) ?? [];
   if (linhas.length === 0) return [];
 
-  const [nomes, nomesEmbalagemFichas, nomesEmbalagemProdutos] = await Promise.all([
-    nomesCategoriasPorId(
-      supabase,
-      unidadeId,
-      linhas.map((l) => l.categoria_id),
-    ),
-    nomesFichasPorId(
-      supabase,
-      unidadeId,
-      linhas.map((l) => l.embalagem_ficha_id).filter((fid): fid is string => fid !== null),
-    ),
-    nomesProdutosPorSku(
-      supabase,
-      unidadeId,
-      linhas.map((l) => l.embalagem_produto_sku).filter((sku): sku is string => sku !== null),
-    ),
-  ]);
+  const nomes = await nomesCategoriasPorId(
+    supabase,
+    unidadeId,
+    linhas.map((l) => l.categoria_id),
+  );
   return Promise.all(
     linhas.map(async (row) => {
       const custo = await calcularCustoFicha(unidadeId, row.id);
-      const custoComEmbalagem = await resolverCustoComEmbalagem(
-        supabase,
-        unidadeId,
-        row.embalagem_ficha_id,
-        row.embalagem_produto_sku,
-        custo,
-        Number(row.rendimento_quantidade),
-      );
-      return resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria", custo, custoComEmbalagem, nomesEmbalagemFichas, nomesEmbalagemProdutos);
+      const custoComEmbalagem = await resolverCustoComEmbalagem(unidadeId, row.id, custo, Number(row.rendimento_quantidade));
+      return resumoDaLinha(row, nomes.get(row.categoria_id) ?? "Sem categoria", custo, custoComEmbalagem);
     }),
   );
 }
@@ -414,7 +411,8 @@ export async function calcularCustoFicha(unidadeId: string, fichaId: string, pro
       .from("ficha_componentes")
       .select("produto_sku, ficha_componente_id, quantidade")
       .eq("unidade_id", unidadeId)
-      .eq("ficha_id", fichaId),
+      .eq("ficha_id", fichaId)
+      .eq("tipo_uso", "receita"),
   ]);
   if (!fichaRow) return { custoTotal: null, custoPorUnidade: null, completo: false };
 
@@ -464,6 +462,7 @@ type ComponenteRow = {
   unidade_uso: string;
   ordem: number;
   observacoes: string;
+  tipo_uso: "receita" | "delivery";
 };
 
 type EtapaRow = { ordem: number; descricao: string };
@@ -484,7 +483,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   const [{ data: componentesData }, { data: etapasData }] = await Promise.all([
     supabase
       .from("ficha_componentes")
-      .select("id, produto_sku, ficha_componente_id, quantidade, unidade_uso, ordem, observacoes")
+      .select("id, produto_sku, ficha_componente_id, quantidade, unidade_uso, ordem, observacoes, tipo_uso")
       .eq("unidade_id", unidadeId)
       .eq("ficha_id", id)
       .order("ordem"),
@@ -496,15 +495,13 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
       .order("ordem"),
   ]);
 
-  const componentesRows = (componentesData as ComponenteRow[] | null) ?? [];
+  const todosComponentesRows = (componentesData as ComponenteRow[] | null) ?? [];
+  const componentesRows = todosComponentesRows.filter((c) => c.tipo_uso === "receita");
+  const componentesDeliveryRows = todosComponentesRows.filter((c) => c.tipo_uso === "delivery");
   const etapasRows = (etapasData as EtapaRow[] | null) ?? [];
 
-  const produtoSkus = componentesRows.map((c) => c.produto_sku).filter((sku): sku is string => sku !== null);
-  const fichaIds = componentesRows
-    .map((c) => c.ficha_componente_id)
-    .filter((fid): fid is string => fid !== null);
-  if (row.embalagem_ficha_id) fichaIds.push(row.embalagem_ficha_id);
-  if (row.embalagem_produto_sku) produtoSkus.push(row.embalagem_produto_sku);
+  const produtoSkus = todosComponentesRows.map((c) => c.produto_sku).filter((sku): sku is string => sku !== null);
+  const fichaIds = todosComponentesRows.map((c) => c.ficha_componente_id).filter((fid): fid is string => fid !== null);
 
   const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios] = await Promise.all([
     nomesProdutosPorSku(supabase, unidadeId, produtoSkus),
@@ -513,30 +510,28 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean)),
   ]);
 
-  const componentes: ComponenteFicha[] = componentesRows.map((c) => ({
-    id: c.id,
-    tipo: c.produto_sku ? "produto" : "ficha",
-    produtoSku: c.produto_sku,
-    fichaComponenteId: c.ficha_componente_id,
-    nomeExibicao: c.produto_sku
-      ? (nomesProdutos.get(c.produto_sku) ?? c.produto_sku)
-      : (nomesFichas.get(c.ficha_componente_id ?? "") ?? "Ficha removida"),
-    unidadeUso: c.unidade_uso,
-    quantidade: Number(c.quantidade),
-    ordem: c.ordem,
-    observacoes: c.observacoes,
-  }));
+  function componenteDaLinha(c: ComponenteRow): ComponenteFicha {
+    return {
+      id: c.id,
+      tipo: c.produto_sku ? "produto" : "ficha",
+      produtoSku: c.produto_sku,
+      fichaComponenteId: c.ficha_componente_id,
+      nomeExibicao: c.produto_sku
+        ? (nomesProdutos.get(c.produto_sku) ?? c.produto_sku)
+        : (nomesFichas.get(c.ficha_componente_id ?? "") ?? "Ficha removida"),
+      unidadeUso: c.unidade_uso,
+      quantidade: Number(c.quantidade),
+      ordem: c.ordem,
+      observacoes: c.observacoes,
+    };
+  }
+
+  const componentes: ComponenteFicha[] = componentesRows.map(componenteDaLinha);
+  const componentesDelivery: ComponenteFicha[] = componentesDeliveryRows.map(componenteDaLinha);
 
   const etapas: EtapaFicha[] = etapasRows.map((e) => ({ ordem: e.ordem, descricao: e.descricao }));
   const custo = await calcularCustoFicha(unidadeId, id);
-  const custoComEmbalagem = await resolverCustoComEmbalagem(
-    supabase,
-    unidadeId,
-    row.embalagem_ficha_id,
-    row.embalagem_produto_sku,
-    custo,
-    Number(row.rendimento_quantidade),
-  );
+  const custoComEmbalagem = await resolverCustoComEmbalagem(unidadeId, id, custo, Number(row.rendimento_quantidade));
 
   return {
     id: row.id,
@@ -549,10 +544,6 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     rendimentoUnidade: row.rendimento_unidade,
     precoVenda: row.preco_venda === null ? null : Number(row.preco_venda),
     custo,
-    embalagemFichaId: row.embalagem_ficha_id,
-    embalagemNome: row.embalagem_ficha_id ? (nomesFichas.get(row.embalagem_ficha_id) ?? "Ficha removida") : null,
-    embalagemProdutoSku: row.embalagem_produto_sku,
-    embalagemProdutoNome: row.embalagem_produto_sku ? (nomesProdutos.get(row.embalagem_produto_sku) ?? row.embalagem_produto_sku) : null,
     custoComEmbalagem,
     precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
     precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
@@ -564,6 +555,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     status: row.status,
     versao: row.versao,
     componentes,
+    componentesDelivery,
     etapas,
     criadoPorNome: nomesUsuarios.get(row.criado_por) ?? "Usuário",
     criadoEm: row.criado_em,
@@ -593,18 +585,18 @@ export type EntradaFichaTecnica = {
   /** Só preenchido de verdade quando camada é VEN - PRE sempre manda null
    * (ver comentário em `FichaTecnicaResumo`). */
   precoVenda: number | null;
-  /** Idem - só VEN pode linkar embalagem, PRE sempre manda null (barrado
-   * também no trigger `proteger_ficha_tecnica`). Ficha e produto são
-   * mutuamente exclusivos (check constraint no banco) - a UI só permite
-   * preencher um dos dois por vez. */
-  embalagemFichaId: string | null;
-  embalagemProdutoSku: string | null;
   tempoPreparoMinutos: number | null;
   fotoPath: string | null;
   observacoesOperacionais: string;
   observacoesGerenciais: string;
   status: StatusFicha;
   componentes: EntradaComponenteFicha[];
+  /** Itens usados só na saída pro delivery (embalagem, adesivo...) - mesmo
+   * formato de `componentes`, só entram no custo dos 3 canais de delivery,
+   * nunca no Salão (ver `resolverCustoComEmbalagem`). Só faz sentido pra
+   * camada VEN, mas aceita lista vazia sempre (nunca bloqueado no banco por
+   * camada - a UI só mostra a seção pra VEN). */
+  componentesDelivery: EntradaComponenteFicha[];
   etapas: EntradaEtapaFicha[];
 };
 
@@ -642,21 +634,31 @@ export async function salvarFichaTecnica(params: {
     p_rendimento_quantidade: entrada.rendimentoQuantidade,
     p_rendimento_unidade: entrada.rendimentoUnidade,
     p_preco_venda: entrada.precoVenda,
-    p_embalagem_ficha_id: entrada.embalagemFichaId,
-    p_embalagem_produto_sku: entrada.embalagemProdutoSku,
     p_tempo_preparo_minutos: entrada.tempoPreparoMinutos,
     p_foto_path: entrada.fotoPath,
     p_observacoes_operacionais: entrada.observacoesOperacionais,
     p_observacoes_gerenciais: entrada.observacoesGerenciais,
     p_status: entrada.status,
-    p_componentes: entrada.componentes.map((c) => ({
-      produto_sku: c.tipo === "produto" ? c.produtoSku : null,
-      ficha_componente_id: c.tipo === "ficha" ? c.fichaComponenteId : null,
-      quantidade: c.quantidade,
-      unidade_uso: c.unidadeUso,
-      ordem: c.ordem,
-      observacoes: c.observacoes,
-    })),
+    p_componentes: [
+      ...entrada.componentes.map((c) => ({
+        produto_sku: c.tipo === "produto" ? c.produtoSku : null,
+        ficha_componente_id: c.tipo === "ficha" ? c.fichaComponenteId : null,
+        quantidade: c.quantidade,
+        unidade_uso: c.unidadeUso,
+        ordem: c.ordem,
+        observacoes: c.observacoes,
+        tipo_uso: "receita",
+      })),
+      ...entrada.componentesDelivery.map((c) => ({
+        produto_sku: c.tipo === "produto" ? c.produtoSku : null,
+        ficha_componente_id: c.tipo === "ficha" ? c.fichaComponenteId : null,
+        quantidade: c.quantidade,
+        unidade_uso: c.unidadeUso,
+        ordem: c.ordem,
+        observacoes: c.observacoes,
+        tipo_uso: "delivery",
+      })),
+    ],
     p_etapas: entrada.etapas.map((e) => ({ ordem: e.ordem, descricao: e.descricao })),
   });
 
@@ -671,6 +673,114 @@ export async function salvarFichaTecnica(params: {
   const salva = await getFichaTecnicaCompleta(params.unidadeId, resultado.id);
   if (!salva) throw new Error("Ficha salva mas não encontrada na releitura");
   return salva;
+}
+
+/** Categoria "Revenda" (VEN/REV) pra ficha auto-criada por `sincronizarFichasRevenda`
+ * - já vem semeada por unidade que tinha Fichas Técnicas habilitado na
+ * migração (20260822090000), aqui só cobre a unidade que habilitou depois. */
+async function obterOuCriarCategoriaRevendaId(supabase: SupabaseClient, unidadeId: string): Promise<string> {
+  const { data: existente } = await supabase
+    .from("categorias_ficha")
+    .select("id")
+    .eq("unidade_id", unidadeId)
+    .eq("camada", "VEN")
+    .eq("codigo", "REV")
+    .maybeSingle();
+  if (existente) return (existente as { id: string }).id;
+
+  const { data: criada, error } = await supabase
+    .from("categorias_ficha")
+    .insert({ unidade_id: unidadeId, camada: "VEN", codigo: "REV", nome: "Revenda" })
+    .select("id")
+    .single();
+  if (error) {
+    if (error.code === "23505") {
+      const { data: retry } = await supabase
+        .from("categorias_ficha")
+        .select("id")
+        .eq("unidade_id", unidadeId)
+        .eq("camada", "VEN")
+        .eq("codigo", "REV")
+        .single();
+      if (retry) return (retry as { id: string }).id;
+    }
+    throw new Error(error.message);
+  }
+  return (criada as { id: string }).id;
+}
+
+/** Chamado depois de salvar a grade de Produtos (Edição de Dados) - pra cada
+ * produto marcado `revenda`: cria (1ª vez) ou reativa (já tinha ficha, foi
+ * desmarcado antes) uma ficha técnica de Venda com 1 componente só (o
+ * próprio produto, quantidade 1). Desmarcado só marca a ficha como Inativa -
+ * nunca exclui (pode já ter categoria/preço ajustados pela pessoa). Melhor
+ * esforço: erro num produto não derruba o salvamento da grade inteira, quem
+ * chama decide se avisa ou só loga. */
+export async function sincronizarFichasRevenda(
+  unidadeId: string,
+  produtos: { sku: string; nome: string; unidadeUso: string; revenda: boolean }[],
+): Promise<void> {
+  if (produtos.length === 0) return;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("produtos")
+    .select("sku, ficha_revenda_id")
+    .eq("unidade_id", unidadeId)
+    .in(
+      "sku",
+      produtos.map((p) => p.sku),
+    );
+  const fichaIdPorSku = new Map(
+    ((data as { sku: string; ficha_revenda_id: string | null }[] | null) ?? []).map((r) => [r.sku, r.ficha_revenda_id]),
+  );
+
+  for (const produto of produtos) {
+    const fichaAtualId = fichaIdPorSku.get(produto.sku) ?? null;
+
+    if (produto.revenda && !fichaAtualId) {
+      const categoriaId = await obterOuCriarCategoriaRevendaId(supabase, unidadeId);
+      const ficha = await salvarFichaTecnica({
+        unidadeId,
+        fichaId: null,
+        entrada: {
+          categoriaId,
+          camada: "VEN",
+          nome: produto.nome,
+          rendimentoQuantidade: 1,
+          rendimentoUnidade: "UN",
+          precoVenda: null,
+          tempoPreparoMinutos: null,
+          fotoPath: null,
+          observacoesOperacionais: "",
+          observacoesGerenciais: "",
+          status: "ativa",
+          componentes: [
+            {
+              tipo: "produto",
+              produtoSku: produto.sku,
+              fichaComponenteId: null,
+              quantidade: 1,
+              unidadeUso: produto.unidadeUso,
+              ordem: 0,
+              observacoes: "",
+            },
+          ],
+          componentesDelivery: [],
+          etapas: [],
+        },
+      });
+      await supabase.from("produtos").update({ ficha_revenda_id: ficha.id }).eq("unidade_id", unidadeId).eq("sku", produto.sku);
+    } else if (produto.revenda && fichaAtualId) {
+      await supabase
+        .from("fichas_tecnicas")
+        .update({ status: "ativa" })
+        .eq("unidade_id", unidadeId)
+        .eq("id", fichaAtualId)
+        .eq("status", "inativa");
+    } else if (!produto.revenda && fichaAtualId) {
+      await supabase.from("fichas_tecnicas").update({ status: "inativa" }).eq("unidade_id", unidadeId).eq("id", fichaAtualId);
+    }
+  }
 }
 
 /** Só chamado atrás de `requireGestaoFichasTecnicas()` - o trigger de
