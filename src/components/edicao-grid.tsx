@@ -132,10 +132,12 @@ function CadastroSection({
   const fornecedorOpcoes: OpcaoCodigo[] = useMemo(
     () => [
       { codigo: "", descricao: "(nenhum)" },
-      ...fornecedoresLocais.map((f) => ({
-        codigo: f.nomeFantasia || f.razaoSocial,
-        descricao: f.razaoSocial && f.razaoSocial !== f.nomeFantasia ? f.razaoSocial : "",
-      })),
+      ...fornecedoresLocais
+        .map((f) => ({
+          codigo: f.nomeFantasia || f.razaoSocial,
+          descricao: f.razaoSocial && f.razaoSocial !== f.nomeFantasia ? f.razaoSocial : "",
+        }))
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, "pt-BR")),
     ],
     [fornecedoresLocais]
   );
