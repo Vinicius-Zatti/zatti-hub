@@ -7,7 +7,12 @@ import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
-import { atualizarPrecosTodosCanaisFichasAction } from "@/app/(app)/fichas-tecnicas/actions";
+import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
+import {
+  abrirFichaTecnicaAction,
+  atualizarPrecosTodosCanaisFichasAction,
+  type ResultadoAbrirFicha,
+} from "@/app/(app)/fichas-tecnicas/actions";
 import { CLASSIFICACAO_TAG, calcularCmv, montarPrecosPorCanal } from "@/lib/fichas-tecnicas";
 import type { CanalVenda, FichaTecnicaResumo } from "@/lib/types";
 
@@ -88,6 +93,36 @@ export function TabelaPrecificacao({
   const [estado, setEstado] = useState<Record<string, Precos>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  const [fichaAbertaId, setFichaAbertaId] = useState<string | null>(null);
+  const [dadosAbertos, setDadosAbertos] = useState<ResultadoAbrirFicha & { ok: true }>();
+  const [carregando, setCarregando] = useState(false);
+  const [erroAbertura, setErroAbertura] = useState<string | null>(null);
+
+  async function carregarFicha(id: string) {
+    setCarregando(true);
+    setErroAbertura(null);
+    const resultado = await abrirFichaTecnicaAction(id);
+    setCarregando(false);
+    if (!resultado.ok) {
+      setErroAbertura(resultado.mensagem);
+      return;
+    }
+    setDadosAbertos(resultado);
+  }
+
+  function abrirFicha(id: string) {
+    setFichaAbertaId(id);
+    setDadosAbertos(undefined);
+    void carregarFicha(id);
+  }
+
+  function fecharFicha() {
+    setFichaAbertaId(null);
+    setDadosAbertos(undefined);
+    setErroAbertura(null);
+    router.refresh();
+  }
 
   function valores(id: string): Precos {
     return estado[id] ?? baseline[id];
@@ -244,7 +279,14 @@ export function TabelaPrecificacao({
               return (
                 <tr key={ficha.id} className="border-t border-cinza-claro">
                   <td className="sticky left-0 z-10 max-w-[160px] bg-branco px-3 py-1.5 font-medium text-cinza">
-                    <div className="truncate">{ficha.nome}</div>
+                    <button
+                      type="button"
+                      onClick={() => abrirFicha(ficha.id)}
+                      className="block max-w-full truncate text-left hover:underline"
+                      title="Abrir ficha técnica"
+                    >
+                      {ficha.nome}
+                    </button>
                     <div className="truncate text-[10px] text-cinza-medio">
                       {ficha.sku} · {ficha.categoriaNome}
                     </div>
@@ -284,6 +326,46 @@ export function TabelaPrecificacao({
           </tbody>
         </table>
       </div>
+
+      {fichaAbertaId && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
+          onClick={fecharFicha}
+        >
+          <div
+            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {carregando && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
+            {erroAbertura && (
+              <div className="flex flex-col items-start gap-3 p-2">
+                <p className="text-sm text-vermelho">{erroAbertura}</p>
+                <button type="button" onClick={fecharFicha} className="text-sm font-semibold text-azul-petroleo">
+                  ← Fechar
+                </button>
+              </div>
+            )}
+            {dadosAbertos && (
+              <FichaTecnicaDetalhe
+                ficha={dadosAbertos.dados.ficha}
+                podeGerir={dadosAbertos.podeGerir}
+                categorias={dadosAbertos.dados.categorias}
+                produtos={dadosAbertos.dados.produtos}
+                fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
+                margemNecessaria={margemNecessaria}
+                margemPontoEquilibrio={margemPontoEquilibrio}
+                deducoesSalao={deducoesSalao}
+                deducoesIfood={deducoesIfood}
+                deducoes99Food={deducoes99Food}
+                aoFechar={fecharFicha}
+                aoSalvar={() => {
+                  if (fichaAbertaId) void carregarFicha(fichaAbertaId);
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
