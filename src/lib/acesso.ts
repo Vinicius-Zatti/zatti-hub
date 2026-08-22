@@ -16,6 +16,9 @@ const COOKIE_ORGANIZACAO = "zh_org";
 export type AcessoAtual = {
   userId: string;
   usuarioEmail: string;
+  /** Nome cadastrado em `perfis.nome` (convite ou editado depois no Painel
+   * de Acessos) - `null` quem nunca teve nome definido, a UI cai pro email. */
+  usuarioNome: string | null;
   organizacaoId: string;
   organizacaoNome: string;
   unidadeId: string;
@@ -68,11 +71,14 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const userId = claims?.claims.sub;
   if (erroClaims || !userId) redirect("/login");
 
-  const { data: vinculosData, error: erroVinculos } = await supabase
-    .from("vinculos")
-    .select("organizacao_id, unidade_id, role, organizacoes(nome)")
-    .eq("user_id", userId)
-    .eq("status", "ativo");
+  const [{ data: vinculosData, error: erroVinculos }, { data: perfil }] = await Promise.all([
+    supabase
+      .from("vinculos")
+      .select("organizacao_id, unidade_id, role, organizacoes(nome)")
+      .eq("user_id", userId)
+      .eq("status", "ativo"),
+    supabase.from("perfis").select("nome").eq("id", userId).maybeSingle(),
+  ]);
 
   if (erroVinculos) {
     console.error("Falha ao consultar os vínculos do usuário:", {
@@ -182,6 +188,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   return {
     userId,
     usuarioEmail: typeof claims.claims.email === "string" ? claims.claims.email : "",
+    usuarioNome: (perfil as { nome: string | null } | null)?.nome ?? null,
     organizacaoId,
     organizacaoNome:
       organizacoesDisponiveis.find((o) => o.id === organizacaoId)?.nome ?? "",

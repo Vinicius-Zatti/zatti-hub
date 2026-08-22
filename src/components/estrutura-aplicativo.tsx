@@ -29,6 +29,7 @@ type Props = {
   organizacaoNome: string;
   organizacoes: { id: string; nome: string }[];
   usuarioEmail: string;
+  usuarioNome: string | null;
 };
 
 const PAINEL_ORGANIZACAO = "__organizacao";
@@ -40,6 +41,7 @@ export function EstruturaAplicativo({
   organizacaoNome,
   organizacoes,
   usuarioEmail,
+  usuarioNome,
 }: Props) {
   const pathname = usePathname();
   const [recolhido, setRecolhido] = useState(false);
@@ -236,7 +238,7 @@ export function EstruturaAplicativo({
                 Usuário
               </p>
               <p className="mb-2 truncate text-xs font-medium text-branco" title={usuarioEmail}>
-                {usuarioEmail || "Conta ativa"}
+                {usuarioNome || usuarioEmail || "Conta ativa"}
               </p>
               <p className="mb-1 truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">
                 Organização
@@ -298,7 +300,7 @@ export function EstruturaAplicativo({
                 Usuário conectado
               </p>
               <p className="mt-1 truncate text-sm font-semibold text-azul-noite" title={usuarioEmail}>
-                {usuarioEmail || "Conta ativa"}
+                {usuarioNome || usuarioEmail || "Conta ativa"}
               </p>
               <div className="my-4 border-t border-cinza-claro" />
               <p className="mb-3 text-sm text-cinza-medio">Escolha qual cliente deseja acessar.</p>

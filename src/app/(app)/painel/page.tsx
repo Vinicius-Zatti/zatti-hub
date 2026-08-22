@@ -15,9 +15,18 @@ function instanteData(valor: string): number {
   return Number.isNaN(instante) ? 0 : instante;
 }
 
-function primeiroNome(email: string): string {
+function capitalizar(palavra: string): string {
+  return palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase();
+}
+
+/** Nome cadastrado (perfis.nome) tem prioridade - só cai pra extrair do
+ * email quando ninguém definiu um nome ainda (ver `usuarioNome` em
+ * `getAcessoAtual`). */
+function primeiroNome(nome: string | null, email: string): string {
+  const primeiraPalavraDoNome = nome?.trim().split(/\s+/)[0];
+  if (primeiraPalavraDoNome) return capitalizar(primeiraPalavraDoNome);
   const parte = email.split("@")[0]?.split(/[._-]/)[0] ?? "";
-  return parte ? parte.charAt(0).toUpperCase() + parte.slice(1).toLowerCase() : "";
+  return parte ? capitalizar(parte) : "";
 }
 
 function saudacaoAtual(data: Date): string {
@@ -67,7 +76,7 @@ export default async function PainelPage() {
 
   const dados: DadosPainelGeral = {
     saudacao: saudacaoAtual(agora),
-    nomeUsuario: primeiroNome(acesso.usuarioEmail),
+    nomeUsuario: primeiroNome(acesso.usuarioNome, acesso.usuarioEmail),
     dataHoje: new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "full",
       timeZone: "America/Sao_Paulo",

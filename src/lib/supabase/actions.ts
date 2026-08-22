@@ -47,5 +47,5 @@ export async function trocarOrganizacaoAction(formData: FormData) {
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 365,
   });
-  redirect("/estoque/produtos");
+  redirect("/painel");
 }

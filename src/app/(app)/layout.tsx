@@ -152,6 +152,7 @@ export default async function AppLayout({
           organizacaoNome={acesso.organizacaoNome}
           organizacoes={acesso.organizacoesDisponiveis}
           usuarioEmail={acesso.usuarioEmail}
+          usuarioNome={acesso.usuarioNome}
         >
           {children}
         </EstruturaAplicativo>
