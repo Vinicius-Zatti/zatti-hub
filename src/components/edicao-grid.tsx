@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
@@ -150,9 +150,17 @@ function CadastroSection({
   );
 
   const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  // Ref sempre com a versão mais nova de `salvarTodos` (redefinida a cada
+  // render, closando sobre o `estado` atual) - o aviso de sair guarda essa
+  // ref, não a função direto, senão "Salvar e sair" clicado bem depois do
+  // aviso abrir salvaria um estado velho.
+  const salvarTodosRef = useRef<() => Promise<boolean>>(async () => true);
   useEffect(() => {
     if (alterados.length > 0) {
-      ativarGuarda("Você editou produtos que ainda não foram salvos. Se sair agora, essas alterações se perdem.");
+      ativarGuarda(
+        "Você editou produtos que ainda não foram salvos. Se sair agora, essas alterações se perdem.",
+        () => salvarTodosRef.current(),
+      );
     } else {
       desativarGuarda();
     }
@@ -217,9 +225,9 @@ function CadastroSection({
     [estado]
   );
 
-  async function salvarTodos() {
+  async function salvarTodos(): Promise<boolean> {
     const skus = alterados;
-    if (skus.length === 0) return;
+    if (skus.length === 0) return true;
     setSalvandoTodos(true);
     setStatusPorSku((s) => {
       const novo = { ...s };
@@ -227,26 +235,30 @@ function CadastroSection({
       return novo;
     });
     const r = await salvarProdutosAction(skus.map((sku) => estado[sku]));
+    setSalvandoTodos(false);
     if ("erro" in r) {
       setStatusPorSku((s) => {
         const novo = { ...s };
         for (const sku of skus) novo[sku] = { tipo: "erro", msg: r.erro };
         return novo;
       });
-    } else {
-      setBaseline((b) => {
-        const novo = { ...b };
-        for (const sku of skus) novo[sku] = estado[sku];
-        return novo;
-      });
-      setStatusPorSku((s) => {
-        const novo = { ...s };
-        for (const sku of skus) novo[sku] = { tipo: "ok" };
-        return novo;
-      });
+      return false;
     }
-    setSalvandoTodos(false);
+    setBaseline((b) => {
+      const novo = { ...b };
+      for (const sku of skus) novo[sku] = estado[sku];
+      return novo;
+    });
+    setStatusPorSku((s) => {
+      const novo = { ...s };
+      for (const sku of skus) novo[sku] = { tipo: "ok" };
+      return novo;
+    });
+    return true;
   }
+  useEffect(() => {
+    salvarTodosRef.current = salvarTodos;
+  });
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();

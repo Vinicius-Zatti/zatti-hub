@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Th } from "@/components/tabela";
 import { CampoNumero } from "@/components/campo-numero";
 import { ControlesTabela } from "@/components/tabela-rolavel";
@@ -63,9 +63,18 @@ export function ConversoesProdutoTabela({ linhas }: { linhas: Linha[] }) {
     [estado, baseline],
   );
 
+  // Ref sempre com a versão mais nova de `salvarTodos` (redefinida a cada
+  // render, closando sobre o `estado` atual) - o aviso de sair guarda essa
+  // ref, não a função direto, senão "Salvar e sair" clicado bem depois do
+  // aviso abrir salvaria um estado velho.
+  const salvarTodosRef = useRef<() => Promise<boolean>>(async () => true);
+
   useEffect(() => {
-    if (alterados.length > 0) ativar("Você tem conversões não salvas. Se sair agora, elas se perdem.");
-    else desativar();
+    if (alterados.length > 0) {
+      ativar("Você tem conversões não salvas. Se sair agora, elas se perdem.", () => salvarTodosRef.current());
+    } else {
+      desativar();
+    }
   }, [alterados.length, ativar, desativar]);
 
   const grupos = useMemo(
@@ -114,9 +123,9 @@ export function ConversoesProdutoTabela({ linhas }: { linhas: Linha[] }) {
     setStatusPorSku((atual) => ({ ...atual, [sku]: "salvo" }));
   }
 
-  async function salvarTodos() {
+  async function salvarTodos(): Promise<boolean> {
     const skus = alterados;
-    if (skus.length === 0) return;
+    if (skus.length === 0) return true;
     setSalvandoTodos(true);
     setStatusPorSku((atual) => {
       const novo = { ...atual };
@@ -138,7 +147,7 @@ export function ConversoesProdutoTabela({ linhas }: { linhas: Linha[] }) {
         for (const sku of skus) novo[sku] = resultado.mensagem;
         return novo;
       });
-      return;
+      return false;
     }
 
     setBaseline((atual) => {
@@ -151,7 +160,11 @@ export function ConversoesProdutoTabela({ linhas }: { linhas: Linha[] }) {
       for (const sku of skus) novo[sku] = "salvo";
       return novo;
     });
+    return true;
   }
+  useEffect(() => {
+    salvarTodosRef.current = salvarTodos;
+  });
 
   return (
     <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : "flex flex-col gap-2"}>

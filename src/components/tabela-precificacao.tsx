@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CampoNumero } from "@/components/campo-numero";
 import { ControlesTabela } from "@/components/tabela-rolavel";
@@ -138,9 +138,18 @@ export function TabelaPrecificacao({
     [estado, baseline],
   );
 
+  // Ref sempre com a versão mais nova de `salvarTodos` (redefinida a cada
+  // render, closando sobre o `estado` atual) - o aviso de sair guarda essa
+  // ref, não a função direto, senão "Salvar e sair" clicado bem depois do
+  // aviso abrir salvaria um estado velho.
+  const salvarTodosRef = useRef<() => Promise<boolean>>(async () => true);
+
   useEffect(() => {
-    if (alterados.length > 0) ativar("Você tem preços não salvos na Tabela de Precificação. Se sair agora, eles se perdem.");
-    else desativar();
+    if (alterados.length > 0) {
+      ativar("Você tem preços não salvos na Tabela de Precificação. Se sair agora, eles se perdem.", () => salvarTodosRef.current());
+    } else {
+      desativar();
+    }
   }, [alterados.length, ativar, desativar]);
   useEffect(() => () => desativar(), [desativar]);
 
@@ -152,20 +161,24 @@ export function TabelaPrecificacao({
     );
   }, [fichas, busca]);
 
-  async function salvarTodos() {
+  async function salvarTodos(): Promise<boolean> {
     const ids = alterados;
-    if (ids.length === 0) return;
+    if (ids.length === 0) return true;
     setErro(null);
     setSalvandoTodos(true);
     const resultado = await atualizarPrecosTodosCanaisFichasAction(ids.map((id) => ({ id, ...valores(id) })));
     setSalvandoTodos(false);
     if (!resultado.ok) {
       setErro(resultado.mensagem);
-      return;
+      return false;
     }
     setEstado({});
     router.refresh();
+    return true;
   }
+  useEffect(() => {
+    salvarTodosRef.current = salvarTodos;
+  });
 
   return (
     <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : "flex flex-col gap-2"}>

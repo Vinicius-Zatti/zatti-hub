@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CodigoSelect } from "@/components/codigo-select";
+import { useGuardaEdicao } from "@/components/guarda-edicao";
 import {
   confirmarItemAction,
   confirmarVencedorAction,
@@ -242,6 +243,22 @@ export function EditorEspelhos({
   const [editandoQtd, setEditandoQtd] = useState<Record<string, string>>({});
   const [editandoPreco, setEditandoPreco] = useState<Record<string, string>>({});
   const [confirmandoVencedor, setConfirmandoVencedor] = useState<Record<string, boolean>>({});
+
+  // Quantidade/preço só gravam de verdade quando a pessoa confirma aquele
+  // campo (ver comentário no topo do arquivo) - enquanto o campo está aberto
+  // pra digitar, o valor só existe aqui na memória. Sem aviso nenhum antes
+  // desta mudança: sair ou atualizar a página com um campo aberto perdia o
+  // que tava sendo digitado, sem avisar nada.
+  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  const editandoAlgumCampo = Object.keys(editandoQtd).length > 0 || Object.keys(editandoPreco).length > 0;
+  useEffect(() => {
+    if (editandoAlgumCampo) {
+      ativarGuarda("Você tem uma quantidade ou preço em edição que ainda não foi confirmado. Se sair agora, esse valor se perde.");
+    } else {
+      desativarGuarda();
+    }
+  }, [editandoAlgumCampo, ativarGuarda, desativarGuarda]);
+  useEffect(() => () => desativarGuarda(), [desativarGuarda]);
 
   // Clicar em "vencedor aqui" pede confirmação antes de desfazer - trocar
   // sem querer faz o item sumir desse bloco e reaparecer pra escolher de

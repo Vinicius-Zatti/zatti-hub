@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Fornecedor } from "@/lib/types";
 import { fornecedorIncompleto } from "@/lib/fornecedor";
 import { salvarFornecedorAction, salvarFornecedoresAction } from "@/app/(app)/estoque/fornecedores/actions";
@@ -52,6 +52,12 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
     [fornecedoresLocais, estado]
   );
 
+  // Ref sempre com a versão mais nova de `salvarTodos` (redefinida a cada
+  // render, closando sobre o `estado` atual) - o aviso de sair guarda essa
+  // ref, não a função direto, senão "Salvar e sair" clicado bem depois do
+  // aviso abrir salvaria um estado velho.
+  const salvarTodosRef = useRef<() => Promise<boolean>>(async () => true);
+
   const campo = useCallback(<K extends keyof Fornecedor>(codigo: string, key: K, value: Fornecedor[K]) => {
     setEstado((e) => ({ ...e, [codigo]: { ...e[codigo], [key]: value } }));
     setStatusPorCodigo((s) => ({ ...s, [codigo]: undefined }));
@@ -72,9 +78,9 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
     [estado]
   );
 
-  async function salvarTodos() {
+  async function salvarTodos(): Promise<boolean> {
     const codigos = alterados;
-    if (codigos.length === 0) return;
+    if (codigos.length === 0) return true;
     setSalvandoTodos(true);
     setStatusPorCodigo((s) => {
       const novo = { ...s };
@@ -82,26 +88,30 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
       return novo;
     });
     const r = await salvarFornecedoresAction(codigos.map((codigo) => estado[codigo]));
+    setSalvandoTodos(false);
     if ("erro" in r) {
       setStatusPorCodigo((s) => {
         const novo = { ...s };
         for (const codigo of codigos) novo[codigo] = { tipo: "erro", msg: r.erro };
         return novo;
       });
-    } else {
-      setBaseline((b) => {
-        const novo = { ...b };
-        for (const codigo of codigos) novo[codigo] = estado[codigo];
-        return novo;
-      });
-      setStatusPorCodigo((s) => {
-        const novo = { ...s };
-        for (const codigo of codigos) novo[codigo] = { tipo: "ok" };
-        return novo;
-      });
+      return false;
     }
-    setSalvandoTodos(false);
+    setBaseline((b) => {
+      const novo = { ...b };
+      for (const codigo of codigos) novo[codigo] = estado[codigo];
+      return novo;
+    });
+    setStatusPorCodigo((s) => {
+      const novo = { ...s };
+      for (const codigo of codigos) novo[codigo] = { tipo: "ok" };
+      return novo;
+    });
+    return true;
   }
+  useEffect(() => {
+    salvarTodosRef.current = salvarTodos;
+  });
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -126,7 +136,10 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
   useEffect(() => {
     if (alterados.length > 0) {
-      ativarGuarda("Você editou fornecedores que ainda não foram salvos. Se sair agora, essas alterações se perdem.");
+      ativarGuarda(
+        "Você editou fornecedores que ainda não foram salvos. Se sair agora, essas alterações se perdem.",
+        () => salvarTodosRef.current(),
+      );
     } else {
       desativarGuarda();
     }
