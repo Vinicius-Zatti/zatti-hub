@@ -170,7 +170,9 @@ export function calcularPrecoVendaSugerido(
 
 /** Etiqueta ao lado do preço de venda - compara a margem real do produto
  * contra a margem necessária (lucro batido) e a margem de ponto de
- * equilíbrio (só cobre custo fixo, sem lucro). */
+ * equilíbrio (só cobre custo fixo, sem lucro). Só usada no Salão - os canais
+ * de delivery usam `classificarMargemContribuicaoValor` (ver por quê no
+ * comentário de `montarPrecosPorCanal`). */
 export function classificarMargemProduto(
   margemProduto: number | null,
   margemNecessaria: number | null,
@@ -182,12 +184,64 @@ export function classificarMargemProduto(
   return "prejuizo";
 }
 
-/** As 4 linhas da seção "Preços por Canal" de uma ficha de Venda - Salão e
- * Delivery Próprio usam a mesma dedução (taxa de pagamento + imposto), só
- * trocando o custo (Delivery Próprio soma a embalagem); iFood/99Food usam a
- * comissão do marketplace no lugar da taxa de pagamento, com o mesmo custo
- * com embalagem. `custoComEmbalagem` null (sem embalagem linkada) cai pro
- * mesmo custo do Salão nos 3 canais de delivery. */
+/** Preço que entrega exatamente `margemContribuicaoValorAlvo` reais de
+ * margem de contribuição, dado o custo do canal e sua dedução - versão em
+ * valor absoluto de `calcularPrecoVendaSugerido`, usada nos canais de
+ * delivery (ver `montarPrecosPorCanal`). `null` sem custo, sem meta em R$,
+ * ou dedução >= 100% (preço nenhum cobre isso). */
+export function calcularPrecoVendaSugeridoPorValor(
+  custoInsumos: number | null,
+  margemContribuicaoValorAlvo: number | null,
+  deducoesTotal: number,
+): number | null {
+  if (custoInsumos === null || margemContribuicaoValorAlvo === null) return null;
+  const fatorLiquido = 1 - deducoesTotal;
+  if (fatorLiquido <= 0) return null;
+  return (custoInsumos + margemContribuicaoValorAlvo) / fatorLiquido;
+}
+
+/** Etiqueta em valor absoluto - mesma ideia de `classificarMargemProduto`,
+ * mas comparando reais de margem de contribuição contra os dois alvos em
+ * reais, não porcentagem contra porcentagem. */
+export function classificarMargemContribuicaoValor(
+  margemContribuicaoValor: number | null,
+  margemNecessariaValor: number | null,
+  margemPontoEquilibrioValor: number | null,
+): ClassificacaoMargem | null {
+  if (margemContribuicaoValor === null || margemNecessariaValor === null || margemPontoEquilibrioValor === null) return null;
+  if (margemContribuicaoValor >= margemNecessariaValor) return "lucro_ajustado";
+  if (margemContribuicaoValor >= margemPontoEquilibrioValor) return "abaixo_do_lucro";
+  return "prejuizo";
+}
+
+/** As 4 linhas da seção "Preços por Canal" de uma ficha de Venda.
+ *
+ * Salão mira uma margem de contribuição em **porcentagem** do preço (a
+ * margem necessária/ponto de equilíbrio configuradas na Calculadora de
+ * Margem Ideal) - isso é o que sempre foi.
+ *
+ * Delivery Próprio, iFood e 99Food NÃO repetem essa mesma porcentagem -
+ * dedução de delivery (imposto + comissão do marketplace) é bem maior que a
+ * do Salão (taxa de pagamento + imposto), e ainda soma o custo da
+ * embalagem. Mirar a mesma porcentagem nessas condições infla o preço
+ * sugerido a um valor impraticável (achado real: cliente via um número tão
+ * alto que ficava sem referência nenhuma pra decidir o preço).
+ *
+ * Em vez disso, delivery mira o mesmo valor **em reais** de margem de
+ * contribuição que o Salão obtém no preço sugerido dele - a pessoa ganha o
+ * mesmo tanto de dinheiro por unidade vendida, em qualquer canal, cobrindo
+ * o custo (com embalagem) e a dedução mais alta de cada um. Esse alvo em R$
+ * (e o de ponto de equilíbrio, mesma lógica) também vira a régua da
+ * "Situação" nesses 3 canais - continuar comparando por porcentagem ali
+ * mostraria "Abaixo do Lucro" num preço que já está exatamente on-target,
+ * só porque a fração dele é naturalmente menor que a do Salão.
+ *
+ * `custoComEmbalagem` null (sem Componentes Delivery cadastrados) cai pro
+ * mesmo custo do Salão nos 3 canais de delivery. Preço sugerido/Situação de
+ * delivery dependem do preço sugerido do Salão ter saído (custo do insumo +
+ * margem necessária/ponto de equilíbrio configurados) - não dependem do
+ * Salão ter preço de venda praticado, então cliente sem canal de Salão
+ * nenhum (só delivery) não fica bloqueado. */
 export function montarPrecosPorCanal(params: {
   custoBase: number | null;
   custoComEmbalagem: number | null;
@@ -202,6 +256,13 @@ export function montarPrecosPorCanal(params: {
   deducoes99Food: number;
 }): CanalPrecoFicha[] {
   const custoDelivery = params.custoComEmbalagem ?? params.custoBase;
+
+  const precoSugeridoSalao = calcularPrecoVendaSugerido(params.custoBase, params.margemNecessaria, params.deducoesSalao);
+  const margemNecessariaValor =
+    params.margemNecessaria !== null && precoSugeridoSalao !== null ? params.margemNecessaria * precoSugeridoSalao : null;
+  const margemPontoEquilibrioValor =
+    params.margemPontoEquilibrio !== null && precoSugeridoSalao !== null ? params.margemPontoEquilibrio * precoSugeridoSalao : null;
+
   const linhas: { canal: CanalPrecoFicha["canal"]; label: string; custo: number | null; precoPraticado: number | null; deducoes: number }[] = [
     { canal: "salao", label: "Salão", custo: params.custoBase, precoPraticado: params.precoVendaSalao, deducoes: params.deducoesSalao },
     {
@@ -222,16 +283,29 @@ export function montarPrecosPorCanal(params: {
   ];
 
   return linhas.map((l) => {
-    const precoSugerido = calcularPrecoVendaSugerido(l.custo, params.margemNecessaria, l.deducoes);
     const margemProduto = calcularMargemProduto(l.custo, l.precoPraticado, l.deducoes);
+    const margemContribuicaoValor = margemProduto !== null && l.precoPraticado !== null ? margemProduto * l.precoPraticado : null;
+
+    if (l.canal === "salao") {
+      return {
+        canal: l.canal,
+        label: l.label,
+        custoPorUnidade: l.custo,
+        precoSugerido: precoSugeridoSalao,
+        precoPraticado: l.precoPraticado,
+        classificacao: classificarMargemProduto(margemProduto, params.margemNecessaria, params.margemPontoEquilibrio),
+        margemContribuicaoValor,
+      };
+    }
+
     return {
       canal: l.canal,
       label: l.label,
       custoPorUnidade: l.custo,
-      precoSugerido,
+      precoSugerido: calcularPrecoVendaSugeridoPorValor(l.custo, margemNecessariaValor, l.deducoes),
       precoPraticado: l.precoPraticado,
-      classificacao: classificarMargemProduto(margemProduto, params.margemNecessaria, params.margemPontoEquilibrio),
-      margemContribuicaoValor: margemProduto !== null && l.precoPraticado !== null ? margemProduto * l.precoPraticado : null,
+      classificacao: classificarMargemContribuicaoValor(margemContribuicaoValor, margemNecessariaValor, margemPontoEquilibrioValor),
+      margemContribuicaoValor,
     };
   });
 }

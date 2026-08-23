@@ -83,4 +83,92 @@ describe("montarPrecosPorCanal", () => {
 
     expect(canais.find((c) => c.canal === "salao")!.classificacao).toBe("prejuizo");
   });
+
+  it("preço sugerido de delivery mira o mesmo valor em R$ de margem de contribuição do Salão, não a mesma porcentagem", () => {
+    // Caso real: X Burger custa 10,91, margem necessária 55%, dedução Salão
+    // 10,2% (3% taxa de pagamento + 7,2% imposto) -> Salão sugere 31,35,
+    // rendendo 17,24 de margem de contribuição. No iFood o mesmo item custa
+    // 11,78 (com embalagem) e a dedução é 22,2% (7,2% imposto + 15% comissão)
+    // - repetir os 55% de margem inflaria o preço; a meta certa é entregar
+    // os mesmos 17,24 de margem, o que dá 37,30.
+    const canais = montarPrecosPorCanal({
+      custoBase: 10.91,
+      custoComEmbalagem: 11.78,
+      precoVendaSalao: null,
+      precoVendaDeliveryProprio: null,
+      precoVendaIfood: null,
+      precoVenda99Food: null,
+      margemNecessaria: 0.55,
+      margemPontoEquilibrio: 0.4,
+      deducoesSalao: 0.102,
+      deducoesIfood: 0.222,
+      deducoes99Food: 0.222,
+    });
+
+    const salao = canais.find((c) => c.canal === "salao")!;
+    const ifood = canais.find((c) => c.canal === "ifood")!;
+    expect(salao.precoSugerido).toBeCloseTo(31.35, 1);
+    expect(ifood.precoSugerido).toBeCloseTo(37.3, 1);
+
+    // Mesma margem em R$ nos dois preços sugeridos (a meta que motivou a
+    // conta), não a mesma margem em %.
+    const margemSalao = salao.precoSugerido! * (1 - 0.102) - 10.91;
+    const margemIfood = ifood.precoSugerido! * (1 - 0.222) - 11.78;
+    expect(margemIfood).toBeCloseTo(margemSalao, 5);
+  });
+
+  it("classifica a Situação do delivery pelo valor em R$ da margem, não pela porcentagem", () => {
+    const base = {
+      custoBase: 10.91,
+      custoComEmbalagem: 11.78,
+      precoVendaSalao: null,
+      margemNecessaria: 0.55,
+      margemPontoEquilibrio: 0.4,
+      deducoesSalao: 0.102,
+      deducoesIfood: 0.222,
+      deducoes99Food: 0.222,
+    };
+    // Preço de iFood cobrado exatamente igual ao sugerido - deve dar "Lucro
+    // Ajustado" mesmo a margem em % dele (~29%) ficando abaixo dos 55% do
+    // Salão, porque em R$ ele bate a mesma meta. Usa o preço sugerido exato
+    // (não o arredondado de exibição) pra não cair do lado errado do limite
+    // por causa de centavos.
+    const semPreco = montarPrecosPorCanal({ ...base, precoVendaDeliveryProprio: null, precoVendaIfood: null, precoVenda99Food: null });
+    const precoSugeridoIfood = semPreco.find((c) => c.canal === "ifood")!.precoSugerido!;
+    const noAlvo = montarPrecosPorCanal({
+      ...base,
+      precoVendaDeliveryProprio: null,
+      precoVendaIfood: precoSugeridoIfood,
+      precoVenda99Food: null,
+    });
+    const ifoodNoAlvo = noAlvo.find((c) => c.canal === "ifood")!;
+    expect(ifoodNoAlvo.classificacao).toBe("lucro_ajustado");
+
+    // Preço bem abaixo do sugerido cai pra prejuízo, mesma régua.
+    const abaixo = montarPrecosPorCanal({
+      ...base,
+      precoVendaDeliveryProprio: null,
+      precoVendaIfood: 20,
+      precoVenda99Food: null,
+    });
+    expect(abaixo.find((c) => c.canal === "ifood")!.classificacao).toBe("prejuizo");
+  });
+
+  it("preço sugerido do delivery não depende do Salão ter preço de venda praticado", () => {
+    const canais = montarPrecosPorCanal({
+      custoBase: 10.91,
+      custoComEmbalagem: 11.78,
+      precoVendaSalao: null,
+      precoVendaDeliveryProprio: null,
+      precoVendaIfood: null,
+      precoVenda99Food: null,
+      margemNecessaria: 0.55,
+      margemPontoEquilibrio: 0.4,
+      deducoesSalao: 0.102,
+      deducoesIfood: 0.222,
+      deducoes99Food: 0.222,
+    });
+
+    expect(canais.find((c) => c.canal === "ifood")!.precoSugerido).not.toBeNull();
+  });
 });
