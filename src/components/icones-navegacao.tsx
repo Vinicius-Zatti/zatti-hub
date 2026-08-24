@@ -2,6 +2,7 @@ export type NomeIconeNavegacao =
   | "painel"
   | "estoque"
   | "financeiro"
+  | "financeiroGerencial"
   | "fichas"
   | "tarefas"
   | "marketing"
@@ -39,6 +40,11 @@ export function IconeNavegacao({
         <rect x="3" y="6" width="18" height="13" rx="2" />
         <path d="M3 10h18" />
         <path d="M7 15h3" />
+      </>
+    ),
+    financeiroGerencial: (
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20V8" />
       </>
     ),
     fichas: (

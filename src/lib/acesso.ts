@@ -33,6 +33,12 @@ export type AcessoAtual = {
   * mesma convenção de `consolidado_vendas_habilitado` (editado direto no
   * Supabase, sem tela de admin). */
   fichasTecnicasHabilitado: boolean;
+  /** Liga o módulo Financeiro gerencial (DRE/DFC/Caixa/Provisões, em
+   * /financeiro-gerencial) pra essa unidade - não confundir com o módulo
+   * "Financeiro" antigo (Consolidado de Vendas, `consolidadoVendasHabilitado`,
+   * renomeado pra "Desempenho" no menu). Mesma convenção de flag por
+   * unidade, editada direto no Supabase. */
+  financeiroGerencialHabilitado: boolean;
   role: Role;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
@@ -57,6 +63,7 @@ type UnidadeRow = {
   fonte_dados_estoque: FonteDadosEstoque;
   consolidado_vendas_habilitado: boolean;
   fichas_tecnicas_habilitado: boolean;
+  financeiro_gerencial_habilitado: boolean;
 };
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
@@ -166,13 +173,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -198,6 +205,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
     fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
+    financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado,
     role,
     organizacoesDisponiveis,
   };
@@ -246,6 +254,27 @@ export async function requireFichasTecnicas(): Promise<AcessoAtual> {
 export async function requireGestaoFichasTecnicas(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Barreira de autorizacao do modulo Financeiro gerencial (DRE/DFC/Caixa,
+ * piloto exclusivo). A flag no layout controla a navegacao; esta funcao
+ * protege tambem Server Actions chamadas diretamente. A mesma regra e
+ * repetida em `usuario_pode_usar_financeiro_gerencial` no banco como ultima
+ * barreira. */
+export async function requireFinanceiroGerencial(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.financeiroGerencialHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Escrita que exige simultaneamente modulo habilitado e papel de Gestao
+ * (master continua com os mesmos privilegios administrativos) - usado pra
+ * contas financeiras, categorias proprias, estoque mensal, provisoes e
+ * fechamento; consulta e lancamento comum usam so `requireFinanceiroGerencial`. */
+export async function requireGestaoFinanceiroGerencial(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.financeiroGerencialHabilitado) redirect("/estoque/contagem");
   return acesso;
 }
 

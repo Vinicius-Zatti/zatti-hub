@@ -61,7 +61,10 @@ export default async function AppLayout({
       : []),
   ];
 
-  const secoesFinanceiro: SecaoNavegacao[] = [
+  // Rótulo "Desempenho" - módulo tecnicamente continua em /financeiro/consolidado
+  // (rota, dados e permissões intactos), só o nome visível no menu mudou.
+  // Não confundir com o módulo Financeiro gerencial novo, abaixo.
+  const secoesDesempenho: SecaoNavegacao[] = [
     {
       label: "Consolidado de vendas",
       items: [
@@ -72,6 +75,28 @@ export default async function AppLayout({
           : []),
       ],
     },
+  ];
+
+  const secoesFinanceiroGerencial: SecaoNavegacao[] = [
+    {
+      label: "Caixa",
+      items: [{ label: "Contas financeiras", href: "/financeiro-gerencial/contas" }],
+    },
+    {
+      label: "Lançamentos",
+      items: [
+        { label: "Receitas", href: "/financeiro-gerencial/lancamentos/receitas" },
+        { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
+      ],
+    },
+    ...(podeGerir
+      ? [
+          {
+            label: "Configurações",
+            items: [{ label: "Categorias", href: "/financeiro-gerencial/categorias" }],
+          },
+        ]
+      : []),
   ];
 
   const secoesFichasTecnicas: SecaoNavegacao[] = [
@@ -91,8 +116,9 @@ export default async function AppLayout({
     },
   ];
 
-  // Financeiro só sai de "em breve" pra unidade com a flag ligada
-  // (`unidades.consolidado_vendas_habilitado`, configurável por cliente).
+  // Cada módulo só sai de "em breve" pra unidade com a flag ligada
+  // (`unidades.consolidado_vendas_habilitado`/`financeiro_gerencial_habilitado`,
+  // configurável por cliente).
   const itensNavegacao: ItemNavegacao[] = [
     {
       label: "Painel geral",
@@ -110,12 +136,23 @@ export default async function AppLayout({
       sections: secoesEstoque,
     },
     {
-      label: "Financeiro",
+      label: "Desempenho",
       href: "/financeiro/consolidado/novo",
       icone: "financeiro",
       activePrefix: "/financeiro",
       disabled: !acesso.consolidadoVendasHabilitado,
-      sections: secoesFinanceiro,
+      sections: secoesDesempenho,
+    },
+    {
+      label: "Financeiro",
+      // Contas financeiras é só Gestão/master (`requireGestaoFinanceiroGerencial`)
+      // - Operacional que clicar no item do menu precisa cair numa tela que
+      // ele realmente acessa, não ser redirecionado pra fora do módulo.
+      href: podeGerir ? "/financeiro-gerencial/contas" : "/financeiro-gerencial/lancamentos/despesas",
+      icone: "financeiroGerencial",
+      activePrefix: "/financeiro-gerencial",
+      disabled: !acesso.financeiroGerencialHabilitado,
+      sections: secoesFinanceiroGerencial,
     },
     {
       label: "Precificação",

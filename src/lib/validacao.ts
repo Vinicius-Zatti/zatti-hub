@@ -339,6 +339,78 @@ export const precosTodosCanaisFichaEntradaSchema = z
   })
   .strict();
 
+// ── Financeiro gerencial ──────────────────────────────────────────────────
+
+const dinheiroPositivo = z.number().finite().min(0.01).max(LIMITE_DINHEIRO);
+export const tipoContaFinanceiraSchema = z.enum(["banco", "caixa", "carteira_digital"]);
+export const tipoLancamentoFinanceiroSchema = z.enum(["receita", "despesa"]);
+
+export const contaFinanceiraEntradaSchema = z
+  .object({
+    nome: textoObrigatorio(120),
+    tipo: tipoContaFinanceiraSchema,
+    saldoInicial: z.number().finite().min(-LIMITE_DINHEIRO).max(LIMITE_DINHEIRO),
+    dataSaldoInicial: dataIsoSchema,
+  })
+  .strict();
+
+export const editarContaFinanceiraEntradaSchema = contaFinanceiraEntradaSchema.extend({
+  id: idUuidSchema,
+  ativo: z.boolean(),
+});
+
+export const categoriaFinanceiraEntradaSchema = z
+  .object({
+    parentId: idUuidSchema,
+    nome: textoObrigatorio(160),
+  })
+  .strict();
+
+export const editarCategoriaFinanceiraEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    nome: textoObrigatorio(160),
+  })
+  .strict();
+
+export const arquivarCategoriaFinanceiraEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    arquivado: z.boolean(),
+  })
+  .strict();
+
+export const lancamentoFinanceiroEntradaSchema = z
+  .object({
+    tipo: tipoLancamentoFinanceiroSchema,
+    categoriaId: idUuidSchema,
+    descricao: textoObrigatorio(200),
+    dataCompetencia: dataIsoSchema,
+    contaFinanceiraId: idUuidSchema.nullable(),
+    observacao: texto(2_000),
+    valorTotal: dinheiroPositivo,
+    quantidadeParcelas: z.number().int().min(1).max(360),
+    dataPrimeiraParcela: dataIsoSchema,
+  })
+  .strict();
+
+export const baixaFinanceiraEntradaSchema = z
+  .object({
+    parcelaId: idUuidSchema,
+    contaFinanceiraId: idUuidSchema,
+    valor: dinheiroPositivo,
+    data: dataIsoSchema,
+    observacao: texto(2_000),
+  })
+  .strict();
+
+export const estornarBaixaEntradaSchema = z
+  .object({
+    baixaId: idUuidSchema,
+    observacao: texto(2_000),
+  })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;
