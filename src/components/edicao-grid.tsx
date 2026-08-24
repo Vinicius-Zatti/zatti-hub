@@ -860,6 +860,7 @@ const LinhaProduto = memo(function LinhaProduto({
           onChange={(v) => campo("fornecedor1", v)}
           extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor1") }}
           className="w-28"
+          busca
         />
       </td>
       <td className="px-2 py-1.5">
@@ -869,6 +870,7 @@ const LinhaProduto = memo(function LinhaProduto({
           onChange={(v) => campo("fornecedor2", v)}
           extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor2") }}
           className="w-28"
+          busca
         />
       </td>
       <td className="px-2 py-1.5">
@@ -878,6 +880,7 @@ const LinhaProduto = memo(function LinhaProduto({
           onChange={(v) => campo("fornecedor3", v)}
           extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor3") }}
           className="w-28"
+          busca
         />
       </td>
       <td className="px-2 py-1.5">
@@ -887,6 +890,7 @@ const LinhaProduto = memo(function LinhaProduto({
           onChange={(v) => campo("fornecedor4", v)}
           extra={{ label: "+ Adicionar fornecedor", onClick: () => onPedirNovoFornecedor("fornecedor4") }}
           className="w-28"
+          busca
         />
       </td>
       <td className="px-2 py-1.5">
