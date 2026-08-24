@@ -691,6 +691,14 @@ function ItemRow({
               aria-label={`Quantidade de ${nome}`}
               value={valor}
               onChange={(e) => onChangeValor(e.target.value)}
+              onFocus={(e) => {
+                // Mesmo ajuste do botão Editar: tocar de volta num campo que
+                // já tem valor digitado (sem ter confirmado ainda) deve
+                // deixar o cursor no final, não no início.
+                const el = e.currentTarget;
+                const posicao = el.value.length;
+                el.setSelectionRange(posicao, posicao);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
