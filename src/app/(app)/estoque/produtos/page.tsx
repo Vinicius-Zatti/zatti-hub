@@ -3,6 +3,7 @@ import { listItensPendentes } from "@/lib/sheets/inventario";
 import { StatCard } from "@/components/stat-card";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { TabelaProdutos } from "@/components/tabela-produtos";
+import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { getAcessoAtual } from "@/lib/acesso";
 import Link from "next/link";
 
@@ -32,14 +33,7 @@ export default async function ProdutosPage() {
             Todos os insumos do restaurante — o que você compra, contagem e regra.
           </p>
         </div>
-        {acesso.role !== "operacional" && (
-          <Link
-            href="/estoque/produtos/novo"
-            className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo"
-          >
-            + Novo produto
-          </Link>
-        )}
+        {acesso.role !== "operacional" && <NovoProdutoModal />}
       </div>
 
       {pendentes.length > 0 && (

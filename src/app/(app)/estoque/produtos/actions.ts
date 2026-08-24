@@ -6,7 +6,6 @@ import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, type AcessoAtual } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import {
   fornecedor1Schema,
   nomeProdutoSchema,
@@ -54,44 +53,50 @@ export async function sugerirSkuAction(
   }
 }
 
-export async function criarProdutoAction(formData: FormData) {
+export async function criarProdutoAction(
+  formData: FormData,
+): Promise<{ ok: true; produto: Produto } | { ok: false; mensagem: string }> {
   const acesso = await requireGestao();
-  await exigirLimiteRequisicao("salvar_produtos");
+  try {
+    await exigirLimiteRequisicao("salvar_produtos");
 
-  const produto = validarEntrada(produtoSchema, {
-    sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
-    posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
-    grupo: String(formData.get("grupo") ?? ""),
-    nome: String(formData.get("nome") ?? ""),
-    unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
-    precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
-    estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
-      ? Number(formData.get("estoqueNecessarioSemana"))
-      : null,
-    estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
-    nomeCompra: String(formData.get("nomeCompra") ?? ""),
-    unidadeEmbalagemFornecedor: "",
-    qtdUnidadeBasePorEmbalagem: null,
-    precoFornecedor: null,
-    fornecedor1: "",
-    fornecedor2: "",
-    fornecedor3: "",
-    fornecedor4: "",
-    observacoes: String(formData.get("observacoes") ?? ""),
-    ativo: true,
-    revenda: false,
-  });
+    const produto = validarEntrada(produtoSchema, {
+      sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
+      posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
+      grupo: String(formData.get("grupo") ?? ""),
+      nome: String(formData.get("nome") ?? ""),
+      unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
+      precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
+      estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
+        ? Number(formData.get("estoqueNecessarioSemana"))
+        : null,
+      estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
+      nomeCompra: String(formData.get("nomeCompra") ?? ""),
+      unidadeEmbalagemFornecedor: "",
+      qtdUnidadeBasePorEmbalagem: null,
+      precoFornecedor: null,
+      fornecedor1: "",
+      fornecedor2: "",
+      fornecedor3: "",
+      fornecedor4: "",
+      observacoes: String(formData.get("observacoes") ?? ""),
+      ativo: true,
+      revenda: false,
+    });
 
-  await upsertProduto(produto, acesso.spreadsheetId);
-  await registrarAuditoria({
-    acesso,
-    acao: "criar",
-    entidade: "produto",
-    entidadeId: produto.sku,
-    dadosNovos: produto,
-  });
-  revalidarTudo();
-  redirect("/estoque/produtos");
+    await upsertProduto(produto, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "criar",
+      entidade: "produto",
+      entidadeId: produto.sku,
+      dadosNovos: produto,
+    });
+    revalidarTudo();
+    return { ok: true, produto };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar o produto.") };
+  }
 }
 
 /** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados. */

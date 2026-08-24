@@ -1,13 +1,13 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
 import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
 import { arredondarPreco } from "@/lib/sheets/numero";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
+import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { ControlesTabela } from "@/components/tabela-rolavel";
@@ -337,12 +337,15 @@ function CadastroSection({
               onChange={(e) => setBusca(e.target.value)}
               className="w-full max-w-xs rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm focus:border-ambar focus:outline-none"
             />
-            <Link
-              href="/estoque/produtos/novo"
+            <NovoProdutoModal
+              label="+ Adicionar produto"
               className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-sm font-bold text-azul-noite hover:brightness-95"
-            >
-              + Adicionar produto
-            </Link>
+              onCriado={(produto) => {
+                const comPadrao = comNomeCompraPadrao(produto);
+                setBaseline((b) => ({ ...b, [produto.sku]: comPadrao }));
+                setEstado((e) => ({ ...e, [produto.sku]: comPadrao }));
+              }}
+            />
             <button
               type="button"
               onClick={recalcularPrecosEmBranco}

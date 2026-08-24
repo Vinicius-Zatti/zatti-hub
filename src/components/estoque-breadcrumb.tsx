@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 const CAMINHOS: Record<string, string[]> = {
   "/estoque/produtos": ["Estoque", "Produtos", "Consultar produtos"],
   "/estoque/produtos/edicao": ["Estoque", "Produtos", "Editar dados"],
-  "/estoque/produtos/novo": ["Estoque", "Produtos", "Novo produto"],
   "/estoque/contagem": ["Estoque", "Contagem", "Fazer contagem"],
   "/estoque/contagem/visualizacao": ["Estoque", "Contagem", "Conferir contagens"],
   "/estoque/pedidos": ["Estoque", "Pedidos", "Criar cotação"],
