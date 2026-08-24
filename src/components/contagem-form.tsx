@@ -167,9 +167,54 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
     });
     setTimeout(() => {
       const el = inputRefs.current.get(sku);
-      el?.focus();
-      el?.select();
+      if (!el) return;
+      el.focus();
+      // Cursor no final do valor, nada selecionado - reabrir um item já
+      // confirmado é sempre continuar de onde parou (completar/apagar),
+      // nunca substituir do zero. `.select()` deixava o cursor no início em
+      // alguns celulares, exigindo um toque a mais só pra editar.
+      const posicao = el.value.length;
+      el.setSelectionRange(posicao, posicao);
     }, 0);
+  }
+
+  // Só confirma quem realmente tem valor digitado - item vazio (o "0" que
+  // aparece é só placeholder, nunca um valor de verdade) fica de fora e
+  // continua bloqueando o envio até a pessoa preencher, do jeito que já é
+  // hoje pro Enviar Inventário.
+  const pendentesComValor = todos.filter(
+    (item) => confirmados[item.sku] === undefined && (valores[item.sku] ?? "").trim() !== ""
+  );
+
+  function confirmarTodosPreenchidos() {
+    const novosConfirmados: Record<string, number> = {};
+    const novosValores: Record<string, string> = {};
+    for (const item of pendentesComValor) {
+      const raw = valores[item.sku].trim();
+      const val = Number(raw.replace(",", "."));
+      if (Number.isNaN(val) || val < 0) continue;
+      const qty = Number.isInteger(val) ? val : Number(val.toFixed(3));
+      novosConfirmados[item.sku] = qty;
+      novosValores[item.sku] = String(qty);
+    }
+    if (Object.keys(novosConfirmados).length === 0) return;
+    setConfirmados((c) => ({ ...c, ...novosConfirmados }));
+    setValores((v) => ({ ...v, ...novosValores }));
+
+    // Leva pro primeiro item que continua vazio - é exatamente o que falta
+    // preencher pra liberar o envio.
+    setTimeout(() => {
+      for (const item of todos) {
+        if (novosConfirmados[item.sku] !== undefined) continue;
+        if (confirmados[item.sku] !== undefined) continue;
+        const el = inputRefs.current.get(item.sku);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => el.focus(), 250);
+        }
+        break;
+      }
+    }, 50);
   }
 
   function adicionarItemAvulso() {
@@ -525,6 +570,15 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
                 : `${totalItens - confirmadosCount} ${totalItens - confirmadosCount === 1 ? "item" : "itens"} ainda não confirmado${totalItens - confirmadosCount === 1 ? "" : "s"}`}
           </div>
           {erro && <div className="mb-2 text-center text-[11px] text-red-300">{erro}</div>}
+
+          {!tudoConfirmado && pendentesComValor.length > 0 && (
+            <button
+              onClick={confirmarTodosPreenchidos}
+              className="mb-2 block w-full rounded-lg border border-ambar bg-ambar/10 px-4 py-3 text-sm font-bold text-ambar hover:bg-ambar/20"
+            >
+              Confirmar preenchidos ({pendentesComValor.length})
+            </button>
+          )}
 
           {tudoConfirmado && !enviado && (
             <button
