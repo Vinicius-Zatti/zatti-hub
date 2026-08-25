@@ -28,7 +28,7 @@ export async function criarCategoriaFinanceiraAction(input: unknown): Promise<Re
     revalidatePath("/financeiro-gerencial/categorias");
     return { ok: true, categoria };
   } catch (err) {
-    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a categoria.") };
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a conta no Plano de Contas.") };
   }
 }
 
@@ -41,7 +41,7 @@ export async function editarCategoriaFinanceiraAction(input: unknown): Promise<R
     revalidatePath("/financeiro-gerencial/categorias");
     return { ok: true, categoria };
   } catch (err) {
-    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar a categoria.") };
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar a conta do Plano de Contas.") };
   }
 }
 
@@ -54,6 +54,6 @@ export async function arquivarCategoriaFinanceiraAction(input: unknown): Promise
     revalidatePath("/financeiro-gerencial/categorias");
     return { ok: true, categoria };
   } catch (err) {
-    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível arquivar a categoria.") };
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível arquivar a conta do Plano de Contas.") };
   }
 }

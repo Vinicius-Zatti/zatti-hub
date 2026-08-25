@@ -1,4 +1,3 @@
-import { somarMesesClampado } from "./datas";
 import type { StatusParcela } from "./tipos";
 
 function paraCentavos(v: number): number {
@@ -12,34 +11,20 @@ export type ParcelaGerada = {
   dataPrevista: string;
 };
 
-/** Divide o valor total em N parcelas mensais a partir da data da primeira -
- * resto de arredondamento (centavo perdido/sobrando ao dividir por N) sempre
- * vai pra última parcela, nunca distribuído no meio, pra soma bater com o
- * valor total em centavos (mesmo cuidado de `calcularTotais` em
- * consolidado-vendas.ts). Vencimento de cada parcela usa `somarMesesClampado`
- * a partir da primeira data, nunca a partir da parcela anterior (ver teste
- * "volta pro dia 31" em datas.test.ts). */
-export function gerarParcelas(
-  valorTotal: number,
-  quantidadeParcelas: number,
-  dataPrimeiraParcela: string,
+/** Numera as linhas manuais do formulário ("Vencimento e Valor", 1 linha =
+ * à vista, 2+ = parcelado) - cada uma já chega com valor e data próprios,
+ * aqui só atribui número/total. Substitui o antigo `gerarParcelas` (dividia
+ * um valor total em N parcelas iguais) - não perguntamos mais "número de
+ * parcelas" (item 6 da correção de 25/08). */
+export function numerarParcelasManuais(
+  linhas: { valor: number; dataPrevista: string }[],
 ): ParcelaGerada[] {
-  if (quantidadeParcelas < 1) throw new Error("quantidadeParcelas deve ser no mínimo 1");
-
-  const totalCents = paraCentavos(valorTotal);
-  const baseCents = Math.floor(totalCents / quantidadeParcelas);
-  const restoCents = totalCents - baseCents * quantidadeParcelas;
-
-  return Array.from({ length: quantidadeParcelas }, (_, indice) => {
-    const ehUltima = indice === quantidadeParcelas - 1;
-    const valorCents = ehUltima ? baseCents + restoCents : baseCents;
-    return {
-      numero: indice + 1,
-      totalParcelas: quantidadeParcelas,
-      valor: valorCents / 100,
-      dataPrevista: indice === 0 ? dataPrimeiraParcela : somarMesesClampado(dataPrimeiraParcela, indice),
-    };
-  });
+  return linhas.map((linha, indice) => ({
+    numero: indice + 1,
+    totalParcelas: linhas.length,
+    valor: linha.valor,
+    dataPrevista: linha.dataPrevista,
+  }));
 }
 
 /** Espelha `status_por_saldo_parcela` do banco (migração

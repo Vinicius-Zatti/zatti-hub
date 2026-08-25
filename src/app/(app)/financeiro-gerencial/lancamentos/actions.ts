@@ -1,25 +1,29 @@
 "use server";
 
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { criarLancamento, estornarBaixa, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import { criarLancamento, criarRecorrencia, estornarBaixa, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
 import {
   baixaFinanceiraEntradaSchema,
   estornarBaixaEntradaSchema,
   lancamentoFinanceiroEntradaSchema,
+  recorrenciaFinanceiraEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
-import type { Lancamento, Parcela } from "@/lib/financeiro-gerencial/tipos";
+import type { Lancamento, Parcela, Recorrencia } from "@/lib/financeiro-gerencial/tipos";
 
 // Sem `registrarAuditoria()` aqui - o gatilho `auditar_escrita_financeiro_gerencial`
 // (migração `20260824090000_...sql`) grava o log direto no banco pra
-// qualquer INSERT em `fin_lancamentos`/`fin_parcelas`/`fin_baixas`, e o
-// UPDATE de status disparado por `recalcular_parcela_apos_baixa` também é
+// qualquer INSERT em `fin_lancamentos`/`fin_parcelas`/`fin_baixas`/`fin_recorrencias`,
+// e o UPDATE de status disparado por `recalcular_parcela_apos_baixa` também é
 // logado automaticamente.
 export type ResultadoLancamento = { ok: true; lancamento: Lancamento } | { ok: false; mensagem: string };
 export type ResultadoBaixa = { ok: true; parcela: Parcela } | { ok: false; mensagem: string };
+export type ResultadoRecorrencia =
+  | { ok: true; recorrencia: Recorrencia; ocorrenciasGeradas: number }
+  | { ok: false; mensagem: string };
 
 function revalidarLancamentos() {
   revalidatePath("/financeiro-gerencial/lancamentos/receitas");
@@ -36,6 +40,25 @@ export async function criarLancamentoAction(input: unknown): Promise<ResultadoLa
     return { ok: true, lancamento };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar o lançamento.") };
+  }
+}
+
+// Não exige conta financeira (item 6: recorrência não pede conta na
+// criação, só na baixa de cada ocorrência gerada, igual lançamento comum).
+export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoRecorrencia> {
+  const acesso = await requireFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_recorrencia_criar");
+    const entrada = validarEntrada(recorrenciaFinanceiraEntradaSchema, input);
+    const { recorrencia, ocorrenciasGeradas } = await criarRecorrencia({
+      ...entrada,
+      unidadeId: acesso.unidadeId,
+      criadoPor: acesso.userId,
+    });
+    revalidarLancamentos();
+    return { ok: true, recorrencia, ocorrenciasGeradas };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a recorrência.") };
   }
 }
 

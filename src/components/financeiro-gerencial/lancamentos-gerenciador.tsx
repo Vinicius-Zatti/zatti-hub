@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { criarLancamentoAction, registrarBaixaAction } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
+import { criarLancamentoAction, criarRecorrenciaAction, registrarBaixaAction } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
+import { ModalFlutuante } from "@/components/modal-flutuante";
+import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { calcularSaldoAberto } from "@/lib/financeiro-gerencial/parcelas";
+import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
 import type {
   CategoriaFinanceira,
   ContaFinanceira,
@@ -37,6 +40,10 @@ function hoje(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Botão de criar abre modal (item 1), Plano de Contas e Conta Financeira
+ * viram seletor com busca (item 3), Conta Financeira é opcional (item 5),
+ * parcelas viram linhas manuais de Vencimento/Valor com recorrência opcional
+ * (item 6) - correção de 25/08 do Financeiro gerencial. */
 export function LancamentosGerenciador({
   tipo,
   lancamentos,
@@ -48,13 +55,21 @@ export function LancamentosGerenciador({
   categorias: CategoriaFinanceira[];
   contas: ContaFinanceira[];
 }) {
-  const titulo = tipo === "receita" ? "Lançamentos de receitas" : "Lançamentos de despesas";
+  const titulo = tipo === "receita" ? "Receitas" : "Despesas";
+  const [criando, setCriando] = useState(false);
 
   return (
     <div className="flex flex-col gap-5 pb-10">
-      <h1 className="font-display text-2xl font-bold text-azul-noite">{titulo}</h1>
-
-      <NovoLancamentoForm tipo={tipo} categorias={categorias} contas={contas} />
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold text-azul-noite">{titulo}</h1>
+        <button
+          type="button"
+          onClick={() => setCriando(true)}
+          className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
+        >
+          + {tipo === "receita" ? "Nova receita" : "Nova despesa"}
+        </button>
+      </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-cinza-claro">
         <table className="w-full text-sm">
@@ -62,7 +77,7 @@ export function LancamentosGerenciador({
             <tr>
               <Th>Competência</Th>
               <Th>Descrição</Th>
-              <Th>Categoria</Th>
+              <Th>Plano de Contas</Th>
               <Th align="center">Parcela</Th>
               <Th align="right">Valor</Th>
               <Th>Vencimento</Th>
@@ -87,35 +102,90 @@ export function LancamentosGerenciador({
           </tbody>
         </table>
       </div>
+
+      <ModalFlutuante aberto={criando} onFechar={() => setCriando(false)}>
+        <FormularioLancamento tipo={tipo} categorias={categorias} contas={contas} onSalvo={() => setCriando(false)} onCancelar={() => setCriando(false)} />
+      </ModalFlutuante>
     </div>
   );
 }
 
-function NovoLancamentoForm({
+type LinhaValor = { valor: number | null; dataPrevista: string };
+
+function FormularioLancamento({
   tipo,
   categorias,
   contas,
+  onSalvo,
+  onCancelar,
 }: {
   tipo: TipoLancamento;
   categorias: CategoriaFinanceira[];
   contas: ContaFinanceira[];
+  onSalvo: () => void;
+  onCancelar: () => void;
 }) {
   const router = useRouter();
-  const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? "");
+  const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias), [categorias]);
+  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+
+  const [categoriaId, setCategoriaId] = useState(opcoesCategoria[0]?.id ?? "");
   const [descricao, setDescricao] = useState("");
   const [dataCompetencia, setDataCompetencia] = useState(hoje());
-  const [contaFinanceiraId, setContaFinanceiraId] = useState(contas[0]?.id ?? "");
+  const [contaFinanceiraId, setContaFinanceiraId] = useState("");
   const [observacao, setObservacao] = useState("");
-  const [valorTotal, setValorTotal] = useState<number | null>(null);
-  const [quantidadeParcelas, setQuantidadeParcelas] = useState(1);
-  const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(hoje());
+  const [recorrente, setRecorrente] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Modo comum: linhas manuais de Vencimento/Valor - 1 linha = à vista, 2+ = parcelado.
+  const [linhas, setLinhas] = useState<LinhaValor[]>([{ valor: null, dataPrevista: hoje() }]);
+
+  // Modo recorrente
+  const [valorRecorrencia, setValorRecorrencia] = useState<number | null>(null);
+  const [diaVencimento, setDiaVencimento] = useState(hoje().slice(8, 10));
+  const [dataInicio, setDataInicio] = useState(hoje());
+  const [modoFim, setModoFim] = useState<"data" | "quantidade">("quantidade");
+  const [dataFim, setDataFim] = useState("");
+  const [quantidadeOcorrencias, setQuantidadeOcorrencias] = useState(12);
+
+  function adicionarLinha() {
+    setLinhas((atual) => [...atual, { valor: null, dataPrevista: hoje() }]);
+  }
+  function removerLinha(indice: number) {
+    setLinhas((atual) => atual.filter((_, i) => i !== indice));
+  }
+  function atualizarLinha(indice: number, patch: Partial<LinhaValor>) {
+    setLinhas((atual) => atual.map((linha, i) => (i === indice ? { ...linha, ...patch } : linha)));
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErro(null);
     startTransition(async () => {
+      if (recorrente) {
+        const fim =
+          modoFim === "data"
+            ? { modo: "data" as const, dataFim }
+            : { modo: "quantidade" as const, quantidadeOcorrencias };
+        const resultado = await criarRecorrenciaAction({
+          tipo,
+          categoriaId,
+          descricao,
+          valor: valorRecorrencia ?? 0,
+          diaVencimento: Number(diaVencimento),
+          dataInicio,
+          fim,
+        });
+        if (!resultado.ok) {
+          setErro(resultado.mensagem);
+          return;
+        }
+        router.refresh();
+        onSalvo();
+        return;
+      }
+
       const resultado = await criarLancamentoAction({
         tipo,
         categoriaId,
@@ -123,58 +193,35 @@ function NovoLancamentoForm({
         dataCompetencia,
         contaFinanceiraId: contaFinanceiraId || null,
         observacao,
-        valorTotal: valorTotal ?? 0,
-        quantidadeParcelas,
-        dataPrimeiraParcela,
+        parcelas: linhas.map((l) => ({ valor: l.valor ?? 0, dataPrevista: l.dataPrevista })),
       });
       if (!resultado.ok) {
         setErro(resultado.mensagem);
         return;
       }
-      setDescricao("");
-      setObservacao("");
-      setValorTotal(null);
-      setQuantidadeParcelas(1);
       router.refresh();
+      onSalvo();
     });
   }
 
+  const rotuloAdicionar = tipo === "receita" ? "+ Adicionar recebimento" : "+ Adicionar pagamento";
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
-      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
-        Novo lançamento de {tipo === "receita" ? "receita" : "despesa"}
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          Categoria
-          <select
-            required
-            value={categoriaId}
-            onChange={(e) => setCategoriaId(e.target.value)}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          >
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          Conta financeira
-          <select
-            value={contaFinanceiraId}
-            onChange={(e) => setContaFinanceiraId(e.target.value)}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          >
-            {contas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">
+        {tipo === "receita" ? "Nova receita" : "Nova despesa"}
+      </h2>
+
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Plano de Contas
+        <SeletorComBusca
+          value={categoriaId}
+          opcoes={opcoesCategoria.map((c) => ({ id: c.id, label: c.caminho }))}
+          onChange={setCategoriaId}
+          placeholder="Selecionar conta..."
+        />
+      </label>
+
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
         Descrição
         <input
@@ -184,7 +231,8 @@ function NovoLancamentoForm({
           className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
         />
       </label>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+      {!recorrente && (
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Competência
           <input
@@ -195,32 +243,127 @@ function NovoLancamentoForm({
             className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          Valor total
-          <CampoNumero value={valorTotal} onChange={setValorTotal} className="w-full" />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          Parcelas
-          <input
-            type="number"
-            min={1}
-            max={360}
-            value={quantidadeParcelas}
-            onChange={(e) => setQuantidadeParcelas(Math.max(1, Number(e.target.value)))}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          1º vencimento
-          <input
-            type="date"
-            required
-            value={dataPrimeiraParcela}
-            onChange={(e) => setDataPrimeiraParcela(e.target.value)}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          />
-        </label>
-      </div>
+      )}
+
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Conta financeira
+        <SeletorComBusca
+          value={contaFinanceiraId}
+          opcoes={opcoesConta}
+          onChange={setContaFinanceiraId}
+          placeholder="Nenhuma (decidir na baixa)"
+          vazioLabel="Nenhuma (decidir na baixa)"
+        />
+      </label>
+
+      {!recorrente && (
+        <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+            {linhas.length > 1 ? "Parcelas" : "Vencimento e valor"}
+          </div>
+          {linhas.map((linha, indice) => (
+            <div key={indice} className="flex items-end gap-2">
+              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                {linhas.length > 1 ? `Vencimento ${indice + 1}/${linhas.length}` : "Vencimento"}
+                <input
+                  type="date"
+                  required
+                  value={linha.dataPrevista}
+                  onChange={(e) => atualizarLinha(indice, { dataPrevista: e.target.value })}
+                  className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                Valor
+                <CampoNumero value={linha.valor} onChange={(v) => atualizarLinha(indice, { valor: v })} className="w-full" />
+              </label>
+              {linhas.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removerLinha(indice)}
+                  className="mb-1.5 shrink-0 text-xs font-semibold text-vermelho"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={adicionarLinha} className="self-start text-xs font-semibold text-azul-petroleo">
+            {rotuloAdicionar}
+          </button>
+        </div>
+      )}
+
+      <label className="flex items-center gap-2 text-sm font-semibold text-cinza-medio">
+        <input type="checkbox" checked={recorrente} onChange={(e) => setRecorrente(e.target.checked)} />
+        Esta conta é recorrente?
+      </label>
+
+      {recorrente && (
+        <div className="flex flex-col gap-3 rounded-lg border border-cinza-claro p-3">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+            Valor de cada ocorrência
+            <CampoNumero value={valorRecorrencia} onChange={setValorRecorrencia} className="w-full" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              Dia de vencimento
+              <input
+                type="number"
+                min={1}
+                max={31}
+                required
+                value={diaVencimento}
+                onChange={(e) => setDiaVencimento(e.target.value)}
+                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              Data inicial
+              <input
+                type="date"
+                required
+                value={dataInicio}
+                onChange={(e) => setDataInicio(e.target.value)}
+                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+              />
+            </label>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="text-xs font-semibold text-cinza-medio">Até quando</div>
+            <div className="flex gap-3 text-xs text-cinza-medio">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={modoFim === "quantidade"} onChange={() => setModoFim("quantidade")} />
+                Número de ocorrências
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={modoFim === "data"} onChange={() => setModoFim("data")} />
+                Data final
+              </label>
+            </div>
+            {modoFim === "quantidade" ? (
+              <input
+                type="number"
+                min={1}
+                max={360}
+                required
+                value={quantidadeOcorrencias}
+                onChange={(e) => setQuantidadeOcorrencias(Math.max(1, Number(e.target.value)))}
+                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+              />
+            ) : (
+              <input
+                type="date"
+                required
+                value={dataFim}
+                onChange={(e) => setDataFim(e.target.value)}
+                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
         Observação
         <textarea
@@ -230,14 +373,25 @@ function NovoLancamentoForm({
           className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
         />
       </label>
+
       {erro && <p className="text-sm text-vermelho">{erro}</p>}
-      <button
-        type="submit"
-        disabled={isPending || !categoriaId}
-        className="mt-1 w-full rounded-lg bg-ambar px-4 py-2.5 text-sm font-bold text-azul-noite disabled:opacity-50 sm:w-auto"
-      >
-        {isPending ? "Salvando..." : "Adicionar lançamento"}
-      </button>
+      <div className="mt-1 flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending || !categoriaId}
+          className="flex-1 rounded-lg bg-ambar px-4 py-2.5 text-sm font-bold text-azul-noite disabled:opacity-50"
+        >
+          {isPending ? "Salvando..." : "Salvar"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
     </form>
   );
 }
@@ -251,17 +405,80 @@ function LinhaParcela({
   parcela: Parcela;
   contas: ContaFinanceira[];
 }) {
-  const router = useRouter();
   const [baixando, setBaixando] = useState(false);
+  const saldoAberto = calcularSaldoAberto(parcela.valor, parcela.valorBaixado);
+  const podeBaixar = parcela.status === "aberto" || parcela.status === "parcial";
+
+  return (
+    <>
+      <tr className="border-b border-cinza-claro">
+        <td className="whitespace-nowrap px-3 py-2">{lancamento.dataCompetencia}</td>
+        <td className="px-3 py-2">
+          {lancamento.descricao}
+          {lancamento.origem === "recorrencia" && (
+            <span className="ml-1.5 rounded-full bg-azul-petroleo/10 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo">
+              Recorrente
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2">{lancamento.categoriaNome}</td>
+        <td className="px-3 py-2 text-center">
+          {parcela.numero}/{parcela.totalParcelas}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(parcela.valor)}</td>
+        <td className="whitespace-nowrap px-3 py-2">{parcela.dataPrevista}</td>
+        <td className="px-3 py-2 text-center">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSE[parcela.status]}`}>
+            {STATUS_LABEL[parcela.status]}
+          </span>
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(saldoAberto)}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-right">
+          {podeBaixar && (
+            <button type="button" onClick={() => setBaixando(true)} className="text-xs font-semibold text-azul-petroleo">
+              {lancamento.tipo === "receita" ? "Registrar recebimento" : "Registrar pagamento"}
+            </button>
+          )}
+        </td>
+      </tr>
+
+      <ModalFlutuante aberto={baixando} onFechar={() => setBaixando(false)}>
+        <FormularioBaixa
+          lancamento={lancamento}
+          parcela={parcela}
+          contas={contas}
+          saldoAberto={saldoAberto}
+          onSalvo={() => setBaixando(false)}
+          onCancelar={() => setBaixando(false)}
+        />
+      </ModalFlutuante>
+    </>
+  );
+}
+
+function FormularioBaixa({
+  lancamento,
+  parcela,
+  contas,
+  saldoAberto,
+  onSalvo,
+  onCancelar,
+}: {
+  lancamento: Lancamento;
+  parcela: Parcela;
+  contas: ContaFinanceira[];
+  saldoAberto: number;
+  onSalvo: () => void;
+  onCancelar: () => void;
+}) {
+  const router = useRouter();
+  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const [contaFinanceiraId, setContaFinanceiraId] = useState(parcela.contaFinanceiraId ?? contas[0]?.id ?? "");
-  const [valor, setValor] = useState<number | null>(calcularSaldoAberto(parcela.valor, parcela.valorBaixado));
+  const [valor, setValor] = useState<number | null>(saldoAberto);
   const [data, setData] = useState(hoje());
   const [observacao, setObservacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  const saldoAberto = calcularSaldoAberto(parcela.valor, parcela.valorBaixado);
-  const podeBaixar = parcela.status === "aberto" || parcela.status === "parcial";
 
   function confirmarBaixa(e: FormEvent) {
     e.preventDefault();
@@ -278,98 +495,63 @@ function LinhaParcela({
         setErro(resultado.mensagem);
         return;
       }
-      setBaixando(false);
       router.refresh();
+      onSalvo();
     });
   }
 
   return (
-    <>
-      <tr className="border-b border-cinza-claro">
-        <td className="whitespace-nowrap px-3 py-2">{lancamento.dataCompetencia}</td>
-        <td className="px-3 py-2">{lancamento.descricao}</td>
-        <td className="px-3 py-2">{lancamento.categoriaNome}</td>
-        <td className="px-3 py-2 text-center">
-          {parcela.numero}/{parcela.totalParcelas}
-        </td>
-        <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(parcela.valor)}</td>
-        <td className="whitespace-nowrap px-3 py-2">{parcela.dataPrevista}</td>
-        <td className="px-3 py-2 text-center">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSE[parcela.status]}`}>
-            {STATUS_LABEL[parcela.status]}
-          </span>
-        </td>
-        <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(saldoAberto)}</td>
-        <td className="whitespace-nowrap px-3 py-2 text-right">
-          {podeBaixar && (
-            <button
-              type="button"
-              onClick={() => setBaixando((v) => !v)}
-              className="text-xs font-semibold text-azul-petroleo"
-            >
-              {lancamento.tipo === "receita" ? "Registrar recebimento" : "Registrar pagamento"}
-            </button>
-          )}
-        </td>
-      </tr>
-      {baixando && (
-        <tr className="border-b border-cinza-claro bg-cinza-claro/20">
-          <td colSpan={9} className="p-3">
-            <form onSubmit={confirmarBaixa} className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                Conta financeira
-                <select
-                  value={contaFinanceiraId}
-                  onChange={(e) => setContaFinanceiraId(e.target.value)}
-                  className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-                >
-                  {contas.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                Valor
-                <CampoNumero value={valor} onChange={setValor} className="w-28" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                Data
-                <input
-                  type="date"
-                  value={data}
-                  onChange={(e) => setData(e.target.value)}
-                  className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-                />
-              </label>
-              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                Observação
-                <input
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-                />
-              </label>
-              {erro && <p className="w-full text-xs text-vermelho">{erro}</p>}
-              <button
-                type="submit"
-                disabled={isPending}
-                className="rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco disabled:opacity-50"
-              >
-                {isPending ? "Salvando..." : "Confirmar"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setBaixando(false)}
-                className="rounded-md border border-cinza-claro px-3 py-1.5 text-xs font-semibold text-cinza-medio"
-              >
-                Cancelar
-              </button>
-            </form>
-          </td>
-        </tr>
-      )}
-    </>
+    <form onSubmit={confirmarBaixa} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">
+        {lancamento.tipo === "receita" ? "Registrar recebimento" : "Registrar pagamento"}
+      </h2>
+      <p className="text-xs text-cinza-medio">
+        {lancamento.descricao} - saldo em aberto R$ {formatarMoeda(saldoAberto)}
+      </p>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Conta financeira
+        <SeletorComBusca value={contaFinanceiraId} opcoes={opcoesConta} onChange={setContaFinanceiraId} placeholder="Selecionar conta..." />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Valor
+        <CampoNumero value={valor} onChange={setValor} className="w-full" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Data
+        <input
+          type="date"
+          required
+          value={data}
+          onChange={(e) => setData(e.target.value)}
+          className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Observação
+        <input
+          value={observacao}
+          onChange={(e) => setObservacao(e.target.value)}
+          className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+        />
+      </label>
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="mt-1 flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending || !contaFinanceiraId}
+          className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Salvando..." : "Confirmar"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
   );
 }

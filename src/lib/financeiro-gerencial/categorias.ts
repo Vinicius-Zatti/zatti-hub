@@ -58,3 +58,26 @@ export function listarContasLancaveis(categorias: CategoriaFinanceira[]): Catego
     (c) => c.nivel === "conta" && !c.arquivado && !(c.papelDre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(c.papelDre)),
   );
 }
+
+/** "CMO > Folha salarial contábil" - sobe a cadeia de pais até a raiz. Nome
+ * repete em vários grupos (ex: 6 contas "Outros"/"Outras" diferentes), por
+ * isso o seletor de Plano de Contas nunca mostra só o nome da folha, sempre
+ * o caminho inteiro. */
+export function caminhoCategoria(categoriaId: string, categorias: CategoriaFinanceira[]): string {
+  const porId = new Map(categorias.map((c) => [c.id, c]));
+  const partes: string[] = [];
+  let atual = porId.get(categoriaId);
+  while (atual) {
+    partes.unshift(atual.nome);
+    atual = atual.parentId ? porId.get(atual.parentId) : undefined;
+  }
+  return partes.join(" > ");
+}
+
+/** Contas-folha lançáveis já com o caminho pronto pro seletor com busca de
+ * Receitas/Despesas. */
+export function listarContasComCaminho(
+  categorias: CategoriaFinanceira[],
+): { id: string; caminho: string }[] {
+  return listarContasLancaveis(categorias).map((c) => ({ id: c.id, caminho: caminhoCategoria(c.id, categorias) }));
+}

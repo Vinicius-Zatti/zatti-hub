@@ -380,6 +380,13 @@ export const arquivarCategoriaFinanceiraEntradaSchema = z
   })
   .strict();
 
+const parcelaManualEntradaSchema = z
+  .object({
+    valor: dinheiroPositivo,
+    dataPrevista: dataIsoSchema,
+  })
+  .strict();
+
 export const lancamentoFinanceiroEntradaSchema = z
   .object({
     tipo: tipoLancamentoFinanceiroSchema,
@@ -388,9 +395,24 @@ export const lancamentoFinanceiroEntradaSchema = z
     dataCompetencia: dataIsoSchema,
     contaFinanceiraId: idUuidSchema.nullable(),
     observacao: texto(2_000),
-    valorTotal: dinheiroPositivo,
-    quantidadeParcelas: z.number().int().min(1).max(360),
-    dataPrimeiraParcela: dataIsoSchema,
+    parcelas: z.array(parcelaManualEntradaSchema).min(1).max(360),
+  })
+  .strict();
+
+const fimRecorrenciaEntradaSchema = z.discriminatedUnion("modo", [
+  z.object({ modo: z.literal("data"), dataFim: dataIsoSchema }).strict(),
+  z.object({ modo: z.literal("quantidade"), quantidadeOcorrencias: z.number().int().min(1).max(360) }).strict(),
+]);
+
+export const recorrenciaFinanceiraEntradaSchema = z
+  .object({
+    tipo: tipoLancamentoFinanceiroSchema,
+    categoriaId: idUuidSchema,
+    descricao: textoObrigatorio(200),
+    valor: dinheiroPositivo,
+    diaVencimento: z.number().int().min(1).max(31),
+    dataInicio: dataIsoSchema,
+    fim: fimRecorrenciaEntradaSchema,
   })
   .strict();
 

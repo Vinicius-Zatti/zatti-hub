@@ -1,35 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { calcularSaldoAberto, calcularStatusParcela, gerarParcelas, somarValores } from "./parcelas";
+import { calcularSaldoAberto, calcularStatusParcela, numerarParcelasManuais } from "./parcelas";
 
-describe("gerarParcelas", () => {
-  it("parcela única devolve o valor cheio na data informada", () => {
-    const parcelas = gerarParcelas(500, 1, "2026-09-10");
+describe("numerarParcelasManuais", () => {
+  it("uma linha só vira parcela única (1/1)", () => {
+    const parcelas = numerarParcelasManuais([{ valor: 500, dataPrevista: "2026-09-10" }]);
     expect(parcelas).toEqual([{ numero: 1, totalParcelas: 1, valor: 500, dataPrevista: "2026-09-10" }]);
   });
 
-  it("divide em parcelas mensais iguais quando o valor é exato", () => {
-    const parcelas = gerarParcelas(300, 3, "2026-01-10");
-    expect(parcelas.map((p) => p.valor)).toEqual([100, 100, 100]);
-    expect(parcelas.map((p) => p.dataPrevista)).toEqual(["2026-01-10", "2026-02-10", "2026-03-10"]);
-  });
-
-  // Critério de aceite 4: parcela com valor/data/status independentes -
-  // aqui garante que a soma das parcelas sempre bate com o valor total,
-  // mesmo quando a divisão não é exata (100/3 = 33,33...).
-  it("joga o resto de arredondamento pra última parcela, soma bate com o total", () => {
-    const parcelas = gerarParcelas(100, 3, "2026-01-05");
-    expect(parcelas.map((p) => p.valor)).toEqual([33.33, 33.33, 33.34]);
-    expect(somarValores(parcelas.map((p) => p.valor))).toBe(100);
+  it("preserva valor e data próprios de cada linha, sem dividir nada", () => {
+    const parcelas = numerarParcelasManuais([
+      { valor: 100, dataPrevista: "2026-01-10" },
+      { valor: 250.5, dataPrevista: "2026-03-01" },
+    ]);
+    expect(parcelas.map((p) => p.valor)).toEqual([100, 250.5]);
+    expect(parcelas.map((p) => p.dataPrevista)).toEqual(["2026-01-10", "2026-03-01"]);
   });
 
   it("cada parcela nasce numerada e sabe o total de parcelas", () => {
-    const parcelas = gerarParcelas(200, 2, "2026-05-01");
+    const parcelas = numerarParcelasManuais([
+      { valor: 100, dataPrevista: "2026-05-01" },
+      { valor: 100, dataPrevista: "2026-06-01" },
+    ]);
     expect(parcelas[0]).toMatchObject({ numero: 1, totalParcelas: 2 });
     expect(parcelas[1]).toMatchObject({ numero: 2, totalParcelas: 2 });
-  });
-
-  it("rejeita menos de 1 parcela", () => {
-    expect(() => gerarParcelas(100, 0, "2026-01-01")).toThrow();
   });
 });
 

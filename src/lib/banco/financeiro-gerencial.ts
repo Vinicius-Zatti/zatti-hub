@@ -1,14 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { CATEGORIAS_PAI_PERMITIDAS } from "@/lib/financeiro-gerencial/categorias";
-import { gerarParcelas, somarValores } from "@/lib/financeiro-gerencial/parcelas";
+import { calcularSaldoAberto, numerarParcelasManuais, somarValores } from "@/lib/financeiro-gerencial/parcelas";
+import { gerarOcorrenciasRecorrencia, type FimRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
 import { PAPEIS_DRE_SOMENTE_PROVISAO } from "@/lib/financeiro-gerencial/tipos";
 import type {
   Baixa,
   CategoriaFinanceira,
   ContaFinanceira,
+  ContaFinanceiraComSaldos,
   Lancamento,
+  OrigemLancamento,
   Parcela,
+  ParcelaManualEntrada,
+  Recorrencia,
   TipoBaixa,
   TipoContaFinanceira,
   TipoLancamento,
@@ -101,6 +106,76 @@ export async function criarContaFinanceira(params: {
   return contaFinanceiraDaLinha(data as ContaFinanceiraRow);
 }
 
+/** Contas financeiras com saldo atual (saldo inicial + baixas realizadas
+ * nessa conta) e projetado (saldo atual + saldo em aberto das parcelas
+ * atribuídas a ela) - só pro cartão de Conta Financeira, mais caro que
+ * `listarContasFinanceiras` (2 queries extras), por isso é uma função à
+ * parte em vez de sempre calcular. Parcela sem `conta_financeira_id` (item 5:
+ * conta financeira opcional no lançamento) nunca entra na projeção de conta
+ * nenhuma - é exatamente por não ter `conta_financeira_id` que ela some do
+ * filtro abaixo. */
+export async function listarContasFinanceirasComSaldos(unidadeId: string): Promise<ContaFinanceiraComSaldos[]> {
+  const supabase = await createClient();
+  const contas = await listarContasFinanceiras(unidadeId);
+  if (contas.length === 0) return [];
+
+  const [{ data: baixasData }, { data: parcelasAbertasData }] = await Promise.all([
+    // Toda baixa realizada, pela conta que o dinheiro de fato usou
+    // (`fin_baixas.conta_financeira_id`, escolhida na hora da baixa - pode
+    // divergir da conta prevista na parcela) - isso é o saldo atual.
+    supabase
+      .from("fin_baixas")
+      .select("conta_financeira_id, valor, tipo, fin_parcelas!inner(fin_lancamentos!inner(tipo))")
+      .eq("unidade_id", unidadeId),
+    // Parcelas ainda em aberto/parcial com conta prevista definida - isso
+    // vira saldo projetado. Sem conta prevista (item 5: conta financeira
+    // opcional) nunca compõe projeção de conta nenhuma.
+    supabase
+      .from("fin_parcelas")
+      .select("id, conta_financeira_id, valor, fin_lancamentos!inner(tipo)")
+      .eq("unidade_id", unidadeId)
+      .not("conta_financeira_id", "is", null)
+      .in("status", ["aberto", "parcial"]),
+  ]);
+
+  const saldoAtualPorConta = new Map<string, number>();
+  for (const b of (baixasData as
+    | { conta_financeira_id: string; valor: number; tipo: TipoBaixa; fin_parcelas: { fin_lancamentos: { tipo: TipoLancamento } } }[]
+    | null) ?? []) {
+    const sinalTipo = b.fin_parcelas.fin_lancamentos.tipo === "receita" ? 1 : -1;
+    const sinalEstorno = b.tipo === "estorno" ? -1 : 1;
+    const atual = saldoAtualPorConta.get(b.conta_financeira_id) ?? 0;
+    saldoAtualPorConta.set(b.conta_financeira_id, atual + sinalTipo * sinalEstorno * Number(b.valor));
+  }
+
+  const idsParcelasAbertas = ((parcelasAbertasData as { id: string }[] | null) ?? []).map((p) => p.id);
+  const { data: baixasDasAbertasData } =
+    idsParcelasAbertas.length > 0
+      ? await supabase.from("fin_baixas").select("parcela_id, valor, tipo").in("parcela_id", idsParcelasAbertas)
+      : { data: [] };
+  const valorBaixadoPorParcela = new Map<string, number>();
+  for (const b of (baixasDasAbertasData as { parcela_id: string; valor: number; tipo: TipoBaixa }[] | null) ?? []) {
+    const sinal = b.tipo === "estorno" ? -1 : 1;
+    valorBaixadoPorParcela.set(b.parcela_id, (valorBaixadoPorParcela.get(b.parcela_id) ?? 0) + sinal * Number(b.valor));
+  }
+
+  const saldoAbertoPorConta = new Map<string, number>();
+  for (const p of (parcelasAbertasData as
+    | { id: string; conta_financeira_id: string; valor: number; fin_lancamentos: { tipo: TipoLancamento } }[]
+    | null) ?? []) {
+    const sinalTipo = p.fin_lancamentos.tipo === "receita" ? 1 : -1;
+    const saldoAberto = calcularSaldoAberto(Number(p.valor), valorBaixadoPorParcela.get(p.id) ?? 0);
+    const atual = saldoAbertoPorConta.get(p.conta_financeira_id) ?? 0;
+    saldoAbertoPorConta.set(p.conta_financeira_id, atual + sinalTipo * saldoAberto);
+  }
+
+  return contas.map((conta) => {
+    const saldoAtual = conta.saldoInicial + (saldoAtualPorConta.get(conta.id) ?? 0);
+    const saldoProjetado = saldoAtual + (saldoAbertoPorConta.get(conta.id) ?? 0);
+    return { ...conta, saldoAtual, saldoProjetado };
+  });
+}
+
 export async function editarContaFinanceira(params: {
   unidadeId: string;
   id: string;
@@ -187,7 +262,7 @@ export async function criarCategoriaPersonalizada(params: {
   const paiRow = pai as { id: string; codigo_sistema: string | null; arquivado: boolean } | null;
   const papelDre = paiRow?.codigo_sistema ? CATEGORIAS_PAI_PERMITIDAS[paiRow.codigo_sistema] : undefined;
   if (!paiRow || paiRow.arquivado || !papelDre) {
-    throw new ErroPublico("Não é permitido criar categoria nesse grupo.");
+    throw new ErroPublico("Não é permitido criar conta nesse grupo de contas.");
   }
 
   const { data, error } = await supabase
@@ -266,10 +341,15 @@ type LancamentoRow = {
   data_competencia: string;
   conta_financeira_id: string | null;
   observacao: string;
+  origem: OrigemLancamento;
+  recorrencia_id: string | null;
   criado_por: string;
   criado_em: string;
   fin_categorias: { nome: string } | null;
 };
+
+const COLUNAS_LANCAMENTO =
+  "id, tipo, categoria_id, descricao, data_competencia, conta_financeira_id, observacao, origem, recorrencia_id, criado_por, criado_em, fin_categorias(nome)";
 
 type ParcelaRow = {
   id: string;
@@ -332,7 +412,8 @@ function lancamentoDaLinha(row: LancamentoRow, parcelas: Parcela[], nomeCriador:
     dataCompetencia: row.data_competencia,
     contaFinanceiraId: row.conta_financeira_id,
     observacao: row.observacao,
-    origem: "comum",
+    origem: row.origem,
+    recorrenciaId: row.recorrencia_id,
     criadoPorNome: nomeCriador,
     criadoEm: row.criado_em,
     parcelas,
@@ -346,9 +427,7 @@ export async function listarLancamentos(
   const supabase = await createClient();
   let query = supabase
     .from("fin_lancamentos")
-    .select(
-      "id, tipo, categoria_id, descricao, data_competencia, conta_financeira_id, observacao, criado_por, criado_em, fin_categorias(nome)",
-    )
+    .select(COLUNAS_LANCAMENTO)
     .eq("unidade_id", unidadeId)
     .order("data_competencia", { ascending: false });
 
@@ -374,9 +453,7 @@ export async function obterLancamento(unidadeId: string, id: string): Promise<La
   const supabase = await createClient();
   const { data } = await supabase
     .from("fin_lancamentos")
-    .select(
-      "id, tipo, categoria_id, descricao, data_competencia, conta_financeira_id, observacao, criado_por, criado_em, fin_categorias(nome)",
-    )
+    .select(COLUNAS_LANCAMENTO)
     .eq("unidade_id", unidadeId)
     .eq("id", id)
     .maybeSingle();
@@ -390,26 +467,24 @@ export async function obterLancamento(unidadeId: string, id: string): Promise<La
   return lancamentoDaLinha(linha, parcelasPorLancamento.get(linha.id) ?? [], nomes.get(linha.criado_por) ?? "Usuário");
 }
 
-export async function criarLancamento(params: {
-  unidadeId: string;
-  tipo: TipoLancamento;
-  categoriaId: string;
-  descricao: string;
-  dataCompetencia: string;
-  contaFinanceiraId: string | null;
-  observacao: string;
-  valorTotal: number;
-  quantidadeParcelas: number;
-  dataPrimeiraParcela: string;
-  criadoPor: string;
-}): Promise<Lancamento> {
-  const supabase = await createClient();
-
+/** Confere que a categoria existe, é folha lançável (não grupo/subgrupo, não
+ * arquivada, não uma das 3 só-de-provisão) e que o tipo bate com o papel_dre
+ * dela (só a conta "receita" é receita, todo o resto é sempre despesa) -
+ * mesma regra pra lançamento comum e pra recorrência, então vive numa função
+ * só. O gatilho `proteger_lancamento_financeiro` repete essa checagem no
+ * banco (defesa em profundidade), isto aqui é só pra falhar cedo com
+ * mensagem amigável. */
+async function validarCategoriaParaLancamento(
+  supabase: SupabaseClient,
+  unidadeId: string,
+  categoriaId: string,
+  tipo: TipoLancamento,
+): Promise<void> {
   const { data: categoria } = await supabase
     .from("fin_categorias")
     .select("id, nivel, papel_dre, arquivado")
-    .eq("unidade_id", params.unidadeId)
-    .eq("id", params.categoriaId)
+    .eq("unidade_id", unidadeId)
+    .eq("id", categoriaId)
     .maybeSingle();
   const categoriaRow = categoria as { id: string; nivel: string; papel_dre: string | null; arquivado: boolean } | null;
   if (
@@ -418,15 +493,27 @@ export async function criarLancamento(params: {
     categoriaRow.arquivado ||
     (categoriaRow.papel_dre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(categoriaRow.papel_dre as never))
   ) {
-    throw new ErroPublico("Categoria inválida para lançamento manual.");
+    throw new ErroPublico("Conta do Plano de Contas inválida para lançamento manual.");
   }
-  // Só a conta "receita" é receita - todas as outras (Deduções, CMV, CMO,
-  // Custos Operacionais, Saídas Não Operacionais) são sempre despesa. Guarda
-  // contra a tela de Receitas salvar numa categoria de despesa ou vice-versa.
   const ehCategoriaDeReceita = categoriaRow.papel_dre === "receita";
-  if ((params.tipo === "receita") !== ehCategoriaDeReceita) {
-    throw new ErroPublico("Categoria não corresponde ao tipo do lançamento.");
+  if ((tipo === "receita") !== ehCategoriaDeReceita) {
+    throw new ErroPublico("Conta do Plano de Contas não corresponde ao tipo do lançamento.");
   }
+}
+
+export async function criarLancamento(params: {
+  unidadeId: string;
+  tipo: TipoLancamento;
+  categoriaId: string;
+  descricao: string;
+  dataCompetencia: string;
+  contaFinanceiraId: string | null;
+  observacao: string;
+  parcelas: ParcelaManualEntrada[];
+  criadoPor: string;
+}): Promise<Lancamento> {
+  const supabase = await createClient();
+  await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, params.tipo);
 
   const { data: lancamentoInserido, error: erroLancamento } = await supabase
     .from("fin_lancamentos")
@@ -447,7 +534,7 @@ export async function criarLancamento(params: {
     throw new Error(erroLancamento?.message ?? "Falha ao criar lançamento");
   }
 
-  const parcelasGeradas = gerarParcelas(params.valorTotal, params.quantidadeParcelas, params.dataPrimeiraParcela);
+  const parcelasGeradas = numerarParcelasManuais(params.parcelas);
   const { error: erroParcelas } = await supabase.from("fin_parcelas").insert(
     parcelasGeradas.map((p) => ({
       unidade_id: params.unidadeId,
@@ -464,6 +551,130 @@ export async function criarLancamento(params: {
   const salvo = await obterLancamento(params.unidadeId, lancamentoInserido.id);
   if (!salvo) throw new Error("Lançamento criado mas não encontrado na releitura");
   return salvo;
+}
+
+// ── Recorrências ─────────────────────────────────────────────────────────
+
+type RecorrenciaRow = {
+  id: string;
+  tipo: TipoLancamento;
+  categoria_id: string;
+  descricao: string;
+  valor: number;
+  dia_vencimento: number;
+  data_inicio: string;
+  data_fim: string | null;
+  quantidade_ocorrencias: number | null;
+  ativa: boolean;
+  criado_em: string;
+  fin_categorias: { nome: string } | null;
+};
+
+function recorrenciaDaLinha(row: RecorrenciaRow): Recorrencia {
+  return {
+    id: row.id,
+    tipo: row.tipo,
+    categoriaId: row.categoria_id,
+    categoriaNome: row.fin_categorias?.nome ?? "",
+    descricao: row.descricao,
+    valor: Number(row.valor),
+    diaVencimento: row.dia_vencimento,
+    dataInicio: row.data_inicio,
+    dataFim: row.data_fim,
+    quantidadeOcorrencias: row.quantidade_ocorrencias,
+    ativa: row.ativa,
+    criadoEm: row.criado_em,
+  };
+}
+
+/** Cria a recorrência e já gera de uma vez todo lançamento/parcela futuro
+ * (1 lançamento + 1 parcela por ocorrência, `origem = 'recorrencia'`) - sem
+ * job/cron nesta fase, por isso `fim` é sempre obrigatório (nunca "pra
+ * sempre", ver `MAXIMO_OCORRENCIAS_RECORRENCIA`). Baixar uma dessas parcelas
+ * depois segue `registrarBaixa` normal - como cada ocorrência já nasce como
+ * lançamento próprio (sua própria competência), a baixa nunca duplica nada
+ * na DRE, só move DFC/caixa. 3 idas ao banco (recorrência, N lançamentos, N
+ * parcelas) em vez de N sequenciais - depende da ordem de `RETURNING` num
+ * único `INSERT ... VALUES` bater com a ordem de entrada, garantida pelo
+ * Postgres pra uma única instrução (nunca inserida linha a linha). */
+export async function criarRecorrencia(params: {
+  unidadeId: string;
+  tipo: TipoLancamento;
+  categoriaId: string;
+  descricao: string;
+  valor: number;
+  diaVencimento: number;
+  dataInicio: string;
+  fim: FimRecorrencia;
+  criadoPor: string;
+}): Promise<{ recorrencia: Recorrencia; ocorrenciasGeradas: number }> {
+  const supabase = await createClient();
+  await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, params.tipo);
+
+  const datas = gerarOcorrenciasRecorrencia({
+    diaVencimento: params.diaVencimento,
+    dataInicio: params.dataInicio,
+    fim: params.fim,
+  });
+
+  const { data: recorrenciaInserida, error: erroRecorrencia } = await supabase
+    .from("fin_recorrencias")
+    .insert({
+      unidade_id: params.unidadeId,
+      tipo: params.tipo,
+      categoria_id: params.categoriaId,
+      descricao: params.descricao,
+      valor: params.valor,
+      dia_vencimento: params.diaVencimento,
+      data_inicio: params.dataInicio,
+      data_fim: params.fim.modo === "data" ? params.fim.dataFim : null,
+      quantidade_ocorrencias: params.fim.modo === "quantidade" ? params.fim.quantidadeOcorrencias : null,
+      criado_por: params.criadoPor,
+    })
+    .select("id, tipo, categoria_id, descricao, valor, dia_vencimento, data_inicio, data_fim, quantidade_ocorrencias, ativa, criado_em, fin_categorias(nome)")
+    .single();
+  if (erroRecorrencia || !recorrenciaInserida) {
+    throw new Error(erroRecorrencia?.message ?? "Falha ao criar recorrência");
+  }
+
+  const { data: lancamentosInseridos, error: erroLancamentos } = await supabase
+    .from("fin_lancamentos")
+    .insert(
+      datas.map((data) => ({
+        unidade_id: params.unidadeId,
+        tipo: params.tipo,
+        categoria_id: params.categoriaId,
+        descricao: params.descricao,
+        data_competencia: data,
+        conta_financeira_id: null,
+        observacao: "",
+        origem: "recorrencia",
+        recorrencia_id: recorrenciaInserida.id,
+        criado_por: params.criadoPor,
+      })),
+    )
+    .select("id");
+  if (erroLancamentos || !lancamentosInseridos || lancamentosInseridos.length !== datas.length) {
+    throw new Error(erroLancamentos?.message ?? "Falha ao criar lançamentos da recorrência");
+  }
+
+  const { error: erroParcelas } = await supabase.from("fin_parcelas").insert(
+    lancamentosInseridos.map((lancamento, indice) => ({
+      unidade_id: params.unidadeId,
+      lancamento_id: lancamento.id,
+      numero: 1,
+      total_parcelas: 1,
+      valor: params.valor,
+      data_prevista: datas[indice],
+      conta_financeira_id: null,
+    })),
+  );
+  if (erroParcelas) throw new Error(erroParcelas.message);
+
+  return {
+    recorrencia: recorrenciaDaLinha(recorrenciaInserida as unknown as RecorrenciaRow),
+    ocorrenciasGeradas: datas.length,
+  };
 }
 
 /** Releitura pós-escrita de uma parcela - o `valorBaixado` vem de somar

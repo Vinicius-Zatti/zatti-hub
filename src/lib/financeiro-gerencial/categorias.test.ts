@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listarContasLancaveis, montarArvoreCategorias } from "./categorias";
+import { caminhoCategoria, listarContasLancaveis, montarArvoreCategorias } from "./categorias";
 import type { CategoriaFinanceira } from "./tipos";
 
 function categoria(parcial: Partial<CategoriaFinanceira> & { id: string }): CategoriaFinanceira {
@@ -65,5 +65,26 @@ describe("listarContasLancaveis", () => {
     ];
 
     expect(listarContasLancaveis(lista).map((c) => c.id)).toEqual(["ativa"]);
+  });
+});
+
+describe("caminhoCategoria", () => {
+  it("sobe até o grupo principal quando não há subgrupo (CMO > conta)", () => {
+    const lista: CategoriaFinanceira[] = [
+      categoria({ id: "cmo", nivel: "grupo_principal", nome: "CMO" }),
+      categoria({ id: "folha", parentId: "cmo", papelDre: "cmo", nome: "Folha salarial contábil" }),
+    ];
+
+    expect(caminhoCategoria("folha", lista)).toBe("CMO > Folha salarial contábil");
+  });
+
+  it("passa pelo subgrupo quando existe (grupo > subgrupo > conta)", () => {
+    const lista: CategoriaFinanceira[] = [
+      categoria({ id: "op", nivel: "grupo_principal", nome: "Custos Operacionais" }),
+      categoria({ id: "ocupacao", parentId: "op", nivel: "subgrupo", nome: "Custos de Ocupação" }),
+      categoria({ id: "aluguel", parentId: "ocupacao", papelDre: "custo_ocupacao", nome: "Aluguel" }),
+    ];
+
+    expect(caminhoCategoria("aluguel", lista)).toBe("Custos Operacionais > Custos de Ocupação > Aluguel");
   });
 });
