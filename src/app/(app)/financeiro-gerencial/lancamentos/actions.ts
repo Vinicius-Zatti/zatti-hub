@@ -1,11 +1,12 @@
 "use server";
 
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, excluirLancamento, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
 import {
   baixaFinanceiraEntradaSchema,
   editarLancamentoFinanceiroEntradaSchema,
   estornarBaixaEntradaSchema,
+  excluirLancamentoEntradaSchema,
   lancamentoFinanceiroEntradaSchema,
   recorrenciaFinanceiraEntradaSchema,
   validarEntrada,
@@ -25,6 +26,7 @@ export type ResultadoBaixa = { ok: true; parcela: Parcela } | { ok: false; mensa
 export type ResultadoRecorrencia =
   | { ok: true; recorrencia: Recorrencia; ocorrenciasGeradas: number }
   | { ok: false; mensagem: string };
+export type ResultadoExclusao = { ok: true } | { ok: false; mensagem: string };
 
 function revalidarLancamentos() {
   revalidatePath("/financeiro-gerencial/lancamentos/receitas");
@@ -75,6 +77,21 @@ export async function editarLancamentoAction(input: unknown): Promise<ResultadoL
     return { ok: true, lancamento };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar o lançamento.") };
+  }
+}
+
+// Excluir só enquanto sem baixa (trigger `impedir_exclusao_lancamento_com_baixa`
+// é a barreira real) e só Gestão/master (RLS `fin_lancamentos_delete_gestao`).
+export async function excluirLancamentoAction(input: unknown): Promise<ResultadoExclusao> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_lancamento_excluir");
+    const entrada = validarEntrada(excluirLancamentoEntradaSchema, input);
+    await excluirLancamento({ ...entrada, unidadeId: acesso.unidadeId });
+    revalidarLancamentos();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível excluir o lançamento.") };
   }
 }
 

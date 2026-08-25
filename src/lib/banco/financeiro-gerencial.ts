@@ -618,6 +618,24 @@ export async function editarLancamento(params: {
   return salvo;
 }
 
+/** Exclui o lançamento (e as parcelas dele, por `on delete cascade`) - só
+ * enquanto nenhuma parcela tiver baixa registrada, barrado pela trigger
+ * `impedir_exclusao_lancamento_com_baixa` (migração
+ * `20260825160000_...sql`) e restrito a Gestão/master pela RLS
+ * `fin_lancamentos_delete_gestao`. Lançamento errado sem baixa nenhuma:
+ * exclui e lança de novo. Com baixa: corrige por estorno, nunca some do
+ * histórico. */
+export async function excluirLancamento(params: { unidadeId: string; id: string }): Promise<void> {
+  const supabase = await createClient();
+  const { error, count } = await supabase
+    .from("fin_lancamentos")
+    .delete({ count: "exact" })
+    .eq("unidade_id", params.unidadeId)
+    .eq("id", params.id);
+  if (error) throw erroDeNegocio(error);
+  if (!count) throw new ErroPublico("Lançamento não encontrado.");
+}
+
 // ── Recorrências ─────────────────────────────────────────────────────────
 
 type RecorrenciaRow = {

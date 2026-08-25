@@ -29,7 +29,8 @@ export type ChaveLimiteRequisicao =
   | "fin_lancamento_editar"
   | "fin_baixa_registrar"
   | "fin_baixa_estornar"
-  | "fin_recorrencia_criar";
+  | "fin_recorrencia_criar"
+  | "fin_lancamento_excluir";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do
  * banco estiver indisponivel, a mutacao nao continua sem protecao. */

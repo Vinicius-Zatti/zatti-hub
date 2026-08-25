@@ -6,6 +6,7 @@ import {
   criarLancamentoAction,
   criarRecorrenciaAction,
   editarLancamentoAction,
+  excluirLancamentoAction,
   registrarBaixaAction,
 } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
 import { CampoNumero } from "@/components/campo-numero";
@@ -342,10 +343,18 @@ function FormularioLancamento({
         </div>
       )}
 
-      <label className="flex items-center gap-2 text-sm font-semibold text-cinza-medio">
-        <input type="checkbox" checked={recorrente} onChange={(e) => setRecorrente(e.target.checked)} />
-        Esta conta é recorrente?
-      </label>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-sm font-semibold text-cinza-medio">
+          <input type="checkbox" checked={recorrente} onChange={(e) => setRecorrente(e.target.checked)} />
+          Esta conta é recorrente?
+        </label>
+        <p className="pl-6 text-xs text-cinza-medio">
+          Use aqui pra conta fixa que se repete todo mês (ex: aluguel) - cada mês vira um lançamento
+          próprio, com a competência daquele mês. Diferente de parcelar (as linhas de{" "}
+          {rotuloAdicionar.toLowerCase()} acima), que é um valor só dividido em parcelas dentro da
+          mesma competência.
+        </p>
+      </div>
 
       {recorrente && (
         <div className="flex flex-col gap-3 rounded-lg border border-cinza-claro p-3">
@@ -634,8 +643,12 @@ function LinhaParcela({
   onEditar: () => void;
 }) {
   const [baixando, setBaixando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const saldoAberto = calcularSaldoAberto(parcela.valor, parcela.valorBaixado);
   const podeBaixar = parcela.status === "aberto" || parcela.status === "parcial";
+  // Hint de UI - a trava real é a trigger `impedir_exclusao_lancamento_com_baixa`,
+  // que olha TODAS as parcelas do lançamento, não só esta linha.
+  const semNenhumaBaixa = lancamento.parcelas.every((p) => p.valorBaixado === 0);
 
   return (
     <>
@@ -667,6 +680,11 @@ function LinhaParcela({
                 Editar
               </button>
             )}
+            {podeGerir && semNenhumaBaixa && (
+              <button type="button" onClick={() => setExcluindo(true)} className="text-xs font-semibold text-vermelho">
+                Excluir
+              </button>
+            )}
             {podeBaixar && (
               <button type="button" onClick={() => setBaixando(true)} className="text-xs font-semibold text-azul-petroleo">
                 {lancamento.tipo === "receita" ? "Registrar recebimento" : "Registrar pagamento"}
@@ -686,7 +704,68 @@ function LinhaParcela({
           onCancelar={() => setBaixando(false)}
         />
       </ModalFlutuante>
+
+      <ModalFlutuante aberto={excluindo} onFechar={() => setExcluindo(false)}>
+        <ConfirmarExclusaoLancamento lancamento={lancamento} onExcluido={() => setExcluindo(false)} onCancelar={() => setExcluindo(false)} />
+      </ModalFlutuante>
     </>
+  );
+}
+
+function ConfirmarExclusaoLancamento({
+  lancamento,
+  onExcluido,
+  onCancelar,
+}: {
+  lancamento: Lancamento;
+  onExcluido: () => void;
+  onCancelar: () => void;
+}) {
+  const router = useRouter();
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function confirmar() {
+    setErro(null);
+    startTransition(async () => {
+      const resultado = await excluirLancamentoAction({ id: lancamento.id });
+      if (!resultado.ok) {
+        setErro(resultado.mensagem);
+        return;
+      }
+      router.refresh();
+      onExcluido();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Excluir lançamento</h2>
+      <p className="text-sm text-cinza">
+        Tem certeza que deseja excluir <strong>{lancamento.descricao}</strong>
+        {lancamento.parcelas.length > 1 ? ` e as ${lancamento.parcelas.length} parcelas dele` : ""}? Essa ação não pode
+        ser desfeita.
+      </p>
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="mt-1 flex gap-2">
+        <button
+          type="button"
+          onClick={confirmar}
+          disabled={isPending}
+          className="flex-1 rounded-lg bg-vermelho px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Excluindo..." : "Confirmar exclusão"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -440,6 +440,12 @@ export const editarLancamentoFinanceiroEntradaSchema = z
   })
   .strict();
 
+export const excluirLancamentoEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+  })
+  .strict();
+
 export const baixaFinanceiraEntradaSchema = z
   .object({
     parcelaId: idUuidSchema,
