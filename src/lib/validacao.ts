@@ -416,6 +416,15 @@ export const recorrenciaFinanceiraEntradaSchema = z
   })
   .strict();
 
+const parcelaEdicaoEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    valor: dinheiroPositivo,
+    dataPrevista: dataIsoSchema,
+    contaFinanceiraId: idUuidSchema.nullable(),
+  })
+  .strict();
+
 export const editarLancamentoFinanceiroEntradaSchema = z
   .object({
     id: idUuidSchema,
@@ -424,6 +433,10 @@ export const editarLancamentoFinanceiroEntradaSchema = z
     dataCompetencia: dataIsoSchema,
     contaFinanceiraId: idUuidSchema.nullable(),
     observacao: texto(2_000),
+    // Edita valor/data/conta de parcela já existente (Gestão/master, migração
+    // `20260825140000_...sql`) - nunca adiciona/remove linha, número e total
+    // de parcelas continuam fixos.
+    parcelas: z.array(parcelaEdicaoEntradaSchema).min(1).max(360),
   })
   .strict();
 

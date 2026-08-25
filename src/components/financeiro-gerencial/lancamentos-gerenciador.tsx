@@ -95,16 +95,22 @@ export function LancamentosGerenciador({
       </div>
 
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel={`Tabela de ${titulo.toLowerCase()}`}>
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th>Data de Competência</Th>
-              <Th>{rotuloData}</Th>
-              <Th align="right">Valor</Th>
+              <Th larguraFixa="96px">Data de Competência</Th>
+              <Th larguraFixa="96px">{rotuloData}</Th>
+              <Th align="right" larguraFixa="104px">
+                Valor
+              </Th>
               <Th>Descrição</Th>
-              <Th align="center">Parcela</Th>
+              <Th align="center" larguraFixa="72px">
+                Parcela
+              </Th>
               <Th>Plano de Contas</Th>
-              <Th align="center">Status</Th>
+              <Th align="center" larguraFixa="96px">
+                Status
+              </Th>
               <Th align="right">Ação</Th>
             </tr>
           </thead>
@@ -438,8 +444,13 @@ function FormularioLancamento({
   );
 }
 
-/** Só os campos do lançamento (Plano de Contas, descrição, competência,
- * conta financeira, observação) - parcela é imutável, corrige por estorno. */
+type LinhaParcelaEdicao = { id: string; valor: number | null; dataPrevista: string; contaFinanceiraId: string };
+
+/** Edita os campos do lançamento e o valor/data/conta de cada parcela já
+ * existente (Gestão/master, migração `20260825140000_...sql` - editar
+ * sempre, mesmo com baixa, a pedido explícito de Vinícius em 25/08). Nunca
+ * adiciona/remove parcela - reestruturar o parcelamento é excluir e lançar
+ * de novo. */
 function FormularioEditarLancamento({
   lancamento,
   categorias,
@@ -456,14 +467,22 @@ function FormularioEditarLancamento({
   const router = useRouter();
   const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias), [categorias]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+  const rotuloData = rotuloDataParcela(lancamento.tipo);
 
   const [categoriaId, setCategoriaId] = useState(lancamento.categoriaId);
   const [descricao, setDescricao] = useState(lancamento.descricao);
   const [dataCompetencia, setDataCompetencia] = useState(lancamento.dataCompetencia);
   const [contaFinanceiraId, setContaFinanceiraId] = useState(lancamento.contaFinanceiraId ?? "");
   const [observacao, setObservacao] = useState(lancamento.observacao);
+  const [parcelas, setParcelas] = useState<LinhaParcelaEdicao[]>(
+    lancamento.parcelas.map((p) => ({ id: p.id, valor: p.valor, dataPrevista: p.dataPrevista, contaFinanceiraId: p.contaFinanceiraId ?? "" })),
+  );
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  function atualizarParcela(indice: number, patch: Partial<LinhaParcelaEdicao>) {
+    setParcelas((atual) => atual.map((p, i) => (i === indice ? { ...p, ...patch } : p)));
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -476,6 +495,12 @@ function FormularioEditarLancamento({
         dataCompetencia,
         contaFinanceiraId: contaFinanceiraId || null,
         observacao,
+        parcelas: parcelas.map((p) => ({
+          id: p.id,
+          valor: p.valor ?? 0,
+          dataPrevista: p.dataPrevista,
+          contaFinanceiraId: p.contaFinanceiraId || null,
+        })),
       });
       if (!resultado.ok) {
         setErro(resultado.mensagem);
@@ -518,7 +543,7 @@ function FormularioEditarLancamento({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-        Conta financeira
+        Conta financeira do lançamento
         <SeletorComBusca
           value={contaFinanceiraId}
           opcoes={opcoesConta}
@@ -527,6 +552,43 @@ function FormularioEditarLancamento({
           vazioLabel="Nenhuma (decidir na baixa)"
         />
       </label>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro p-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+          {parcelas.length > 1 ? "Parcelas" : rotuloData}
+        </div>
+        {parcelas.map((parcela, indice) => (
+          <div key={parcela.id} className="flex flex-col gap-2 border-b border-cinza-claro pb-2 last:border-b-0 last:pb-0">
+            <div className="flex items-end gap-2">
+              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                {parcelas.length > 1 ? `${rotuloData} ${indice + 1}/${parcelas.length}` : rotuloData}
+                <input
+                  type="date"
+                  required
+                  value={parcela.dataPrevista}
+                  onChange={(e) => atualizarParcela(indice, { dataPrevista: e.target.value })}
+                  className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+                />
+              </label>
+              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                Valor
+                <CampoNumero value={parcela.valor} onChange={(v) => atualizarParcela(indice, { valor: v })} className="w-full" />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              Conta financeira da parcela
+              <SeletorComBusca
+                value={parcela.contaFinanceiraId}
+                opcoes={opcoesConta}
+                onChange={(v) => atualizarParcela(indice, { contaFinanceiraId: v })}
+                placeholder="Nenhuma (decidir na baixa)"
+                vazioLabel="Nenhuma (decidir na baixa)"
+              />
+            </label>
+          </div>
+        ))}
+      </div>
+
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
         Observação
         <textarea
@@ -581,7 +643,7 @@ function LinhaParcela({
         <td className="whitespace-nowrap px-3 py-2">{formatarDataBr(lancamento.dataCompetencia)}</td>
         <td className="whitespace-nowrap px-3 py-2">{formatarDataBr(parcela.dataPrevista)}</td>
         <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(parcela.valor)}</td>
-        <td className="px-3 py-2">
+        <td className="min-w-[180px] px-3 py-2">
           {lancamento.descricao}
           {lancamento.origem === "recorrencia" && (
             <span className="ml-1.5 rounded-full bg-azul-petroleo/10 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo">
@@ -592,7 +654,7 @@ function LinhaParcela({
         <td className="px-3 py-2 text-center">
           {parcela.numero}/{parcela.totalParcelas}
         </td>
-        <td className="px-3 py-2">{lancamento.categoriaNome}</td>
+        <td className="min-w-[200px] px-3 py-2">{lancamento.categoriaNome}</td>
         <td className="px-3 py-2 text-center">
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSE[parcela.status]}`}>
             {STATUS_LABEL[parcela.status]}

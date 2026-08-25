@@ -554,13 +554,15 @@ export async function criarLancamento(params: {
 }
 
 /** Edita os campos do lançamento (Plano de Contas, descrição, competência,
- * conta financeira, observação) - restrito a Gestão/master pela RLS
- * `fin_lancamentos_update_gestao`, não checado de novo aqui. As parcelas
- * nunca mudam por aqui (imutáveis desde a criação, ver
- * `proteger_parcela_financeira`) - corrigir valor/data de parcela é sempre
- * por estorno, não por editar o lançamento. `tipo` também não muda (uma
- * receita não vira despesa depois de criada) - a categoria nova só precisa
- * continuar batendo com o tipo já existente do lançamento. */
+ * conta financeira, observação) e o valor/data/conta de cada parcela já
+ * existente - restrito a Gestão/master pela RLS `fin_lancamentos_update_gestao`
+ * e, pro lado da parcela, pelo próprio gatilho `proteger_parcela_financeira`
+ * (migração `20260825140000_...sql`), não checado de novo aqui. Nunca
+ * adiciona/remove parcela (número e total continuam fixos - reestruturar o
+ * parcelamento é excluir e lançar de novo) nem muda o valor de uma parcela
+ * pra menos do que já foi baixado nela (mesmo gatilho). `tipo` também não
+ * muda (uma receita não vira despesa depois de criada) - a categoria nova só
+ * precisa continuar batendo com o tipo já existente do lançamento. */
 export async function editarLancamento(params: {
   unidadeId: string;
   id: string;
@@ -569,6 +571,7 @@ export async function editarLancamento(params: {
   dataCompetencia: string;
   contaFinanceiraId: string | null;
   observacao: string;
+  parcelas: { id: string; valor: number; dataPrevista: string; contaFinanceiraId: string | null }[];
 }): Promise<Lancamento> {
   const supabase = await createClient();
 
@@ -595,6 +598,20 @@ export async function editarLancamento(params: {
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id);
   if (error) throw erroDeNegocio(error);
+
+  for (const parcela of params.parcelas) {
+    const { error: erroParcela } = await supabase
+      .from("fin_parcelas")
+      .update({
+        valor: parcela.valor,
+        data_prevista: parcela.dataPrevista,
+        conta_financeira_id: parcela.contaFinanceiraId,
+      })
+      .eq("unidade_id", params.unidadeId)
+      .eq("lancamento_id", params.id)
+      .eq("id", parcela.id);
+    if (erroParcela) throw erroDeNegocio(erroParcela);
+  }
 
   const salvo = await obterLancamento(params.unidadeId, params.id);
   if (!salvo) throw new Error("Lançamento editado mas não encontrado na releitura");
