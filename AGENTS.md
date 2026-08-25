@@ -1,7 +1,11 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->
 
 ## Identidade visual oficial
@@ -18,14 +22,62 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Convenções fixas deste projeto
 
-- **Toda tabela precisa de cabeçalho fixo (sticky)** — a pessoa rola a tabela
-  e o cabeçalho continua visível, pra saber qual coluna é qual. Padrão: use
-  `<Th>` de `src/components/tabela.tsx` em cada `<th>`, dentro de um
-  container com `max-h-[70vh] overflow-auto` (ou `max-h-[50vh]` pra tabelas
-  menores, tipo por-fornecedor) envolvendo a `<table>`. Regra fixada em
-  21/07/2026 — não pedir de novo, aplicar direto em toda tabela nova. Já
-  migradas: Produtos, Edição de Dados (Produtos e Fornecedores), Fornecedores,
-  Visualização de Contagens, Pedido de Compras, Cotações da Semana.
+- **Toda tabela segue o mesmo componente, cor de cabeçalho e zoom** — nunca
+  reinventar isso numa tela nova. Cabeçalho fixo (sticky): use `<Th>` de
+  `src/components/tabela.tsx` em cada `<th>` (aceita `larguraFixa="Npx"`
+  quando a coluna tem conteúdo curto e previsível, tipo uma data — a coluna
+  dimensiona pelo conteúdo, não pelo texto do cabeçalho, que quebra linha por
+  palavra inteira, nunca no meio da palavra). A linha do cabeçalho sempre leva
+  `className="bg-azul-petroleo text-branco"` — sem isso o texto do cabeçalho
+  fica ilegível (mesma cor do fundo). Regra fixada em 21/07/2026 — não pedir
+  de novo, aplicar direto em toda tabela nova. **Zoom/scroll é obrigatório**:
+  envolver a `<table>` com `<TabelaRolavel>` de `src/components/tabela-rolavel.tsx`
+  (`max-h-[70vh]` de altura padrão), que já traz sticky+scroll horizontal com
+  setas+botão de tela cheia — não montar o wrapper `overflow-auto` na mão.
+  Coluna de valor livre (nome, descrição) trunca com `truncate` + `title={...}`
+  em vez de quebrar linha ou empurrar a tabela. Já migradas: Produtos, Edição
+  de Dados (Produtos e Fornecedores), Fornecedores, Visualização de
+  Contagens, Pedido de Compras, Cotações da Semana, Financeiro Gerencial
+  (Receitas/Despesas).
+- **Criar e editar é sempre modal, nunca formulário expandido na página** —
+  usar `<ModalFlutuante>` de `src/components/modal-flutuante.tsx` (folha que
+  sobe do rodapé no celular, caixa centralizada no desktop). Nunca inventar
+  outro wrapper de modal nem deixar o formulário de criar/editar solto direto
+  no fluxo da página.
+- **Seletor com muitas opções precisa de busca** — campo de texto (ícone de
+  lupa) que filtra a lista, nunca um `<select>` nativo cru com dezenas de
+  opções. Dois componentes prontos, cada um pro seu contexto: `CodigoSelect`
+  de `src/components/codigo-select.tsx` (célula de tabela densa, valor curto
+  tipo código/SKU) e `SeletorComBusca` de
+  `src/components/financeiro-gerencial/seletor-com-busca.tsx` (campo de
+  formulário de largura cheia, valor com rótulo longo ou caminho, ex.
+  "CMO > Folha salarial contábil"). Não criar um terceiro sem antes conferir
+  se um dos dois já resolve.
+- **Data exibida (não input) é sempre DD/MM/AAAA** — nunca a data ISO crua do
+  banco (`AAAA-MM-DD`). Converter com uma função de string pura (nunca via
+  `Date`, que arrisca fuso horário puxando pro dia anterior/seguinte) - ver
+  `formatarDataBr` em `src/lib/financeiro-gerencial/datas.ts` como referência
+  de implementação antes de escrever outra igual em módulo diferente. Campo
+  de input de data continua nativo do navegador (`<input type="date">`), que
+  já formata pelo idioma do sistema sozinho.
+- **Termo de negócio já aprovado não muda de nome numa tela nova** — ex. no
+  Financeiro Gerencial: "Plano de Contas" (nunca "Categoria" na interface,
+  ainda que a tabela no banco continue `fin_categorias`), "Grupo de Contas"
+  (grupo/subgrupo do plano de contas), "Data de Recebimento" numa receita e
+  "Data de Pagamento" numa despesa (nunca "Vencimento" genérico). Na dúvida
+  sobre o nome certo de um termo de negócio, perguntar antes de inventar.
+- **Regra de permissão "Gestão/master" - testar Master de verdade, não só
+  Gestão** — master frequentemente é esquecido em checagem de papel feita
+  fora de `requireGestao()`/`requireMaster()` (ver
+  `zatti-hub-master-checar-replicacao-de-regra-de-papel` nos aprendizados do
+  Cérebro do Gestor). Toda tela/ação nova com essa regra confirma explicitamente
+  que master também consegue, não só gestão.
+- **Nenhum módulo novo começa sem preflight** — antes do primeiro componente
+  de interface, apontar (pra si mesmo, e se fizer sentido pro Vinícius) quais
+  telas/componentes já existentes no Zatti Hub resolvem o mesmo problema
+  (modal, tabela, seletor, formato de data, termo de negócio, permissão) e
+  serão reutilizados. Ver `zatti-hub-preflight-reutilizar-padrao-de-interface`
+  nos aprendizados do Cérebro do Gestor pro caso real que gerou esta regra.
 - **Números vindos da planilha** (preço, quantidade, total etc.) só devem
   ser convertidos com `toNumeroBR` de `src/lib/sheets/numero.ts`. Nunca
   reimplementar o parser em outro arquivo — a versão antiga duplicada em 3
