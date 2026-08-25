@@ -332,7 +332,7 @@ export function LancamentosGerenciador({
                 Parcela
               </Th>
               <Th>Plano de Contas</Th>
-              <Th align="center" larguraFixa="96px">
+              <Th align="center" larguraFixa="116px">
                 Status
               </Th>
               <Th align="center" larguraFixa="96px">
@@ -908,9 +908,11 @@ function LinhaParcela({
         <td className="px-3 py-2 text-center">
           {parcela.numero}/{parcela.totalParcelas}
         </td>
-        <td className="min-w-[200px] px-3 py-2">{lancamento.categoriaNome}</td>
-        <td className="px-3 py-2 text-center">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSE[parcela.status]}`}>
+        <td className="max-w-[180px] truncate px-3 py-2" title={lancamento.categoriaNome}>
+          {lancamento.categoriaNome}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-center">
+          <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSE[parcela.status]}`}>
             {STATUS_LABEL[parcela.status]}
           </span>
         </td>
