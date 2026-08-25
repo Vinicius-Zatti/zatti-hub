@@ -21,3 +21,10 @@ export function somarMesesClampado(dataIso: string, meses: number): string {
 
   return `${String(novoAno).padStart(4, "0")}-${String(novoMesIndice0 + 1).padStart(2, "0")}-${String(novoDia).padStart(2, "0")}`;
 }
+
+/** "2026-08-25" -> "25/08/2026" - troca de string pura, nunca passa por
+ * `Date` (evitaria o clássico fuso-horário puxando pro dia anterior). */
+export function formatarDataBr(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split("-");
+  return `${dia}/${mes}/${ano}`;
+}

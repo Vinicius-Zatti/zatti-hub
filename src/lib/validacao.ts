@@ -416,6 +416,17 @@ export const recorrenciaFinanceiraEntradaSchema = z
   })
   .strict();
 
+export const editarLancamentoFinanceiroEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    categoriaId: idUuidSchema,
+    descricao: textoObrigatorio(200),
+    dataCompetencia: dataIsoSchema,
+    contaFinanceiraId: idUuidSchema.nullable(),
+    observacao: texto(2_000),
+  })
+  .strict();
+
 export const baixaFinanceiraEntradaSchema = z
   .object({
     parcelaId: idUuidSchema,

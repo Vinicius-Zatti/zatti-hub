@@ -553,6 +553,54 @@ export async function criarLancamento(params: {
   return salvo;
 }
 
+/** Edita os campos do lançamento (Plano de Contas, descrição, competência,
+ * conta financeira, observação) - restrito a Gestão/master pela RLS
+ * `fin_lancamentos_update_gestao`, não checado de novo aqui. As parcelas
+ * nunca mudam por aqui (imutáveis desde a criação, ver
+ * `proteger_parcela_financeira`) - corrigir valor/data de parcela é sempre
+ * por estorno, não por editar o lançamento. `tipo` também não muda (uma
+ * receita não vira despesa depois de criada) - a categoria nova só precisa
+ * continuar batendo com o tipo já existente do lançamento. */
+export async function editarLancamento(params: {
+  unidadeId: string;
+  id: string;
+  categoriaId: string;
+  descricao: string;
+  dataCompetencia: string;
+  contaFinanceiraId: string | null;
+  observacao: string;
+}): Promise<Lancamento> {
+  const supabase = await createClient();
+
+  const { data: existente } = await supabase
+    .from("fin_lancamentos")
+    .select("tipo")
+    .eq("unidade_id", params.unidadeId)
+    .eq("id", params.id)
+    .maybeSingle();
+  const tipo = (existente as { tipo: TipoLancamento } | null)?.tipo;
+  if (!tipo) throw new ErroPublico("Lançamento não encontrado.");
+
+  await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, tipo);
+
+  const { error } = await supabase
+    .from("fin_lancamentos")
+    .update({
+      categoria_id: params.categoriaId,
+      descricao: params.descricao,
+      data_competencia: params.dataCompetencia,
+      conta_financeira_id: params.contaFinanceiraId,
+      observacao: params.observacao,
+    })
+    .eq("unidade_id", params.unidadeId)
+    .eq("id", params.id);
+  if (error) throw erroDeNegocio(error);
+
+  const salvo = await obterLancamento(params.unidadeId, params.id);
+  if (!salvo) throw new Error("Lançamento editado mas não encontrado na releitura");
+  return salvo;
+}
+
 // ── Recorrências ─────────────────────────────────────────────────────────
 
 type RecorrenciaRow = {

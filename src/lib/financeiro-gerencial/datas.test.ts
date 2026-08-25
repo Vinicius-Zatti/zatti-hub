@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { somarMesesClampado, ultimoDiaDoMes } from "./datas";
+import { formatarDataBr, somarMesesClampado, ultimoDiaDoMes } from "./datas";
 
 describe("ultimoDiaDoMes", () => {
   it("fevereiro de ano comum tem 28 dias", () => {
@@ -43,5 +43,15 @@ describe("somarMesesClampado", () => {
 
   it("soma meses cruzando o fim do ano", () => {
     expect(somarMesesClampado("2026-11-15", 2)).toBe("2027-01-15");
+  });
+});
+
+describe("formatarDataBr", () => {
+  it("converte AAAA-MM-DD pra DD/MM/AAAA", () => {
+    expect(formatarDataBr("2026-08-25")).toBe("25/08/2026");
+  });
+
+  it("nunca perde um dia por fuso horário (dia 1º)", () => {
+    expect(formatarDataBr("2026-01-01")).toBe("01/01/2026");
   });
 });

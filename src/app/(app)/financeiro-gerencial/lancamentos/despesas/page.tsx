@@ -15,6 +15,12 @@ export default async function LancamentosDespesasPage() {
   const categoriasDespesa = listarContasLancaveis(categorias).filter((c) => c.papelDre !== "receita");
 
   return (
-    <LancamentosGerenciador tipo="despesa" lancamentos={lancamentos} categorias={categoriasDespesa} contas={contas} />
+    <LancamentosGerenciador
+      tipo="despesa"
+      lancamentos={lancamentos}
+      categorias={categoriasDespesa}
+      contas={contas}
+      podeGerir={acesso.role !== "operacional"}
+    />
   );
 }

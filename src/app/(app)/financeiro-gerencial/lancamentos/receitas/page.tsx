@@ -20,6 +20,7 @@ export default async function LancamentosReceitasPage() {
       lancamentos={lancamentos}
       categorias={categoriasReceita}
       contas={contas}
+      podeGerir={acesso.role !== "operacional"}
     />
   );
 }

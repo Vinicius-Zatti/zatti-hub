@@ -1,9 +1,10 @@
 "use server";
 
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { criarLancamento, criarRecorrencia, estornarBaixa, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
 import {
   baixaFinanceiraEntradaSchema,
+  editarLancamentoFinanceiroEntradaSchema,
   estornarBaixaEntradaSchema,
   lancamentoFinanceiroEntradaSchema,
   recorrenciaFinanceiraEntradaSchema,
@@ -59,6 +60,21 @@ export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoR
     return { ok: true, recorrencia, ocorrenciasGeradas };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar a recorrência.") };
+  }
+}
+
+// Só Gestão/master (a RLS `fin_lancamentos_update_gestao` é a barreira real) -
+// não mexe em parcela nenhuma, só nos campos do lançamento em si.
+export async function editarLancamentoAction(input: unknown): Promise<ResultadoLancamento> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_lancamento_editar");
+    const entrada = validarEntrada(editarLancamentoFinanceiroEntradaSchema, input);
+    const lancamento = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
+    revalidarLancamentos();
+    return { ok: true, lancamento };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar o lançamento.") };
   }
 }
 

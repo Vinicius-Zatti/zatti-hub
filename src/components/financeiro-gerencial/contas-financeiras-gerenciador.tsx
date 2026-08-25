@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { criarContaFinanceiraAction, editarContaFinanceiraAction } from "@/app/(app)/financeiro-gerencial/contas/actions";
 import { CampoNumero } from "@/components/campo-numero";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import type { ContaFinanceiraComSaldos, TipoContaFinanceira } from "@/lib/financeiro-gerencial/tipos";
 
 const TIPO_LABEL: Record<TipoContaFinanceira, string> = {
@@ -86,7 +87,7 @@ function CartaoConta({ conta, onEditar }: { conta: ContaFinanceiraComSaldos; onE
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">Saldo inicial</div>
           <div className="font-mono text-cinza">{brl(conta.saldoInicial)}</div>
-          <div className="text-[10px] text-cinza-medio">{conta.dataSaldoInicial}</div>
+          <div className="text-[10px] text-cinza-medio">{formatarDataBr(conta.dataSaldoInicial)}</div>
         </div>
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">Saldo atual</div>
