@@ -100,7 +100,7 @@ describe("montarDreAnual", () => {
     const dres = montarAno(2026, lancamentos, estoquePorMes);
     const anual = montarDreAnual(dres, 2026, hoje);
 
-    const receita = anual.principal.find((l) => l.id === "receita_bruta")!;
+    const receita = anual.linhas.find((l) => l.id === "receita_bruta")!;
     expect(receita.total).toBe(2000);
     // divisor é o mês atual (8), não o número de meses com lançamento (2)
     expect(anual.divisorMedia).toBe(8);
@@ -124,8 +124,8 @@ describe("montarDreAnual", () => {
     const dres = montarAno(2026, lancamentos, estoquePorMes);
     const anual = montarDreAnual(dres, 2026, hoje);
 
-    const margem = anual.principal.find((l) => l.id === "margem")!;
-    const resultadoOperacional = anual.principal.find((l) => l.id === "resultado_operacional")!;
+    const margem = anual.linhas.find((l) => l.id === "margem")!;
+    const resultadoOperacional = anual.linhas.find((l) => l.id === "resultado_operacional")!;
     expect(margem.total).toBe(6000); // 10000 - 4000, calculável mesmo com set-dez sem estoque
     expect(resultadoOperacional.total).toBe(5000); // 6000 - 1000 de CMO
     expect(margem.valoresPorMes[8]).toBeNull(); // setembro (futuro) continua "-" na tabela
@@ -139,7 +139,7 @@ describe("montarDreAnual", () => {
     const dres = montarAno(2026, lancamentos, { "2026-01": estoque("2026-01") });
     const anual = montarDreAnual(dres, 2026, hoje);
 
-    const margem = anual.principal.find((l) => l.id === "margem")!;
+    const margem = anual.linhas.find((l) => l.id === "margem")!;
     expect(margem.valoresPorMes[0]).not.toBeNull(); // janeiro calculável isoladamente
     expect(margem.total).toBeNull();
     expect(margem.media).toBeNull();
@@ -155,7 +155,7 @@ describe("montarDreAnual", () => {
     const dres = montarAno(2026, lancamentos, {});
     const anual = montarDreAnual(dres, 2026, hoje);
 
-    const percentualDeducoes = anual.principal.find((l) => l.id === "deducoes_percentual")!;
+    const percentualDeducoes = anual.linhas.find((l) => l.id === "deducoes_percentual")!;
     // Total: 500 / 5000 = 0.10 (não a média simples de 0.10 e 0.10, que aqui coincidiria - testado via total exato)
     expect(percentualDeducoes.total).toBeCloseTo(0.1, 10);
     expect(percentualDeducoes.percentual).toBe(true);
@@ -164,7 +164,7 @@ describe("montarDreAnual", () => {
   it("mês sem Receita Operacional Bruta mostra percentual null ('-'), nunca divisão por zero", () => {
     const dres = montarAno(2026, [], {});
     const anual = montarDreAnual(dres, 2026, hoje);
-    const percentualCmo = anual.principal.find((l) => l.id === "cmo_percentual")!;
+    const percentualCmo = anual.linhas.find((l) => l.id === "cmo_percentual")!;
     expect(percentualCmo.valoresPorMes.every((v) => v === null)).toBe(true);
   });
 
@@ -212,14 +212,30 @@ describe("montarDreAnual", () => {
   it("ano futuro (nenhum mês transcorrido) mostra Total/Média '-' em toda linha, inclusive Receita", () => {
     const dres = montarAno(2027, [], {});
     const anual = montarDreAnual(dres, 2027, hoje);
-    const receita = anual.principal.find((l) => l.id === "receita_bruta")!;
+    const receita = anual.linhas.find((l) => l.id === "receita_bruta")!;
     expect(receita.total).toBeNull();
     expect(receita.media).toBeNull();
     expect(receita.valoresPorMes.every((v) => v === null)).toBe(true);
     expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
   });
 
-  it("Resultado Econômico (indicador do topo) usa o mesmo valor de Resultado Operacional, nunca reduzido por Saídas Não Operacionais", () => {
+  it("Saídas Não Operacionais e Resultado Líquido ficam na mesma tabela anual, logo após Resultado Econômico", () => {
+    const dres = montarAno(2026, [], {});
+    const anual = montarDreAnual(dres, 2026, hoje);
+    const ids = anual.linhas.map((l) => l.id);
+    const indiceResultadoEconomico = ids.indexOf("resultado_economico");
+    // resultado_economico, % resultado_economico, saidas, % saidas, resultado_liquido, % resultado_liquido
+    expect(ids.slice(indiceResultadoEconomico)).toEqual([
+      "resultado_economico",
+      "resultado_economico_percentual",
+      "saidas",
+      "saidas_percentual",
+      "resultado_liquido",
+      "resultado_liquido_percentual",
+    ]);
+  });
+
+  it("indicador do topo (Resultado Líquido) usa Resultado Econômico já reduzido pelas Saídas Não Operacionais - Resultado Econômico em si nunca é reduzido", () => {
     const lancamentos = [
       lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 10000 }),
       lancamento({ categoriaId: "sno_retiradas", dataCompetencia: "2026-01-10", valor: 2000 }),
@@ -230,11 +246,13 @@ describe("montarDreAnual", () => {
     const dres = montarAno(2026, lancamentos, estoquePorMes);
     const anual = montarDreAnual(dres, 2026, hoje);
 
-    const resultadoOperacional = anual.principal.find((l) => l.id === "resultado_operacional")!;
-    const geracaoCaixa = anual.indicador.find((l) => l.id === "geracao_caixa")!;
+    const resultadoOperacional = anual.linhas.find((l) => l.id === "resultado_operacional")!;
+    const resultadoEconomico = anual.linhas.find((l) => l.id === "resultado_economico")!;
+    const resultadoLiquido = anual.linhas.find((l) => l.id === "resultado_liquido")!;
 
-    expect(anual.indicadores.resultadoEconomico).toBe(resultadoOperacional.total);
-    expect(geracaoCaixa.total).toBe(resultadoOperacional.total! - 2000);
-    expect(anual.indicadores.resultadoEconomico).not.toBe(geracaoCaixa.total);
+    expect(resultadoEconomico.total).toBe(resultadoOperacional.total);
+    expect(resultadoLiquido.total).toBe(resultadoOperacional.total! - 2000);
+    expect(anual.indicadores.resultadoLiquido).toBe(resultadoLiquido.total);
+    expect(anual.indicadores.resultadoLiquido).not.toBe(resultadoEconomico.total);
   });
 });

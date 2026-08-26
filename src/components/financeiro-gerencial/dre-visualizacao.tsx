@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
 import { MESES_ABREVIADOS, type DreAnual, type LinhaDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 
 function formatarNumero(v: number | null): string {
@@ -21,6 +22,14 @@ function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
 }
 
 const PADDING_NIVEL: Record<0 | 1 | 2, string> = { 0: "pl-3", 1: "pl-8", 2: "pl-12" };
+
+// Média/Total + 12 meses - "Mês de Competência" (a coluna de rótulo) nunca
+// entra aqui, nunca pode ser ocultada (regra do botão "Colunas").
+const COLUNAS_NUMERICAS: ColunaDre[] = [
+  { id: "media", rotulo: "Média" },
+  { id: "total", rotulo: "Total" },
+  ...MESES_ABREVIADOS.map((mes, indice) => ({ id: `mes_${indice}`, rotulo: mes })),
+];
 
 function IconeSeta({ aberta }: { aberta: boolean }) {
   return (
@@ -43,10 +52,12 @@ function LinhaTabela({
   linha,
   expandidas,
   alternar,
+  visiveis,
 }: {
   linha: LinhaDreAnual;
   expandidas: Set<string>;
   alternar: (id: string) => void;
+  visiveis: Set<string>;
 }) {
   const temFilhos = !!linha.filhos && linha.filhos.length > 0;
   const expandida = expandidas.has(linha.id);
@@ -63,75 +74,39 @@ function LinhaTabela({
     <>
       <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
         <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex max-w-[190px] items-center gap-1.5">
             {temFilhos ? (
               <button
                 type="button"
                 onClick={() => alternar(linha.id)}
                 aria-label={expandida ? `Recolher ${linha.rotulo}` : `Expandir ${linha.rotulo}`}
-                className="text-cinza-medio hover:text-azul-petroleo"
+                className="shrink-0 text-cinza-medio hover:text-azul-petroleo"
               >
                 <IconeSeta aberta={expandida} />
               </button>
             ) : (
               <span className="inline-block h-3.5 w-3.5 shrink-0" />
             )}
-            {linha.rotulo}
+            <span className="min-w-0 truncate" title={linha.rotulo}>
+              {linha.rotulo}
+            </span>
           </span>
         </td>
-        <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.media)}</td>
-        <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.total)}</td>
-        {linha.valoresPorMes.map((valor, indice) => (
-          <td key={indice} className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
-            {formatar(valor)}
-          </td>
-        ))}
+        {visiveis.has("media") && <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.media)}</td>}
+        {visiveis.has("total") && <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.total)}</td>}
+        {linha.valoresPorMes.map(
+          (valor, indice) =>
+            visiveis.has(`mes_${indice}`) && (
+              <td key={indice} className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
+                {formatar(valor)}
+              </td>
+            ),
+        )}
       </tr>
-      {temFilhos && expandida && linha.filhos!.map((filho) => <LinhaTabela key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} />)}
+      {temFilhos &&
+        expandida &&
+        linha.filhos!.map((filho) => <LinhaTabela key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} />)}
     </>
-  );
-}
-
-function BlocoDre({
-  titulo,
-  linhas,
-  expandidas,
-  alternar,
-}: {
-  titulo: string;
-  linhas: LinhaDreAnual[];
-  expandidas: Set<string>;
-  alternar: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
-      <TabelaRolavel ariaLabel={`Tabela de ${titulo.toLowerCase()}`}>
-        <table className="w-full min-w-[1180px] text-sm">
-          <thead>
-            <tr className="bg-azul-petroleo text-branco">
-              <Th>Mês de Competência</Th>
-              <Th align="right" larguraFixa="100px">
-                Média
-              </Th>
-              <Th align="right" larguraFixa="100px">
-                Total
-              </Th>
-              {MESES_ABREVIADOS.map((mes) => (
-                <Th key={mes} align="right" larguraFixa="88px">
-                  {mes}
-                </Th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map((linha) => (
-              <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} />
-            ))}
-          </tbody>
-        </table>
-      </TabelaRolavel>
-    </div>
   );
 }
 
@@ -146,10 +121,13 @@ function CartaoIndicador({ titulo, valor }: { titulo: string; valor: string }) {
 
 /** Visualização anual da DRE - único seletor é o Ano (nunca mês), sem toggle
  * global de Resumida/Expandida: cada grupo principal abre a própria seta,
- * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). */
+ * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). Saídas Não
+ * Operacionais e Resultado Líquido vêm na mesma tabela, não numa seção à
+ * parte. */
 export function DreVisualizacao({ dreAnual, ano }: { dreAnual: DreAnual; ano: number }) {
   const router = useRouter();
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
+  const { visiveis, alternar: alternarColuna, mostrarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
 
   function alternar(id: string) {
     setExpandidas((atual) => {
@@ -184,18 +162,49 @@ export function DreVisualizacao({ dreAnual, ano }: { dreAnual: DreAnual; ano: nu
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <CartaoIndicador titulo="Resultado Econômico" valor={formatarNumero(dreAnual.indicadores.resultadoEconomico)} />
-        <CartaoIndicador titulo="% Resultado Econômico" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoEconomico)} />
+        <CartaoIndicador titulo="Resultado Líquido" valor={formatarNumero(dreAnual.indicadores.resultadoLiquido)} />
+        <CartaoIndicador titulo="% Resultado Líquido" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoLiquido)} />
         <CartaoIndicador titulo="Ponto de Equilíbrio" valor={formatarPontoDeEquilibrio(dreAnual.indicadores.pontoDeEquilibrio)} />
       </div>
 
-      <BlocoDre titulo="Resultado" linhas={dreAnual.principal} expandidas={expandidas} alternar={alternar} />
-      <BlocoDre
-        titulo="Saídas Não Operacionais (análise gerencial separada, não altera o Resultado)"
-        linhas={dreAnual.indicador}
-        expandidas={expandidas}
-        alternar={alternar}
-      />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold text-azul-noite">Resultado</h2>
+          <BotaoColunasDre colunas={COLUNAS_NUMERICAS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} />
+        </div>
+        <TabelaRolavel ariaLabel="Tabela de resultado da DRE">
+          <table className="w-full min-w-[1180px] text-sm">
+            <thead>
+              <tr className="bg-azul-petroleo text-branco">
+                <Th larguraFixa="240px">Mês de Competência</Th>
+                {visiveis.has("media") && (
+                  <Th align="right" larguraFixa="100px">
+                    Média
+                  </Th>
+                )}
+                {visiveis.has("total") && (
+                  <Th align="right" larguraFixa="100px">
+                    Total
+                  </Th>
+                )}
+                {MESES_ABREVIADOS.map(
+                  (mes, indice) =>
+                    visiveis.has(`mes_${indice}`) && (
+                      <Th key={mes} align="right" larguraFixa="88px">
+                        {mes}
+                      </Th>
+                    ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {dreAnual.linhas.map((linha) => (
+                <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} visiveis={visiveis} />
+              ))}
+            </tbody>
+          </table>
+        </TabelaRolavel>
+      </div>
     </div>
   );
 }

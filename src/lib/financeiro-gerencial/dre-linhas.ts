@@ -57,17 +57,20 @@ function filhosCmv(dre: Dre): LinhaDreMensal[] {
   ];
 }
 
-export type ArvoreMensalDre = { principal: LinhaDreMensal[]; indicador: LinhaDreMensal[] };
-
-/** Árvore hierárquica de um único mês, pronta pra combinar com os outros 11
- * meses do ano (`dre-anual.ts`). Preserva a estrutura já calculada por
- * `calcularDre` - só monta a apresentação, nenhuma fórmula nova aqui além de
- * Receita Operacional Líquida (Receita Bruta − Deduções), que é derivada dos
- * dois totais já existentes, não um cálculo novo no motor. */
-export function montarArvoreMensal(dre: Dre): ArvoreMensalDre {
+/** Árvore hierárquica de um único mês, numa tabela só, pronta pra combinar
+ * com os outros 11 meses do ano (`dre-anual.ts`). Preserva a estrutura já
+ * calculada por `calcularDre` - só monta a apresentação, nenhuma fórmula
+ * nova aqui além de Receita Operacional Líquida (Receita Bruta − Deduções) e
+ * Resultado Líquido (Resultado Econômico − Saídas Não Operacionais), ambas
+ * derivadas de totais já existentes, não um cálculo novo no motor. */
+export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
   const receitaLiquida = somarValores([dre.receitas.total, -dre.deducoes.total]);
+  // Resultado Líquido é exatamente o que já era `geracaoCaixaAposSaidas` no
+  // motor (Resultado Operacional − Saídas Não Operacionais) - só o nome/lugar
+  // na apresentação mudou, nenhuma conta nova.
+  const resultadoLiquido = dre.geracaoCaixaAposSaidas;
 
-  const principal: LinhaDreMensal[] = [
+  return [
     { id: "receita_bruta", rotulo: "Receita Operacional Bruta", nivel: 0, valor: dre.receitas.total, filhos: linhasContas(dre.receitas.contas, 1) },
     { id: "deducoes", rotulo: "(-) Deduções", nivel: 0, valor: dre.deducoes.total, filhos: linhasSubgrupos(dre.deducoes.subgrupos, 1, 2) },
     { id: "receita_liquida", rotulo: "= Receita Operacional Líquida", nivel: 0, valor: receitaLiquida, destaque: true },
@@ -82,15 +85,11 @@ export function montarArvoreMensal(dre: Dre): ArvoreMensalDre {
       filhos: linhasSubgrupos(dre.custosOperacionais.subgrupos, 1, 2),
     },
     { id: "resultado_operacional", rotulo: "= Resultado Operacional", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
-    // Resultado Econômico é o fechamento da própria DRE - Saídas Não
-    // Operacionais nunca reduzem esta linha (por isso o mesmo valor de
-    // Resultado Operacional, sem nenhum cálculo novo). Geração de Caixa após
-    // Saídas Não Operacionais é o indicador gerencial separado, na seção
-    // `indicador` abaixo - as duas linhas nunca se confundem.
+    // Resultado Econômico fecha a própria DRE - Saídas Não Operacionais nunca
+    // reduzem esta linha (por isso o mesmo valor de Resultado Operacional,
+    // sem cálculo novo). Saídas e Resultado Líquido vêm na sequência, na
+    // mesma tabela (não mais numa seção separada).
     { id: "resultado_economico", rotulo: "= Resultado Econômico", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
-  ];
-
-  const indicador: LinhaDreMensal[] = [
     {
       id: "saidas",
       rotulo: "(-) Saídas Não Operacionais",
@@ -98,14 +97,6 @@ export function montarArvoreMensal(dre: Dre): ArvoreMensalDre {
       valor: dre.saidasNaoOperacionais.total,
       filhos: linhasContas(dre.saidasNaoOperacionais.contas, 1),
     },
-    {
-      id: "geracao_caixa",
-      rotulo: "= Geração de Caixa após Saídas Não Operacionais",
-      nivel: 0,
-      valor: dre.geracaoCaixaAposSaidas,
-      destaque: true,
-    },
+    { id: "resultado_liquido", rotulo: "= Resultado Líquido", nivel: 0, valor: resultadoLiquido, destaque: true },
   ];
-
-  return { principal, indicador };
 }

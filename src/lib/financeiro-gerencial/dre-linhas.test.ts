@@ -69,66 +69,69 @@ const LANCAMENTOS: Lancamento[] = [
   lancamento({ categoriaId: "sno_retiradas", dataCompetencia: "2026-08-10", valor: 300 }),
 ];
 
-function acharLinha(linhas: ReturnType<typeof montarArvoreMensal>["principal"], id: string) {
+function acharLinha(linhas: ReturnType<typeof montarArvoreMensal>, id: string) {
   return linhas.find((l) => l.id === id);
 }
 
 describe("montarArvoreMensal", () => {
   it("inclui Receita Operacional Líquida (Receita Bruta - Deduções) sem alterar o motor de cálculo", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarArvoreMensal(dre);
-    const liquida = acharLinha(principal, "receita_liquida");
+    const linhas = montarArvoreMensal(dre);
+    const liquida = acharLinha(linhas, "receita_liquida");
     expect(liquida?.valor).toBe(9500); // 10000 - 500
   });
 
   it("mostra as contas-filhas dos grupos principais como filhos (hierarquia pra expandir)", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarArvoreMensal(dre);
-    const receita = acharLinha(principal, "receita_bruta");
+    const linhas = montarArvoreMensal(dre);
+    const receita = acharLinha(linhas, "receita_bruta");
     expect(receita?.filhos?.map((f) => f.rotulo)).toContain("Vendas no salão");
 
-    const custosOperacionais = acharLinha(principal, "custos_operacionais");
+    const custosOperacionais = acharLinha(linhas, "custos_operacionais");
     const ocupacao = custosOperacionais?.filhos?.find((f) => f.rotulo === "Custos de Ocupação");
     expect(ocupacao?.filhos?.map((f) => f.rotulo)).toContain("Aluguel");
   });
 
   it("CMC fica dentro do CMV (nunca grupo principal) com Compras de Mercadorias/Embalagens como netos", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarArvoreMensal(dre);
-    const cmv = acharLinha(principal, "cmv");
+    const linhas = montarArvoreMensal(dre);
+    const cmv = acharLinha(linhas, "cmv");
     const cmc = cmv?.filhos?.find((f) => f.id === "cmv_cmc");
     expect(cmc?.valor).toBe(2000);
     expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Compras de Mercadorias", "Compras de Embalagens"]);
-    expect(principal.some((l) => l.rotulo === "CMC")).toBe(false);
+    expect(linhas.some((l) => l.rotulo === "CMC")).toBe(false);
   });
 
   it("quando o estoque mensal não foi cadastrado, todo o ramo do CMV vem null (nunca 0) mas mantém a mesma forma", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: null });
-    const { principal } = montarArvoreMensal(dre);
-    const cmv = acharLinha(principal, "cmv");
+    const linhas = montarArvoreMensal(dre);
+    const cmv = acharLinha(linhas, "cmv");
     expect(cmv?.valor).toBeNull();
     expect(cmv?.filhos).toHaveLength(5);
     expect(cmv?.filhos?.every((f) => f.valor === null)).toBe(true);
     expect(cmv?.filhos?.find((f) => f.id === "cmv_cmc")?.filhos).toHaveLength(2);
 
-    const margem = acharLinha(principal, "margem");
+    const margem = acharLinha(linhas, "margem");
     expect(margem?.valor).toBeNull();
   });
 
-  it("linha de resultado (Margem, Resultado Operacional) não tem filhos - não é expansível", () => {
+  it("linha de resultado (Margem, Resultado Operacional, Resultado Econômico, Resultado Líquido) não tem filhos - não é expansível", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarArvoreMensal(dre);
-    expect(acharLinha(principal, "margem")?.filhos).toBeUndefined();
-    expect(acharLinha(principal, "resultado_operacional")?.filhos).toBeUndefined();
-    expect(acharLinha(principal, "receita_liquida")?.filhos).toBeUndefined();
+    const linhas = montarArvoreMensal(dre);
+    expect(acharLinha(linhas, "margem")?.filhos).toBeUndefined();
+    expect(acharLinha(linhas, "resultado_operacional")?.filhos).toBeUndefined();
+    expect(acharLinha(linhas, "receita_liquida")?.filhos).toBeUndefined();
+    expect(acharLinha(linhas, "resultado_economico")?.filhos).toBeUndefined();
+    expect(acharLinha(linhas, "resultado_liquido")?.filhos).toBeUndefined();
   });
 
-  it("Saídas Não Operacionais e Geração de Caixa ficam na seção indicador, separada da principal", () => {
+  it("Saídas Não Operacionais e Resultado Líquido ficam na mesma tabela, logo após Resultado Econômico", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { indicador, principal } = montarArvoreMensal(dre);
-    expect(indicador.map((l) => l.id)).toEqual(["saidas", "geracao_caixa"]);
-    expect(principal.some((l) => l.id === "saidas" || l.id === "geracao_caixa")).toBe(false);
-    expect(acharLinha(indicador, "saidas")?.filhos?.map((f) => f.rotulo)).toContain("Retiradas de sócios");
+    const linhas = montarArvoreMensal(dre);
+    const ids = linhas.map((l) => l.id);
+    const indiceResultadoEconomico = ids.indexOf("resultado_economico");
+    expect(ids.slice(indiceResultadoEconomico)).toEqual(["resultado_economico", "saidas", "resultado_liquido"]);
+    expect(acharLinha(linhas, "saidas")?.filhos?.map((f) => f.rotulo)).toContain("Retiradas de sócios");
   });
 
   it("Resultado Econômico fecha a própria DRE (mesmo valor de Resultado Operacional) e nunca é reduzido por Saídas Não Operacionais", () => {
@@ -140,19 +143,19 @@ describe("montarArvoreMensal", () => {
       estoqueMensal: ESTOQUE_AGOSTO,
     });
 
-    const { principal: principalComSaidas, indicador: indicadorComSaidas } = montarArvoreMensal(comSaidas);
-    const { principal: principalSemSaidas } = montarArvoreMensal(semSaidas);
+    const linhasComSaidas = montarArvoreMensal(comSaidas);
+    const linhasSemSaidas = montarArvoreMensal(semSaidas);
 
-    const resultadoEconomicoComSaidas = acharLinha(principalComSaidas, "resultado_economico");
-    const resultadoEconomicoSemSaidas = acharLinha(principalSemSaidas, "resultado_economico");
-    const resultadoOperacional = acharLinha(principalComSaidas, "resultado_operacional");
-    const geracaoCaixa = indicadorComSaidas.find((l) => l.id === "geracao_caixa");
+    const resultadoEconomicoComSaidas = acharLinha(linhasComSaidas, "resultado_economico");
+    const resultadoEconomicoSemSaidas = acharLinha(linhasSemSaidas, "resultado_economico");
+    const resultadoOperacional = acharLinha(linhasComSaidas, "resultado_operacional");
+    const resultadoLiquido = acharLinha(linhasComSaidas, "resultado_liquido");
 
     // Resultado Econômico é igual com ou sem Saídas Não Operacionais lançadas.
     expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoEconomicoSemSaidas?.valor);
     expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoOperacional?.valor);
-    // Geração de Caixa, por outro lado, é reduzida pelas Saídas Não Operacionais.
-    expect(geracaoCaixa?.valor).toBe(resultadoOperacional!.valor! - 300);
-    expect(geracaoCaixa?.valor).not.toBe(resultadoEconomicoComSaidas?.valor);
+    // Resultado Líquido, por outro lado, é reduzido pelas Saídas Não Operacionais.
+    expect(resultadoLiquido?.valor).toBe(resultadoOperacional!.valor! - 300);
+    expect(resultadoLiquido?.valor).not.toBe(resultadoEconomicoComSaidas?.valor);
   });
 });

@@ -17,16 +17,15 @@ export type LinhaDreAnual = {
 };
 
 export type IndicadoresDre = {
-  resultadoEconomico: number | null;
-  percentualResultadoEconomico: number | null;
+  resultadoLiquido: number | null;
+  percentualResultadoLiquido: number | null;
   pontoDeEquilibrio: number | "nao_calculavel";
 };
 
 export type DreAnual = {
   ano: number;
   divisorMedia: number | null;
-  principal: LinhaDreAnual[];
-  indicador: LinhaDreAnual[];
+  linhas: LinhaDreAnual[];
   indicadores: IndicadoresDre;
 };
 
@@ -105,8 +104,9 @@ const ROTULOS_PERCENTUAL: Record<string, string> = {
   margem: "% Margem de Contribuição",
   cmo: "% CMO",
   custos_operacionais: "% Custos Operacionais",
-  saidas: "% Saídas Não Operacionais",
   resultado_economico: "% Resultado Econômico",
+  saidas: "% Saídas Não Operacionais",
+  resultado_liquido: "% Resultado Líquido",
 };
 
 /** Linha de percentual (frente à Receita Operacional Bruta) - Total e Média
@@ -138,32 +138,19 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, hoje: Date = new 
   const mesesValidos = divisorMedia ?? 0;
   const arvoresMensais = dresPorMes.map((dre) => montarArvoreMensal(dre));
 
-  const principalAbsoluto = combinarArvore(
-    arvoresMensais.map((a) => a.principal),
-    mesesValidos,
-    divisorMedia,
-  );
-  const indicadorAbsoluto = combinarArvore(
-    arvoresMensais.map((a) => a.indicador),
-    mesesValidos,
-    divisorMedia,
-  );
+  const absoluto = combinarArvore(arvoresMensais, mesesValidos, divisorMedia);
 
-  const receitaBruta = principalAbsoluto.find((l) => l.id === "receita_bruta")!;
-  // Resultado Econômico fecha a própria DRE (nunca reduzido por Saídas Não
-  // Operacionais) - por isso mora e ganha percentual em "principal", não em
-  // "indicador" (onde só ficam Saídas e Geração de Caixa).
-  const principal = comPercentuais(
-    principalAbsoluto,
-    ["deducoes", "cmv", "margem", "cmo", "custos_operacionais", "resultado_economico"],
+  const receitaBruta = absoluto.find((l) => l.id === "receita_bruta")!;
+  const linhas = comPercentuais(
+    absoluto,
+    ["deducoes", "cmv", "margem", "cmo", "custos_operacionais", "resultado_economico", "saidas", "resultado_liquido"],
     receitaBruta,
   );
-  const indicador = comPercentuais(indicadorAbsoluto, ["saidas"], receitaBruta);
 
-  const cmo = principalAbsoluto.find((l) => l.id === "cmo")!;
-  const custosOperacionais = principalAbsoluto.find((l) => l.id === "custos_operacionais")!;
-  const margem = principalAbsoluto.find((l) => l.id === "margem")!;
-  const resultadoEconomico = principalAbsoluto.find((l) => l.id === "resultado_economico")!;
+  const cmo = absoluto.find((l) => l.id === "cmo")!;
+  const custosOperacionais = absoluto.find((l) => l.id === "custos_operacionais")!;
+  const margem = absoluto.find((l) => l.id === "margem")!;
+  const resultadoLiquido = absoluto.find((l) => l.id === "resultado_liquido")!;
 
   const custosFixosTotal = somarOuNulo([cmo.total, custosOperacionais.total]);
   const percentualMargemTotal = dividirRazao(margem.total, receitaBruta.total);
@@ -175,11 +162,10 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, hoje: Date = new 
   return {
     ano,
     divisorMedia,
-    principal,
-    indicador,
+    linhas,
     indicadores: {
-      resultadoEconomico: resultadoEconomico.total,
-      percentualResultadoEconomico: dividirRazao(resultadoEconomico.total, receitaBruta.total),
+      resultadoLiquido: resultadoLiquido.total,
+      percentualResultadoLiquido: dividirRazao(resultadoLiquido.total, receitaBruta.total),
       pontoDeEquilibrio,
     },
   };
