@@ -15,9 +15,11 @@ import type {
   Parcela,
   ParcelaManualEntrada,
   Recorrencia,
+  SaidaSemReceita,
   TipoBaixa,
   TipoContaFinanceira,
   TipoLancamento,
+  TipoSaidaSemReceita,
 } from "@/lib/financeiro-gerencial/tipos";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -914,6 +916,7 @@ export async function listarBaixasDaParcela(unidadeId: string, parcelaId: string
 type EstoqueMensalRow = {
   id: string;
   competencia: string;
+  receita_vendas_produtos: number;
   estoque_inicial_mercadorias: number;
   estoque_inicial_embalagens: number;
   estoque_final_mercadorias: number;
@@ -923,12 +926,13 @@ type EstoqueMensalRow = {
 };
 
 const COLUNAS_ESTOQUE_MENSAL =
-  "id, competencia, estoque_inicial_mercadorias, estoque_inicial_embalagens, estoque_final_mercadorias, estoque_final_embalagens, criado_por, atualizado_em";
+  "id, competencia, receita_vendas_produtos, estoque_inicial_mercadorias, estoque_inicial_embalagens, estoque_final_mercadorias, estoque_final_embalagens, criado_por, atualizado_em";
 
 function estoqueMensalDaLinha(row: EstoqueMensalRow, nomeCriador: string): EstoqueMensal {
   return {
     id: row.id,
     competencia: row.competencia,
+    receitaVendasProdutos: Number(row.receita_vendas_produtos),
     estoqueInicialMercadorias: Number(row.estoque_inicial_mercadorias),
     estoqueInicialEmbalagens: Number(row.estoque_inicial_embalagens),
     estoqueFinalMercadorias: Number(row.estoque_final_mercadorias),
@@ -979,6 +983,7 @@ export async function obterEstoqueMensal(unidadeId: string, competencia: string)
 export async function salvarEstoqueMensal(params: {
   unidadeId: string;
   competencia: string;
+  receitaVendasProdutos: number;
   estoqueInicialMercadorias: number;
   estoqueInicialEmbalagens: number;
   estoqueFinalMercadorias: number;
@@ -992,6 +997,7 @@ export async function salvarEstoqueMensal(params: {
       {
         unidade_id: params.unidadeId,
         competencia: params.competencia,
+        receita_vendas_produtos: params.receitaVendasProdutos,
         estoque_inicial_mercadorias: params.estoqueInicialMercadorias,
         estoque_inicial_embalagens: params.estoqueInicialEmbalagens,
         estoque_final_mercadorias: params.estoqueFinalMercadorias,
@@ -1008,4 +1014,76 @@ export async function salvarEstoqueMensal(params: {
   const linha = data as unknown as EstoqueMensalRow;
   const nomes = await nomesPorUserId(supabase, [linha.criado_por]);
   return estoqueMensalDaLinha(linha, nomes.get(linha.criado_por) ?? "Usuário");
+}
+
+// ── Saídas de Produtos sem Receita (análise gerencial, DRE) ─────────────
+
+type SaidaSemReceitaRow = {
+  id: string;
+  competencia: string;
+  tipo: TipoSaidaSemReceita;
+  valor: number;
+  criado_por: string;
+  atualizado_em: string;
+};
+
+const COLUNAS_SAIDA_SEM_RECEITA = "id, competencia, tipo, valor, criado_por, atualizado_em";
+
+function saidaSemReceitaDaLinha(row: SaidaSemReceitaRow, nomeCriador: string): SaidaSemReceita {
+  return {
+    id: row.id,
+    competencia: row.competencia,
+    tipo: row.tipo,
+    valor: Number(row.valor),
+    criadoPorNome: nomeCriador,
+    atualizadoEm: row.atualizado_em,
+  };
+}
+
+export async function listarSaidasSemReceita(unidadeId: string): Promise<SaidaSemReceita[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("fin_saidas_sem_receita")
+    .select(COLUNAS_SAIDA_SEM_RECEITA)
+    .eq("unidade_id", unidadeId)
+    .order("competencia", { ascending: false });
+  const linhas = (data as unknown as SaidaSemReceitaRow[] | null) ?? [];
+  if (linhas.length === 0) return [];
+
+  const nomes = await nomesPorUserId(supabase, linhas.map((l) => l.criado_por));
+  return linhas.map((l) => saidaSemReceitaDaLinha(l, nomes.get(l.criado_por) ?? "Usuário"));
+}
+
+/** Cadastra ou edita uma Saída de Produtos sem Receita (Gestão/master - RLS
+ * `fin_saidas_sem_receita_insert_gestao`/`_update_gestao` é a barreira real).
+ * Upsert por (unidade_id, competencia, tipo) - cada célula da tabela
+ * "Saídas de Produtos sem Receita" é uma linha própria. */
+export async function salvarSaidaSemReceita(params: {
+  unidadeId: string;
+  competencia: string;
+  tipo: TipoSaidaSemReceita;
+  valor: number;
+  criadoPor: string;
+}): Promise<SaidaSemReceita> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fin_saidas_sem_receita")
+    .upsert(
+      {
+        unidade_id: params.unidadeId,
+        competencia: params.competencia,
+        tipo: params.tipo,
+        valor: params.valor,
+        criado_por: params.criadoPor,
+      },
+      { onConflict: "unidade_id,competencia,tipo" },
+    )
+    .select(COLUNAS_SAIDA_SEM_RECEITA)
+    .single();
+
+  if (error || !data) throw erroDeNegocio(error ?? { message: "Falha ao salvar saída sem receita" });
+
+  const linha = data as unknown as SaidaSemReceitaRow;
+  const nomes = await nomesPorUserId(supabase, [linha.criado_por]);
+  return saidaSemReceitaDaLinha(linha, nomes.get(linha.criado_por) ?? "Usuário");
 }

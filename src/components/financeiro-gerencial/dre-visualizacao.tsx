@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
+import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
+import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
 import { MESES_ABREVIADOS, type DreAnual, type LinhaDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
+import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
 
 function formatarNumero(v: number | null): string {
   if (v === null) return "-";
@@ -124,7 +127,19 @@ function CartaoIndicador({ titulo, valor }: { titulo: string; valor: string }) {
  * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). Saídas Não
  * Operacionais e Resultado Líquido vêm na mesma tabela, não numa seção à
  * parte. */
-export function DreVisualizacao({ dreAnual, ano }: { dreAnual: DreAnual; ano: number }) {
+export function DreVisualizacao({
+  dreAnual,
+  ano,
+  estoquesDoAno,
+  saidasSemReceitaDoAno,
+  podeGerir,
+}: {
+  dreAnual: DreAnual;
+  ano: number;
+  estoquesDoAno: (EstoqueMensal | null)[];
+  saidasSemReceitaDoAno: SaidaSemReceita[];
+  podeGerir: boolean;
+}) {
   const router = useRouter();
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
   const { visiveis, alternar: alternarColuna, mostrarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
@@ -205,6 +220,9 @@ export function DreVisualizacao({ dreAnual, ano }: { dreAnual: DreAnual; ano: nu
           </table>
         </TabelaRolavel>
       </div>
+
+      <DadosComplementaresDre ano={ano} estoquesDoAno={estoquesDoAno} podeGerir={podeGerir} />
+      <SaidasSemReceitaDre ano={ano} saidasSemReceitaDoAno={saidasSemReceitaDoAno} podeGerir={podeGerir} />
     </div>
   );
 }

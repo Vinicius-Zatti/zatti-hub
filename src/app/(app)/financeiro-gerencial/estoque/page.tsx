@@ -1,12 +1,9 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
-import { listarEstoqueMensal } from "@/lib/banco/financeiro-gerencial";
-import { EstoqueMensalGerenciador } from "@/components/financeiro-gerencial/estoque-mensal-gerenciador";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function EstoqueMensalPage() {
-  const acesso = await requireFinanceiroGerencial();
-  const estoques = await listarEstoqueMensal(acesso.unidadeId);
-
-  return <EstoqueMensalGerenciador estoques={estoques} podeGerir={acesso.role !== "operacional"} />;
+// Estoque mensal deixou de ser página própria - os dados agora ficam na
+// seção "Dados Complementares da DRE", dentro da própria página da DRE.
+// Rota antiga preservada só como redirecionamento (link salvo, atalho antigo
+// etc. continuam funcionando).
+export default function EstoqueMensalRedirecionamento() {
+  redirect("/financeiro-gerencial/dre#dados-complementares-da-dre");
 }

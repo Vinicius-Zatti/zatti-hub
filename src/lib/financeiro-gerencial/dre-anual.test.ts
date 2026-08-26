@@ -49,10 +49,11 @@ function lancamento(over: Partial<Lancamento> & { categoriaId: string; dataCompe
   };
 }
 
-function estoque(competencia: string): EstoqueMensal {
+function estoque(competencia: string, receitaVendasProdutos = 0): EstoqueMensal {
   return {
     id: `e_${competencia}`,
     competencia: `${competencia}-01`,
+    receitaVendasProdutos,
     estoqueInicialMercadorias: 100,
     estoqueInicialEmbalagens: 0,
     estoqueFinalMercadorias: 100,
@@ -62,14 +63,17 @@ function estoque(competencia: string): EstoqueMensal {
   };
 }
 
-/** Monta os 12 `calcularDre` de um ano a partir de lançamentos e um mapa de
- * estoque mensal por competência ("2026-01" etc.) - mesma coisa que a página
- * real faz, só que em memória pro teste. */
+/** Monta os 12 `calcularDre` de um ano + o array de Receita de Vendas de
+ * Produtos por mês, a partir de lançamentos e um mapa de estoque mensal por
+ * competência ("2026-01" etc.) - mesma coisa que a página real faz, só que
+ * em memória pro teste. */
 function montarAno(ano: number, lancamentos: Lancamento[], estoquePorMes: Record<string, EstoqueMensal | undefined>) {
-  return Array.from({ length: 12 }, (_, indice) => {
-    const competencia = `${ano}-${String(indice + 1).padStart(2, "0")}`;
-    return calcularDre({ competencia, lancamentos, categorias: CATEGORIAS, estoqueMensal: estoquePorMes[competencia] ?? null });
-  });
+  const competencias = Array.from({ length: 12 }, (_, indice) => `${ano}-${String(indice + 1).padStart(2, "0")}`);
+  const dres = competencias.map((competencia) =>
+    calcularDre({ competencia, lancamentos, categorias: CATEGORIAS, estoqueMensal: estoquePorMes[competencia] ?? null }),
+  );
+  const receitaVendasProdutosPorMes = competencias.map((competencia) => estoquePorMes[competencia]?.receitaVendasProdutos ?? 0);
+  return { dres, receitaVendasProdutosPorMes };
 }
 
 describe("calcularDivisorMedia", () => {
@@ -97,8 +101,8 @@ describe("montarDreAnual", () => {
       lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-02-10", valor: 1000 }),
     ];
     const estoquePorMes = { "2026-01": estoque("2026-01"), "2026-02": estoque("2026-02") };
-    const dres = montarAno(2026, lancamentos, estoquePorMes);
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const receita = anual.linhas.find((l) => l.id === "receita_bruta")!;
     expect(receita.total).toBe(2000);
@@ -121,8 +125,8 @@ describe("montarDreAnual", () => {
     const estoquePorMes = Object.fromEntries(
       Array.from({ length: 8 }, (_, i) => [`2026-${String(i + 1).padStart(2, "0")}`, estoque(`2026-${String(i + 1).padStart(2, "0")}`)]),
     );
-    const dres = montarAno(2026, lancamentos, estoquePorMes);
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const margem = anual.linhas.find((l) => l.id === "margem")!;
     const resultadoOperacional = anual.linhas.find((l) => l.id === "resultado_operacional")!;
@@ -136,8 +140,8 @@ describe("montarDreAnual", () => {
     const lancamentos = [lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 1000 })];
     // só janeiro tem estoque cadastrado; fevereiro a agosto (todos já
     // transcorridos, estamos em 25/08) ficam pendentes de verdade.
-    const dres = montarAno(2026, lancamentos, { "2026-01": estoque("2026-01") });
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, { "2026-01": estoque("2026-01") });
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const margem = anual.linhas.find((l) => l.id === "margem")!;
     expect(margem.valoresPorMes[0]).not.toBeNull(); // janeiro calculável isoladamente
@@ -152,8 +156,8 @@ describe("montarDreAnual", () => {
       lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-02-10", valor: 4000 }),
       lancamento({ categoriaId: "deducao_impostos", dataCompetencia: "2026-02-10", valor: 400 }),
     ];
-    const dres = montarAno(2026, lancamentos, {});
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, {});
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const percentualDeducoes = anual.linhas.find((l) => l.id === "deducoes_percentual")!;
     // Total: 500 / 5000 = 0.10 (não a média simples de 0.10 e 0.10, que aqui coincidiria - testado via total exato)
@@ -162,8 +166,8 @@ describe("montarDreAnual", () => {
   });
 
   it("mês sem Receita Operacional Bruta mostra percentual null ('-'), nunca divisão por zero", () => {
-    const dres = montarAno(2026, [], {});
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, [], {});
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
     const percentualCmo = anual.linhas.find((l) => l.id === "cmo_percentual")!;
     expect(percentualCmo.valoresPorMes.every((v) => v === null)).toBe(true);
   });
@@ -182,8 +186,8 @@ describe("montarDreAnual", () => {
     const estoquePorMes = Object.fromEntries(
       Array.from({ length: 12 }, (_, i) => [`2026-${String(i + 1).padStart(2, "0")}`, estoque(`2026-${String(i + 1).padStart(2, "0")}`)]),
     );
-    const dres = montarAno(2026, lancamentos, estoquePorMes);
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     // Margem = 10000 - 4000 = 6000 (estoque inicial=final, CMV=CMC=4000); %Margem = 0.6
     // Custos fixos = 1000 + 500 = 1500; PE = 1500 / 0.6 = 2500
@@ -198,20 +202,20 @@ describe("montarDreAnual", () => {
     const estoquePorMes = Object.fromEntries(
       Array.from({ length: 12 }, (_, i) => [`2026-${String(i + 1).padStart(2, "0")}`, estoque(`2026-${String(i + 1).padStart(2, "0")}`)]),
     );
-    const dres = montarAno(2026, lancamentos, estoquePorMes);
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
     expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
   });
 
   it("Ponto de Equilíbrio é 'Não calculável' quando a Margem do ano está pendente (mês já transcorrido sem estoque)", () => {
-    const dres = montarAno(2026, [], {});
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, [], {});
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
     expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
   });
 
   it("ano futuro (nenhum mês transcorrido) mostra Total/Média '-' em toda linha, inclusive Receita", () => {
-    const dres = montarAno(2027, [], {});
-    const anual = montarDreAnual(dres, 2027, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2027, [], {});
+    const anual = montarDreAnual(dres, 2027, receitaVendasProdutosPorMes, hoje);
     const receita = anual.linhas.find((l) => l.id === "receita_bruta")!;
     expect(receita.total).toBeNull();
     expect(receita.media).toBeNull();
@@ -220,8 +224,8 @@ describe("montarDreAnual", () => {
   });
 
   it("Saídas Não Operacionais e Resultado Líquido ficam na mesma tabela anual, logo após Resultado Econômico", () => {
-    const dres = montarAno(2026, [], {});
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, [], {});
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
     const ids = anual.linhas.map((l) => l.id);
     const indiceResultadoEconomico = ids.indexOf("resultado_economico");
     // resultado_economico, % resultado_economico, saidas, % saidas, resultado_liquido, % resultado_liquido
@@ -243,8 +247,8 @@ describe("montarDreAnual", () => {
     const estoquePorMes = Object.fromEntries(
       Array.from({ length: 8 }, (_, i) => [`2026-${String(i + 1).padStart(2, "0")}`, estoque(`2026-${String(i + 1).padStart(2, "0")}`)]),
     );
-    const dres = montarAno(2026, lancamentos, estoquePorMes);
-    const anual = montarDreAnual(dres, 2026, hoje);
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const resultadoOperacional = anual.linhas.find((l) => l.id === "resultado_operacional")!;
     const resultadoEconomico = anual.linhas.find((l) => l.id === "resultado_economico")!;
@@ -254,5 +258,66 @@ describe("montarDreAnual", () => {
     expect(resultadoLiquido.total).toBe(resultadoOperacional.total! - 2000);
     expect(anual.indicadores.resultadoLiquido).toBe(resultadoLiquido.total);
     expect(anual.indicadores.resultadoLiquido).not.toBe(resultadoEconomico.total);
+  });
+
+  describe("% CMV usa Receita de Vendas de Produtos, nunca Receita Operacional Bruta", () => {
+    it("Receita de Vendas de Produtos não altera a Receita Operacional Bruta nem nenhuma outra linha - só o % CMV muda", () => {
+      const lancamentos = [
+        lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 10000 }),
+        lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-01-10", valor: 3000 }),
+      ];
+      const estoquePorMesSemReceitaVendas = { "2026-01": estoque("2026-01", 0) };
+      const estoquePorMesComReceitaVendas = { "2026-01": estoque("2026-01", 6000) };
+
+      const semReceitaVendas = montarAno(2026, lancamentos, estoquePorMesSemReceitaVendas);
+      const comReceitaVendas = montarAno(2026, lancamentos, estoquePorMesComReceitaVendas);
+      const anualSem = montarDreAnual(semReceitaVendas.dres, 2026, semReceitaVendas.receitaVendasProdutosPorMes, hoje);
+      const anualCom = montarDreAnual(comReceitaVendas.dres, 2026, comReceitaVendas.receitaVendasProdutosPorMes, hoje);
+
+      // Toda linha absoluta (Receita Bruta, CMV em R$, Margem, Resultado...)
+      // fica idêntica - só as linhas de percentual do CMV podem diferir.
+      for (const linha of anualSem.linhas) {
+        const equivalente = anualCom.linhas.find((l) => l.id === linha.id)!;
+        if (linha.id === "cmv_percentual") continue;
+        expect(equivalente).toEqual(linha);
+      }
+
+      const percentualCmvSem = anualSem.linhas.find((l) => l.id === "cmv_percentual")!;
+      const percentualCmvCom = anualCom.linhas.find((l) => l.id === "cmv_percentual")!;
+      expect(percentualCmvSem.valoresPorMes[0]).toBeNull(); // Receita de Vendas de Produtos = 0 -> "-"
+      expect(percentualCmvCom.valoresPorMes[0]).toBeCloseTo(3000 / 6000, 10);
+    });
+
+    it("% CMV = CMV em R$ ÷ Receita de Vendas de Produtos (nunca ÷ Receita Operacional Bruta)", () => {
+      const lancamentos = [
+        // Receita Operacional Bruta bem diferente da Receita de Vendas de
+        // Produtos, de propósito, pra provar que o % CMV usa a segunda.
+        lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 50000 }),
+        lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-01-10", valor: 2000 }),
+      ];
+      const estoquePorMes = { "2026-01": estoque("2026-01", 8000) };
+      const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+      const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
+
+      const cmv = anual.linhas.find((l) => l.id === "cmv")!;
+      const percentualCmv = anual.linhas.find((l) => l.id === "cmv_percentual")!;
+      expect(cmv.valoresPorMes[0]).toBe(2000); // estoque inicial = final, CMV = CMC = 2000
+      // 2000 / 8000 = 0.25 - se estivesse usando Receita Bruta (50000) daria 0,04
+      expect(percentualCmv.valoresPorMes[0]).toBeCloseTo(2000 / 8000, 10);
+    });
+
+    it("Receita de Vendas de Produtos zero ou não preenchida mostra '-' pro % CMV, nunca 0/0", () => {
+      const lancamentos = [
+        lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 10000 }),
+        lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-01-10", valor: 1000 }),
+      ];
+      // Mês com estoque cadastrado mas Receita de Vendas de Produtos = 0 (não preenchida).
+      const estoquePorMes = { "2026-01": estoque("2026-01", 0) };
+      const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
+      const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
+
+      const percentualCmv = anual.linhas.find((l) => l.id === "cmv_percentual")!;
+      expect(percentualCmv.valoresPorMes[0]).toBeNull();
+    });
   });
 });

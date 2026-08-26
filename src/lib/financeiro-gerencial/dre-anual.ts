@@ -109,43 +109,73 @@ const ROTULOS_PERCENTUAL: Record<string, string> = {
   resultado_liquido: "% Resultado Líquido",
 };
 
-/** Linha de percentual (frente à Receita Operacional Bruta) - Total e Média
- * são a divisão dos Totais/Médias já agregados, nunca a média das 12 razões
- * mensais (regra explícita: "Total da linha ÷ Total da Receita", "Média da
- * linha ÷ Média da Receita"). Mês sem Receita Bruta mostra "-", nunca 0/0. */
-function linhaPercentual(linha: LinhaDreAnual, receitaBruta: LinhaDreAnual): LinhaDreAnual {
+/** Linha de percentual frente a um denominador - Total e Média são a divisão
+ * dos Totais/Médias já agregados, nunca a média das 12 razões mensais (regra
+ * explícita: "Total da linha ÷ Total do denominador", "Média da linha ÷
+ * Média do denominador"). Mês sem denominador mostra "-", nunca 0/0. Todo
+ * percentual usa a Receita Operacional Bruta como denominador, EXCETO % CMV,
+ * que usa a Receita de Vendas de Produtos (regra explícita: "Nunca usar
+ * Receita Operacional Bruta como denominador do % CMV") - por isso a função
+ * recebe o denominador explícito em vez de sempre a Receita Bruta. */
+function linhaPercentual(linha: LinhaDreAnual, denominador: LinhaDreAnual): LinhaDreAnual {
   return {
     id: `${linha.id}_percentual`,
     rotulo: ROTULOS_PERCENTUAL[linha.id] ?? `% ${linha.rotulo}`,
     nivel: linha.nivel,
     percentual: true,
-    valoresPorMes: linha.valoresPorMes.map((v, indice) => dividirRazao(v, receitaBruta.valoresPorMes[indice])),
-    total: dividirRazao(linha.total, receitaBruta.total),
-    media: dividirRazao(linha.media, receitaBruta.media),
+    valoresPorMes: linha.valoresPorMes.map((v, indice) => dividirRazao(v, denominador.valoresPorMes[indice])),
+    total: dividirRazao(linha.total, denominador.total),
+    media: dividirRazao(linha.media, denominador.media),
   };
 }
 
-function comPercentuais(linhas: LinhaDreAnual[], idsComPercentual: string[], receitaBruta: LinhaDreAnual): LinhaDreAnual[] {
-  return linhas.flatMap((linha) => (idsComPercentual.includes(linha.id) ? [linha, linhaPercentual(linha, receitaBruta)] : [linha]));
+function comPercentuais(linhas: LinhaDreAnual[], denominadorPorId: Record<string, LinhaDreAnual>): LinhaDreAnual[] {
+  return linhas.flatMap((linha) => {
+    const denominador = denominadorPorId[linha.id];
+    return denominador ? [linha, linhaPercentual(linha, denominador)] : [linha];
+  });
+}
+
+/** Linha auxiliar (não aparece em `linhas`) só pra servir de denominador do
+ * % CMV - Receita de Vendas de Produtos nunca soma na Receita Operacional
+ * Bruta nem entra no CMV em R$, é puramente o "por quanto dividir" do % CMV.
+ * Mês futuro mostra "-" (mesma máscara de `mesesValidos` do resto da DRE);
+ * mês já transcorrido sem valor preenchido entra como 0 no Total (nunca
+ * invalida o ano inteiro - diferente da regra de estoque pendente do CMV em
+ * R$, que é sobre integridade de cálculo, não sobre este denominador). */
+function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
+  const valoresPorMes = valoresPorMesBrutos.map((v, indice) => (indice < mesesValidos ? v : null));
+  const total = mesesValidos === 0 ? null : somarValores(valoresPorMesBrutos.slice(0, mesesValidos));
+  const media = dividirMonetario(total, divisorMedia);
+  return { id: "receita_vendas_produtos", rotulo: "Receita de Vendas de Produtos", nivel: 0, valoresPorMes, total, media };
 }
 
 /** Monta a DRE anual a partir de 12 `Dre` já calculados (índice 0 = janeiro
  * ... 11 = dezembro, todos pelo motor `calcularDre` sem nenhuma alteração de
  * fórmula) - função de apresentação/análise pura, agrega o que o motor já
- * calculou mês a mês. */
-export function montarDreAnual(dresPorMes: Dre[], ano: number, hoje: Date = new Date()): DreAnual {
+ * calculou mês a mês. `receitaVendasProdutosPorMes` (índice 0 = janeiro ...
+ * 11 = dezembro, valor bruto de `fin_estoque_mensal.receita_vendas_produtos`,
+ * 0 quando o mês não tem linha) é o dado complementar manual usado só como
+ * denominador do % CMV. */
+export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProdutosPorMes: number[], hoje: Date = new Date()): DreAnual {
   const divisorMedia = calcularDivisorMedia(ano, hoje);
   const mesesValidos = divisorMedia ?? 0;
   const arvoresMensais = dresPorMes.map((dre) => montarArvoreMensal(dre));
 
   const absoluto = combinarArvore(arvoresMensais, mesesValidos, divisorMedia);
+  const receitaVendasProdutos = montarLinhaReceitaVendasProdutos(receitaVendasProdutosPorMes, mesesValidos, divisorMedia);
 
   const receitaBruta = absoluto.find((l) => l.id === "receita_bruta")!;
-  const linhas = comPercentuais(
-    absoluto,
-    ["deducoes", "cmv", "margem", "cmo", "custos_operacionais", "resultado_economico", "saidas", "resultado_liquido"],
-    receitaBruta,
-  );
+  const linhas = comPercentuais(absoluto, {
+    deducoes: receitaBruta,
+    cmv: receitaVendasProdutos,
+    margem: receitaBruta,
+    cmo: receitaBruta,
+    custos_operacionais: receitaBruta,
+    resultado_economico: receitaBruta,
+    saidas: receitaBruta,
+    resultado_liquido: receitaBruta,
+  });
 
   const cmo = absoluto.find((l) => l.id === "cmo")!;
   const custosOperacionais = absoluto.find((l) => l.id === "custos_operacionais")!;

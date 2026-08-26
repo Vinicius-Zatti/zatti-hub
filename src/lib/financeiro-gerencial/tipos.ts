@@ -119,16 +119,42 @@ export type ParcelaManualEntrada = {
   dataPrevista: string;
 };
 
-/** Controle manual mensal de estoque (`fin_estoque_mensal`) - só entra na
- * fórmula de CMV, nunca integra com o módulo de Estoque (contagem/produtos)
- * já existente. `competencia` sempre dia 1 do mês ("AAAA-MM-01"). */
+/** Controle manual mensal de estoque + Receita de Vendas de Produtos
+ * (`fin_estoque_mensal`) - vive na seção "Dados Complementares da DRE", nunca
+ * integra com o módulo de Estoque (contagem/produtos) já existente.
+ * `competencia` sempre dia 1 do mês ("AAAA-MM-01"). Os 4 campos de estoque
+ * entram na fórmula do CMV em R$; `receitaVendasProdutos` nunca entra nessa
+ * fórmula nem soma na Receita Operacional Bruta - serve só de denominador do
+ * % CMV. */
 export type EstoqueMensal = {
   id: string;
   competencia: string;
+  receitaVendasProdutos: number;
   estoqueInicialMercadorias: number;
   estoqueInicialEmbalagens: number;
   estoqueFinalMercadorias: number;
   estoqueFinalEmbalagens: number;
+  criadoPorNome: string;
+  atualizadoEm: string;
+};
+
+/** As 6 categorias fixas de "Saídas de Produtos sem Receita" - dado
+ * exclusivamente gerencial (`fin_saidas_sem_receita`): nunca soma Receita,
+ * nunca altera o CMV, nunca duplica custo. Só explica consumo de estoque sem
+ * venda associada (ex: CMV alto num mês com muita cortesia/perda). */
+export type TipoSaidaSemReceita =
+  | "bonificacao_cortesia"
+  | "fidelidade"
+  | "doacao"
+  | "marketing_degustacao"
+  | "consumo_interno"
+  | "perda_desperdicio";
+
+export type SaidaSemReceita = {
+  id: string;
+  competencia: string;
+  tipo: TipoSaidaSemReceita;
+  valor: number;
   criadoPorNome: string;
   atualizadoEm: string;
 };

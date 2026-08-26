@@ -470,10 +470,28 @@ export const competenciaMensalSchema = textoObrigatorio(7).refine((valor) => /^\
 export const estoqueMensalEntradaSchema = z
   .object({
     competencia: competenciaMensalSchema,
+    receitaVendasProdutos: dinheiroObrigatorio,
     estoqueInicialMercadorias: dinheiroObrigatorio,
     estoqueInicialEmbalagens: dinheiroObrigatorio,
     estoqueFinalMercadorias: dinheiroObrigatorio,
     estoqueFinalEmbalagens: dinheiroObrigatorio,
+  })
+  .strict();
+
+export const tipoSaidaSemReceitaSchema = z.enum([
+  "bonificacao_cortesia",
+  "fidelidade",
+  "doacao",
+  "marketing_degustacao",
+  "consumo_interno",
+  "perda_desperdicio",
+]);
+
+export const saidaSemReceitaEntradaSchema = z
+  .object({
+    competencia: competenciaMensalSchema,
+    tipo: tipoSaidaSemReceitaSchema,
+    valor: dinheiroObrigatorio,
   })
   .strict();
 

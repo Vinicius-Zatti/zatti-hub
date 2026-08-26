@@ -91,10 +91,7 @@ export default async function AppLayout({
     },
     {
       label: "DRE",
-      items: [
-        { label: "DRE", href: "/financeiro-gerencial/dre" },
-        { label: "Estoque mensal", href: "/financeiro-gerencial/estoque" },
-      ],
+      items: [{ label: "DRE", href: "/financeiro-gerencial/dre" }],
     },
     ...(podeGerir
       ? [

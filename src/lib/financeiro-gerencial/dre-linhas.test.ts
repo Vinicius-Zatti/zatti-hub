@@ -52,6 +52,7 @@ function lancamento(over: Partial<Lancamento> & { categoriaId: string; dataCompe
 const ESTOQUE_AGOSTO: EstoqueMensal = {
   id: "e1",
   competencia: "2026-08-01",
+  receitaVendasProdutos: 0,
   estoqueInicialMercadorias: 1000,
   estoqueInicialEmbalagens: 200,
   estoqueFinalMercadorias: 800,
