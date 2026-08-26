@@ -9,6 +9,7 @@ import type {
   CategoriaFinanceira,
   ContaFinanceira,
   ContaFinanceiraComSaldos,
+  EstoqueMensal,
   Lancamento,
   OrigemLancamento,
   Parcela,
@@ -906,4 +907,105 @@ export async function listarBaixasDaParcela(unidadeId: string, parcelaId: string
     criadoPorNome: nomes.get(l.criado_por) ?? "Usuário",
     criadoEm: l.criado_em,
   }));
+}
+
+// ── Estoque mensal (CMV/DRE) ────────────────────────────────────────────
+
+type EstoqueMensalRow = {
+  id: string;
+  competencia: string;
+  estoque_inicial_mercadorias: number;
+  estoque_inicial_embalagens: number;
+  estoque_final_mercadorias: number;
+  estoque_final_embalagens: number;
+  criado_por: string;
+  atualizado_em: string;
+};
+
+const COLUNAS_ESTOQUE_MENSAL =
+  "id, competencia, estoque_inicial_mercadorias, estoque_inicial_embalagens, estoque_final_mercadorias, estoque_final_embalagens, criado_por, atualizado_em";
+
+function estoqueMensalDaLinha(row: EstoqueMensalRow, nomeCriador: string): EstoqueMensal {
+  return {
+    id: row.id,
+    competencia: row.competencia,
+    estoqueInicialMercadorias: Number(row.estoque_inicial_mercadorias),
+    estoqueInicialEmbalagens: Number(row.estoque_inicial_embalagens),
+    estoqueFinalMercadorias: Number(row.estoque_final_mercadorias),
+    estoqueFinalEmbalagens: Number(row.estoque_final_embalagens),
+    criadoPorNome: nomeCriador,
+    atualizadoEm: row.atualizado_em,
+  };
+}
+
+export async function listarEstoqueMensal(unidadeId: string): Promise<EstoqueMensal[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("fin_estoque_mensal")
+    .select(COLUNAS_ESTOQUE_MENSAL)
+    .eq("unidade_id", unidadeId)
+    .order("competencia", { ascending: false });
+  const linhas = (data as unknown as EstoqueMensalRow[] | null) ?? [];
+  if (linhas.length === 0) return [];
+
+  const nomes = await nomesPorUserId(supabase, linhas.map((l) => l.criado_por));
+  return linhas.map((l) => estoqueMensalDaLinha(l, nomes.get(l.criado_por) ?? "Usuário"));
+}
+
+/** `competencia` sempre "AAAA-MM-01" (dia 1 fixo). `null` quando o mês pedido
+ * ainda não foi cadastrado - a DRE trata isso como CMV pendente, nunca como
+ * estoque 0. */
+export async function obterEstoqueMensal(unidadeId: string, competencia: string): Promise<EstoqueMensal | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("fin_estoque_mensal")
+    .select(COLUNAS_ESTOQUE_MENSAL)
+    .eq("unidade_id", unidadeId)
+    .eq("competencia", competencia)
+    .maybeSingle();
+  if (!data) return null;
+
+  const linha = data as unknown as EstoqueMensalRow;
+  const nomes = await nomesPorUserId(supabase, [linha.criado_por]);
+  return estoqueMensalDaLinha(linha, nomes.get(linha.criado_por) ?? "Usuário");
+}
+
+/** Cadastra ou edita o estoque mensal de uma competência (Gestão/master - RLS
+ * `fin_estoque_mensal_insert_gestao`/`_update_gestao` é a barreira real).
+ * Upsert por (unidade_id, competencia): editar um mês já cadastrado sobrescreve
+ * os 4 valores e `criado_por` passa a refletir quem salvou por último (a
+ * trilha de quem mudou o quê já fica completa em `logs_auditoria` via o
+ * gatilho `auditar_escrita`, isso aqui é só o rótulo de exibição). */
+export async function salvarEstoqueMensal(params: {
+  unidadeId: string;
+  competencia: string;
+  estoqueInicialMercadorias: number;
+  estoqueInicialEmbalagens: number;
+  estoqueFinalMercadorias: number;
+  estoqueFinalEmbalagens: number;
+  criadoPor: string;
+}): Promise<EstoqueMensal> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fin_estoque_mensal")
+    .upsert(
+      {
+        unidade_id: params.unidadeId,
+        competencia: params.competencia,
+        estoque_inicial_mercadorias: params.estoqueInicialMercadorias,
+        estoque_inicial_embalagens: params.estoqueInicialEmbalagens,
+        estoque_final_mercadorias: params.estoqueFinalMercadorias,
+        estoque_final_embalagens: params.estoqueFinalEmbalagens,
+        criado_por: params.criadoPor,
+      },
+      { onConflict: "unidade_id,competencia" },
+    )
+    .select(COLUNAS_ESTOQUE_MENSAL)
+    .single();
+
+  if (error || !data) throw erroDeNegocio(error ?? { message: "Falha ao salvar estoque mensal" });
+
+  const linha = data as unknown as EstoqueMensalRow;
+  const nomes = await nomesPorUserId(supabase, [linha.criado_por]);
+  return estoqueMensalDaLinha(linha, nomes.get(linha.criado_por) ?? "Usuário");
 }

@@ -119,6 +119,20 @@ export type ParcelaManualEntrada = {
   dataPrevista: string;
 };
 
+/** Controle manual mensal de estoque (`fin_estoque_mensal`) - só entra na
+ * fórmula de CMV, nunca integra com o módulo de Estoque (contagem/produtos)
+ * já existente. `competencia` sempre dia 1 do mês ("AAAA-MM-01"). */
+export type EstoqueMensal = {
+  id: string;
+  competencia: string;
+  estoqueInicialMercadorias: number;
+  estoqueInicialEmbalagens: number;
+  estoqueFinalMercadorias: number;
+  estoqueFinalEmbalagens: number;
+  criadoPorNome: string;
+  atualizadoEm: string;
+};
+
 /** Template que gera lançamento/parcela futuros de verdade (`fin_recorrencias`,
  * migração `20260825090000_...sql`) - nunca "pra sempre": sempre termina numa
  * data ou depois de N ocorrências. */

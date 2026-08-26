@@ -463,6 +463,20 @@ export const estornarBaixaEntradaSchema = z
   })
   .strict();
 
+// "AAAA-MM" (dia sempre 1, atribuído na camada de acesso ao banco - só o
+// mês/ano vem do formulário de Estoque mensal).
+export const competenciaMensalSchema = textoObrigatorio(7).refine((valor) => /^\d{4}-(0[1-9]|1[0-2])$/.test(valor));
+
+export const estoqueMensalEntradaSchema = z
+  .object({
+    competencia: competenciaMensalSchema,
+    estoqueInicialMercadorias: dinheiroObrigatorio,
+    estoqueInicialEmbalagens: dinheiroObrigatorio,
+    estoqueFinalMercadorias: dinheiroObrigatorio,
+    estoqueFinalEmbalagens: dinheiroObrigatorio,
+  })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

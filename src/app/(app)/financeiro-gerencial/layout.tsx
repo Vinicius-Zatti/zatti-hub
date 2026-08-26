@@ -10,6 +10,8 @@ const SUB_ITEMS = [
   { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
   { label: "Receitas", href: "/financeiro-gerencial/lancamentos/receitas" },
   { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
+  { label: "Estoque mensal", href: "/financeiro-gerencial/estoque" },
+  { label: "DRE", href: "/financeiro-gerencial/dre" },
 ];
 
 // Contas financeiras e Plano de Contas são configuração - só Gestão/master
