@@ -1,54 +1,132 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
-import type { Dre } from "@/lib/financeiro-gerencial/dre";
-import { montarLinhasExpandida, montarLinhasResumida, type LinhaDre } from "@/lib/financeiro-gerencial/dre-linhas";
+import { MESES_ABREVIADOS, type DreAnual, type LinhaDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 
-function brl(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function formatarNumero(v: number | null): string {
+  if (v === null) return "-";
+  return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const NOMES_MES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-
-function rotuloCompetencia(competencia: string): string {
-  const [ano, mes] = competencia.split("-");
-  return `${NOMES_MES[Number(mes) - 1]}/${ano}`;
+function formatarPercentual(v: number | null): string {
+  if (v === null) return "-";
+  return v.toLocaleString("pt-BR", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-const PADDING_NIVEL: Record<0 | 1 | 2, string> = { 0: "pl-3", 1: "pl-7", 2: "pl-11" };
+function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
+  return v === "nao_calculavel" ? "Não calculável" : formatarNumero(v);
+}
 
-function LinhaTabela({ linha }: { linha: LinhaDre }) {
-  const pesoTexto = linha.destaque ? "font-bold text-azul-noite" : linha.nivel === 0 ? "font-semibold text-cinza" : "text-cinza";
+const PADDING_NIVEL: Record<0 | 1 | 2, string> = { 0: "pl-3", 1: "pl-8", 2: "pl-12" };
+
+function IconeSeta({ aberta }: { aberta: boolean }) {
   return (
-    <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
-      <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>{linha.rotulo}</td>
-      <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
-        {linha.valor === null ? <span className="font-sans text-xs font-normal text-cinza-medio">pendente</span> : brl(linha.valor)}
-      </td>
-    </tr>
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`h-3.5 w-3.5 shrink-0 transition-transform ${aberta ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
   );
 }
 
-function BlocoDre({ titulo, linhas }: { titulo: string; linhas: LinhaDre[] }) {
+function LinhaTabela({
+  linha,
+  expandidas,
+  alternar,
+}: {
+  linha: LinhaDreAnual;
+  expandidas: Set<string>;
+  alternar: (id: string) => void;
+}) {
+  const temFilhos = !!linha.filhos && linha.filhos.length > 0;
+  const expandida = expandidas.has(linha.id);
+  const pesoTexto = linha.destaque
+    ? "font-bold text-azul-noite"
+    : linha.percentual
+      ? "italic text-cinza-medio"
+      : linha.nivel === 0
+        ? "font-semibold text-cinza"
+        : "text-cinza";
+  const formatar = (v: number | null) => (linha.percentual ? formatarPercentual(v) : formatarNumero(v));
+
+  return (
+    <>
+      <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
+        <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
+          <span className="inline-flex items-center gap-1.5">
+            {temFilhos ? (
+              <button
+                type="button"
+                onClick={() => alternar(linha.id)}
+                aria-label={expandida ? `Recolher ${linha.rotulo}` : `Expandir ${linha.rotulo}`}
+                className="text-cinza-medio hover:text-azul-petroleo"
+              >
+                <IconeSeta aberta={expandida} />
+              </button>
+            ) : (
+              <span className="inline-block h-3.5 w-3.5 shrink-0" />
+            )}
+            {linha.rotulo}
+          </span>
+        </td>
+        <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.media)}</td>
+        <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.total)}</td>
+        {linha.valoresPorMes.map((valor, indice) => (
+          <td key={indice} className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
+            {formatar(valor)}
+          </td>
+        ))}
+      </tr>
+      {temFilhos && expandida && linha.filhos!.map((filho) => <LinhaTabela key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} />)}
+    </>
+  );
+}
+
+function BlocoDre({
+  titulo,
+  linhas,
+  expandidas,
+  alternar,
+}: {
+  titulo: string;
+  linhas: LinhaDreAnual[];
+  expandidas: Set<string>;
+  alternar: (id: string) => void;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
       <TabelaRolavel ariaLabel={`Tabela de ${titulo.toLowerCase()}`}>
-        <table className="w-full min-w-[420px] text-sm">
+        <table className="w-full min-w-[1180px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th>Plano de Contas</Th>
-              <Th align="right" larguraFixa="140px">
-                Valor
+              <Th>Mês de Competência</Th>
+              <Th align="right" larguraFixa="100px">
+                Média
               </Th>
+              <Th align="right" larguraFixa="100px">
+                Total
+              </Th>
+              {MESES_ABREVIADOS.map((mes) => (
+                <Th key={mes} align="right" larguraFixa="88px">
+                  {mes}
+                </Th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {linhas.map((linha) => (
-              <LinhaTabela key={linha.id} linha={linha} />
+              <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} />
             ))}
           </tbody>
         </table>
@@ -57,59 +135,67 @@ function BlocoDre({ titulo, linhas }: { titulo: string; linhas: LinhaDre[] }) {
   );
 }
 
-export function DreVisualizacao({ dre, competencia }: { dre: Dre; competencia: string }) {
-  const router = useRouter();
-  const [visao, setVisao] = useState<"resumida" | "expandida">("resumida");
+function CartaoIndicador({ titulo, valor }: { titulo: string; valor: string }) {
+  return (
+    <div className="rounded-lg border border-cinza-claro bg-branco p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-cinza-medio">{titulo}</div>
+      <div className="mt-1 font-mono text-lg font-bold text-azul-noite">{valor}</div>
+    </div>
+  );
+}
 
-  const secoes = useMemo(() => (visao === "resumida" ? montarLinhasResumida(dre) : montarLinhasExpandida(dre)), [dre, visao]);
-  const cmvPendente = dre.cmv === null;
+/** Visualização anual da DRE - único seletor é o Ano (nunca mês), sem toggle
+ * global de Resumida/Expandida: cada grupo principal abre a própria seta,
+ * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). */
+export function DreVisualizacao({ dreAnual, ano }: { dreAnual: DreAnual; ano: number }) {
+  const router = useRouter();
+  const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
+
+  function alternar(id: string) {
+    setExpandidas((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  const anoAtual = new Date().getFullYear();
+  const anos = Array.from({ length: 7 }, (_, i) => anoAtual + 1 - i);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 pb-10">
+    <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-azul-noite">DRE - {rotuloCompetencia(competencia)}</h1>
-          <p className="text-sm text-cinza-medio">Demonstrativo de Resultado por Data de Competência.</p>
+          <h1 className="font-display text-2xl font-bold text-azul-noite">DRE - {ano}</h1>
+          <p className="text-sm text-cinza-medio">Demonstrativo de Resultado por Data de Competência, ano completo, mês a mês.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="month"
-            value={competencia}
-            onChange={(e) => e.target.value && router.push(`/financeiro-gerencial/dre?mes=${e.target.value}`)}
-            className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
-          />
-          <div className="flex overflow-hidden rounded-md border border-cinza-claro">
-            <button
-              type="button"
-              onClick={() => setVisao("resumida")}
-              className={`px-3 py-1.5 text-xs font-bold ${visao === "resumida" ? "bg-ambar text-azul-noite" : "bg-branco text-cinza-medio"}`}
-            >
-              Resumida
-            </button>
-            <button
-              type="button"
-              onClick={() => setVisao("expandida")}
-              className={`px-3 py-1.5 text-xs font-bold ${visao === "expandida" ? "bg-ambar text-azul-noite" : "bg-branco text-cinza-medio"}`}
-            >
-              Expandida
-            </button>
-          </div>
-        </div>
+        <select
+          value={ano}
+          onChange={(e) => router.push(`/financeiro-gerencial/dre?ano=${e.target.value}`)}
+          className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
+        >
+          {anos.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {cmvPendente && (
-        <p className="rounded-lg border border-ambar bg-ambar/10 p-3 text-sm text-cinza">
-          Estoque mensal de {rotuloCompetencia(competencia)} ainda não foi cadastrado - o CMV e tudo que depende dele (Margem de
-          Contribuição, Resultado Operacional, Geração de Caixa) ficam pendentes até cadastrar em{" "}
-          <a href="/financeiro-gerencial/estoque" className="font-semibold underline">
-            Estoque mensal
-          </a>
-          .
-        </p>
-      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <CartaoIndicador titulo="Resultado Econômico" valor={formatarNumero(dreAnual.indicadores.resultadoEconomico)} />
+        <CartaoIndicador titulo="% Resultado Econômico" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoEconomico)} />
+        <CartaoIndicador titulo="Ponto de Equilíbrio" valor={formatarPontoDeEquilibrio(dreAnual.indicadores.pontoDeEquilibrio)} />
+      </div>
 
-      <BlocoDre titulo="Resultado" linhas={secoes.principal} />
-      <BlocoDre titulo="Saídas Não Operacionais (indicador, não altera o Resultado)" linhas={secoes.indicador} />
+      <BlocoDre titulo="Resultado" linhas={dreAnual.principal} expandidas={expandidas} alternar={alternar} />
+      <BlocoDre
+        titulo="Saídas Não Operacionais (análise gerencial separada, não altera o Resultado)"
+        linhas={dreAnual.indicador}
+        expandidas={expandidas}
+        alternar={alternar}
+      />
     </div>
   );
 }

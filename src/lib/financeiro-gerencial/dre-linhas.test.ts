@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { montarLinhasExpandida, montarLinhasResumida } from "./dre-linhas";
+import { montarArvoreMensal } from "./dre-linhas";
 import { calcularDre } from "./dre";
 import type { CategoriaFinanceira, EstoqueMensal, Lancamento } from "./tipos";
 
@@ -69,40 +69,90 @@ const LANCAMENTOS: Lancamento[] = [
   lancamento({ categoriaId: "sno_retiradas", dataCompetencia: "2026-08-10", valor: 300 }),
 ];
 
-describe("montarLinhasResumida", () => {
-  it("oculta contas-filhas (Vendas no salão, Aluguel etc. não aparecem) e o CMC interno", () => {
+function acharLinha(linhas: ReturnType<typeof montarArvoreMensal>["principal"], id: string) {
+  return linhas.find((l) => l.id === id);
+}
+
+describe("montarArvoreMensal", () => {
+  it("inclui Receita Operacional Líquida (Receita Bruta - Deduções) sem alterar o motor de cálculo", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarLinhasResumida(dre);
-    const rotulos = principal.map((l) => l.rotulo);
-
-    expect(rotulos).not.toContain("Vendas no salão");
-    expect(rotulos).not.toContain("Aluguel");
-    expect(rotulos.some((r) => r.includes("CMC"))).toBe(false);
-    expect(rotulos).toContain("(-) CMV");
-    expect(rotulos).toContain("= MARGEM DE CONTRIBUIÇÃO");
-    expect(rotulos).toContain("= RESULTADO OPERACIONAL");
-  });
-});
-
-describe("montarLinhasExpandida", () => {
-  it("mostra todos os grupos, subgrupos e contas, incluindo CMC dentro do CMV", () => {
-    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal } = montarLinhasExpandida(dre);
-    const rotulos = principal.map((l) => l.rotulo);
-
-    expect(rotulos).toContain("Vendas no salão");
-    expect(rotulos).toContain("Aluguel");
-    expect(rotulos).toContain("Compras de Mercadorias");
-    expect(rotulos).toContain("CMC");
-    expect(rotulos).toContain("Estoque inicial de Mercadorias");
-    expect(rotulos).toContain("(-) Estoque final de Embalagens");
+    const { principal } = montarArvoreMensal(dre);
+    const liquida = acharLinha(principal, "receita_liquida");
+    expect(liquida?.valor).toBe(9500); // 10000 - 500
   });
 
-  it("Saídas Não Operacionais ficam numa seção separada da DRE principal, e a soma de Saídas bate com o lançamento", () => {
+  it("mostra as contas-filhas dos grupos principais como filhos (hierarquia pra expandir)", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
-    const { principal, indicador } = montarLinhasExpandida(dre);
+    const { principal } = montarArvoreMensal(dre);
+    const receita = acharLinha(principal, "receita_bruta");
+    expect(receita?.filhos?.map((f) => f.rotulo)).toContain("Vendas no salão");
 
-    expect(principal.some((l) => l.rotulo.includes("Retiradas de sócios"))).toBe(false);
-    expect(indicador.some((l) => l.rotulo === "Retiradas de sócios" && l.valor === 300)).toBe(true);
+    const custosOperacionais = acharLinha(principal, "custos_operacionais");
+    const ocupacao = custosOperacionais?.filhos?.find((f) => f.rotulo === "Custos de Ocupação");
+    expect(ocupacao?.filhos?.map((f) => f.rotulo)).toContain("Aluguel");
+  });
+
+  it("CMC fica dentro do CMV (nunca grupo principal) com Compras de Mercadorias/Embalagens como netos", () => {
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
+    const { principal } = montarArvoreMensal(dre);
+    const cmv = acharLinha(principal, "cmv");
+    const cmc = cmv?.filhos?.find((f) => f.id === "cmv_cmc");
+    expect(cmc?.valor).toBe(2000);
+    expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Compras de Mercadorias", "Compras de Embalagens"]);
+    expect(principal.some((l) => l.rotulo === "CMC")).toBe(false);
+  });
+
+  it("quando o estoque mensal não foi cadastrado, todo o ramo do CMV vem null (nunca 0) mas mantém a mesma forma", () => {
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: null });
+    const { principal } = montarArvoreMensal(dre);
+    const cmv = acharLinha(principal, "cmv");
+    expect(cmv?.valor).toBeNull();
+    expect(cmv?.filhos).toHaveLength(5);
+    expect(cmv?.filhos?.every((f) => f.valor === null)).toBe(true);
+    expect(cmv?.filhos?.find((f) => f.id === "cmv_cmc")?.filhos).toHaveLength(2);
+
+    const margem = acharLinha(principal, "margem");
+    expect(margem?.valor).toBeNull();
+  });
+
+  it("linha de resultado (Margem, Resultado Operacional) não tem filhos - não é expansível", () => {
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
+    const { principal } = montarArvoreMensal(dre);
+    expect(acharLinha(principal, "margem")?.filhos).toBeUndefined();
+    expect(acharLinha(principal, "resultado_operacional")?.filhos).toBeUndefined();
+    expect(acharLinha(principal, "receita_liquida")?.filhos).toBeUndefined();
+  });
+
+  it("Saídas Não Operacionais e Geração de Caixa ficam na seção indicador, separada da principal", () => {
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
+    const { indicador, principal } = montarArvoreMensal(dre);
+    expect(indicador.map((l) => l.id)).toEqual(["saidas", "geracao_caixa"]);
+    expect(principal.some((l) => l.id === "saidas" || l.id === "geracao_caixa")).toBe(false);
+    expect(acharLinha(indicador, "saidas")?.filhos?.map((f) => f.rotulo)).toContain("Retiradas de sócios");
+  });
+
+  it("Resultado Econômico fecha a própria DRE (mesmo valor de Resultado Operacional) e nunca é reduzido por Saídas Não Operacionais", () => {
+    const comSaidas = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
+    const semSaidas = calcularDre({
+      competencia: "2026-08",
+      lancamentos: LANCAMENTOS.filter((l) => l.categoriaId !== "sno_retiradas"),
+      categorias: CATEGORIAS,
+      estoqueMensal: ESTOQUE_AGOSTO,
+    });
+
+    const { principal: principalComSaidas, indicador: indicadorComSaidas } = montarArvoreMensal(comSaidas);
+    const { principal: principalSemSaidas } = montarArvoreMensal(semSaidas);
+
+    const resultadoEconomicoComSaidas = acharLinha(principalComSaidas, "resultado_economico");
+    const resultadoEconomicoSemSaidas = acharLinha(principalSemSaidas, "resultado_economico");
+    const resultadoOperacional = acharLinha(principalComSaidas, "resultado_operacional");
+    const geracaoCaixa = indicadorComSaidas.find((l) => l.id === "geracao_caixa");
+
+    // Resultado Econômico é igual com ou sem Saídas Não Operacionais lançadas.
+    expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoEconomicoSemSaidas?.valor);
+    expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoOperacional?.valor);
+    // Geração de Caixa, por outro lado, é reduzida pelas Saídas Não Operacionais.
+    expect(geracaoCaixa?.valor).toBe(resultadoOperacional!.valor! - 300);
+    expect(geracaoCaixa?.valor).not.toBe(resultadoEconomicoComSaidas?.valor);
   });
 });
