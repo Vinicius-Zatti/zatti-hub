@@ -89,6 +89,13 @@ export default async function AppLayout({
         { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
       ],
     },
+    {
+      label: "DRE",
+      items: [
+        { label: "DRE", href: "/financeiro-gerencial/dre" },
+        { label: "Estoque mensal", href: "/financeiro-gerencial/estoque" },
+      ],
+    },
     ...(podeGerir
       ? [
           {
