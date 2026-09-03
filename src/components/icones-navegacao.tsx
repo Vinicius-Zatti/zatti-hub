@@ -3,6 +3,7 @@ export type NomeIconeNavegacao =
   | "estoque"
   | "financeiro"
   | "financeiroGerencial"
+  | "meuTempo"
   | "fichas"
   | "tarefas"
   | "marketing"
@@ -45,6 +46,12 @@ export function IconeNavegacao({
     financeiroGerencial: (
       <>
         <path d="M4 20V10M10 20V4M16 20v-7M22 20V8" />
+      </>
+    ),
+    meuTempo: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3.5 2" />
       </>
     ),
     fichas: (

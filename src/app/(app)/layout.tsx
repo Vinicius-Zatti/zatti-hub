@@ -168,11 +168,18 @@ export default async function AppLayout({
     },
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
-    // Esconder o item pra quem não é master é só UX - a barreira de
-    // verdade é `requireMaster()` no layout de `/acessos` e em cada Server
-    // Action de `src/app/(app)/acessos/actions.ts`, não isto aqui.
+    // Esconder os itens abaixo pra quem não é master é só UX - a barreira de
+    // verdade é `requireMaster()`/`requireMeuTempo()` no layout de cada
+    // módulo e em cada Server Action, não isto aqui.
     ...(acesso.role === "master"
       ? [
+          {
+            label: "Meu Tempo",
+            href: "/meu-tempo/hoje",
+            icone: "meuTempo" as const,
+            activePrefix: "/meu-tempo",
+            disabled: false,
+          },
           {
             label: "Acessos",
             href: "/acessos",

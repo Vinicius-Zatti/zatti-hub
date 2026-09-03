@@ -495,6 +495,88 @@ export const saidaSemReceitaEntradaSchema = z
   })
   .strict();
 
+// ── Meu Tempo (módulo pessoal, só master) ─────────────────────────────────
+
+export const tipoFrenteTempoSchema = z.enum(["paga", "propria"]);
+export const tipoTrabalhoTempoSchema = z.enum(["reuniao", "preparacao", "execucao", "followup", "outro"]);
+const horaSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use o formato HH:MM");
+
+export const frenteTempoEntradaSchema = z
+  .object({
+    nome: textoObrigatorio(120),
+    tipo: tipoFrenteTempoSchema,
+  })
+  .strict();
+
+export const editarFrenteTempoEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    nome: textoObrigatorio(120),
+    tipo: tipoFrenteTempoSchema,
+    ativo: z.boolean(),
+  })
+  .strict();
+
+export const valorHoraTempoEntradaSchema = z
+  .object({
+    valor: dinheiroPositivo,
+    vigenteDesde: dataIsoSchema,
+  })
+  .strict();
+
+export const metaMensalTempoEntradaSchema = z
+  .object({
+    frenteId: idUuidSchema,
+    valorMensal: dinheiroPositivo,
+    vigenteDesde: dataIsoSchema,
+  })
+  .strict();
+
+export const iniciarCronometroTempoEntradaSchema = z
+  .object({
+    frenteId: idUuidSchema,
+  })
+  .strict();
+
+export const idLancamentoTempoEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+  })
+  .strict();
+
+/** Ou (hora início/fim) ou (duração direta) - "ambos os jeitos são livres,
+ * duração pura sem hora nenhuma é permitida" (decisão explícita de
+ * Vinícius). Nunca os dois ao mesmo tempo - a UI mostra um jeito por vez. */
+const tempoManualEntradaSchema = z.discriminatedUnion("modo", [
+  z.object({ modo: z.literal("horario"), horaInicio: horaSchema, horaFim: horaSchema }).strict(),
+  z.object({ modo: z.literal("duracao"), duracaoMinutos: z.number().int().min(1).max(1440) }).strict(),
+]);
+
+export const lancamentoTempoManualEntradaSchema = z
+  .object({
+    frenteId: idUuidSchema,
+    data: dataIsoSchema,
+    tempo: tempoManualEntradaSchema,
+    tipoTrabalho: tipoTrabalhoTempoSchema,
+    observacao: texto(2_000),
+  })
+  .strict();
+
+// Não deriva de `lancamentoTempoManualEntradaSchema` via `.and()`: intersectar
+// dois schemas `.strict()` faz cada lado rejeitar a chave que só existe no
+// outro (`id` não existe no schema de criação) - schema próprio, mesmo shape
+// + `id`, evita esse problema.
+export const editarLancamentoTempoEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    frenteId: idUuidSchema,
+    data: dataIsoSchema,
+    tempo: tempoManualEntradaSchema,
+    tipoTrabalho: tipoTrabalhoTempoSchema,
+    observacao: texto(2_000),
+  })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

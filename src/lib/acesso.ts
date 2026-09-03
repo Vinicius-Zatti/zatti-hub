@@ -286,6 +286,17 @@ export async function requireMaster(): Promise<AcessoAtual> {
   return acesso;
 }
 
+/** Barreira do módulo pessoal "Meu Tempo" (controle de horas de Vinícius por
+ * frente/cliente) - visível e operável só por master, sem flag de habilitação
+ * por unidade (não é módulo de cliente). Aplica direto sobre `requireMaster()`,
+ * mesmo padrão de composição de `requireGestaoFinanceiroGerencial`. A mesma
+ * regra é repetida em `usuario_e_master()` no banco como última barreira, e
+ * toda tabela do módulo também filtra por `criado_por = auth.uid()` (dados
+ * pessoais por usuário, pensando num possível segundo master no futuro). */
+export async function requireMeuTempo(): Promise<AcessoAtual> {
+  return requireMaster();
+}
+
 /** Log mínimo de auditoria: quem mudou o quê, quando, em qual unidade. Uma
  * falha aqui nunca deve derrubar a ação de verdade do usuário, por isso
  * engole o erro (só loga no servidor). */
