@@ -43,12 +43,17 @@ export function itemVigenteEm<T extends { vigenteDesde: string }>(
   return historicoDesc.find((item) => item.vigenteDesde <= dataReferenciaIso) ?? null;
 }
 
-/** "09:00" + "10:30" -> 90 (minutos). Não valida `fim > inicio` - quem chama
- * decide o que fazer com um resultado <= 0. */
+/** "09:00" + "10:30" -> 90 (minutos). "23:00" + "00:24" -> 84 (vira o dia -
+ * lançamento manual não tem campo de data separado pro fim, então fim <=
+ * início é sempre lido como madrugada do dia seguinte, nunca como entrada
+ * inválida). Só um horário exatamente igual ao início dá 0, e quem chama
+ * (`resolverTempoManual`) trata isso como erro de validação. */
 export function calcularDuracaoMinutosPorHorario(horaInicio: string, horaFim: string): number {
   const [horaI, minutoI] = horaInicio.split(":").map(Number);
   const [horaF, minutoF] = horaFim.split(":").map(Number);
-  return horaF * 60 + minutoF - (horaI * 60 + minutoI);
+  const minutosInicio = horaI * 60 + minutoI;
+  const minutosFim = horaF * 60 + minutoF;
+  return minutosFim < minutosInicio ? minutosFim + 24 * 60 - minutosInicio : minutosFim - minutosInicio;
 }
 
 export function somarMinutos(lancamentos: { duracaoMinutos: number | null }[]): number {

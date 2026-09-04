@@ -61,8 +61,12 @@ describe("calcularDuracaoMinutosPorHorario", () => {
     expect(calcularDuracaoMinutosPorHorario("09:00", "10:30")).toBe(90);
   });
 
-  it("fim antes do início dá negativo (validação fica pra quem chama)", () => {
-    expect(calcularDuracaoMinutosPorHorario("10:00", "09:00")).toBe(-60);
+  it("fim antes do início é lido como virada de dia (madrugada)", () => {
+    expect(calcularDuracaoMinutosPorHorario("23:00", "00:24")).toBe(84);
+  });
+
+  it("fim igual ao início dá 0 (validação de 'depois do início' fica pra quem chama)", () => {
+    expect(calcularDuracaoMinutosPorHorario("10:00", "10:00")).toBe(0);
   });
 });
 
