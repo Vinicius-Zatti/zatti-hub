@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { Produto } from "@/lib/types";
-import { registrarContagemAction } from "@/app/(app)/estoque/contagem/actions";
+import {
+  abrirContagemAction,
+  registrarContagemAction,
+  registrarContagemSetorAction,
+} from "@/app/(app)/estoque/contagem/actions";
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
+import type { Setor } from "@/lib/types";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
 
 const MESES = [
@@ -41,10 +46,24 @@ function hojeISO(): string {
   return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`;
 }
 
-export function ContagemForm({ produtos }: { produtos: Produto[] }) {
+export function ContagemForm({
+  produtos,
+  setores = [],
+}: {
+  produtos: Produto[];
+  /** Setores ativos da unidade. Vazio = unidade que ainda não usa setor, e
+   * aí vale o fluxo antigo, com escopo por grupo de produto. */
+  setores?: Setor[];
+}) {
+  const usaSetor = setores.length > 0;
   const [tela, setTela] = useState<"data" | "aviso" | "inventario">("data");
   const [dataISO, setDataISO] = useState(hojeISO());
   const [grupos, setGrupos] = useState<string[]>([]);
+  const [setorId, setSetorId] = useState("");
+  // Lista congelada do setor na data, devolvida pelo "Iniciar contagem".
+  const [escopoSkus, setEscopoSkus] = useState<string[] | null>(null);
+  const [jaConcluido, setJaConcluido] = useState(false);
+  const [abrindo, setAbrindo] = useState(false);
   const [customItens, setCustomItens] = useState<ItemCustom[]>([]);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [confirmados, setConfirmados] = useState<Record<string, number>>({});
@@ -55,9 +74,13 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
   const [isPending, startTransition] = useTransition();
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
+  const noEscopo = escopoSkus === null ? null : new Set(escopoSkus);
   const ativos = produtos
     .filter((p) => p.ativo)
-    .filter((p) => grupos.length === 0 || grupos.includes(p.grupo))
+    // Com setor, quem manda é o snapshot da data, não a designação de agora
+    // nem o grupo do produto.
+    .filter((p) => (noEscopo ? noEscopo.has(p.sku) : true))
+    .filter((p) => (usaSetor ? true : grupos.length === 0 || grupos.includes(p.grupo)))
     .sort((a, b) => {
       // Posição é a ordem física de caminhada da contagem - cruza grupo (um
       // item de Hortifrúti que fisicamente fica entre dois de Congelados
@@ -92,7 +115,12 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
 
   const [ano, mesNum] = dataISO.split("-");
   const mesDisplay = dataISO ? `${MESES[Number(mesNum) - 1]} ${ano}` : "";
-  const escopoLabel = grupos.length === 0 ? "Contagem completa" : grupos.map(nomeGrupo).join(", ");
+  const setorEscolhido = setores.find((setor) => setor.id === setorId);
+  const escopoLabel = usaSetor
+    ? `Setor ${setorEscolhido?.nome ?? ""}`
+    : grupos.length === 0
+      ? "Contagem completa"
+      : grupos.map(nomeGrupo).join(", ");
 
   const { ativar, desativar } = useGuardaContagem();
 
@@ -124,7 +152,35 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
 
   function confirmarData() {
     if (!dataISO) return;
-    setTela("aviso");
+    if (!usaSetor) {
+      setTela("aviso");
+      return;
+    }
+    if (!setorId) return;
+
+    // É este clique que cria a contagem e congela o escopo. A lista que a
+    // pessoa vai contar já vem de lá.
+    setErro(null);
+    setAbrindo(true);
+    startTransition(async () => {
+      try {
+        const aberta = await abrirContagemAction(dataISO, setorId);
+        if (aberta.skus.length === 0) {
+          setErro(
+            "Esse setor não tem nenhum produto designado. Peça pra designar os produtos em " +
+              "Produtos > Setores antes de contar.",
+          );
+          return;
+        }
+        setEscopoSkus(aberta.skus);
+        setJaConcluido(aberta.jaConcluido);
+        setTela("aviso");
+      } catch {
+        setErro("Não deu pra abrir a contagem agora. Tenta de novo em instantes.");
+      } finally {
+        setAbrindo(false);
+      }
+    });
   }
 
   function alternarGrupo(codigo: string) {
@@ -249,9 +305,20 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
       unidadeAvulso: c.unidadeBase,
     }));
 
+    const linhas = [...linhasCadastradas, ...linhasAvulsas];
+
+    if (usaSetor && jaConcluido) {
+      const segue = window.confirm(
+        `Já existe uma contagem do ${setorEscolhido?.nome ?? "setor"} nesta data. ` +
+          "Este envio substituirá a contagem anterior do setor.",
+      );
+      if (!segue) return;
+    }
+
     startTransition(async () => {
       try {
-        await registrarContagemAction([...linhasCadastradas, ...linhasAvulsas], dataISO);
+        if (usaSetor) await registrarContagemSetorAction(dataISO, setorId, linhas);
+        else await registrarContagemAction(linhas, dataISO);
         setEnviado(true);
       } catch {
         setErro("Não deu pra registrar agora. Tenta de novo em instantes.");
@@ -309,6 +376,34 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
             className="w-full border-none bg-transparent text-xl font-bold text-cinza outline-none"
           />
         </div>
+        {usaSetor && (
+          <div className="mt-4 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
+              Qual setor você vai contar?
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {setores.map((setor) => (
+                <button
+                  key={setor.id}
+                  type="button"
+                  onClick={() => setSetorId(setor.id)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                    setorId === setor.id
+                      ? "border-azul-noite bg-azul-noite text-branco"
+                      : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
+                  }`}
+                >
+                  {setor.nome}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-cinza-medio">
+              Você conta só a lista do seu setor. Item que existe em mais de um setor é somado
+              depois, na conferência.
+            </p>
+          </div>
+        )}
+        {!usaSetor && (
         <div className="mt-4 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
           <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
             O que vamos contar hoje?
@@ -346,14 +441,18 @@ export function ContagemForm({ produtos }: { produtos: Produto[] }) {
             </p>
           )}
         </div>
+        )}
+        {erro && <p className="mt-3 text-sm text-vermelho">{erro}</p>}
         <button
           onClick={confirmarData}
-          disabled={!dataISO || ativos.length === 0}
+          disabled={
+            !dataISO || abrindo || (usaSetor ? !setorId : ativos.length === 0)
+          }
           className="mt-6 w-full rounded-lg bg-ambar px-4 py-3.5 text-sm font-bold text-azul-noite disabled:opacity-40"
         >
-          Confirmar data
+          {usaSetor ? (abrindo ? "Abrindo..." : "Iniciar contagem") : "Confirmar data"}
         </button>
-        {ativos.length === 0 && (
+        {!usaSetor && ativos.length === 0 && (
           <p className="mt-2 text-xs text-vermelho">Nenhum produto ativo nesse grupo.</p>
         )}
       </div>

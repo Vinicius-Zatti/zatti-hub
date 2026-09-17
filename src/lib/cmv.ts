@@ -1,4 +1,9 @@
 import type { ItemInventario, Pedido } from "@/lib/types";
+import {
+  avisoDeContagemParcial,
+  situacaoDaData,
+  type AndamentoSetor,
+} from "@/lib/contagem/setor";
 
 function parseDataBR(data: string): number {
   const [d, m, a] = data.split("/").map(Number);
@@ -7,15 +12,37 @@ function parseDataBR(data: string): number {
 }
 
 /** Datas de contagem distintas, mais recente primeiro - alimenta os dois
- * seletores (início/fim de período) da Calculadora de CMV. */
-export function datasDeContagem(itens: ItemInventario[]): string[] {
+ * seletores (início/fim de período) da Calculadora de CMV.
+ *
+ * Data parcial (algum setor ainda não fechou) NUNCA entra: usar meia contagem
+ * como estoque inicial ou final produz um CMV errado e crível, que é o pior
+ * tipo de erro. Data legada, anterior ao controle de setor, conta como
+ * completa - senão o histórico dos clientes antigos sumiria daqui. */
+export function datasDeContagem(
+  itens: ItemInventario[],
+  andamentoPorData: Map<string, AndamentoSetor[]> = new Map(),
+): string[] {
   const vistas = new Map<string, number>();
   for (const it of itens) {
     if (!vistas.has(it.data)) vistas.set(it.data, parseDataBR(it.data));
   }
   return Array.from(vistas.entries())
+    .filter(([data]) => situacaoDaData(andamentoPorData.get(data) ?? []) !== "parcial")
     .sort((a, b) => b[1] - a[1])
     .map(([data]) => data);
+}
+
+/** Datas que ficaram de fora por estarem parciais, com quem falta contar -
+ * a tela precisa explicar a ausência em vez de só esconder a data. */
+export function datasParciais(
+  itens: ItemInventario[],
+  andamentoPorData: Map<string, AndamentoSetor[]> = new Map(),
+): { data: string; aviso: string }[] {
+  const vistas = new Set(itens.map((it) => it.data));
+  return Array.from(vistas)
+    .filter((data) => situacaoDaData(andamentoPorData.get(data) ?? []) === "parcial")
+    .sort((a, b) => parseDataBR(b) - parseDataBR(a))
+    .map((data) => ({ data, aviso: avisoDeContagemParcial(andamentoPorData.get(data) ?? []) }));
 }
 
 /** Soma do valor (quantidade × preço) de todos os itens de uma contagem

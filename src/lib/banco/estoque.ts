@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import type { Fornecedor, ItemInventario, Produto } from "@/lib/types";
 
 export type NovaContagemBanco = {
@@ -237,11 +238,16 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
   const contagemPorId = new Map(
     contagens.map((contagem) => [contagem.id, { data: contagem.data, mes: contagem.mes }]),
   );
-  const { data: itens, error: erroItens } = await supabase
-    .from("contagem_itens")
-    .select("contagem_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta")
-    .in("contagem_id", contagens.map((contagem) => contagem.id))
-    .order("ordem");
+  const [{ data: itens, error: erroItens }, nomePorSetor] = await Promise.all([
+    supabase
+      .from("contagem_itens")
+      .select(
+        "id, contagem_id, setor_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta",
+      )
+      .in("contagem_id", contagens.map((contagem) => contagem.id))
+      .order("ordem"),
+    nomesDeSetor(unidadeId),
+  ]);
   if (erroItens) throw new Error(`Não foi possível carregar os itens contados: ${erroItens.message}`);
 
   return (itens ?? []).map((item) => {
@@ -257,8 +263,29 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
       precoUnitario: numeroOuNull(item.preco_unitario),
       total: numeroOuNull(item.total),
       alerta: item.alerta,
+      id: item.id,
+      setorId: item.setor_id,
+      // Linha legada (anterior à contagem por setor) fica sem nome mesmo.
+      setorNome: item.setor_id ? (nomePorSetor.get(item.setor_id) ?? "") : null,
     };
   });
+}
+
+/** Nome de cada setor da unidade, inclusive os desativados - contagem antiga
+ * precisa continuar mostrando o setor que a fez.
+ *
+ * Com a contagem por setor desligada, nem consulta: assim a listagem de
+ * estoque não passa a depender da tabela `setores`, e a ordem entre migração
+ * e deploy deixa de poder quebrar o fluxo que já existia. */
+async function nomesDeSetor(unidadeId: string): Promise<Map<string, string>> {
+  if (!CONTAGEM_POR_SETOR_ATIVA) return new Map();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("setores")
+    .select("id, nome")
+    .eq("unidade_id", unidadeId);
+  if (error) throw new Error(`Não foi possível carregar os setores: ${error.message}`);
+  return new Map((data ?? []).map((setor) => [setor.id as string, setor.nome as string]));
 }
 
 export async function registrarContagemBanco(
@@ -360,5 +387,119 @@ export async function atualizarQuantidadeInventarioBanco(
     .from("contagem_itens")
     .update({ quantidade, total, alerta })
     .eq("id", item.id);
+  if (error) throw new Error(`Não foi possível corrigir a quantidade: ${error.message}`);
+}
+
+// --- Contagem por setor -----------------------------------------------------
+
+export type LinhaContagemSetor = {
+  sku: string;
+  quantidade: number | null;
+  nomeAvulso?: string;
+  unidadeAvulso?: string;
+};
+
+/** Abre (ou reaproveita) a contagem da data e congela o snapshot de escopo.
+ * Chamada no "Iniciar contagem". A idempotência e a trava de concorrência
+ * estão na função do Postgres, não aqui. */
+export async function abrirContagemBanco(
+  unidadeId: string,
+  dataBr: string,
+  mes: string,
+): Promise<string> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("abrir_contagem_setor", {
+    p_unidade_id: unidadeId,
+    p_data: dataBrParaIso(dataBr),
+    p_mes: mes,
+  });
+  if (error) throw new Error(`Não foi possível abrir a contagem: ${error.message}`);
+  if (!data) throw new Error("Não foi possível abrir a contagem.");
+  return data as string;
+}
+
+/** Grava a contagem de um setor substituindo o que aquele setor já tinha
+ * gravado na data. Tudo numa transação só, dentro do Postgres. */
+export async function substituirContagemSetorBanco(
+  contagemId: string,
+  setorId: string,
+  linhas: LinhaContagemSetor[],
+  unidadeId: string,
+): Promise<number> {
+  const supabase = await createClient();
+  const produtos = await listarProdutosBanco(unidadeId);
+  const porSku = new Map(produtos.map((produto) => [produto.sku, produto]));
+
+  const itens = linhas.map((linha) => {
+    const produto = porSku.get(linha.sku);
+    const precoUnitario = produto?.precoUnitario ?? null;
+    const quantidade = linha.quantidade;
+    const total =
+      precoUnitario === null || quantidade === null
+        ? null
+        : Number((quantidade * precoUnitario).toFixed(2));
+    if (linha.nomeAvulso) {
+      return {
+        sku: linha.sku,
+        grupo: "",
+        nome: linha.nomeAvulso,
+        unidade_base: linha.unidadeAvulso || "UN",
+        quantidade,
+        preco_unitario: null,
+        total: null,
+        alerta: "Sem cadastro, falta criar produto",
+      };
+    }
+    return {
+      sku: linha.sku,
+      grupo: produto?.grupo ?? "",
+      nome: produto?.nome ?? "",
+      unidade_base: produto?.unidadeBase ?? "",
+      quantidade,
+      preco_unitario: precoUnitario,
+      total,
+      alerta: calcularAlerta(quantidade, precoUnitario, produto),
+    };
+  });
+
+  const { data, error } = await supabase.rpc("substituir_contagem_setor", {
+    p_contagem_id: contagemId,
+    p_setor_id: setorId,
+    p_itens: itens,
+  });
+  if (error) throw new Error(`Não foi possível gravar a contagem do setor: ${error.message}`);
+  return Number(data ?? 0);
+}
+
+/** Corrige a quantidade de UM item, identificado pelo id. Nunca pelo primeiro
+ * SKU encontrado: com setor, o mesmo SKU existe em várias linhas da mesma
+ * contagem, e corrigir "o primeiro" mexeria no setor errado. */
+export async function atualizarQuantidadeItemBanco(
+  itemId: string,
+  quantidade: number,
+  unidadeId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const { data: item, error: erroItem } = await supabase
+    .from("contagem_itens")
+    .select("id, sku, preco_unitario, contagem_id, contagens!inner(unidade_id)")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (erroItem) throw new Error(`Não foi possível localizar o item: ${erroItem.message}`);
+  if (!item) throw new Error("Não achei esse item para corrigir.");
+
+  const contagem = item.contagens as unknown as { unidade_id: string } | null;
+  if (!contagem || contagem.unidade_id !== unidadeId) {
+    throw new Error("Esse item não pertence à unidade atual.");
+  }
+
+  const produto = (await listarProdutosBanco(unidadeId)).find((p) => p.sku === item.sku);
+  const precoUnitario = numeroOuNull(item.preco_unitario);
+  const total = precoUnitario === null ? null : Number((quantidade * precoUnitario).toFixed(2));
+  const alerta = calcularAlerta(quantidade, precoUnitario, produto);
+  const { error } = await supabase
+    .from("contagem_itens")
+    .update({ quantidade, total, alerta })
+    .eq("id", itemId);
   if (error) throw new Error(`Não foi possível corrigir a quantidade: ${error.message}`);
 }

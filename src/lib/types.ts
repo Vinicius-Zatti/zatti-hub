@@ -36,6 +36,22 @@ export type ItemInventario = {
   precoUnitario: number | null;
   total: number | null;
   alerta: string;
+  /** Os três abaixo só existem na fonte banco. Contagem legada (antes da
+   * contagem por setor) e unidade ainda na planilha vêm sem. `id` é o que
+   * permite corrigir a linha certa quando o mesmo SKU foi contado por mais
+   * de um setor. */
+  id?: string | null;
+  setorId?: string | null;
+  setorNome?: string | null;
+};
+
+export type Setor = {
+  id: string;
+  nome: string;
+  ordem: number;
+  ativo: boolean;
+  /** Quantos produtos estão designados a este setor hoje. */
+  produtos: number;
 };
 
 export type ItemPendente = {
@@ -88,6 +104,10 @@ export type SugestaoCompra = {
    * comprador ver isso também em Criar Cotação sem ter que ir conferir em
    * outra aba. */
   alerta: string;
+  /** Setores que tinham este item no escopo da data e não contaram. Quando
+   * tem gente nessa lista, `estoqueAtual` é soma parcial: o comprador precisa
+   * ver isso antes de comprar em cima de um número incompleto. */
+  setoresQueNaoContaram: string[];
 };
 
 export type PedidoItem = {

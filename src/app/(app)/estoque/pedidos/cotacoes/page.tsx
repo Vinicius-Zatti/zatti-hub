@@ -7,6 +7,8 @@ import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarForne
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
+import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
+import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,7 @@ function produtoParaSugestao(produto: Produto, precoNaContagem: number | null): 
     unidadeEmbalagemFornecedor: produto.unidadeEmbalagemFornecedor,
     qtdUnidadeBasePorEmbalagem: produto.qtdUnidadeBasePorEmbalagem,
     alerta: "",
+    setoresQueNaoContaram: [],
   };
 }
 
@@ -42,9 +45,26 @@ export default async function EditorEspelhosPage({
 
   let resultado, datas, fornecedoresCadastro, produtos;
   try {
-    [resultado, datas, fornecedoresCadastro, produtos] = await Promise.all([
-      gerarPedido({ data: params.data }, acesso.spreadsheetId),
-      datasDisponiveis(acesso.spreadsheetId),
+    datas = await datasDisponiveis(acesso.spreadsheetId);
+    const dataEscolhida = params.data || datas[0];
+
+    const [escopo, andamentoPorData] =
+      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && dataEscolhida
+        ? await Promise.all([
+            listarEscopoBanco(acesso.unidadeId, dataEscolhida),
+            listarAndamentoBanco(acesso.unidadeId),
+          ])
+        : [[], new Map()];
+
+    [resultado, fornecedoresCadastro, produtos] = await Promise.all([
+      gerarPedido(
+        {
+          data: dataEscolhida,
+          escopo,
+          andamento: andamentoPorData.get(dataEscolhida ?? "") ?? [],
+        },
+        acesso.spreadsheetId,
+      ),
       listFornecedores(acesso.spreadsheetId),
       listProdutos(acesso.spreadsheetId),
     ]);
@@ -112,6 +132,7 @@ export default async function EditorEspelhosPage({
       pedidoSalvoPorFornecedor={pedidoSalvoPorFornecedor}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
       organizacaoNome={acesso.organizacaoNome}
+      setoresPendentes={resultado.setoresPendentes}
     />
   );
 }

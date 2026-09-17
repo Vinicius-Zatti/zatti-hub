@@ -55,6 +55,7 @@ function item(sku: string, fornecedores: string[], precisaComprar = true): Suges
     unidadeEmbalagemFornecedor: "UN",
     qtdUnidadeBasePorEmbalagem: 1,
     alerta: "",
+    setoresQueNaoContaram: [],
   };
 }
 

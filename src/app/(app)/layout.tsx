@@ -21,7 +21,10 @@ export default async function AppLayout({
       items: [
         { label: "Consultar produtos", href: "/estoque/produtos" },
         ...(podeGerir
-          ? [{ label: "Editar dados", href: "/estoque/produtos/edicao" }]
+          ? [
+              { label: "Editar dados", href: "/estoque/produtos/edicao" },
+              { label: "Setores", href: "/estoque/setores" },
+            ]
           : []),
       ],
     },
@@ -173,6 +176,13 @@ export default async function AppLayout({
     // módulo e em cada Server Action, não isto aqui.
     ...(acesso.role === "master"
       ? [
+          {
+            label: "Agenda",
+            href: "/agenda/dia",
+            icone: "agenda" as const,
+            activePrefix: "/agenda",
+            disabled: false,
+          },
           {
             label: "Meu Tempo",
             href: "/meu-tempo/hoje",

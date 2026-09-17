@@ -297,6 +297,14 @@ export async function requireMeuTempo(): Promise<AcessoAtual> {
   return requireMaster();
 }
 
+/** Barreira do módulo pessoal "Agenda" (rotina diária de Vinícius: compromisso,
+ * prioridade, bloco e rotina). Mesmo recorte de `requireMeuTempo`: só master,
+ * sem flag por unidade, com `usuario_e_master()` repetido no banco e filtro por
+ * `criado_por` em toda tabela `zh_agenda_*`. */
+export async function requireAgenda(): Promise<AcessoAtual> {
+  return requireMaster();
+}
+
 /** Log mínimo de auditoria: quem mudou o quê, quando, em qual unidade. Uma
  * falha aqui nunca deve derrubar a ação de verdade do usuário, por isso
  * engole o erro (só loga no servidor). */

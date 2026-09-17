@@ -4,6 +4,9 @@ import { ErroPublico } from "@/lib/erros";
 export type ChaveLimiteRequisicao =
   | "sugerir_sku"
   | "registrar_contagem"
+  | "setor_salvar"
+  | "setor_designar"
+  | "contagem_abrir"
   | "corrigir_contagem"
   | "salvar_produtos"
   | "salvar_fornecedores"
@@ -39,7 +42,10 @@ export type ChaveLimiteRequisicao =
   | "tempo_cronometro_acao"
   | "tempo_lancamento_criar"
   | "tempo_lancamento_editar"
-  | "tempo_lancamento_excluir";
+  | "tempo_lancamento_excluir"
+  | "agenda_tarefa_salvar"
+  | "agenda_tarefa_excluir"
+  | "agenda_marcar_execucao";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do
  * banco estiver indisponivel, a mutacao nao continua sem protecao. */

@@ -56,6 +56,7 @@ export function EditorEspelhos({
   pedidoSalvoPorFornecedor,
   pedidoMinimoPorFornecedor,
   organizacaoNome,
+  setoresPendentes = [],
 }: {
   itensPorFornecedor: Record<string, SugestaoCompra[]>;
   fornecedores: string[];
@@ -64,6 +65,8 @@ export function EditorEspelhos({
   pedidoSalvoPorFornecedor: Record<string, Pedido | null>;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
   organizacaoNome: string;
+  /** Setores que ainda não fecharam a contagem dessa data. */
+  setoresPendentes?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -502,6 +505,19 @@ export function EditorEspelhos({
   }
 
   async function compartilhar(fornecedor: string) {
+    // Cotação parcial só sai com confirmação explícita: o número em cima do
+    // qual o fornecedor vai cotar está incompleto.
+    if (setoresPendentes.length > 0) {
+      const segue = window.confirm(
+        `Contagem parcial. Faltam: ${setoresPendentes.join(" e ")}.
+
+` +
+          "O estoque considerado é a soma só dos setores que já fecharam. " +
+          "Compartilhar mesmo assim?",
+      );
+      if (!segue) return;
+    }
+
     // Só o que foi de fato confirmado como vencedor entra no espelho
     // compartilhado - item com quantidade editada mas ninguém clicou
     // "Confirmar aqui" ainda não é pedido de verdade, não pode vazar pro

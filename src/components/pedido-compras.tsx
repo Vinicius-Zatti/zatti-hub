@@ -26,6 +26,7 @@ export function PedidoCompras({
   podeEditar,
   fornecedoresCadastro,
   quantidadesSalvas,
+  setoresPendentes = [],
 }: {
   itens: SugestaoCompra[];
   dataUsada: string;
@@ -37,6 +38,10 @@ export function PedidoCompras({
   podeEditar: boolean;
   fornecedoresCadastro: Fornecedor[];
   quantidadesSalvas: Record<string, number>;
+  /** Setores que ainda não fecharam a contagem dessa data. Com gente aqui, o
+   * estoque atual é soma parcial e a tela exige confirmação explícita antes
+   * de deixar confirmar quantidade. */
+  setoresPendentes?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -77,7 +82,7 @@ export function PedidoCompras({
   // avulso "Sem fornecedor cadastrado" (mesmo comportamento de sempre).
   async function confirmarValor(item: SugestaoCompra, valorBase: number) {
     setOverrides((o) => ({ ...o, [item.sku]: valorBase }));
-    if (!podeEditar) return;
+    if (!podeConfirmar) return;
 
     setConfirmando((c) => ({ ...c, [item.sku]: true }));
     setErroConfirmar((e) => ({ ...e, [item.sku]: "" }));
@@ -157,6 +162,10 @@ export function PedidoCompras({
   );
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
 
+  const [parcialLiberada, setParcialLiberada] = useState(false);
+  const contagemParcial = setoresPendentes.length > 0;
+  const podeConfirmar = podeEditar && (!contagemParcial || parcialLiberada);
+
   const totalGeral = itens.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
     return soma + valorAtual(item) * item.precoUnitario;
@@ -172,6 +181,31 @@ export function PedidoCompras({
           fornecedor lá embaixo.
         </p>
       </div>
+
+      {contagemParcial && (
+        <div className="rounded-lg border-2 border-ambar bg-ambar/10 p-4">
+          <p className="font-display text-lg font-bold text-azul-noite">
+            Contagem parcial. Faltam: {setoresPendentes.join(" e ")}.
+          </p>
+          <p className="mt-1 text-sm text-cinza">
+            O estoque atual abaixo é a soma só dos setores que já fecharam. Comprar em cima disso
+            pode render pedido a mais, porque o que está no setor que faltou não aparece aqui.
+          </p>
+          {!parcialLiberada ? (
+            <button
+              type="button"
+              onClick={() => setParcialLiberada(true)}
+              className="mt-3 rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco"
+            >
+              Entendi, seguir com a contagem parcial
+            </button>
+          ) : (
+            <p className="mt-2 text-sm font-semibold text-ambar">
+              Você liberou a cotação parcial nesta tela.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">
         <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
@@ -259,7 +293,7 @@ export function PedidoCompras({
                 editando={editando}
                 confirmando={confirmando}
                 erroConfirmar={erroConfirmar}
-                podeEditar={podeEditar}
+                podeEditar={podeConfirmar}
                 onIniciarEdicao={iniciarEdicao}
                 onConfirmarEdicao={confirmarEdicaoGrupo}
                 onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
@@ -284,7 +318,7 @@ export function PedidoCompras({
                 legenda={legenda}
                 valorAtual={valorAtual}
                 onConfirmarValor={confirmarValor}
-                podeEditar={podeEditar}
+                podeEditar={podeConfirmar}
                 fornecedoresCadastro={fornecedoresCadastro}
                 onFornecedorAtribuido={(sku, nome) =>
                   setFornecedorOverrides((f) => ({ ...f, [sku]: nome }))

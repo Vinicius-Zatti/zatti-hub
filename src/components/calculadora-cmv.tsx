@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import type { ItemInventario, Pedido } from "@/lib/types";
 import { StatCard } from "@/components/stat-card";
 import { CampoNumero } from "@/components/campo-numero";
-import { calcularCmv, datasDeContagem } from "@/lib/cmv";
+import { calcularCmv, datasDeContagem, datasParciais } from "@/lib/cmv";
+import type { AndamentoSetor } from "@/lib/contagem/setor";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -13,11 +14,21 @@ function formatMoeda(v: number): string {
 export function CalculadoraCmv({
   itensInventario,
   pedidos,
+  andamentoPorData = new Map(),
 }: {
   itensInventario: ItemInventario[];
   pedidos: Pedido[];
+  /** Andamento por setor de cada data. Data parcial não entra no CMV. */
+  andamentoPorData?: Map<string, AndamentoSetor[]>;
 }) {
-  const datas = useMemo(() => datasDeContagem(itensInventario), [itensInventario]);
+  const datas = useMemo(
+    () => datasDeContagem(itensInventario, andamentoPorData),
+    [itensInventario, andamentoPorData],
+  );
+  const parciais = useMemo(
+    () => datasParciais(itensInventario, andamentoPorData),
+    [itensInventario, andamentoPorData],
+  );
 
   const [dataInicial, setDataInicial] = useState(datas[1] ?? datas[0] ?? "");
   const [dataFinal, setDataFinal] = useState(datas[0] ?? "");
@@ -49,6 +60,27 @@ export function CalculadoraCmv({
           Calculado a partir do estoque contado, das compras recebidas e do faturamento do período.
         </p>
       </div>
+
+      {parciais.length > 0 && (
+        <div className="rounded-lg border border-ambar bg-ambar/10 p-4 text-sm text-cinza">
+          <p className="font-semibold">
+            {parciais.length === 1
+              ? "1 contagem não aparece aqui porque está parcial:"
+              : `${parciais.length} contagens não aparecem aqui porque estão parciais:`}
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {parciais.map((p) => (
+              <li key={p.data}>
+                {p.data} - {p.aviso}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-cinza-medio">
+            Meia contagem como estoque inicial ou final dá um CMV errado e convincente. Feche os
+            setores que faltam e a data entra sozinha.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 rounded-lg border border-cinza-claro bg-branco p-4 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">

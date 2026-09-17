@@ -4,6 +4,8 @@ import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
+import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
+import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +22,29 @@ export default async function PedidosPage({
   let datas;
   let fornecedores;
   try {
-    [resultado, datas, fornecedores] = await Promise.all([
-      gerarPedido({ data: params.data, grupos }, acesso.spreadsheetId),
-      datasDisponiveis(acesso.spreadsheetId),
+    // A data precisa ser conhecida antes, pra buscar o snapshot e o andamento
+    // daquela contagem - é o que diz se a soma está completa ou parcial.
+    datas = await datasDisponiveis(acesso.spreadsheetId);
+    const dataEscolhida = params.data || datas[0];
+
+    const [escopo, andamentoPorData] =
+      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && dataEscolhida
+        ? await Promise.all([
+            listarEscopoBanco(acesso.unidadeId, dataEscolhida),
+            listarAndamentoBanco(acesso.unidadeId),
+          ])
+        : [[], new Map()];
+
+    [resultado, fornecedores] = await Promise.all([
+      gerarPedido(
+        {
+          data: dataEscolhida,
+          grupos,
+          escopo,
+          andamento: andamentoPorData.get(dataEscolhida ?? "") ?? [],
+        },
+        acesso.spreadsheetId,
+      ),
       listFornecedores(acesso.spreadsheetId),
     ]);
   } catch {
@@ -61,6 +83,7 @@ export default async function PedidosPage({
       podeEditar={acesso.role === "gestao" || acesso.role === "master"}
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
+      setoresPendentes={resultado.setoresPendentes}
     />
   );
 }

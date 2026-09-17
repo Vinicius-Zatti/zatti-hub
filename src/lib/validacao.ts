@@ -19,7 +19,10 @@ const identificador = textoObrigatorio(80).refine((valor) => !/[\r\n]/.test(valo
 const numeroNaoNegativo = z.number().finite().min(0).max(LIMITE_QUANTIDADE);
 const dinheiroOuNull = z.number().finite().min(0).max(LIMITE_DINHEIRO).nullable();
 
-function dataIsoValida(valor: string): boolean {
+/** Data ISO de calendário de verdade: "2026-02-31" casa com o formato mas não
+ * existe, e o `Date` normaliza pra 03/03 em silêncio. Exportada porque a
+ * Agenda valida `searchParams` com a mesma régua das Server Actions. */
+export function dataIsoValida(valor: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
   const data = new Date(`${valor}T00:00:00.000Z`);
   return !Number.isNaN(data.valueOf()) && data.toISOString().slice(0, 10) === valor;
@@ -99,6 +102,68 @@ export const registrarContagemSchema = z
       .min(1)
       .max(1_000),
     dataISO: dataIsoSchema.optional(),
+  })
+  .strict();
+
+// --- Contagem por setor -----------------------------------------------------
+
+const uuidSchema = z.string().uuid();
+
+export const setorSchema = z
+  .object({
+    id: uuidSchema.optional(),
+    nome: textoObrigatorio(60),
+    ordem: z.number().int().min(0).max(999),
+    ativo: z.boolean(),
+  })
+  .strict();
+
+export const designacaoSetoresSchema = z
+  .object({
+    designacoes: z
+      .array(
+        z
+          .object({
+            sku: identificador,
+            setorIds: z.array(uuidSchema).max(20),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1_000),
+  })
+  .strict();
+
+export const abrirContagemSchema = z
+  .object({
+    dataISO: dataIsoSchema,
+    setorId: uuidSchema,
+  })
+  .strict();
+
+export const registrarContagemSetorSchema = z
+  .object({
+    dataISO: dataIsoSchema,
+    setorId: uuidSchema,
+    linhas: z
+      .array(
+        z
+          .object({
+            sku: identificador,
+            quantidade: numeroNaoNegativo,
+            nomeAvulso: texto(160).optional(),
+            unidadeAvulso: texto(30).optional(),
+          })
+          .strict(),
+      )
+      .max(1_000),
+  })
+  .strict();
+
+export const corrigirItemContagemSchema = z
+  .object({
+    itemId: uuidSchema,
+    quantidade: numeroNaoNegativo,
   })
   .strict();
 
@@ -574,6 +639,47 @@ export const editarLancamentoTempoEntradaSchema = z
     tempo: tempoManualEntradaSchema,
     tipoTrabalho: tipoTrabalhoTempoSchema,
     observacao: texto(2_000),
+  })
+  .strict();
+
+// ── Agenda (módulo pessoal) ────────────────────────────────────────────────
+
+const situacaoItemAgendaSchema = z.enum(["pendente", "feita", "nao_feita", "adiada"]);
+
+export const tarefaAgendaEntradaSchema = z
+  .object({
+    data: dataIsoSchema,
+    titulo: textoObrigatorio(200),
+    detalhe: texto(2_000),
+    prioridade: z.boolean(),
+    rotinaId: idUuidSchema.nullable(),
+  })
+  .strict();
+
+// Mesmo motivo do `editarLancamentoTempoEntradaSchema`: schema próprio em vez
+// de intersecção, porque dois `.strict()` cruzados rejeitam a chave do outro.
+export const editarTarefaAgendaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    data: dataIsoSchema,
+    titulo: textoObrigatorio(200),
+    detalhe: texto(2_000),
+    prioridade: z.boolean(),
+    rotinaId: idUuidSchema.nullable(),
+  })
+  .strict();
+
+export const situacaoTarefaAgendaEntradaSchema = z
+  .object({ id: idUuidSchema, situacao: situacaoItemAgendaSchema })
+  .strict();
+
+export const idTarefaAgendaEntradaSchema = z.object({ id: idUuidSchema }).strict();
+
+export const execucaoRotinaAgendaEntradaSchema = z
+  .object({
+    data: dataIsoSchema,
+    rotinaId: idUuidSchema,
+    situacao: situacaoItemAgendaSchema,
   })
   .strict();
 

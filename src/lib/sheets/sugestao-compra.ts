@@ -1,6 +1,13 @@
 import { listProdutos } from "./produtos";
 import { listInventario, calcularAlerta } from "./inventario";
 import { ordenarGrupos } from "@/lib/pedido";
+import {
+  quantidadePorSku,
+  setoresPendentes,
+  skusIncompletos,
+  type AndamentoSetor,
+  type EscopoSetor,
+} from "@/lib/contagem/setor";
 import type { SugestaoCompra } from "@/lib/types";
 
 function parseDataBr(d: string): number {
@@ -28,26 +35,53 @@ export async function datasDisponiveis(spreadsheetId: string | null): Promise<st
  * contado", porque isso nunca fez parte daquela contagem. `opcoes.grupos`
  * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar. */
 export async function gerarPedido(
-  opcoes: { data?: string; grupos?: string[] } = {},
+  opcoes: {
+    data?: string;
+    grupos?: string[];
+    /** Snapshot do escopo da data (fonte banco, com setor cadastrado). Vazio
+     * em contagem legada e em unidade na planilha, e aí vale a regra antiga
+     * de escopo por grupo contado. */
+    escopo?: EscopoSetor[];
+    andamento?: AndamentoSetor[];
+  } = {},
   spreadsheetId: string | null
-): Promise<{ itens: SugestaoCompra[]; dataUsada: string; gruposContadosNoDia: string[] }> {
+): Promise<{
+  itens: SugestaoCompra[];
+  dataUsada: string;
+  gruposContadosNoDia: string[];
+  setoresPendentes: string[];
+}> {
   const [produtos, inventario] = await Promise.all([
     listProdutos(spreadsheetId),
     listInventario(spreadsheetId),
   ]);
 
   const dataUsada = opcoes.data || datasMaisRecente(inventario);
+  const escopo = opcoes.escopo ?? [];
+  const andamento = opcoes.andamento ?? [];
+  const itensDoDia = inventario.filter((item) => item.data === dataUsada);
+
+  // SOMA, nunca sobrescreve. Antes desta versão, o mesmo SKU contado duas
+  // vezes na mesma data deixava valendo a última linha gravada, enquanto o
+  // CMV somava as duas - os dois discordavam sem ninguém perceber.
+  const contagemPorSku = quantidadePorSku(itensDoDia);
+  const incompletosPorSku = skusIncompletos(itensDoDia, escopo);
 
   const skusContadosNoDia = new Set<string>();
-  const contagemPorSku = new Map<string, number>();
   const precoNaContagemPorSku = new Map<string, number | null>();
-  for (const item of inventario) {
-    if (item.data !== dataUsada) continue;
+  for (const item of itensDoDia) {
     skusContadosNoDia.add(item.sku);
     precoNaContagemPorSku.set(item.sku, item.precoUnitario);
-    if (item.quantidade === null) continue;
-    contagemPorSku.set(item.sku, item.quantidade);
   }
+
+  // Com setor, o escopo é o que os setores JÁ CONCLUÍDOS tinham pra contar,
+  // e não os grupos que apareceram na contagem.
+  const setoresConcluidos = new Set(
+    andamento.filter((setor) => setor.situacao === "concluido").map((setor) => setor.setorId),
+  );
+  const skusDoEscopoConcluido = new Set(
+    escopo.filter((linha) => setoresConcluidos.has(linha.setorId)).map((linha) => linha.sku),
+  );
 
   // Deriva o grupo contado a partir do Cadastro de Produtos (sempre com
   // código certo: PRO, HOR...), não da coluna Grupo gravada na hora da
@@ -63,11 +97,17 @@ export async function gerarPedido(
   const gruposEscolhidos =
     opcoes.grupos && opcoes.grupos.length > 0 ? new Set(opcoes.grupos) : null;
 
+  const usaSetor = skusDoEscopoConcluido.size > 0;
+
   const itens: SugestaoCompra[] = [];
   for (const produto of produtos) {
     if (!produto.ativo) continue;
     if (produto.estoqueNecessarioSemana === null) continue;
-    if (!gruposContados.has(produto.grupo)) continue;
+    if (usaSetor) {
+      if (!skusDoEscopoConcluido.has(produto.sku)) continue;
+    } else if (!gruposContados.has(produto.grupo)) {
+      continue;
+    }
     if (gruposEscolhidos && !gruposEscolhidos.has(produto.grupo)) continue;
 
     const estoqueAtual = contagemPorSku.get(produto.sku) ?? null;
@@ -100,10 +140,16 @@ export async function gerarPedido(
       // o valor atual, porque é sobre decidir compra agora, não sobre o
       // registro daquele dia.
       alerta: calcularAlerta(estoqueAtual, produto.precoUnitario, produto),
+      setoresQueNaoContaram: incompletosPorSku.get(produto.sku) ?? [],
     });
   }
 
-  return { itens, dataUsada, gruposContadosNoDia };
+  return {
+    itens,
+    dataUsada,
+    gruposContadosNoDia,
+    setoresPendentes: setoresPendentes(andamento),
+  };
 }
 
 function datasMaisRecente(inventario: { data: string }[]): string {
