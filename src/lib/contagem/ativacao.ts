@@ -1,11 +1,16 @@
 /** Chave única que separa "cadastro de setores" de "contagem por setor".
  *
- * v1 publica só o cadastro: a cliente cria os setores e designa os produtos.
- * Enquanto isto for `false`, existir setor cadastrado NÃO muda nada em
- * Contagem, Conferência, Cotação nem CMV - o fluxo continua exatamente o de
- * hoje, por grupo de produto.
+ * Ligada em 2026-09-17 por decisão de Vinícius, pra validar o fluxo na
+ * prática. Os riscos da v1 foram assumidos conscientemente: as correções de
+ * integridade apontadas pelo Codex ainda não entraram.
  *
- * Pra ligar a contagem por setor na etapa 2: troque para `true`, publique e
- * confira que as migrações 20260917090000 e 20260917093000 já estão aplicadas.
- * O código do fluxo completo já está no repositório, só não é alcançado. */
-export const CONTAGEM_POR_SETOR_ATIVA = false;
+ * Com `true`, a Contagem pede o setor e congela a lista no "Iniciar
+ * contagem", a Conferência abre por setor e consolidada, a Cotação avisa e
+ * exige confirmação em data parcial e o CMV recusa data parcial.
+ *
+ * Enquanto houver produto sem setor, ele não entra em contagem nenhuma, e por
+ * isso Cotação e CMV ainda não devem ser lidos como definitivos.
+ *
+ * Voltar para `false` desliga tudo isso e devolve o fluxo por grupo de
+ * produto, sem nenhum passo de banco. */
+export const CONTAGEM_POR_SETOR_ATIVA = true;
