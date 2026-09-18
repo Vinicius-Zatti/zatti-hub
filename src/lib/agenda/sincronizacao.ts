@@ -7,9 +7,13 @@ import type { CompromissoCalendario, RotinaAgenda } from "@/lib/agenda/tipos";
  * Horizzon apareceriam duas vezes na tela - uma como rotina da grade, outra
  * como compromisso do Calendar.
  *
- * O critério é o par horário + recorrência, nunca o texto do título:
+ * Esconder alguma coisa do Calendar é o defeito mais caro aqui, então o
+ * espelho exige três coisas juntas: ser série recorrente, bater o horário da
+ * faixa E falar da mesma atividade. Só o horário não basta - uma reunião
+ * recorrente marcada em cima do bloco de Horizzon é reunião, não é o Horizzon.
  *
- *   evento recorrente que casa com faixa de trabalho, rotina ou pessoal
+ *   evento recorrente que casa em horário E em atividade com faixa de
+ *   trabalho, rotina ou pessoal
  *     -> é o espelho daquela faixa. Sai da seção Agenda (já aparece na linha
  *        do dia);
  *   todo o resto (reunião recorrente, série que a grade não conhece, evento
@@ -40,6 +44,33 @@ function mesmoHorario(evento: CompromissoCalendario, rotina: RotinaAgenda): bool
   return true;
 }
 
+/** Palavras que aparecem em título de quase tudo e não identificam atividade
+ * nenhuma. Sem esta lista, "Reunião Adega" casaria com "Reunião LK". */
+const PALAVRAS_GENERICAS = new Set(["reuniao", "horario", "zatti", "fixo", "semana", "bloco", "sobre"]);
+
+function palavrasDaAtividade(texto: string): Set<string> {
+  return new Set(
+    texto
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((palavra) => palavra.length >= 4 && !PALAVRAS_GENERICAS.has(palavra))
+  );
+}
+
+/** Uma palavra de peso em comum entre o título do evento e o rótulo da faixa
+ * ("Horário de almoço" x "Almoço família (30min)"). Enquanto o Calendar não
+ * carregar o `agenda-id` da faixa, é a identidade possível - e o critério erra
+ * para o lado de mostrar o evento, nunca para o de escondê-lo. */
+function mesmaAtividade(evento: CompromissoCalendario, rotina: RotinaAgenda): boolean {
+  const doEvento = palavrasDaAtividade(evento.titulo);
+  for (const palavra of palavrasDaAtividade(rotina.rotulo)) {
+    if (doEvento.has(palavra)) return true;
+  }
+  return false;
+}
+
 type Intervalo = { horaInicio: string | null; horaFim: string | null };
 
 function seSobrepoem(a: Intervalo, b: Intervalo): boolean {
@@ -59,8 +90,10 @@ export function parearCalendario(rotinas: RotinaAgenda[], eventos: CompromissoCa
 
   for (const evento of eventos) {
     if (evento.recorrente) {
-      const faixa = rotinas.find((rotina) => mesmoHorario(evento, rotina));
-      if (faixa && faixa.tipo !== "compromisso") {
+      const faixa = rotinas.find(
+        (rotina) => rotina.tipo !== "compromisso" && mesmoHorario(evento, rotina) && mesmaAtividade(evento, rotina)
+      );
+      if (faixa) {
         espelhoPorRotina.set(faixa.id, evento);
         continue;
       }

@@ -81,6 +81,15 @@ describe("parearCalendario - deduplicação", () => {
     expect(resultado.espelhoPorRotina.size).toBe(0);
   });
 
+  it("reunião recorrente diferente no mesmo horário de um bloco continua visível", () => {
+    // Regressão: o horário sozinho escondia a reunião, como se ela fosse o
+    // espelho do bloco de Horizzon. Agora a atividade também precisa bater.
+    const resultado = parearCalendario(ROTINAS, [evento("e14", "Reunião Adega do Alemão", "09:00", "10:00", true)]);
+
+    expect(resultado.compromissos.map((c) => c.titulo)).toEqual(["Reunião Adega do Alemão"]);
+    expect(resultado.espelhoPorRotina.size).toBe(0);
+  });
+
   it("faixa aberta casa pelo início quando a grade não tem hora de fim", () => {
     const construcao = [rotina("r-const", "Construção", "bloco", "21:30", null)];
     const resultado = parearCalendario(construcao, [evento("e12", "Construção", "21:30", "23:30", true)]);
