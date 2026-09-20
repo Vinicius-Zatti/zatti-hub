@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { criarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
-import { nomeGrupo } from "@/lib/grupos";
+import { GRUPO_OPCOES } from "@/lib/grupos";
 import type { Produto } from "@/lib/types";
 
 export function NovoProdutoForm({
@@ -105,9 +105,12 @@ export function NovoProdutoForm({
             <option value="" disabled>
               {grupo ? grupo : "Use \"Sugerir\" ou escolha na mão"}
             </option>
-            {["PRO", "HOR", "LAT", "MER", "CON", "BEB", "BAL", "EMB", "DES", "LIM", "OPE"].map((g) => (
-              <option key={g} value={g}>
-                {g} — {nomeGrupo(g)}
+            {/* Lê de GRUPO_OPCOES em vez de repetir a lista aqui: essa cópia
+                existia e ficou pra trás quando PRE entrou no padrão, então o
+                grupo existia no cadastro mas não dava pra escolher na tela. */}
+            {GRUPO_OPCOES.map(({ codigo, descricao }) => (
+              <option key={codigo} value={codigo}>
+                {codigo} — {descricao}
               </option>
             ))}
           </select>
