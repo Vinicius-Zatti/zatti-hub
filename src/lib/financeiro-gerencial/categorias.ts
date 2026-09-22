@@ -78,6 +78,14 @@ export function caminhoCategoria(categoriaId: string, categorias: CategoriaFinan
  * Receitas/Despesas. */
 export function listarContasComCaminho(
   categorias: CategoriaFinanceira[],
+  opcoes: { incluirProvisao?: boolean } = {},
 ): { id: string; caminho: string }[] {
-  return listarContasLancaveis(categorias).map((c) => ({ id: c.id, caminho: caminhoCategoria(c.id, categorias) }));
+  const lancaveis = listarContasLancaveis(categorias).map((c) => ({ id: c.id, caminho: caminhoCategoria(c.id, categorias) }));
+  if (!opcoes.incluirProvisao) return lancaveis;
+  // Despesa avulsa numa conta de provisão = guia paga (liquidação): o servidor
+  // grava origem `liquidacao_provisao`, caixa sim, DRE não.
+  const provisao = categorias
+    .filter((c) => c.nivel === "conta" && !c.arquivado && c.papelDre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(c.papelDre))
+    .map((c) => ({ id: c.id, caminho: `${caminhoCategoria(c.id, categorias)} (liquidação de provisão)` }));
+  return [...lancaveis, ...provisao];
 }

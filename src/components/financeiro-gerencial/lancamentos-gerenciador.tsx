@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   criarLancamentoAction,
   criarRecorrenciaAction,
   editarLancamentoAction,
   excluirLancamentoAction,
+  listarBaixasDaParcelaAction,
   registrarBaixaAction,
+  registrarEstornoBaixaAction,
 } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
@@ -18,6 +20,7 @@ import { calcularSaldoAberto, somarValores } from "@/lib/financeiro-gerencial/pa
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
 import type {
+  Baixa,
   CategoriaFinanceira,
   ContaFinanceira,
   Lancamento,
@@ -78,6 +81,16 @@ function IconeBaixa({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+function IconeHistorico({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 function IconeLupa({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -129,7 +142,7 @@ export function LancamentosGerenciador({
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const rotuloData = rotuloDataParcela(tipo);
 
-  const opcoesCategoriaFiltro = useMemo(() => listarContasComCaminho(categorias), [categorias]);
+  const opcoesCategoriaFiltro = useMemo(() => listarContasComCaminho(categorias, { incluirProvisao: tipo === "despesa" }), [categorias, tipo]);
 
   const [busca, setBusca] = useState("");
   const [filtroCategoriaId, setFiltroCategoriaId] = useState("");
@@ -415,7 +428,7 @@ function FormularioLancamento({
   onCancelar: () => void;
 }) {
   const router = useRouter();
-  const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias), [categorias]);
+  const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias, { incluirProvisao: tipo === "despesa" }), [categorias, tipo]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const rotuloData = rotuloDataParcela(tipo);
 
@@ -715,7 +728,13 @@ function FormularioEditarLancamento({
   onCancelar: () => void;
 }) {
   const router = useRouter();
-  const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias), [categorias]);
+  // Liquidação só troca por outra conta de provisão; despesa comum nunca vira
+  // liquidação na edição (o servidor barra - é excluir e lançar de novo).
+  const ehLiquidacao = lancamento.origem === "liquidacao_provisao";
+  const opcoesCategoria = useMemo(() => {
+    const todas = listarContasComCaminho(categorias, { incluirProvisao: ehLiquidacao });
+    return ehLiquidacao ? todas.filter((o) => o.caminho.endsWith("(liquidação de provisão)")) : todas;
+  }, [categorias, ehLiquidacao]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const rotuloData = rotuloDataParcela(lancamento.tipo);
 
@@ -885,6 +904,7 @@ function LinhaParcela({
 }) {
   const [baixando, setBaixando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  const [vendoBaixas, setVendoBaixas] = useState(false);
   const saldoAberto = calcularSaldoAberto(parcela.valor, parcela.valorBaixado);
   const podeBaixar = parcela.status === "aberto" || parcela.status === "parcial";
   // Hint de UI - a trava real é a trigger `impedir_exclusao_lancamento_com_baixa`,
@@ -902,6 +922,11 @@ function LinhaParcela({
           {lancamento.origem === "recorrencia" && (
             <span className="ml-1.5 rounded-full bg-azul-petroleo/10 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo">
               Recorrente
+            </span>
+          )}
+          {lancamento.origem === "liquidacao_provisao" && (
+            <span className="ml-1.5 rounded-full bg-azul-petroleo/10 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo" title="Guia paga contra a provisão: entra no caixa, não na DRE">
+              Liquidação de provisão
             </span>
           )}
         </td>
@@ -940,6 +965,17 @@ function LinhaParcela({
                 <IconeExcluir />
               </button>
             )}
+            {parcela.valorBaixado !== 0 && (
+              <button
+                type="button"
+                onClick={() => setVendoBaixas(true)}
+                title="Ver baixas desta parcela"
+                aria-label="Ver baixas desta parcela"
+                className="rounded-md p-1.5 text-cinza-medio hover:bg-cinza-claro/60"
+              >
+                <IconeHistorico />
+              </button>
+            )}
             {podeBaixar && (
               <button
                 type="button"
@@ -964,6 +1000,12 @@ function LinhaParcela({
           onSalvo={() => setBaixando(false)}
           onCancelar={() => setBaixando(false)}
         />
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={vendoBaixas} onFechar={() => setVendoBaixas(false)}>
+        {vendoBaixas && (
+          <HistoricoBaixas lancamento={lancamento} parcela={parcela} contas={contas} podeGerir={podeGerir} onFechar={() => setVendoBaixas(false)} />
+        )}
       </ModalFlutuante>
 
       <ModalFlutuante aberto={excluindo} onFechar={() => setExcluindo(false)}>
@@ -1127,5 +1169,116 @@ function FormularioBaixa({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Baixas da parcela (pagamentos/recebimentos e estornos). Gestão/master
+ * estorna uma baixa inteira - nunca edita nem apaga (o gatilho
+ * `proteger_baixa_financeira` é a barreira real). */
+function HistoricoBaixas({
+  lancamento,
+  parcela,
+  contas,
+  podeGerir,
+  onFechar,
+}: {
+  lancamento: Lancamento;
+  parcela: Parcela;
+  contas: ContaFinanceira[];
+  podeGerir: boolean;
+  onFechar: () => void;
+}) {
+  const router = useRouter();
+  const [baixas, setBaixas] = useState<Baixa[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const nomeConta = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
+
+  useEffect(() => {
+    if (baixas !== null) return;
+    let ativo = true;
+    listarBaixasDaParcelaAction({ parcelaId: parcela.id }).then((resultado) => {
+      if (!ativo) return;
+      if (resultado.ok) setBaixas(resultado.baixas);
+      else setErro(resultado.mensagem);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [baixas, parcela.id]);
+
+  const estornadas = new Set((baixas ?? []).filter((b) => b.tipo === "estorno").map((b) => b.estornoDeBaixaId));
+
+  function estornar(baixaId: string) {
+    setErro(null);
+    startTransition(async () => {
+      const resultado = await registrarEstornoBaixaAction({ baixaId, observacao: "" });
+      if (!resultado.ok) {
+        setErro(resultado.mensagem);
+        return;
+      }
+      setConfirmando(null);
+      setBaixas(null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Baixas da parcela</h2>
+      <p className="text-xs text-cinza-medio">
+        {lancamento.descricao} - parcela {parcela.numero}/{parcela.totalParcelas} de R$ {formatarMoeda(parcela.valor)}
+      </p>
+      {baixas === null ? (
+        <p className="text-sm text-cinza-medio">{erro ?? "Carregando..."}</p>
+      ) : baixas.length === 0 ? (
+        <p className="text-sm text-cinza-medio">Nenhuma baixa registrada.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-cinza-claro rounded-md border border-cinza-claro">
+          {baixas.map((b) => (
+            <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+              <div className="flex flex-col">
+                <span className={b.tipo === "estorno" ? "font-semibold text-vermelho" : "font-semibold text-cinza"}>
+                  {b.tipo === "estorno" ? "Estorno" : lancamento.tipo === "receita" ? "Recebimento" : "Pagamento"} - R$ {formatarMoeda(b.valor)}
+                </span>
+                <span className="text-xs text-cinza-medio">
+                  {formatarDataBr(b.data)} - {nomeConta.get(b.contaFinanceiraId) ?? "Conta"} - {b.criadoPorNome}
+                </span>
+              </div>
+              {podeGerir && b.tipo === "baixa" && !estornadas.has(b.id) &&
+                (confirmando === b.id ? (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => estornar(b.id)}
+                      className="rounded-md bg-vermelho px-2.5 py-1 text-xs font-bold text-branco disabled:opacity-50"
+                    >
+                      Confirmar estorno
+                    </button>
+                    <button type="button" onClick={() => setConfirmando(null)} className="rounded-md border border-cinza-claro px-2.5 py-1 text-xs text-cinza-medio">
+                      Não
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmando(b.id)}
+                    className="rounded-md border border-vermelho/40 px-2.5 py-1 text-xs font-semibold text-vermelho hover:bg-vermelho/10"
+                  >
+                    Estornar
+                  </button>
+                ))}
+              {b.tipo === "baixa" && estornadas.has(b.id) && <span className="text-xs text-cinza-medio">Estornada</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {erro && baixas !== null && <p className="text-sm text-vermelho">{erro}</p>}
+      <button type="button" onClick={onFechar} className="rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio">
+        Fechar
+      </button>
+    </div>
   );
 }

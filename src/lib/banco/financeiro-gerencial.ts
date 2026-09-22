@@ -32,12 +32,12 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
  * pra quem chama, via `mensagemErroPublica`). */
 const SQLSTATE_ERRO_DE_NEGOCIO = new Set(["42501", "23514"]);
 
-function erroDeNegocio(error: { code?: string; message: string }): Error {
+export function erroDeNegocio(error: { code?: string; message: string }): Error {
   if (error.code && SQLSTATE_ERRO_DE_NEGOCIO.has(error.code)) return new ErroPublico(error.message);
   return new Error(error.message);
 }
 
-async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]): Promise<Map<string, string>> {
+export async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]): Promise<Map<string, string>> {
   const idsUnicos = Array.from(new Set(userIds));
   if (idsUnicos.length === 0) return new Map();
   const { data } = await supabase.from("perfis").select("id, nome").in("id", idsUnicos);
@@ -477,12 +477,17 @@ export async function obterLancamento(unidadeId: string, id: string): Promise<La
  * só. O gatilho `proteger_lancamento_financeiro` repete essa checagem no
  * banco (defesa em profundidade), isto aqui é só pra falhar cedo com
  * mensagem amigável. */
+/** Devolve se a conta é uma das 3 de provisão (Férias, 13º salário, Provisão
+ * de multa do FGTS). Elas só aceitam despesa de liquidação de provisão -
+ * `permitirProvisao` diz se o fluxo que chamou aceita esse caso (lançamento
+ * comum de despesa sim; recorrência e receita nunca). */
 async function validarCategoriaParaLancamento(
   supabase: SupabaseClient,
   unidadeId: string,
   categoriaId: string,
   tipo: TipoLancamento,
-): Promise<void> {
+  permitirProvisao = false,
+): Promise<{ ehProvisao: boolean }> {
   const { data: categoria } = await supabase
     .from("fin_categorias")
     .select("id, nivel, papel_dre, arquivado")
@@ -490,18 +495,18 @@ async function validarCategoriaParaLancamento(
     .eq("id", categoriaId)
     .maybeSingle();
   const categoriaRow = categoria as { id: string; nivel: string; papel_dre: string | null; arquivado: boolean } | null;
-  if (
-    !categoriaRow ||
-    categoriaRow.nivel !== "conta" ||
-    categoriaRow.arquivado ||
-    (categoriaRow.papel_dre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(categoriaRow.papel_dre as never))
-  ) {
+  if (!categoriaRow || categoriaRow.nivel !== "conta" || categoriaRow.arquivado) {
     throw new ErroPublico("Conta do Plano de Contas inválida para lançamento manual.");
+  }
+  const ehProvisao = !!categoriaRow.papel_dre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(categoriaRow.papel_dre as never);
+  if (ehProvisao && (!permitirProvisao || tipo !== "despesa")) {
+    throw new ErroPublico("Férias, 13º salário e Provisão de multa do FGTS só aceitam despesa avulsa de liquidação de provisão (sem recorrência).");
   }
   const ehCategoriaDeReceita = categoriaRow.papel_dre === "receita";
   if ((tipo === "receita") !== ehCategoriaDeReceita) {
     throw new ErroPublico("Conta do Plano de Contas não corresponde ao tipo do lançamento.");
   }
+  return { ehProvisao };
 }
 
 export async function criarLancamento(params: {
@@ -516,13 +521,15 @@ export async function criarLancamento(params: {
   criadoPor: string;
 }): Promise<Lancamento> {
   const supabase = await createClient();
-  await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, params.tipo);
+  const { ehProvisao } = await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, params.tipo, true);
 
   const { data: lancamentoInserido, error: erroLancamento } = await supabase
     .from("fin_lancamentos")
     .insert({
       unidade_id: params.unidadeId,
       tipo: params.tipo,
+      // Conta de provisão = guia paga (liquidação): caixa sim, DRE não.
+      origem: ehProvisao ? "liquidacao_provisao" : "comum",
       categoria_id: params.categoriaId,
       descricao: params.descricao,
       data_competencia: params.dataCompetencia,
@@ -534,7 +541,8 @@ export async function criarLancamento(params: {
     .single();
 
   if (erroLancamento || !lancamentoInserido) {
-    throw new Error(erroLancamento?.message ?? "Falha ao criar lançamento");
+    if (erroLancamento) throw erroDeNegocio(erroLancamento);
+    throw new Error("Falha ao criar lançamento");
   }
 
   const parcelasGeradas = numerarParcelasManuais(params.parcelas);
@@ -580,14 +588,19 @@ export async function editarLancamento(params: {
 
   const { data: existente } = await supabase
     .from("fin_lancamentos")
-    .select("tipo")
+    .select("tipo, origem")
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id)
     .maybeSingle();
-  const tipo = (existente as { tipo: TipoLancamento } | null)?.tipo;
+  const existenteRow = existente as { tipo: TipoLancamento; origem: OrigemLancamento } | null;
+  const tipo = existenteRow?.tipo;
   if (!tipo) throw new ErroPublico("Lançamento não encontrado.");
 
-  await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, tipo);
+  const ehLiquidacao = existenteRow.origem === "liquidacao_provisao";
+  const { ehProvisao } = await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, tipo, ehLiquidacao);
+  if (ehLiquidacao !== ehProvisao) {
+    throw new ErroPublico("Liquidação de provisão e despesa comum não se trocam na edição - exclua e lance de novo.");
+  }
 
   const { error } = await supabase
     .from("fin_lancamentos")

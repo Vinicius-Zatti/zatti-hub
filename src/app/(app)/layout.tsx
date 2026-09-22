@@ -83,24 +83,36 @@ export default async function AppLayout({
   const secoesFinanceiroGerencial: SecaoNavegacao[] = [
     {
       label: "Caixa",
-      items: [{ label: "Contas financeiras", href: "/financeiro-gerencial/contas" }],
+      items: [
+        { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
+        { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
+      ],
     },
     {
       label: "Lançamentos",
       items: [
         { label: "Receitas", href: "/financeiro-gerencial/lancamentos/receitas" },
         { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
+        { label: "Recorrências", href: "/financeiro-gerencial/recorrencias" },
       ],
     },
     {
-      label: "DRE",
-      items: [{ label: "DRE", href: "/financeiro-gerencial/dre" }],
+      label: "Relatórios",
+      items: [
+        { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
+        { label: "DRE", href: "/financeiro-gerencial/dre" },
+        { label: "DFC", href: "/financeiro-gerencial/dfc" },
+      ],
     },
     ...(podeGerir
       ? [
           {
             label: "Configurações",
-            items: [{ label: "Categorias", href: "/financeiro-gerencial/categorias" }],
+            items: [
+              { label: "Categorias", href: "/financeiro-gerencial/categorias" },
+              { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
+              { label: "Fechamento", href: "/financeiro-gerencial/fechamento" },
+            ],
           },
         ]
       : []),

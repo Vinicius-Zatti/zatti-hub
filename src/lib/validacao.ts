@@ -683,6 +683,53 @@ export const execucaoRotinaAgendaEntradaSchema = z
   })
   .strict();
 
+// ── Financeiro Gerencial V1 completa (22/09) ────────────────────────────────
+
+const percentualSchema = z.number().finite().min(0).max(100);
+
+export const parametrosProvisaoEntradaSchema = z
+  .object({
+    vigenteDesde: competenciaMensalSchema,
+    percentualFerias: percentualSchema,
+    percentualAdicionalTerco: percentualSchema,
+    percentualEncargosFerias: percentualSchema,
+    percentualDecimoTerceiro: percentualSchema,
+    percentualEncargosDecimoTerceiro: percentualSchema,
+    percentualMultaFgts: percentualSchema,
+  })
+  .strict();
+
+export const tipoProvisaoSchema = z.enum(["ferias", "decimo_terceiro", "multa_fgts"]);
+
+export const reversaoProvisaoEntradaSchema = z
+  .object({
+    tipo: tipoProvisaoSchema,
+    competencia: competenciaMensalSchema,
+    valor: z.number().finite().positive().max(LIMITE_DINHEIRO),
+    motivo: z.string().trim().min(3).max(300),
+  })
+  .strict();
+
+export const excluirReversaoProvisaoEntradaSchema = z.object({ id: idUuidSchema }).strict();
+
+export const fechamentoMensalEntradaSchema = z
+  .object({
+    competencia: competenciaMensalSchema,
+    fechado: z.boolean(),
+    motivo: z.string().trim().max(300),
+  })
+  .strict()
+  .refine((v) => v.fechado || v.motivo.length >= 3, { path: ["motivo"] });
+
+export const encerrarRecorrenciaEntradaSchema = z
+  .object({
+    id: idUuidSchema,
+    aPartirDe: dataIsoSchema,
+  })
+  .strict();
+
+export const listarBaixasParcelaEntradaSchema = z.object({ parcelaId: idUuidSchema }).strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

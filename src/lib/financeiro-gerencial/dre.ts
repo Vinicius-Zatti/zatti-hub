@@ -1,6 +1,10 @@
 import { somarValores } from "./parcelas";
 import type { CategoriaFinanceira, EstoqueMensal, Lancamento, PapelDre } from "./tipos";
 
+/** O mínimo de um lançamento que a DRE lê - aceita tanto `Lancamento` quanto
+ * `LancamentoBase` (carga completa da unidade). */
+export type LancamentoDre = Pick<Lancamento, "categoriaId" | "dataCompetencia" | "origem"> & { parcelas: { valor: number }[] };
+
 export type ContaValorDre = { id: string; nome: string; valor: number };
 
 export type SubgrupoDre = { id: string; nome: string; contas: ContaValorDre[]; total: number };
@@ -37,10 +41,13 @@ export type Dre = {
  * estar recebida/paga (regra explícita da DRE). O valor de cada lançamento é
  * a soma de todas as suas parcelas (parcelamento não fragmenta o fato
  * econômico entre meses, só o cronograma de caixa). */
-function somarPorCategoria(lancamentos: Lancamento[], competencia: string): Map<string, number> {
+function somarPorCategoria(lancamentos: LancamentoDre[], competencia: string): Map<string, number> {
   const totais = new Map<string, number>();
   for (const lancamento of lancamentos) {
     if (!lancamento.dataCompetencia.startsWith(competencia)) continue;
+    // Liquidação de provisão (guia paga) nunca entra na DRE - a linha da
+    // conta de provisão vem do motor de Provisões (`valoresProvisao`).
+    if (lancamento.origem === "liquidacao_provisao") continue;
     const valor = somarValores(lancamento.parcelas.map((p) => p.valor));
     totais.set(lancamento.categoriaId, (totais.get(lancamento.categoriaId) ?? 0) + valor);
   }
@@ -122,12 +129,16 @@ function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, numb
  * calculado com estoque assumido em 0. */
 export function calcularDre(params: {
   competencia: string;
-  lancamentos: Lancamento[];
+  lancamentos: LancamentoDre[];
   categorias: CategoriaFinanceira[];
   estoqueMensal: EstoqueMensal | null;
+  /** Valor do mês das 3 contas de provisão (id da categoria -> valor), de
+   * `valoresDreProvisao` em provisoes.ts. Ausente = 0. */
+  valoresProvisao?: Map<string, number>;
 }): Dre {
-  const { competencia, lancamentos, categorias, estoqueMensal } = params;
+  const { competencia, lancamentos, categorias, estoqueMensal, valoresProvisao } = params;
   const totais = somarPorCategoria(lancamentos, competencia);
+  for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
 
   const contasReceita = contasDoPapel(categorias, "receita", totais);
   const receitas = { contas: contasReceita, total: somarValores(contasReceita.map((c) => c.valor)) };

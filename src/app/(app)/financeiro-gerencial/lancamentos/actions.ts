@@ -1,20 +1,37 @@
 "use server";
 
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, excluirLancamento, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, excluirLancamento, listarBaixasDaParcela, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
+import { ErroPublico } from "@/lib/erros";
 import {
   baixaFinanceiraEntradaSchema,
   editarLancamentoFinanceiroEntradaSchema,
   estornarBaixaEntradaSchema,
   excluirLancamentoEntradaSchema,
   lancamentoFinanceiroEntradaSchema,
+  listarBaixasParcelaEntradaSchema,
   recorrenciaFinanceiraEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
-import type { Lancamento, Parcela, Recorrencia } from "@/lib/financeiro-gerencial/tipos";
+import type { Baixa, Lancamento, Parcela, Recorrencia } from "@/lib/financeiro-gerencial/tipos";
+import type { AcessoAtual } from "@/lib/acesso";
+
+/** Mês fechado barra o Operacional (a barreira real é o gatilho
+ * `bloquear_periodo_fechado_financeiro`; aqui só falha antes, com mensagem
+ * clara, e evita lançamento gravado sem parcela). */
+async function garantirMesesAbertos(acesso: AcessoAtual, datas: string[]): Promise<void> {
+  if (acesso.role !== "operacional") return;
+  const fechadas = await competenciasFechadas(acesso.unidadeId);
+  const bloqueada = datas.map((d) => d.slice(0, 7)).find((c) => fechadas.has(c));
+  if (bloqueada) {
+    const [ano, mes] = bloqueada.split("-");
+    throw new ErroPublico(`O mês ${mes}/${ano} está fechado. Só Gestão/master altera lançamentos desse período.`);
+  }
+}
 
 // Sem `registrarAuditoria()` aqui - o gatilho `auditar_escrita_financeiro_gerencial`
 // (migração `20260824090000_...sql`) grava o log direto no banco pra
@@ -38,6 +55,7 @@ export async function criarLancamentoAction(input: unknown): Promise<ResultadoLa
   try {
     await exigirLimiteRequisicao("fin_lancamento_criar");
     const entrada = validarEntrada(lancamentoFinanceiroEntradaSchema, input);
+    await garantirMesesAbertos(acesso, [entrada.dataCompetencia, ...entrada.parcelas.map((p) => p.dataPrevista)]);
     const lancamento = await criarLancamento({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
     revalidarLancamentos();
     return { ok: true, lancamento };
@@ -53,6 +71,7 @@ export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoR
   try {
     await exigirLimiteRequisicao("fin_recorrencia_criar");
     const entrada = validarEntrada(recorrenciaFinanceiraEntradaSchema, input);
+    await garantirMesesAbertos(acesso, [entrada.dataInicio]);
     const { recorrencia, ocorrenciasGeradas } = await criarRecorrencia({
       ...entrada,
       unidadeId: acesso.unidadeId,
@@ -100,6 +119,7 @@ export async function registrarBaixaAction(input: unknown): Promise<ResultadoBai
   try {
     await exigirLimiteRequisicao("fin_baixa_registrar");
     const entrada = validarEntrada(baixaFinanceiraEntradaSchema, input);
+    await garantirMesesAbertos(acesso, [entrada.data]);
     const parcela = await registrarBaixa({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
     revalidarLancamentos();
     return { ok: true, parcela };
@@ -122,5 +142,19 @@ export async function registrarEstornoBaixaAction(input: unknown): Promise<Resul
     return { ok: true, parcela };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível estornar a baixa.") };
+  }
+}
+
+export type ResultadoListarBaixas = { ok: true; baixas: Baixa[] } | { ok: false; mensagem: string };
+
+// Modal "Baixas desta parcela" (estorno) - leitura, qualquer perfil do módulo.
+export async function listarBaixasDaParcelaAction(input: unknown): Promise<ResultadoListarBaixas> {
+  const acesso = await requireFinanceiroGerencial();
+  try {
+    const entrada = validarEntrada(listarBaixasParcelaEntradaSchema, input);
+    const baixas = await listarBaixasDaParcela(acesso.unidadeId, entrada.parcelaId);
+    return { ok: true, baixas };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar as baixas.") };
   }
 }

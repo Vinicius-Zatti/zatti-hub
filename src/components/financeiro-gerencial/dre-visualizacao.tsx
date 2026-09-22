@@ -3,124 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
+import { CartaoIndicador, COLUNAS_NUMERICAS_ANUAIS, formatarNumero, formatarPercentual, LinhaTabelaAnual as LinhaTabela } from "@/components/financeiro-gerencial/tabela-anual";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
-import { MESES_ABREVIADOS, type DreAnual, type LinhaDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
+import { MESES_ABREVIADOS, type DreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
-
-function formatarNumero(v: number | null): string {
-  if (v === null) return "-";
-  return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatarPercentual(v: number | null): string {
-  if (v === null) return "-";
-  return v.toLocaleString("pt-BR", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
 
 function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
   return v === "nao_calculavel" ? "Não calculável" : formatarNumero(v);
 }
 
-const PADDING_NIVEL: Record<0 | 1 | 2, string> = { 0: "pl-3", 1: "pl-8", 2: "pl-12" };
-
 // Média/Total + 12 meses - "Mês de Competência" (a coluna de rótulo) nunca
 // entra aqui, nunca pode ser ocultada (regra do botão "Colunas").
-const COLUNAS_NUMERICAS: ColunaDre[] = [
-  { id: "media", rotulo: "Média" },
-  { id: "total", rotulo: "Total" },
-  ...MESES_ABREVIADOS.map((mes, indice) => ({ id: `mes_${indice}`, rotulo: mes })),
-];
-
-function IconeSeta({ aberta }: { aberta: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={`h-3.5 w-3.5 shrink-0 transition-transform ${aberta ? "rotate-90" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 6 6 6-6 6" />
-    </svg>
-  );
-}
-
-function LinhaTabela({
-  linha,
-  expandidas,
-  alternar,
-  visiveis,
-}: {
-  linha: LinhaDreAnual;
-  expandidas: Set<string>;
-  alternar: (id: string) => void;
-  visiveis: Set<string>;
-}) {
-  const temFilhos = !!linha.filhos && linha.filhos.length > 0;
-  const expandida = expandidas.has(linha.id);
-  const pesoTexto = linha.destaque
-    ? "font-bold text-azul-noite"
-    : linha.percentual
-      ? "italic text-cinza-medio"
-      : linha.nivel === 0
-        ? "font-semibold text-cinza"
-        : "text-cinza";
-  const formatar = (v: number | null) => (linha.percentual ? formatarPercentual(v) : formatarNumero(v));
-
-  return (
-    <>
-      <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
-        <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
-          <span className="inline-flex max-w-[190px] items-center gap-1.5">
-            {temFilhos ? (
-              <button
-                type="button"
-                onClick={() => alternar(linha.id)}
-                aria-label={expandida ? `Recolher ${linha.rotulo}` : `Expandir ${linha.rotulo}`}
-                className="shrink-0 text-cinza-medio hover:text-azul-petroleo"
-              >
-                <IconeSeta aberta={expandida} />
-              </button>
-            ) : (
-              <span className="inline-block h-3.5 w-3.5 shrink-0" />
-            )}
-            <span className="min-w-0 truncate" title={linha.rotulo}>
-              {linha.rotulo}
-            </span>
-          </span>
-        </td>
-        {visiveis.has("media") && <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.media)}</td>}
-        {visiveis.has("total") && <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.total)}</td>}
-        {linha.valoresPorMes.map(
-          (valor, indice) =>
-            visiveis.has(`mes_${indice}`) && (
-              <td key={indice} className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
-                {formatar(valor)}
-              </td>
-            ),
-        )}
-      </tr>
-      {temFilhos &&
-        expandida &&
-        linha.filhos!.map((filho) => <LinhaTabela key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} />)}
-    </>
-  );
-}
-
-function CartaoIndicador({ titulo, valor }: { titulo: string; valor: string }) {
-  return (
-    <div className="rounded-lg border border-cinza-claro bg-branco p-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-cinza-medio">{titulo}</div>
-      <div className="mt-1 font-mono text-lg font-bold text-azul-noite">{valor}</div>
-    </div>
-  );
-}
+const COLUNAS_NUMERICAS: ColunaDre[] = COLUNAS_NUMERICAS_ANUAIS;
 
 /** Visualização anual da DRE - único seletor é o Ano (nunca mês), sem toggle
  * global de Resumida/Expandida: cada grupo principal abre a própria seta,

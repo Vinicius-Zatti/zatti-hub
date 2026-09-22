@@ -12,13 +12,25 @@ const SUB_ITEMS = [
   { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
   // Estoque mensal deixou de ser aba própria - dados complementares agora
   // ficam dentro da própria DRE.
+  { label: "Recorrências", href: "/financeiro-gerencial/recorrencias" },
+  { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
   { label: "DRE", href: "/financeiro-gerencial/dre" },
+  // V1 completa (22/09): ordem aprovada mantida, telas novas no fim.
+  { label: "DFC", href: "/financeiro-gerencial/dfc" },
+  { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
+  { label: "Fechamento", href: "/financeiro-gerencial/fechamento" },
+  { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
 ];
 
 // Contas financeiras e Plano de Contas são configuração - só Gestão/master
 // (mesmo padrão de `estoque/layout.tsx` com CMV/Fornecedores). Lançar
 // receita/despesa e marcar baixa é liberado pro Operacional também.
-const SOMENTE_GESTAO = ["/financeiro-gerencial/contas", "/financeiro-gerencial/categorias"];
+const SOMENTE_GESTAO = [
+  "/financeiro-gerencial/contas",
+  "/financeiro-gerencial/categorias",
+  "/financeiro-gerencial/provisoes",
+  "/financeiro-gerencial/fechamento",
+];
 
 export default async function FinanceiroGerencialLayout({ children }: { children: React.ReactNode }) {
   // Defesa em profundidade: sai pra fora se a flag do piloto não estiver

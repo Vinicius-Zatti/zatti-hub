@@ -28,3 +28,9 @@ export function formatarDataBr(dataIso: string): string {
   const [ano, mes, dia] = dataIso.split("-");
   return `${dia}/${mes}/${ano}`;
 }
+
+/** Hoje (AAAA-MM-DD) no fuso de Brasília - o servidor roda em UTC, e depois
+ * das 21h `toISOString()` já daria o dia seguinte. */
+export function hojeIsoBrasil(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(agora);
+}

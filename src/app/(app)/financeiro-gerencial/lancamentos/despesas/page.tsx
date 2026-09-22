@@ -1,6 +1,5 @@
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras, listarLancamentos } from "@/lib/banco/financeiro-gerencial";
-import { listarContasLancaveis } from "@/lib/financeiro-gerencial/categorias";
 import { LancamentosGerenciador } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +11,9 @@ export default async function LancamentosDespesasPage() {
     listarCategorias(acesso.unidadeId),
     listarContasFinanceiras(acesso.unidadeId, true),
   ]);
-  const categoriasDespesa = listarContasLancaveis(categorias).filter((c) => c.papelDre !== "receita");
+  // Grupos entram junto (o seletor mostra o caminho inteiro) e as 3 contas de
+  // provisão aparecem como "liquidação de provisão" (ver listarContasComCaminho).
+  const categoriasDespesa = categorias.filter((c) => c.papelDre !== "receita");
 
   return (
     <LancamentosGerenciador

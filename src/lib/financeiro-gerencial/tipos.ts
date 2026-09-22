@@ -92,7 +92,11 @@ export type Baixa = {
   criadoEm: string;
 };
 
-export type OrigemLancamento = "comum" | "recorrencia";
+/** `liquidacao_provisao` = guia paga contra uma das 3 contas de provisão
+ * (Férias, 13º salário, Provisão de multa do FGTS): entra no caixa pelas
+ * parcelas/baixas, reduz o saldo da provisão e nunca entra na DRE (ver
+ * `provisoes.ts`). O servidor decide a origem pela conta escolhida. */
+export type OrigemLancamento = "comum" | "recorrencia" | "liquidacao_provisao";
 
 export type Lancamento = {
   id: string;
@@ -176,3 +180,73 @@ export type Recorrencia = {
   ativa: boolean;
   criadoEm: string;
 };
+
+// ── V1 completa (22/09): Provisões, Fechamento, Caixa ─────────────────────
+
+/** Os 3 baldes de provisão - cada um é uma das 3 contas de CMO só-de-provisão
+ * (`PAPEIS_DRE_SOMENTE_PROVISAO`). */
+export type TipoProvisao = "ferias" | "decimo_terceiro" | "multa_fgts";
+
+export const PAPEL_POR_TIPO_PROVISAO: Record<TipoProvisao, PapelDre> = {
+  ferias: "cmo_ferias",
+  decimo_terceiro: "cmo_decimo_terceiro",
+  multa_fgts: "cmo_multa_fgts",
+};
+
+/** Percentuais em % (8.333333 = 8,333333%). Histórico = as próprias linhas
+ * (`fin_provisoes_parametros`, só insert). */
+export type ParametrosProvisao = {
+  percentualFerias: number;
+  percentualAdicionalTerco: number;
+  percentualEncargosFerias: number;
+  percentualDecimoTerceiro: number;
+  percentualEncargosDecimoTerceiro: number;
+  percentualMultaFgts: number;
+};
+
+export type ParametrosProvisaoRegistro = ParametrosProvisao & {
+  id: string;
+  vigenteDesde: string;
+  criadoPorNome: string;
+  criadoEm: string;
+};
+
+export type ReversaoProvisao = {
+  id: string;
+  tipo: TipoProvisao;
+  competencia: string;
+  valor: number;
+  motivo: string;
+  criadoPorNome: string;
+  criadoEm: string;
+};
+
+export type FechamentoMensal = {
+  competencia: string;
+  fechado: boolean;
+  motivoReabertura: string;
+  atualizadoPorNome: string;
+  atualizadoEm: string;
+};
+
+export type RegistroAuditoria = {
+  id: string;
+  criadoEm: string;
+  acao: string;
+  entidade: string;
+  entidadeId: string;
+  autor: string;
+  dadosAntigos: Record<string, unknown> | null;
+  dadosNovos: Record<string, unknown> | null;
+};
+
+/** Lançamento no mínimo que DRE, Provisões, Fluxo e DFC precisam - carregado
+ * inteiro da unidade por `carregarBaseFinanceira` (paginado, sem teto de
+ * 1000 linhas). */
+export type LancamentoBase = Pick<Lancamento, "id" | "tipo" | "categoriaId" | "descricao" | "dataCompetencia" | "origem" | "recorrenciaId"> & {
+  parcelas: Pick<Parcela, "id" | "valor" | "dataPrevista" | "contaFinanceiraId" | "status" | "numero" | "totalParcelas">[];
+};
+
+export type BaixaBase = Pick<Baixa, "id" | "parcelaId" | "tipo" | "contaFinanceiraId" | "valor" | "data">;
+
+export type RecorrenciaResumo = Recorrencia & { ocorrencias: number; ocorrenciasEmAberto: number };
