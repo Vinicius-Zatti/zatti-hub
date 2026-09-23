@@ -1,7 +1,7 @@
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, listarParametrosProvisao, listarReversoesProvisao } from "@/lib/banco/financeiro-gerencial-v1";
-import { montarMovimentosCaixa, saldoInicialContas, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
+import { aberturasDasContas, montarMovimentosCaixa, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
 import { calcularDivisorMedia } from "@/lib/financeiro-gerencial/dre-anual";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { calcularProvisoes } from "@/lib/financeiro-gerencial/provisoes";
@@ -25,8 +25,8 @@ export default async function DfcPage({ searchParams }: { searchParams: Promise<
   ]);
 
   const divisorMedia = calcularDivisorMedia(ano);
-  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas });
-  const linhas = montarDfcAnual({ ano, movimentos, categorias, saldoBase: saldoInicialContas(contas), divisorMedia });
+  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas, contas });
+  const linhas = montarDfcAnual({ ano, movimentos, categorias, aberturas: aberturasDasContas(contas), divisorMedia });
 
   const provisoes = calcularProvisoes({ lancamentos, categorias, parametros, reversoes, ateCompetencia: `${ano}-12` });
   const conciliacao = montarConciliacaoProvisoes({

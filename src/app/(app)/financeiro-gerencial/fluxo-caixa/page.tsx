@@ -1,7 +1,7 @@
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira } from "@/lib/banco/financeiro-gerencial-v1";
-import { montarMovimentosCaixa, saldoInicialContas, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
+import { aberturasDasContas, montarMovimentosCaixa, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
 import { calcularDivisorMedia } from "@/lib/financeiro-gerencial/dre-anual";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { montarFluxoDiario, montarFluxoMensal } from "@/lib/financeiro-gerencial/relatorios-caixa";
@@ -30,8 +30,8 @@ export default async function FluxoCaixaPage({
   // Conta vinda da URL só vale se for desta unidade (a lista já vem filtrada).
   const contaId = params.conta && contas.some((c) => c.id === params.conta) ? params.conta : null;
 
-  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas, contaFinanceiraId: contaId });
-  const saldoBase = saldoInicialContas(contas, contaId);
+  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas, contas, contaFinanceiraId: contaId });
+  const aberturas = aberturasDasContas(contas, contaId);
 
   return (
     <FluxoCaixaVisualizacao
@@ -41,8 +41,8 @@ export default async function FluxoCaixaPage({
       mes={mesNumero}
       contaId={contaId}
       contas={contas.map((c) => ({ id: c.id, nome: c.nome }))}
-      linhasMensais={modo === "mensal" ? montarFluxoMensal({ ano, movimentos, categorias, saldoBase, divisorMedia: calcularDivisorMedia(ano) }) : []}
-      diario={modo === "diario" ? montarFluxoDiario({ ano, mesIndice0: mesNumero - 1, movimentos, saldoBase }) : null}
+      linhasMensais={modo === "mensal" ? montarFluxoMensal({ ano, movimentos, categorias, aberturas, divisorMedia: calcularDivisorMedia(ano) }) : []}
+      diario={modo === "diario" ? montarFluxoDiario({ ano, mesIndice0: mesNumero - 1, movimentos, aberturas }) : null}
     />
   );
 }

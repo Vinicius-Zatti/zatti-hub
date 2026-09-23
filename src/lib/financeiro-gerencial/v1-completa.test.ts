@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { montarMovimentosCaixa, saldoAte, saldoInicialContas } from "./caixa";
+import { aberturasDasContas, montarMovimentosCaixa, saldoAte } from "./caixa";
 import { calcularDre } from "./dre";
-import { calcularProvisaoMes, calcularProvisoes, PARAMETROS_PADRAO_PLANILHA, parametrosVigentes, valoresDreProvisao } from "./provisoes";
+import { calcularProvisaoMes, calcularProvisoes, competenciaComReversaoAcimaDoSaldo, PARAMETROS_PADRAO_PLANILHA, parametrosVigentes, valoresDreProvisao } from "./provisoes";
 import { montarDfcAnual, montarFluxoDiario, montarFluxoMensal } from "./relatorios-caixa";
 import type { BaixaBase, CategoriaFinanceira, ContaFinanceira, EstoqueMensal, LancamentoBase, ParametrosProvisaoRegistro } from "./tipos";
 
@@ -58,37 +58,80 @@ describe("Caixa projetado x realizado (critério 5)", () => {
     { id: "b3", parcelaId: venda.parcelas[0].id, tipo: "estorno", contaFinanceiraId: "banco", valor: 200, data: "2026-09-11" },
   ];
   const lancamentos = [venda, aluguel, cancelada];
-  const base = saldoInicialContas(CONTAS);
+  const base = aberturasDasContas(CONTAS);
 
   it("projetado usa data prevista e valor cheio, ignora parcela cancelada", () => {
-    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas });
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas, contas: CONTAS });
     expect(saldoAte(base, mov, "2026-09-30")).toBe(1000 + 500 - 300);
     expect(mov.some((m) => m.valor === -999)).toBe(false);
   });
 
   it("realizado usa só baixas pela data efetiva e o estorno subtrai", () => {
-    const mov = montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas });
+    const mov = montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas, contas: CONTAS });
     expect(saldoAte(base, mov, "2026-09-10")).toBe(1000 - 300 + 200);
     expect(saldoAte(base, mov, "2026-09-30")).toBe(700);
   });
 
   it("com título em aberto os dois saldos são diferentes", () => {
-    const proj = saldoAte(base, montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas }), "2026-09-30");
-    const real = saldoAte(base, montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas }), "2026-09-30");
+    const proj = saldoAte(base, montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas, contas: CONTAS }), "2026-09-30");
+    const real = saldoAte(base, montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas, contas: CONTAS }), "2026-09-30");
     expect(proj).not.toBe(real);
   });
 
   it("fluxo diário acumula a partir do saldo do começo do mês e o mensal fecha no mesmo saldo", () => {
-    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas });
-    const diario = montarFluxoDiario({ ano: 2026, mesIndice0: 8, movimentos: mov, saldoBase: base });
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas, contas: CONTAS });
+    const diario = montarFluxoDiario({ ano: 2026, mesIndice0: 8, movimentos: mov, aberturas: base });
     expect(diario.saldoInicial).toBe(1000);
     expect(diario.dias).toHaveLength(30);
     expect(diario.dias[29].saldoAcumulado).toBe(1200);
-    const mensal = montarFluxoMensal({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, saldoBase: base, divisorMedia: 12 });
+    const mensal = montarFluxoMensal({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas: base, divisorMedia: 12 });
     const saldoFinal = mensal.find((l) => l.id === "saldo_final")!;
     expect(saldoFinal.valoresPorMes[8]).toBe(1200);
     expect(saldoFinal.valoresPorMes[9]).toBe(900);
     expect(saldoFinal.total).toBe(900);
+  });
+});
+
+describe("Saldo inicial respeita a data de cada conta", () => {
+  // Conta com saldo de 800 em 01/09: agosto não pode ver esse saldo e um
+  // movimento de agosto nessa conta já está dentro dos 800.
+  const contas: ContaFinanceira[] = [{ id: "banco", nome: "Banco", tipo: "banco", saldoInicial: 800, dataSaldoInicial: "2026-09-01", ativo: true }];
+  const antigo = lanc({ categoriaId: "cmo_folha", dataCompetencia: "2026-08-01", valores: [[100, "2026-08-20"]] });
+  const venda = lanc({ tipo: "receita", categoriaId: "receita_salao", dataCompetencia: "2026-09-01", valores: [[50, "2026-09-10"]] });
+
+  it("saldo de 01/09 não aparece em agosto e movimento anterior à data não desconta dele", () => {
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos: [antigo, venda], baixas: [], contas });
+    expect(mov.some((m) => m.lancamentoId === antigo.id)).toBe(false);
+    const aberturas = aberturasDasContas(contas);
+    expect(saldoAte(aberturas, mov, "2026-08-31")).toBe(0);
+    expect(saldoAte(aberturas, mov, "2026-09-01")).toBe(800);
+    const mensal = montarFluxoMensal({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas, divisorMedia: 12 });
+    const linha = (id: string) => mensal.find((l) => l.id === id)!;
+    expect(linha("saldo_inicial").valoresPorMes[7]).toBe(0);
+    expect(linha("saldo_final").valoresPorMes[7]).toBe(0);
+    expect(linha("saldo_inicial").valoresPorMes[8]).toBe(800);
+    expect(linha("saldo_final").valoresPorMes[8]).toBe(850);
+    expect(mensal.some((l) => l.id === "saldo_inicial_conta")).toBe(false);
+  });
+
+  it("conta cadastrada no meio do mês entra no dia dela, numa linha própria, e o saldo fecha", () => {
+    const meio: ContaFinanceira[] = [{ ...contas[0], dataSaldoInicial: "2026-09-15" }];
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos: [venda], baixas: [], contas: meio });
+    expect(mov).toHaveLength(0);
+    const aberturas = aberturasDasContas(meio);
+    const diario = montarFluxoDiario({ ano: 2026, mesIndice0: 8, movimentos: mov, aberturas });
+    expect(diario.saldoInicial).toBe(0);
+    expect(diario.dias[13].saldoAcumulado).toBe(0);
+    expect(diario.dias[14].saldoInicialConta).toBe(800);
+    expect(diario.dias[29].saldoAcumulado).toBe(800);
+    const mensal = montarFluxoMensal({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas, divisorMedia: 12 });
+    const linha = (id: string) => mensal.find((l) => l.id === id)!;
+    expect(linha("saldo_inicial").valoresPorMes[8]).toBe(0);
+    expect(linha("saldo_inicial_conta").valoresPorMes[8]).toBe(800);
+    expect(linha("saldo_final").valoresPorMes[8]).toBe(800);
+    expect(linha("saldo_inicial").valoresPorMes[9]).toBe(800);
+    const dfc = montarDfcAnual({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas, divisorMedia: 12 });
+    expect(dfc.find((l) => l.id === "saldo_final")!.valoresPorMes[8]).toBe(800);
   });
 });
 
@@ -99,8 +142,8 @@ describe("DFC método direto (critérios 6 e 7)", () => {
   const lancamentos = [venda, retirada, equipamento];
 
   it("Saídas Não Operacionais reduzem o caixa (investimento e financiamento) mas não o Resultado da DRE", () => {
-    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [] });
-    const dfc = montarDfcAnual({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, saldoBase: 0, divisorMedia: 12 });
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [], contas: CONTAS });
+    const dfc = montarDfcAnual({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas: [], divisorMedia: 12 });
     const linha = (id: string) => dfc.find((l) => l.id === id)!;
     expect(linha("caixa_operacional").valoresPorMes[2]).toBe(1000);
     expect(linha("investimento").valoresPorMes[2]).toBe(100);
@@ -113,8 +156,8 @@ describe("DFC método direto (critérios 6 e 7)", () => {
   });
 
   it("modo resumido = só grupos; expandido abre contas (filhos presentes)", () => {
-    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [] });
-    const dfc = montarDfcAnual({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, saldoBase: 0, divisorMedia: 12 });
+    const mov = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [], contas: CONTAS });
+    const dfc = montarDfcAnual({ ano: 2026, movimentos: mov, categorias: CATEGORIAS, aberturas: [], divisorMedia: 12 });
     expect(dfc.every((l) => l.nivel === 0)).toBe(true);
     expect(dfc.find((l) => l.id === "financiamento")!.filhos!.map((f) => f.rotulo)).toEqual(["Retiradas de sócios"]);
   });
@@ -156,7 +199,7 @@ describe("Provisões trabalhistas (critério 2 e planilha)", () => {
     const linha13 = dre.cmo.contas.find((c) => c.id === "cmo_13")!;
     expect(linha13.valor).toBe(1500);
 
-    const caixa = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [] });
+    const caixa = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [], contas: CONTAS });
     expect(caixa.some((m) => m.lancamentoId === guia.id && m.valor === -3500)).toBe(true);
   });
 
@@ -174,6 +217,26 @@ describe("Provisões trabalhistas (critério 2 e planilha)", () => {
     const marco = provisoes.get("2026-03")!.porTipo.decimo_terceiro;
     expect(marco.saldoFinal).toBe(300);
     expect(marco.valorDre).toBe(-200);
+  });
+
+  it("reversões em meses diferentes nunca deixam o saldo negativo e o conflito é apontado", () => {
+    const reversao = (competencia: string, valor: number) => ({ id: competencia, tipo: "decimo_terceiro" as const, competencia, valor, motivo: "", criadoPorNome: "", criadoEm: "" });
+    const provisoes = calcularProvisoes({
+      lancamentos: [folha("2026-01")],
+      categorias: CATEGORIAS,
+      parametros: [],
+      reversoes: [reversao("2026-02-01", 1000), reversao("2026-03-01", 1000)],
+      ateCompetencia: "2026-03",
+    });
+    const saldoJaneiro = provisoes.get("2026-01")!.porTipo.decimo_terceiro.saldoFinal;
+    const fev = provisoes.get("2026-02")!.porTipo.decimo_terceiro;
+    const mar = provisoes.get("2026-03")!.porTipo.decimo_terceiro;
+    expect(fev.reversoes).toBe(Math.min(1000, saldoJaneiro));
+    expect(mar.saldoFinal).toBeGreaterThanOrEqual(0);
+    expect(fev.saldoFinal + mar.valorDre).toBeGreaterThanOrEqual(0);
+    expect(mar.saldoInicial + mar.provisao - mar.reversoes).toBe(mar.saldoFinal);
+    expect(competenciaComReversaoAcimaDoSaldo(provisoes, "decimo_terceiro")).not.toBeNull();
+    expect(competenciaComReversaoAcimaDoSaldo(provisoes, "ferias")).toBeNull();
   });
 
   it("parâmetro vigente é a linha mais recente até a competência, sem linha vale a planilha", () => {

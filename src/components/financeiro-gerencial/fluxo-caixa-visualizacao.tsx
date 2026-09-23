@@ -74,6 +74,8 @@ export function FluxoCaixaVisualizacao({
   const tituloVisao = visao === "projetado" ? "Projetado" : "Realizado";
   const totalEntradas = diario ? diario.dias.reduce((s, d) => s + d.entradas, 0) : 0;
   const totalSaidas = diario ? diario.dias.reduce((s, d) => s + d.saidas, 0) : 0;
+  // Coluna só aparece no mês em que uma conta foi cadastrada depois do dia 1.
+  const temSaldoInicialConta = diario ? diario.dias.some((d) => d.saldoInicialConta !== 0) : false;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
@@ -149,6 +151,7 @@ export function FluxoCaixaVisualizacao({
               <thead>
                 <tr className="bg-azul-petroleo text-branco">
                   <Th larguraFixa="110px">Data</Th>
+                  {temSaldoInicialConta && <Th align="right">Saldo inicial de conta</Th>}
                   <Th align="right">Entradas</Th>
                   <Th align="right">Saídas</Th>
                   <Th align="right">Saldo do dia</Th>
@@ -157,10 +160,13 @@ export function FluxoCaixaVisualizacao({
               </thead>
               <tbody>
                 {diario.dias.map((d) => {
-                  const semMovimento = d.entradas === 0 && d.saidas === 0;
+                  const semMovimento = d.entradas === 0 && d.saidas === 0 && d.saldoInicialConta === 0;
                   return (
                     <tr key={d.data} className={`border-t border-cinza-claro ${semMovimento ? "text-cinza-medio" : "text-cinza"}`}>
                       <td className="whitespace-nowrap px-3 py-1.5">{formatarDataBr(d.data)}</td>
+                      {temSaldoInicialConta && (
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono">{d.saldoInicialConta ? formatarNumero(d.saldoInicialConta) : "-"}</td>
+                      )}
                       <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono">{d.entradas ? formatarNumero(d.entradas) : "-"}</td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono">{d.saidas ? formatarNumero(d.saidas) : "-"}</td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono">{semMovimento ? "-" : formatarNumero(d.saldoDia)}</td>

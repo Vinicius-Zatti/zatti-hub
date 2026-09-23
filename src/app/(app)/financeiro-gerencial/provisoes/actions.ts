@@ -12,7 +12,7 @@ import {
   salvarParametrosProvisao,
 } from "@/lib/banco/financeiro-gerencial-v1";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
-import { calcularProvisoes, saldoProvisaoAte } from "@/lib/financeiro-gerencial/provisoes";
+import { calcularProvisoes, competenciaComReversaoAcimaDoSaldo, saldoProvisaoAte } from "@/lib/financeiro-gerencial/provisoes";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import {
   excluirReversaoProvisaoEntradaSchema,
@@ -56,10 +56,20 @@ export async function criarReversaoProvisaoAction(input: unknown): Promise<Resul
       listarParametrosProvisao(acesso.unidadeId),
       listarReversoesProvisao(acesso.unidadeId),
     ]);
-    const provisoes = calcularProvisoes({ lancamentos, categorias, parametros, reversoes, ateCompetencia: entrada.competencia });
-    const saldo = saldoProvisaoAte(provisoes, entrada.tipo, entrada.competencia);
+    const antes = calcularProvisoes({ lancamentos, categorias, parametros, reversoes, ateCompetencia: entrada.competencia });
+    const saldo = saldoProvisaoAte(antes, entrada.tipo, entrada.competencia);
     if (entrada.valor > saldo + 0.005) {
       throw new ErroPublico(`Reversão maior que o saldo provisionado no mês (R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}).`);
+    }
+    // Com a reversão nova incluída, nenhuma reversão já feita em mês seguinte
+    // pode ficar sem saldo.
+    const simulada = { id: "nova", tipo: entrada.tipo, competencia: entrada.competencia, valor: entrada.valor, motivo: "", criadoPorNome: "", criadoEm: "" };
+    const ultimaCompetencia = [...reversoes, simulada].map((r) => r.competencia.slice(0, 7)).sort().at(-1)!;
+    const depois = calcularProvisoes({ lancamentos, categorias, parametros, reversoes: [...reversoes, simulada], ateCompetencia: ultimaCompetencia });
+    const conflito = competenciaComReversaoAcimaDoSaldo(depois, entrada.tipo);
+    if (conflito) {
+      const [ano, mes] = conflito.split("-");
+      throw new ErroPublico(`Com esta reversão, a reversão já lançada em ${mes}/${ano} fica maior que o saldo provisionado. Ajuste ou exclua a de ${mes}/${ano} antes.`);
     }
     await criarReversaoProvisao({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
     revalidar();

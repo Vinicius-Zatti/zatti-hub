@@ -22,7 +22,7 @@ const COLUNAS_NUMERICAS: ColunaDre[] = COLUNAS_NUMERICAS_ANUAIS;
 /** Visualização anual da DRE - único seletor é o Ano (nunca mês), sem toggle
  * global de Resumida/Expandida: cada grupo principal abre a própria seta,
  * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). Saídas Não
- * Operacionais e Resultado Líquido vêm na mesma tabela, não numa seção à
+ * Operacionais e Resultado Econômico vêm na mesma tabela, não numa seção à
  * parte. */
 export function DreVisualizacao({
   dreAnual,
@@ -74,8 +74,8 @@ export function DreVisualizacao({
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <CartaoIndicador titulo="Resultado Líquido" valor={formatarNumero(dreAnual.indicadores.resultadoLiquido)} />
-        <CartaoIndicador titulo="% Resultado Líquido" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoLiquido)} />
+        <CartaoIndicador titulo="Resultado Econômico" valor={formatarNumero(dreAnual.indicadores.resultadoEconomico)} />
+        <CartaoIndicador titulo="% Resultado Econômico" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoEconomico)} />
         <CartaoIndicador titulo="Ponto de Equilíbrio" valor={formatarPontoDeEquilibrio(dreAnual.indicadores.pontoDeEquilibrio)} />
       </div>
 

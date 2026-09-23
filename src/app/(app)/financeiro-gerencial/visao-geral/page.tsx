@@ -42,7 +42,7 @@ export default async function VisaoGeralPage() {
         ...visao,
         proximosVencimentos: visao.proximosVencimentos.map((t) => ({ ...t, categoriaNome: caminhoCategoria(t.categoriaId, categorias) })),
       }}
-      resultadoLiquidoMes={dre.geracaoCaixaAposSaidas}
+      resultadoEconomicoMes={dre.geracaoCaixaAposSaidas}
       receitaMes={dre.receitas.total}
       saldoProvisoes={somarValores(TIPOS_PROVISAO.map((t) => saldoProvisaoAte(provisoes, t, competencia)))}
     />

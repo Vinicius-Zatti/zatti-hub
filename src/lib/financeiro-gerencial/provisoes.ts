@@ -107,7 +107,10 @@ const TIPO_POR_PAPEL: Partial<Record<PapelDre, TipoProvisao>> = {
 export type MovimentoProvisaoMes = {
   saldoInicial: number;
   provisao: number;
+  /** Reversão aplicada (limitada ao saldo do balde). */
   reversoes: number;
+  /** Reversão cadastrada no mês, antes do limite. */
+  reversoesLancadas: number;
   liquidacoes: number;
   /** Parte da liquidação que passou do saldo provisionado - só ela entra na DRE. */
   excesso: number;
@@ -177,7 +180,11 @@ export function calcularProvisoes(params: {
     for (const tipo of TIPOS_PROVISAO) {
       const saldoInicial = saldo[tipo];
       const provisao = calculo.porTipo[tipo];
-      const reversoesMes = somarValores(reversoes.filter((r) => r.tipo === tipo && r.competencia.startsWith(competencia)).map((r) => r.valor));
+      const reversoesLancadas = somarValores(reversoes.filter((r) => r.tipo === tipo && r.competencia.startsWith(competencia)).map((r) => r.valor));
+      // Reversão nunca leva o saldo abaixo de zero: aplica no máximo o que o
+      // balde tem no mês (saldo inicial + provisão), mesmo que reversões de
+      // meses diferentes, somadas, passem disso.
+      const reversoesMes = Math.min(reversoesLancadas, Math.max(0, somarValores([saldoInicial, provisao])));
       const liquidacoes = liquidacaoMes.get(`${competencia}|${tipo}`) ?? 0;
       const disponivel = somarValores([saldoInicial, provisao, -reversoesMes]);
       const excesso = arredondar2(Math.max(0, liquidacoes - Math.max(0, disponivel)));
@@ -187,6 +194,7 @@ export function calcularProvisoes(params: {
         saldoInicial,
         provisao,
         reversoes: reversoesMes,
+        reversoesLancadas,
         liquidacoes,
         excesso,
         saldoFinal,
@@ -216,6 +224,19 @@ export function saldoProvisaoAte(provisoes: Map<string, ProvisoesDoMes>, tipo: T
   const meses = Array.from(provisoes.keys()).filter((c) => c <= competencia).sort();
   const ultimo = meses[meses.length - 1];
   return ultimo ? provisoes.get(ultimo)!.porTipo[tipo].saldoFinal : 0;
+}
+
+/** Primeira competência em que as reversões cadastradas de um balde passam do
+ * saldo dele (o motor corta o excedente), ou null se todas cabem. A validação
+ * de reversão nova usa isto com a reversão já incluída e o cálculo indo até a
+ * última reversão cadastrada - reverter num mês pode deixar sem saldo uma
+ * reversão já feita num mês seguinte. */
+export function competenciaComReversaoAcimaDoSaldo(provisoes: Map<string, ProvisoesDoMes>, tipo: TipoProvisao): string | null {
+  for (const competencia of Array.from(provisoes.keys()).sort()) {
+    const mov = provisoes.get(competencia)!.porTipo[tipo];
+    if (mov.reversoesLancadas > mov.reversoes + 0.005) return competencia;
+  }
+  return null;
 }
 
 // ── Quadro anual (tela de Provisões) ────────────────────────────────────────

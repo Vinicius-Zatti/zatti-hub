@@ -1,4 +1,4 @@
-import { montarMovimentosCaixa, saldoAte, saldoInicialContas } from "./caixa";
+import { aberturasDasContas, montarMovimentosCaixa, saldoAte } from "./caixa";
 import { ultimoDiaDoMes } from "./datas";
 import { somarValores } from "./parcelas";
 import type { BaixaBase, ContaFinanceira, LancamentoBase, TipoLancamento } from "./tipos";
@@ -33,7 +33,7 @@ export function montarVisaoGeral(params: {
   diasProximos?: number;
 }): VisaoGeralFinanceira {
   const { hoje, lancamentos, baixas, contas, diasProximos = 15 } = params;
-  const base = saldoInicialContas(contas);
+  const base = aberturasDasContas(contas);
   const [ano, mes] = hoje.split("-").map(Number);
   const inicioMes = `${hoje.slice(0, 7)}-01`;
   const fimMes = `${hoje.slice(0, 7)}-${String(ultimoDiaDoMes(ano, mes - 1)).padStart(2, "0")}`;
@@ -70,8 +70,8 @@ export function montarVisaoGeral(params: {
   const vencidos = abertos.filter((t) => t.dataPrevista < hoje);
 
   return {
-    saldoRealizadoHoje: saldoAte(base, montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas }), hoje),
-    saldoProjetadoFimDoMes: saldoAte(base, montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas }), fimMes),
+    saldoRealizadoHoje: saldoAte(base, montarMovimentosCaixa({ visao: "realizado", lancamentos, baixas, contas }), hoje),
+    saldoProjetadoFimDoMes: saldoAte(base, montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas, contas }), fimMes),
     aReceberNoMes: soma(noMes.filter((t) => t.tipo === "receita")),
     aPagarNoMes: soma(noMes.filter((t) => t.tipo === "despesa")),
     vencidoAReceber: soma(vencidos.filter((t) => t.tipo === "receita")),

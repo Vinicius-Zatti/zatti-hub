@@ -1,4 +1,4 @@
-import { competenciaDoMes, saldoAntesDe, type MovimentoCaixa } from "./caixa";
+import { competenciaDoMes, saldoAntesDe, type AberturaConta, type MovimentoCaixa } from "./caixa";
 import { ultimoDiaDoMes } from "./datas";
 import type { LinhaDreAnual } from "./dre-anual";
 import { somarValores } from "./parcelas";
@@ -52,8 +52,33 @@ function somaMensal(movimentos: MovimentoCaixa[], ano: number, filtro: (m: Movim
   return valores;
 }
 
-function saldosIniciaisDoAno(saldoBase: number, movimentos: MovimentoCaixa[], ano: number): number[] {
-  return Array.from({ length: 12 }, (_, i) => saldoAntesDe(saldoBase, movimentos, `${competenciaDoMes(ano, i)}-01`));
+function saldosIniciaisDoAno(aberturas: AberturaConta[], movimentos: MovimentoCaixa[], ano: number): number[] {
+  return Array.from({ length: 12 }, (_, i) => saldoAntesDe(aberturas, movimentos, `${competenciaDoMes(ano, i)}-01`));
+}
+
+/** Saldo inicial de conta com data depois do dia 1: entra no próprio mês numa
+ * linha separada (não é entrada operacional) e no saldo inicial dos meses
+ * seguintes. Saldo inicial com data no dia 1 já está no saldo inicial do mês. */
+function aberturasNoMeio(aberturas: AberturaConta[], ano: number): number[] {
+  const valores = Array.from({ length: 12 }, () => 0);
+  for (const a of aberturas) {
+    if (!a.data.startsWith(`${ano}-`) || a.data.endsWith("-01")) continue;
+    const mes = Number(a.data.slice(5, 7)) - 1;
+    valores[mes] = arredondar2(valores[mes] + a.valor);
+  }
+  return valores;
+}
+
+function linhasDeSaldo(aberturas: AberturaConta[], movimentos: MovimentoCaixa[], ano: number, variacao: number[], divisorMedia: number | null) {
+  const iniciais = saldosIniciaisDoAno(aberturas, movimentos, ano);
+  const noMeio = aberturasNoMeio(aberturas, ano);
+  const finais = iniciais.map((s, i) => arredondar2(s + noMeio[i] + variacao[i]));
+  const linhaNoMeio = linhaFluxo("saldo_inicial_conta", "(+) Saldo inicial de conta cadastrada no mês", 0, noMeio, divisorMedia);
+  return {
+    inicial: linhaSaldo("saldo_inicial", "Saldo inicial", iniciais, "inicio"),
+    noMeio: temValor(linhaNoMeio) ? [linhaNoMeio] : [],
+    final: linhaSaldo("saldo_final", "= Saldo final", finais, "fim"),
+  };
 }
 
 function temValor(linha: LinhaDreAnual): boolean {
@@ -88,10 +113,10 @@ export function montarFluxoMensal(params: {
   ano: number;
   movimentos: MovimentoCaixa[];
   categorias: CategoriaFinanceira[];
-  saldoBase: number;
+  aberturas: AberturaConta[];
   divisorMedia: number | null;
 }): LinhaDreAnual[] {
-  const { ano, movimentos, categorias, saldoBase, divisorMedia } = params;
+  const { ano, movimentos, categorias, aberturas, divisorMedia } = params;
   const porId = new Map(categorias.map((c) => [c.id, c]));
 
   const entradasFilhos = linhasDeContas(
@@ -116,20 +141,22 @@ export function montarFluxoMensal(params: {
   const saidas = somaMensal(movimentos, ano, (m) => m.tipo === "despesa", -1);
 
   const saldoMes = entradas.map((e, i) => arredondar2(e - saidas[i]));
-  const iniciais = saldosIniciaisDoAno(saldoBase, movimentos, ano);
-  const finais = iniciais.map((s, i) => arredondar2(s + saldoMes[i]));
+  const saldos = linhasDeSaldo(aberturas, movimentos, ano, saldoMes, divisorMedia);
 
   return [
-    linhaSaldo("saldo_inicial", "Saldo inicial", iniciais, "inicio"),
+    saldos.inicial,
     linhaFluxo("entradas", "(+) Entradas", 0, entradas, divisorMedia, { filhos: entradasFilhos }),
     linhaFluxo("saidas", "(-) Saídas", 0, saidas, divisorMedia, { filhos: saidasFilhos }),
     linhaFluxo("saldo_mes", "= Saldo do mês", 0, saldoMes, divisorMedia, { destaque: true }),
-    linhaSaldo("saldo_final", "= Saldo final", finais, "fim"),
+    ...saldos.noMeio,
+    saldos.final,
   ];
 }
 
 export type LinhaFluxoDiario = {
   data: string;
+  /** Saldo inicial de conta cadastrado com esta data (só depois do dia 1). */
+  saldoInicialConta: number;
   entradas: number;
   saidas: number;
   saldoDia: number;
@@ -138,13 +165,13 @@ export type LinhaFluxoDiario = {
 
 /** Fluxo diário de um mês: uma linha por dia, saldo acumulado a partir do
  * saldo do começo do mês. */
-export function montarFluxoDiario(params: { ano: number; mesIndice0: number; movimentos: MovimentoCaixa[]; saldoBase: number }): {
+export function montarFluxoDiario(params: { ano: number; mesIndice0: number; movimentos: MovimentoCaixa[]; aberturas: AberturaConta[] }): {
   saldoInicial: number;
   dias: LinhaFluxoDiario[];
 } {
-  const { ano, mesIndice0, movimentos, saldoBase } = params;
+  const { ano, mesIndice0, movimentos, aberturas } = params;
   const prefixo = competenciaDoMes(ano, mesIndice0);
-  const saldoInicial = saldoAntesDe(saldoBase, movimentos, `${prefixo}-01`);
+  const saldoInicial = saldoAntesDe(aberturas, movimentos, `${prefixo}-01`);
   let acumulado = saldoInicial;
   const dias: LinhaFluxoDiario[] = [];
   for (let dia = 1; dia <= ultimoDiaDoMes(ano, mesIndice0); dia++) {
@@ -152,9 +179,10 @@ export function montarFluxoDiario(params: { ano: number; mesIndice0: number; mov
     const doDia = movimentos.filter((m) => m.data === data);
     const entradas = somarValores(doDia.filter((m) => m.valor > 0).map((m) => m.valor));
     const saidas = somarValores(doDia.filter((m) => m.valor < 0).map((m) => -m.valor));
+    const saldoInicialConta = dia === 1 ? 0 : somarValores(aberturas.filter((a) => a.data === data).map((a) => a.valor));
     const saldoDia = arredondar2(entradas - saidas);
-    acumulado = arredondar2(acumulado + saldoDia);
-    dias.push({ data, entradas, saidas, saldoDia, saldoAcumulado: acumulado });
+    acumulado = arredondar2(acumulado + saldoInicialConta + saldoDia);
+    dias.push({ data, saldoInicialConta, entradas, saidas, saldoDia, saldoAcumulado: acumulado });
   }
   return { saldoInicial, dias };
 }
@@ -185,10 +213,10 @@ export function montarDfcAnual(params: {
   ano: number;
   movimentos: MovimentoCaixa[];
   categorias: CategoriaFinanceira[];
-  saldoBase: number;
+  aberturas: AberturaConta[];
   divisorMedia: number | null;
 }): LinhaDreAnual[] {
-  const { ano, movimentos, categorias, saldoBase, divisorMedia } = params;
+  const { ano, movimentos, categorias, aberturas, divisorMedia } = params;
 
   const recebimentosFilhos = linhasDeContas(contasOrdenadas(categorias, (c) => c.papelDre === "receita"), movimentos, ano, 1, 1, divisorMedia);
   const recebimentos = somarLinhas(recebimentosFilhos);
@@ -215,18 +243,18 @@ export function montarDfcAnual(params: {
   const financiamento = somarLinhas(financiamentoFilhos);
 
   const geracao = caixaOperacional.map((c, i) => arredondar2(c - investimento[i] - financiamento[i]));
-  const iniciais = saldosIniciaisDoAno(saldoBase, movimentos, ano);
-  const finais = iniciais.map((s, i) => arredondar2(s + geracao[i]));
+  const saldos = linhasDeSaldo(aberturas, movimentos, ano, geracao, divisorMedia);
 
   return [
-    linhaSaldo("saldo_inicial", "Saldo inicial", iniciais, "inicio"),
+    saldos.inicial,
     linhaFluxo("recebimentos", "(+) Recebimentos operacionais", 0, recebimentos, divisorMedia, { filhos: recebimentosFilhos }),
     linhaFluxo("pagamentos", "(-) Pagamentos operacionais", 0, pagamentos, divisorMedia, { filhos: blocos }),
     linhaFluxo("caixa_operacional", "= Caixa líquido das atividades operacionais", 0, caixaOperacional, divisorMedia, { destaque: true }),
     linhaFluxo("investimento", "(-) Atividades de investimento", 0, investimento, divisorMedia, { filhos: investimentoFilhos }),
     linhaFluxo("financiamento", "(-) Atividades de financiamento", 0, financiamento, divisorMedia, { filhos: financiamentoFilhos }),
     linhaFluxo("geracao_caixa", "= Geração de caixa após Saídas Não Operacionais", 0, geracao, divisorMedia, { destaque: true }),
-    linhaSaldo("saldo_final", "= Saldo final", finais, "fim"),
+    ...saldos.noMeio,
+    saldos.final,
   ];
 }
 

@@ -61,14 +61,14 @@ function filhosCmv(dre: Dre): LinhaDreMensal[] {
  * com os outros 11 meses do ano (`dre-anual.ts`). Preserva a estrutura já
  * calculada por `calcularDre` - só monta a apresentação, nenhuma fórmula
  * nova aqui além de Receita Operacional Líquida (Receita Bruta − Deduções) e
- * Resultado Líquido (Resultado Econômico − Saídas Não Operacionais), ambas
+ * Resultado Econômico (Resultado Líquido − Saídas Não Operacionais), ambas
  * derivadas de totais já existentes, não um cálculo novo no motor. */
 export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
   const receitaLiquida = somarValores([dre.receitas.total, -dre.deducoes.total]);
-  // Resultado Líquido é exatamente o que já era `geracaoCaixaAposSaidas` no
+  // Resultado Econômico é exatamente o que já era `geracaoCaixaAposSaidas` no
   // motor (Resultado Operacional − Saídas Não Operacionais) - só o nome/lugar
   // na apresentação mudou, nenhuma conta nova.
-  const resultadoLiquido = dre.geracaoCaixaAposSaidas;
+  const resultadoEconomico = dre.geracaoCaixaAposSaidas;
 
   return [
     { id: "receita_bruta", rotulo: "Receita Operacional Bruta", nivel: 0, valor: dre.receitas.total, filhos: linhasContas(dre.receitas.contas, 1) },
@@ -85,11 +85,11 @@ export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
       filhos: linhasSubgrupos(dre.custosOperacionais.subgrupos, 1, 2),
     },
     { id: "resultado_operacional", rotulo: "= Resultado Operacional", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
-    // Resultado Econômico fecha a própria DRE - Saídas Não Operacionais nunca
-    // reduzem esta linha (por isso o mesmo valor de Resultado Operacional,
-    // sem cálculo novo). Saídas e Resultado Líquido vêm na sequência, na
-    // mesma tabela (não mais numa seção separada).
-    { id: "resultado_economico", rotulo: "= Resultado Econômico", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
+    // Definição de Vinícius (22/09): Resultado Líquido fecha a própria DRE -
+    // Saídas Não Operacionais nunca reduzem esta linha (mesmo valor de
+    // Resultado Operacional, sem cálculo novo). Resultado Econômico é o
+    // Resultado Líquido menos as Saídas Não Operacionais.
+    { id: "resultado_liquido", rotulo: "= Resultado Líquido", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
     {
       id: "saidas",
       rotulo: "(-) Saídas Não Operacionais",
@@ -97,6 +97,6 @@ export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
       valor: dre.saidasNaoOperacionais.total,
       filhos: linhasContas(dre.saidasNaoOperacionais.contas, 1),
     },
-    { id: "resultado_liquido", rotulo: "= Resultado Líquido", nivel: 0, valor: resultadoLiquido, destaque: true },
+    { id: "resultado_economico", rotulo: "= Resultado Econômico", nivel: 0, valor: resultadoEconomico, destaque: true },
   ];
 }

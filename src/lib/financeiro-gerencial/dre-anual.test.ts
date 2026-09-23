@@ -223,23 +223,22 @@ describe("montarDreAnual", () => {
     expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
   });
 
-  it("Saídas Não Operacionais e Resultado Líquido ficam na mesma tabela anual, logo após Resultado Econômico", () => {
+  it("Saídas Não Operacionais e Resultado Econômico ficam na mesma tabela anual, logo após Resultado Líquido", () => {
     const { dres, receitaVendasProdutosPorMes } = montarAno(2026, [], {});
     const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
     const ids = anual.linhas.map((l) => l.id);
-    const indiceResultadoEconomico = ids.indexOf("resultado_economico");
-    // resultado_economico, % resultado_economico, saidas, % saidas, resultado_liquido, % resultado_liquido
-    expect(ids.slice(indiceResultadoEconomico)).toEqual([
-      "resultado_economico",
-      "resultado_economico_percentual",
-      "saidas",
-      "saidas_percentual",
+    const indiceResultadoLiquido = ids.indexOf("resultado_liquido");
+    expect(ids.slice(indiceResultadoLiquido)).toEqual([
       "resultado_liquido",
       "resultado_liquido_percentual",
+      "saidas",
+      "saidas_percentual",
+      "resultado_economico",
+      "resultado_economico_percentual",
     ]);
   });
 
-  it("indicador do topo (Resultado Líquido) usa Resultado Econômico já reduzido pelas Saídas Não Operacionais - Resultado Econômico em si nunca é reduzido", () => {
+  it("indicador do topo (Resultado Econômico) é o Resultado Líquido já reduzido pelas Saídas Não Operacionais - Resultado Líquido em si nunca é reduzido", () => {
     const lancamentos = [
       lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 10000 }),
       lancamento({ categoriaId: "sno_retiradas", dataCompetencia: "2026-01-10", valor: 2000 }),
@@ -254,10 +253,10 @@ describe("montarDreAnual", () => {
     const resultadoEconomico = anual.linhas.find((l) => l.id === "resultado_economico")!;
     const resultadoLiquido = anual.linhas.find((l) => l.id === "resultado_liquido")!;
 
-    expect(resultadoEconomico.total).toBe(resultadoOperacional.total);
-    expect(resultadoLiquido.total).toBe(resultadoOperacional.total! - 2000);
-    expect(anual.indicadores.resultadoLiquido).toBe(resultadoLiquido.total);
-    expect(anual.indicadores.resultadoLiquido).not.toBe(resultadoEconomico.total);
+    expect(resultadoLiquido.total).toBe(resultadoOperacional.total);
+    expect(resultadoEconomico.total).toBe(resultadoOperacional.total! - 2000);
+    expect(anual.indicadores.resultadoEconomico).toBe(resultadoEconomico.total);
+    expect(anual.indicadores.resultadoEconomico).not.toBe(resultadoLiquido.total);
   });
 
   describe("% CMV usa Receita de Vendas de Produtos, nunca Receita Operacional Bruta", () => {

@@ -126,16 +126,16 @@ describe("montarArvoreMensal", () => {
     expect(acharLinha(linhas, "resultado_liquido")?.filhos).toBeUndefined();
   });
 
-  it("Saídas Não Operacionais e Resultado Líquido ficam na mesma tabela, logo após Resultado Econômico", () => {
+  it("Saídas Não Operacionais e Resultado Econômico ficam na mesma tabela, logo após Resultado Líquido", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
     const linhas = montarArvoreMensal(dre);
     const ids = linhas.map((l) => l.id);
-    const indiceResultadoEconomico = ids.indexOf("resultado_economico");
-    expect(ids.slice(indiceResultadoEconomico)).toEqual(["resultado_economico", "saidas", "resultado_liquido"]);
+    const indiceResultadoLiquido = ids.indexOf("resultado_liquido");
+    expect(ids.slice(indiceResultadoLiquido)).toEqual(["resultado_liquido", "saidas", "resultado_economico"]);
     expect(acharLinha(linhas, "saidas")?.filhos?.map((f) => f.rotulo)).toContain("Retiradas de sócios");
   });
 
-  it("Resultado Econômico fecha a própria DRE (mesmo valor de Resultado Operacional) e nunca é reduzido por Saídas Não Operacionais", () => {
+  it("Resultado Líquido fecha a própria DRE (mesmo valor de Resultado Operacional) e nunca é reduzido por Saídas Não Operacionais", () => {
     const comSaidas = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
     const semSaidas = calcularDre({
       competencia: "2026-08",
@@ -147,16 +147,16 @@ describe("montarArvoreMensal", () => {
     const linhasComSaidas = montarArvoreMensal(comSaidas);
     const linhasSemSaidas = montarArvoreMensal(semSaidas);
 
-    const resultadoEconomicoComSaidas = acharLinha(linhasComSaidas, "resultado_economico");
-    const resultadoEconomicoSemSaidas = acharLinha(linhasSemSaidas, "resultado_economico");
+    const resultadoLiquidoComSaidas = acharLinha(linhasComSaidas, "resultado_liquido");
+    const resultadoLiquidoSemSaidas = acharLinha(linhasSemSaidas, "resultado_liquido");
     const resultadoOperacional = acharLinha(linhasComSaidas, "resultado_operacional");
-    const resultadoLiquido = acharLinha(linhasComSaidas, "resultado_liquido");
+    const resultadoEconomico = acharLinha(linhasComSaidas, "resultado_economico");
 
-    // Resultado Econômico é igual com ou sem Saídas Não Operacionais lançadas.
-    expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoEconomicoSemSaidas?.valor);
-    expect(resultadoEconomicoComSaidas?.valor).toBe(resultadoOperacional?.valor);
-    // Resultado Líquido, por outro lado, é reduzido pelas Saídas Não Operacionais.
-    expect(resultadoLiquido?.valor).toBe(resultadoOperacional!.valor! - 300);
-    expect(resultadoLiquido?.valor).not.toBe(resultadoEconomicoComSaidas?.valor);
+    // Resultado Líquido é igual com ou sem Saídas Não Operacionais lançadas.
+    expect(resultadoLiquidoComSaidas?.valor).toBe(resultadoLiquidoSemSaidas?.valor);
+    expect(resultadoLiquidoComSaidas?.valor).toBe(resultadoOperacional?.valor);
+    // Resultado Econômico = Resultado Líquido - Saídas Não Operacionais.
+    expect(resultadoEconomico?.valor).toBe(resultadoOperacional!.valor! - 300);
+    expect(resultadoEconomico?.rotulo).toBe("= Resultado Econômico");
   });
 });

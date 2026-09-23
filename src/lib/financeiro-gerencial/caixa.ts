@@ -22,13 +22,17 @@ function sinal(tipo: TipoLancamento): 1 | -1 {
   return tipo === "receita" ? 1 : -1;
 }
 
+/** `contas` é obrigatório: movimento de uma conta anterior à data do saldo
+ * inicial dela já está dentro desse saldo e sai da lista (senão desconta duas
+ * vezes). Movimento sem conta financeira fica. */
 export function montarMovimentosCaixa(params: {
   visao: VisaoCaixa;
   lancamentos: LancamentoBase[];
   baixas: BaixaBase[];
+  contas: ContaFinanceira[];
   contaFinanceiraId?: string | null;
 }): MovimentoCaixa[] {
-  const { visao, lancamentos, baixas, contaFinanceiraId } = params;
+  const { visao, lancamentos, baixas, contas, contaFinanceiraId } = params;
   const movimentos: MovimentoCaixa[] = [];
 
   if (visao === "projetado") {
@@ -63,24 +67,38 @@ export function montarMovimentosCaixa(params: {
     }
   }
 
-  if (!contaFinanceiraId) return movimentos;
-  return movimentos.filter((m) => m.contaFinanceiraId === contaFinanceiraId);
+  const dataInicialPorConta = new Map(contas.map((c) => [c.id, c.dataSaldoInicial]));
+  const validos = movimentos.filter((m) => {
+    const inicio = m.contaFinanceiraId ? dataInicialPorConta.get(m.contaFinanceiraId) : undefined;
+    return !inicio || m.data >= inicio;
+  });
+  if (!contaFinanceiraId) return validos;
+  return validos.filter((m) => m.contaFinanceiraId === contaFinanceiraId);
 }
 
-/** Soma do saldo inicial cadastrado das contas (todas ou só a filtrada). */
-export function saldoInicialContas(contas: ContaFinanceira[], contaFinanceiraId?: string | null): number {
+/** Saldo inicial cadastrado de uma conta, valendo a partir do começo do dia
+ * `data` (a `data_saldo_inicial` da conta). Antes dessa data a conta não tem
+ * saldo nenhum. */
+export type AberturaConta = { data: string; valor: number };
+
+export function aberturasDasContas(contas: ContaFinanceira[], contaFinanceiraId?: string | null): AberturaConta[] {
   const alvo = contaFinanceiraId ? contas.filter((c) => c.id === contaFinanceiraId) : contas;
-  return somarValores(alvo.map((c) => c.saldoInicial));
+  return alvo.map((c) => ({ data: c.dataSaldoInicial, valor: c.saldoInicial }));
 }
 
-/** Saldo no começo do dia `data` (movimentos estritamente anteriores). */
-export function saldoAntesDe(saldoBase: number, movimentos: MovimentoCaixa[], data: string): number {
-  return somarValores([saldoBase, ...movimentos.filter((m) => m.data < data).map((m) => m.valor)]);
+function aberturasAte(aberturas: AberturaConta[], data: string): number[] {
+  return aberturas.filter((a) => a.data <= data).map((a) => a.valor);
 }
 
-/** Saldo no fim do dia `data` (movimentos até e inclusive a data). */
-export function saldoAte(saldoBase: number, movimentos: MovimentoCaixa[], data: string): number {
-  return somarValores([saldoBase, ...movimentos.filter((m) => m.data <= data).map((m) => m.valor)]);
+/** Saldo no começo do dia `data`: saldos iniciais com data até ela (inclusive,
+ * o saldo inicial é o do começo do dia) + movimentos estritamente anteriores. */
+export function saldoAntesDe(aberturas: AberturaConta[], movimentos: MovimentoCaixa[], data: string): number {
+  return somarValores([...aberturasAte(aberturas, data), ...movimentos.filter((m) => m.data < data).map((m) => m.valor)]);
+}
+
+/** Saldo no fim do dia `data` (saldos iniciais e movimentos até a data). */
+export function saldoAte(aberturas: AberturaConta[], movimentos: MovimentoCaixa[], data: string): number {
+  return somarValores([...aberturasAte(aberturas, data), ...movimentos.filter((m) => m.data <= data).map((m) => m.valor)]);
 }
 
 export function competenciaDoMes(ano: number, indiceMes: number): string {

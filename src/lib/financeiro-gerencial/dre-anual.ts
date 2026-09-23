@@ -17,8 +17,8 @@ export type LinhaDreAnual = {
 };
 
 export type IndicadoresDre = {
-  resultadoLiquido: number | null;
-  percentualResultadoLiquido: number | null;
+  resultadoEconomico: number | null;
+  percentualResultadoEconomico: number | null;
   pontoDeEquilibrio: number | "nao_calculavel";
 };
 
@@ -180,7 +180,7 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProd
   const cmo = absoluto.find((l) => l.id === "cmo")!;
   const custosOperacionais = absoluto.find((l) => l.id === "custos_operacionais")!;
   const margem = absoluto.find((l) => l.id === "margem")!;
-  const resultadoLiquido = absoluto.find((l) => l.id === "resultado_liquido")!;
+  const resultadoEconomico = absoluto.find((l) => l.id === "resultado_economico")!;
 
   const custosFixosTotal = somarOuNulo([cmo.total, custosOperacionais.total]);
   const percentualMargemTotal = dividirRazao(margem.total, receitaBruta.total);
@@ -194,8 +194,8 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProd
     divisorMedia,
     linhas,
     indicadores: {
-      resultadoLiquido: resultadoLiquido.total,
-      percentualResultadoLiquido: dividirRazao(resultadoLiquido.total, receitaBruta.total),
+      resultadoEconomico: resultadoEconomico.total,
+      percentualResultadoEconomico: dividirRazao(resultadoEconomico.total, receitaBruta.total),
       pontoDeEquilibrio,
     },
   };

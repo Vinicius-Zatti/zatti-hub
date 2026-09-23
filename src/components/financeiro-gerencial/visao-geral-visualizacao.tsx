@@ -12,13 +12,13 @@ const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julh
 export function VisaoGeralVisualizacao({
   hoje,
   visao,
-  resultadoLiquidoMes,
+  resultadoEconomicoMes,
   receitaMes,
   saldoProvisoes,
 }: {
   hoje: string;
   visao: Omit<VisaoGeralFinanceira, "proximosVencimentos"> & { proximosVencimentos: (TituloEmAberto & { categoriaNome: string })[] };
-  resultadoLiquidoMes: number | null;
+  resultadoEconomicoMes: number | null;
   receitaMes: number;
   saldoProvisoes: number;
 }) {
@@ -41,8 +41,8 @@ export function VisaoGeralVisualizacao({
         <CartaoIndicador titulo="Vencido a receber" valor={formatarNumero(visao.vencidoAReceber)} detalhe="Data prevista antes de hoje" />
         <CartaoIndicador titulo="Vencido a pagar" valor={formatarNumero(visao.vencidoAPagar)} detalhe="Data prevista antes de hoje" />
         <CartaoIndicador
-          titulo={`Resultado líquido de ${nomeMes}`}
-          valor={resultadoLiquidoMes === null ? "Sem estoque do mês" : formatarNumero(resultadoLiquidoMes)}
+          titulo={`Resultado econômico de ${nomeMes}`}
+          valor={resultadoEconomicoMes === null ? "Sem estoque do mês" : formatarNumero(resultadoEconomicoMes)}
           detalhe={`DRE por competência - receita ${formatarNumero(receitaMes)}`}
         />
         <CartaoIndicador titulo="Saldo de provisões" valor={formatarNumero(saldoProvisoes)} detalhe="Férias, 13º e multa do FGTS a pagar" />
