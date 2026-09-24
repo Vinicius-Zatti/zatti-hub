@@ -1,8 +1,9 @@
 import type { Posicao, Sala } from "./tipos";
 
-/** Fonte única do organograma do Time de IA (aprovado por Vinícius em
- * 24/09/2026). Para mudar a estrutura, edite só este arquivo e, se for posição
- * nova, `responsabilidades.ts` e `estado.ts` - o teste acusa o que faltar. */
+/** Representação do organograma do Time de IA. A fonte oficial é
+ * `_conhecimento/zatti/time-ia.md` no vault: mude lá primeiro e reflita aqui.
+ * Posição nova também pede `responsabilidades.ts` e `estado.ts` - o teste
+ * acusa o que faltar. */
 export const SALAS: Sala[] = [
   { id: "ceo", nome: "Sala do CEO", empresa: "zatti", tipo: "ceo", resumo: "Metas, limites e decisões estratégicas." },
   { id: "recepcao", nome: "Recepção do Vini", empresa: "zatti", tipo: "recepcao", resumo: "Porta de entrada. Todo pedido começa aqui e é encaminhado." },
