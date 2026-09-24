@@ -77,3 +77,45 @@ export async function lerCompromissosDoDia(dataIso: string): Promise<LeituraCale
     return { ok: false, motivo };
   }
 }
+
+export type EventoFuturo = { titulo: string; data: string; hora: string | null };
+
+/** Próximos eventos (padrão 60 dias) numa leitura só - a carteira de clientes
+ * casa cada cliente pelo termo no título, em vez de uma chamada por cliente.
+ * Mesmas credenciais e mesma regra de erro explícito de `lerCompromissosDoDia`. */
+export async function lerProximosEventos(
+  hojeIso: string,
+  dias = 60,
+): Promise<{ ok: true; eventos: EventoFuturo[] } | { ok: false; motivo: string }> {
+  const auth = getAuth();
+  if (!auth) return { ok: false, motivo: "Credenciais do Google não configuradas neste ambiente." };
+
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || CALENDARIO_PADRAO;
+  const fim = new Date(`${hojeIso}T12:00:00-03:00`);
+  fim.setUTCDate(fim.getUTCDate() + dias);
+
+  try {
+    const calendar = google.calendar({ version: "v3", auth });
+    const { data } = await calendar.events.list({
+      calendarId,
+      timeMin: `${hojeIso}T00:00:00-03:00`,
+      timeMax: fim.toISOString(),
+      timeZone: "America/Sao_Paulo",
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+    });
+    const eventos = (data.items ?? [])
+      .filter((e) => e.status !== "cancelled")
+      .map((e) => ({
+        titulo: e.summary?.trim() || "(sem título)",
+        data: (e.start?.dateTime ?? e.start?.date ?? "").slice(0, 10),
+        hora: horaDoDateTime(e.start?.dateTime),
+      }))
+      .filter((e) => e.data.length === 10);
+    return { ok: true, eventos };
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : "erro desconhecido";
+    return { ok: false, motivo: `Não consegui ler o Google Calendar: ${detalhe}` };
+  }
+}

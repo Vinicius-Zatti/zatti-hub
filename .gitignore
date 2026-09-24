@@ -53,3 +53,6 @@ next-env.d.ts
 # Supabase CLI - estado/runtime local (Docker), nunca versionar
 supabase/.temp
 supabase/.branches
+
+# Arquivo local da ferramenta Claude Code (permissões desta máquina)
+.claude/settings.local.json

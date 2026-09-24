@@ -43,8 +43,11 @@ export const POSICOES: Posicao[] = [
   vaga("processos", "Processos e Qualidade", "corporativa", "dir-corporativa"),
   vaga("melhoria-continua", "Melhoria Contínua", "corporativa", "dir-corporativa"),
 
-  { id: "autoridade-tecnica", cargo: "Autoridade técnica e guardião do M.E.G.A.", salaId: "clientes", ocupanteId: "vinicius", arquetipoId: null, reportaA: "ceo", lider: true },
-  { id: "coordenacao-clientes", cargo: "Direção de Clientes, coordenação e implantação", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "chefe-operacoes" },
+  { id: "autoridade-tecnica", cargo: "Responsável técnico e guardião do M.E.G.A.", salaId: "clientes", ocupanteId: "vinicius", arquetipoId: null, reportaA: "ceo", lider: true },
+  { id: "dir-clientes", cargo: "Diretor de Clientes", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "chefe-operacoes", lider: true },
+  { id: "implantacao", cargo: "Implantação", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "dir-clientes" },
+  { id: "sucesso-cliente", cargo: "Sucesso do Cliente", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "dir-clientes" },
+  { id: "comunicacao-operacional", cargo: "Comunicação operacional", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "dir-clientes" },
   area("diagnostico-mega", "Diagnóstico M.E.G.A."),
   area("bpo-financeiro", "Gestão financeira e BPO"),
   { id: "bpo-execucao", cargo: "Execução do BPO", salaId: "clientes", ocupanteId: "agente", arquetipoId: "eliandro-prado", reportaA: "bpo-financeiro" },
@@ -53,7 +56,6 @@ export const POSICOES: Posicao[] = [
   area("engenharia-cardapio", "Engenharia de cardápio"),
   area("vendas-restaurante", "Vendas do restaurante"),
   area("processos-operacao", "Processos e gestão da operação"),
-  vaga("sucesso-cliente", "Sucesso do Cliente (a definir)", "clientes", "coordenacao-clientes"),
 
   { id: "hzz-cmo", cargo: "CMO e responsável final", salaId: "horizzon", ocupanteId: "vinicius", arquetipoId: null, reportaA: null, lider: true },
   { id: "hzz-coordenacao", cargo: "Coordenação operacional", salaId: "horizzon", ocupanteId: "vini", arquetipoId: null, reportaA: "hzz-cmo" },

@@ -730,6 +730,123 @@ export const encerrarRecorrenciaEntradaSchema = z
 
 export const listarBaixasParcelaEntradaSchema = z.object({ parcelaId: idUuidSchema }).strict();
 
+// --- Gestão de Clientes (Escritório > Clientes) ------------------------------
+// Os ids de acompanhamento chegam da tela, mas nunca decidem acesso: o RLS
+// (só master) e a busca por id no banco são a barreira. Organização nunca vem
+// solta de formulário - só no "Iniciar acompanhamento", conferida no banco.
+
+const idClienteSchema = z.string().uuid();
+const dataOuNull = dataIsoSchema.nullable();
+const etapaSchema = z.enum(["venda", "ativacao", "onboarding", "mapeia", "estrutura", "garante", "acompanha", "continuidade"]);
+const responsavelSchema = z.enum(["vinicius", "vini", "eliandro", "cliente"]);
+
+export const iniciarAcompanhamentoSchema = z.object({ organizacaoId: identificador }).strict();
+
+export const visaoGeralClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    objetivoContratado: texto(500),
+    metaPrincipal: texto(500),
+    saude: z.enum(["nao_avaliada", "boa", "atencao", "critica"]),
+    prioridades: z.array(textoObrigatorio(200)).max(3),
+    proximoMarco: texto(300),
+    proximoMarcoData: dataOuNull,
+    pessoas: z.array(z.object({ nome: textoObrigatorio(80), papel: texto(80) }).strict()).max(20),
+    termoCalendario: texto(80),
+    cadenciaReunioes: texto(200),
+  })
+  .strict();
+
+export const etapaClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    etapa: etapaSchema,
+    responsavel: responsavelSchema,
+    prazo: dataOuNull,
+    situacao: z.enum(["nao_iniciada", "em_andamento", "concluida", "bloqueada"]),
+    evidencia: texto(1000),
+    pendencia: texto(1000),
+    criterioConclusao: texto(1000),
+    checklist: z.array(z.object({ texto: textoObrigatorio(200), feito: z.boolean() }).strict()).max(30),
+    tornarAtual: z.boolean(),
+  })
+  .strict();
+
+export const onboardingClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    id: idClienteSchema.nullable(),
+    bloco: z.enum(["empresarial", "financeiro", "operacional"]),
+    item: textoObrigatorio(200),
+    resposta: texto(1000),
+    situacao: z.enum(["confirmado", "informado", "pendente", "nao_se_aplica", "precisa_decisao"]),
+  })
+  .strict();
+
+export const itemClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    id: idClienteSchema.nullable(),
+    reuniaoId: idClienteSchema.nullable(),
+    tipo: z.enum(["tarefa", "decisao", "fato", "pergunta", "risco"]),
+    texto: textoObrigatorio(1000),
+    responsavel: responsavelSchema.nullable(),
+    prazo: dataOuNull,
+    situacao: z.enum(["aberta", "concluida", "cancelada"]),
+  })
+  .strict()
+  .refine((v) => v.tipo !== "tarefa" || v.responsavel !== null, { path: ["responsavel"] });
+
+export const abrirReuniaoSchema = z
+  .object({ acompanhamentoId: idClienteSchema, data: dataIsoSchema, titulo: textoObrigatorio(200) })
+  .strict();
+
+export const fecharReuniaoSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    reuniaoId: idClienteSchema,
+    resumo: texto(4000),
+    pautaProxima: texto(4000),
+    /** Índices do checklist da etapa atual marcados como feitos na reunião. */
+    checklistFeitos: z.array(z.number().int().min(0).max(29)).max(30),
+  })
+  .strict();
+
+export const diagnosticoClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    dimensao: z.enum(["financeiro", "cardapio", "operacional", "mercado", "marketing"]),
+    situacao: z.enum(["nao_iniciado", "em_andamento", "concluido"]),
+    resumo: texto(2000),
+  })
+  .strict();
+
+export const indicadorClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    id: idClienteSchema.nullable(),
+    nome: textoObrigatorio(120),
+    valor: textoObrigatorio(60),
+    referencia: texto(40),
+    fonte: texto(200),
+  })
+  .strict();
+
+export const linkClienteSchema = z
+  .object({
+    acompanhamentoId: idClienteSchema,
+    id: idClienteSchema.nullable(),
+    tipo: z.enum(["documento", "acesso"]),
+    titulo: textoObrigatorio(160),
+    url: texto(500).refine((v) => v === "" || /^https:\/\/\S+$/.test(v)),
+    observacao: texto(500),
+  })
+  .strict();
+
+export const excluirRegistroClienteSchema = z
+  .object({ acompanhamentoId: idClienteSchema, id: idClienteSchema })
+  .strict();
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;
