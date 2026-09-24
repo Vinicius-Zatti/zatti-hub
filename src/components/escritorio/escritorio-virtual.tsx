@@ -37,9 +37,10 @@ export function EscritorioVirtual({ salas, atualizadoEm }: { salas: SalaMontada[
   const pendentes = precisamDeVoce(salas);
   const resultados = buscarPorAssunto(salas, busca);
 
-  const topo = salas.filter((s) => s.tipo === "ceo" || s.tipo === "recepcao");
-  const diretorias = salas.filter((s) => s.tipo === "diretoria");
-  const horizzon = salas.filter((s) => s.empresa === "horizzon");
+  const topo = salas.filter((s) => s.grupo === "topo");
+  const empresa = salas.filter((s) => s.grupo === "empresa");
+  const clientes = salas.filter((s) => s.grupo === "clientes");
+  const horizzon = salas.filter((s) => s.grupo === "horizzon");
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
@@ -98,8 +99,20 @@ export function EscritorioVirtual({ salas, atualizadoEm }: { salas: SalaMontada[
         ))}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        {diretorias.map((s) => <SalaEscritorio key={s.id} sala={s} aoAbrir={setAberta} />)}
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-cinza-medio">
+          Time da Empresa Zatti - administra vendas, produto, financeiro e jurídico da própria Zatti.
+        </p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {empresa.map((s) => <SalaEscritorio key={s.id} sala={s} aoAbrir={setAberta} />)}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-cinza-medio">
+          Time de Clientes Zatti - entrega resultado aos restaurantes. A autoridade técnica é de Vinícius e do Método M.E.G.A.
+        </p>
+        {clientes.map((s) => <SalaEscritorio key={s.id} sala={s} aoAbrir={setAberta} />)}
       </div>
 
       <div className="flex flex-col gap-2">

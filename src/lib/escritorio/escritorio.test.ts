@@ -37,6 +37,17 @@ describe("estrutura do Time de IA", () => {
     }
   });
 
+  it("vendas da Zatti e vendas do restaurante ficam em times diferentes", () => {
+    const { salas } = montarEscritorio();
+    const achados = buscarPorAssunto(salas, "vendas").map((p) => p.id);
+    expect(achados).toEqual(expect.arrayContaining(["dir-vendas", "vendas-restaurante"]));
+    expect(salaDe("dir-vendas")?.grupo).toBe("empresa");
+    expect(salaDe("vendas-restaurante")?.grupo).toBe("clientes");
+    for (const p of POSICOES.filter((x) => x.reportaA === "autoridade-tecnica")) {
+      expect(p.ocupanteId, p.id).toBe("vinicius");
+    }
+  });
+
   it("busca por assunto ignora acento e caixa", () => {
     const { salas } = montarEscritorio();
     expect(buscarPorAssunto(salas, "CONCILIACAO").map((p) => p.id)).toContain("bpo-financeiro");

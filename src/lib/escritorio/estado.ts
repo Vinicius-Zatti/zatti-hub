@@ -30,23 +30,25 @@ export const ESTADO: Record<string, EstadoPosicao> = {
     entregas: [], alertas: [],
   },
 
-  "dir-clientes": {
+  "autoridade-tecnica": pessoa(),
+  "coordenacao-clientes": {
     nivel: "processo", situacao: "disponivel",
-    evidencia: "Módulos cs-* por cliente no Vini. O padrão de time de agentes por cliente segue incompleto.",
-    entregas: [], alertas: ["Padrão de time de agentes por cliente com prazo vencido em 31/07, sem nova data."],
-  },
-  implantacao: {
-    nivel: "processo", situacao: "disponivel",
-    evidencia: "Onboarding e carga de dados no Zatti Hub feitos em sessão, sem agente próprio.",
+    evidencia: "Módulos cs-* por cliente no Vini; onboarding e carga de dados no Zatti Hub feitos em sessão, sem agente próprio.",
     entregas: [{ data: "2026-09-23", descricao: "Ajustes de dados da The House no Zatti Hub (produtos, contagem, mínimo e fornecedores)." }],
-    alertas: [],
+    alertas: ["Padrão de time de agentes por cliente com prazo vencido em 31/07, sem nova data."],
   },
-  "consultoria-mega": pessoa(),
-  "bpo-financeiro": {
+  "diagnostico-mega": pessoa(),
+  "bpo-financeiro": pessoa(),
+  "bpo-execucao": {
     nivel: "processo", situacao: "disponivel",
     evidencia: "Skills dre-domquixote, dre-lucaskinhas e consulta-extrato; coleta de extrato da DQ no Vini.",
     entregas: [], alertas: [],
   },
+  "cmv-estoque": pessoa(),
+  precificacao: pessoa(),
+  "engenharia-cardapio": pessoa(),
+  "vendas-restaurante": pessoa(),
+  "processos-operacao": pessoa(),
   "sucesso-cliente": vaga(),
 
   "dir-produto": definido(),

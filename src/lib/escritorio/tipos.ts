@@ -12,11 +12,15 @@ export type Empresa = "zatti" | "horizzon";
 
 export type TipoSala = "ceo" | "recepcao" | "diretoria" | "nucleo";
 
+/** Três times que não se misturam: a empresa Zatti, os clientes da Zatti e a Horizzon. */
+export type GrupoSala = "topo" | "empresa" | "clientes" | "horizzon";
+
 export type Sala = {
   id: string;
   nome: string;
   empresa: Empresa;
   tipo: TipoSala;
+  grupo: GrupoSala;
   /** Frase curta que responde "o que essa sala resolve". */
   resumo: string;
 };

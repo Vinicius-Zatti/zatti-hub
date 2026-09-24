@@ -5,7 +5,7 @@ export const OCUPANTES: Record<OcupanteId, Ocupante> = {
   vinicius: {
     nome: "Vinícius Zanetti",
     tipo: "pessoa",
-    descricao: "CEO. Define metas, limites e decisões estratégicas.",
+    descricao: "CEO e autoridade técnica em restaurantes. Define metas e decisões e guarda o Método M.E.G.A.: todo assunto de restaurante parte do conhecimento dele.",
   },
   vini: {
     nome: "Vini",

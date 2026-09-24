@@ -5,32 +5,31 @@ import type { Posicao, Sala } from "./tipos";
  * Posição nova também pede `responsabilidades.ts` e `estado.ts` - o teste
  * acusa o que faltar. */
 export const SALAS: Sala[] = [
-  { id: "ceo", nome: "Sala do CEO", empresa: "zatti", tipo: "ceo", resumo: "Metas, limites e decisões estratégicas." },
-  { id: "recepcao", nome: "Recepção do Vini", empresa: "zatti", tipo: "recepcao", resumo: "Porta de entrada. Todo pedido começa aqui e é encaminhado." },
-  { id: "vendas", nome: "Diretoria de Vendas", empresa: "zatti", tipo: "diretoria", resumo: "Atrair, gerar demanda e fechar novos clientes." },
-  { id: "clientes", nome: "Diretoria de Clientes", empresa: "zatti", tipo: "diretoria", resumo: "Implantar, atender e reter os clientes da Zatti." },
-  { id: "produto", nome: "Diretoria de Produto e Tecnologia", empresa: "zatti", tipo: "diretoria", resumo: "Zatti Hub, produtos digitais, automações e dados." },
-  { id: "corporativa", nome: "Diretoria Corporativa", empresa: "zatti", tipo: "diretoria", resumo: "Financeiro da Zatti, jurídico, processos e melhoria contínua." },
-  { id: "horizzon", nome: "Núcleo Estratégico Horizzon", empresa: "horizzon", tipo: "nucleo", resumo: "Operação da Horizzon Work, separada dos clientes da Zatti." },
+  { id: "ceo", nome: "Sala do CEO", empresa: "zatti", tipo: "ceo", grupo: "topo", resumo: "Metas, limites, decisões estratégicas e autoridade em restaurantes." },
+  { id: "recepcao", nome: "Recepção do Vini", empresa: "zatti", tipo: "recepcao", grupo: "topo", resumo: "Porta de entrada. Todo pedido começa aqui e é encaminhado." },
+  { id: "vendas", nome: "Diretoria de Vendas", empresa: "zatti", tipo: "diretoria", grupo: "empresa", resumo: "Atrair, gerar demanda e fechar novos clientes para a Zatti." },
+  { id: "produto", nome: "Diretoria de Produto e Tecnologia", empresa: "zatti", tipo: "diretoria", grupo: "empresa", resumo: "Zatti Hub, produtos digitais, automações e dados da Zatti." },
+  { id: "corporativa", nome: "Diretoria Corporativa", empresa: "zatti", tipo: "diretoria", grupo: "empresa", resumo: "Financeiro da Zatti, jurídico, processos e melhoria contínua." },
+  { id: "clientes", nome: "Clientes Zatti", empresa: "zatti", tipo: "diretoria", grupo: "clientes", resumo: "Conhecimento de Vinícius e do Método M.E.G.A. aplicado aos restaurantes." },
+  { id: "horizzon", nome: "Núcleo Estratégico Horizzon", empresa: "horizzon", tipo: "nucleo", grupo: "horizzon", resumo: "Operação da Horizzon Work, separada dos clientes da Zatti." },
 ];
 
 const vaga = (id: string, cargo: string, salaId: string, reportaA: string): Posicao => ({
   id, cargo, salaId, ocupanteId: null, arquetipoId: null, reportaA,
 });
 
+/** Área de restaurante: a autoridade técnica é sempre de Vinícius. */
+const area = (id: string, cargo: string): Posicao => ({
+  id, cargo, salaId: "clientes", ocupanteId: "vinicius", arquetipoId: null, reportaA: "autoridade-tecnica",
+});
+
 export const POSICOES: Posicao[] = [
-  { id: "ceo", cargo: "CEO", salaId: "ceo", ocupanteId: "vinicius", arquetipoId: null, reportaA: null, lider: true },
+  { id: "ceo", cargo: "CEO e autoridade em restaurantes", salaId: "ceo", ocupanteId: "vinicius", arquetipoId: null, reportaA: null, lider: true },
   { id: "chefe-operacoes", cargo: "Chefe de Operações", salaId: "recepcao", ocupanteId: "vini", arquetipoId: null, reportaA: "ceo", lider: true },
 
   { id: "dir-vendas", cargo: "Direção de Vendas", salaId: "vendas", ocupanteId: "agente", arquetipoId: "flavio-augusto", reportaA: "chefe-operacoes", lider: true },
   { id: "marketing", cargo: "Marketing", salaId: "vendas", ocupanteId: "agente", arquetipoId: "alfredo-soares", reportaA: "dir-vendas" },
   { id: "comercial", cargo: "Comercial", salaId: "vendas", ocupanteId: "antonio", arquetipoId: null, reportaA: "dir-vendas" },
-
-  { id: "dir-clientes", cargo: "Direção de Clientes", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "chefe-operacoes", lider: true },
-  { id: "implantacao", cargo: "Implantação", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "dir-clientes" },
-  { id: "consultoria-mega", cargo: "Consultoria M.E.G.A.", salaId: "clientes", ocupanteId: "vinicius", arquetipoId: null, reportaA: "dir-clientes" },
-  { id: "bpo-financeiro", cargo: "BPO Financeiro", salaId: "clientes", ocupanteId: "agente", arquetipoId: "eliandro-prado", reportaA: "dir-clientes" },
-  vaga("sucesso-cliente", "Sucesso do Cliente", "clientes", "dir-clientes"),
 
   { id: "dir-produto", cargo: "Direção de Produto e Tecnologia", salaId: "produto", ocupanteId: "agente", arquetipoId: "marcos-eduardo", reportaA: "chefe-operacoes", lider: true },
   { id: "zatti-hub", cargo: "Zatti Hub", salaId: "produto", ocupanteId: "agente", arquetipoId: "anderson", reportaA: "dir-produto" },
@@ -43,6 +42,18 @@ export const POSICOES: Posicao[] = [
   { id: "juridico", cargo: "Jurídico", salaId: "corporativa", ocupanteId: "bia", arquetipoId: null, reportaA: "dir-corporativa" },
   vaga("processos", "Processos e Qualidade", "corporativa", "dir-corporativa"),
   vaga("melhoria-continua", "Melhoria Contínua", "corporativa", "dir-corporativa"),
+
+  { id: "autoridade-tecnica", cargo: "Autoridade técnica e guardião do M.E.G.A.", salaId: "clientes", ocupanteId: "vinicius", arquetipoId: null, reportaA: "ceo", lider: true },
+  { id: "coordenacao-clientes", cargo: "Direção de Clientes, coordenação e implantação", salaId: "clientes", ocupanteId: "vini", arquetipoId: null, reportaA: "chefe-operacoes" },
+  area("diagnostico-mega", "Diagnóstico M.E.G.A."),
+  area("bpo-financeiro", "Gestão financeira e BPO"),
+  { id: "bpo-execucao", cargo: "Execução do BPO", salaId: "clientes", ocupanteId: "agente", arquetipoId: "eliandro-prado", reportaA: "bpo-financeiro" },
+  area("cmv-estoque", "CMV, estoque e compras"),
+  area("precificacao", "Precificação"),
+  area("engenharia-cardapio", "Engenharia de cardápio"),
+  area("vendas-restaurante", "Vendas do restaurante"),
+  area("processos-operacao", "Processos e gestão da operação"),
+  vaga("sucesso-cliente", "Sucesso do Cliente (a definir)", "clientes", "coordenacao-clientes"),
 
   { id: "hzz-cmo", cargo: "CMO e responsável final", salaId: "horizzon", ocupanteId: "vinicius", arquetipoId: null, reportaA: null, lider: true },
   { id: "hzz-coordenacao", cargo: "Coordenação operacional", salaId: "horizzon", ocupanteId: "vini", arquetipoId: null, reportaA: "hzz-cmo" },
