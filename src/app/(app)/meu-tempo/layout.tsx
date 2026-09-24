@@ -1,3 +1,4 @@
+import { AbasEscritorio } from "@/components/escritorio/abas-escritorio";
 import { SubTabs } from "@/components/sub-tabs";
 import { requireMeuTempo } from "@/lib/acesso";
 
@@ -15,6 +16,7 @@ export default async function MeuTempoLayout({ children }: { children: React.Rea
 
   return (
     <div className="flex flex-col gap-5">
+      <AbasEscritorio />
       <SubTabs items={SUB_ITEMS} />
       {children}
     </div>

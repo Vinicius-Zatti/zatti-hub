@@ -1,3 +1,4 @@
+import { AbasEscritorio } from "@/components/escritorio/abas-escritorio";
 import { SubTabs } from "@/components/sub-tabs";
 import { requireAgenda } from "@/lib/acesso";
 
@@ -13,6 +14,7 @@ export default async function AgendaLayout({ children }: { children: React.React
 
   return (
     <div className="flex flex-col gap-5">
+      <AbasEscritorio />
       <SubTabs items={SUB_ITEMS} />
       {children}
     </div>

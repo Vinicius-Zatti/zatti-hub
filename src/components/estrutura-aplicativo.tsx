@@ -18,7 +18,8 @@ export type ItemNavegacao = {
   href: string;
   icone: NomeIconeNavegacao;
   disabled: boolean;
-  activePrefix?: string;
+  /** Lista quando um módulo agrupa rotas de prefixos diferentes (ex.: Escritório). */
+  activePrefix?: string | string[];
   sections?: SecaoNavegacao[];
 };
 
@@ -157,7 +158,8 @@ export function EstruturaAplicativo({
         <nav aria-label="Módulos do sistema" className={`min-h-0 flex-1 overflow-y-auto px-2 py-4 ${ocultoNoMobile}`}>
           <div className="flex flex-col gap-1.5">
             {items.map((item) => {
-              const ativo = !item.disabled && pathname.startsWith(item.activePrefix ?? item.href);
+              const prefixos = [item.activePrefix ?? item.href].flat();
+              const ativo = !item.disabled && prefixos.some((prefixo) => pathname.startsWith(prefixo));
               const painelDoItemAberto = labelAberto === item.label;
               const classeBase = `flex min-h-11 w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${alinhamentoItem}`;
 

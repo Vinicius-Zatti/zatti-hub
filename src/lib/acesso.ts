@@ -305,6 +305,13 @@ export async function requireAgenda(): Promise<AcessoAtual> {
   return requireMaster();
 }
 
+/** Barreira do módulo "Escritório" (Time de IA da Zatti, com Agenda e Meu
+ * Tempo como seções). Mesmo recorte das duas: só master, sem flag por unidade.
+ * A V1 do Time de IA é só configuração local, sem tabela no banco. */
+export async function requireEscritorio(): Promise<AcessoAtual> {
+  return requireMaster();
+}
+
 /** Log mínimo de auditoria: quem mudou o quê, quando, em qual unidade. Uma
  * falha aqui nunca deve derrubar a ação de verdade do usuário, por isso
  * engole o erro (só loga no servidor). */

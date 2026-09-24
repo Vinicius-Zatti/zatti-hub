@@ -135,6 +135,26 @@ export default async function AppLayout({
     },
   ];
 
+  const secoesEscritorio: SecaoNavegacao[] = [
+    { label: "Time de IA", items: [{ label: "Escritório virtual", href: "/escritorio" }] },
+    {
+      label: "Agenda",
+      items: [
+        { label: "Dia", href: "/agenda/dia" },
+        { label: "Rotina da semana", href: "/agenda/semana" },
+      ],
+    },
+    {
+      label: "Meu Tempo",
+      items: [
+        { label: "Hoje", href: "/meu-tempo/hoje" },
+        { label: "Painel mensal", href: "/meu-tempo/painel" },
+        { label: "Histórico", href: "/meu-tempo/historico" },
+        { label: "Configurações", href: "/meu-tempo/configuracoes" },
+      ],
+    },
+  ];
+
   // Cada módulo só sai de "em breve" pra unidade com a flag ligada
   // (`unidades.consolidado_vendas_habilitado`/`financeiro_gerencial_habilitado`,
   // configurável por cliente).
@@ -188,19 +208,16 @@ export default async function AppLayout({
     // módulo e em cada Server Action, não isto aqui.
     ...(acesso.role === "master"
       ? [
+          // Módulo único do Vinícius: Time de IA, Agenda e Meu Tempo como
+          // seções internas. As rotas antigas (/agenda, /meu-tempo) ficam onde
+          // estavam porque o Calendar e o script da Agenda apontam pra elas.
           {
-            label: "Agenda",
-            href: "/agenda/dia",
-            icone: "agenda" as const,
-            activePrefix: "/agenda",
+            label: "Escritório",
+            href: "/escritorio",
+            icone: "escritorio" as const,
+            activePrefix: ["/escritorio", "/agenda", "/meu-tempo"],
             disabled: false,
-          },
-          {
-            label: "Meu Tempo",
-            href: "/meu-tempo/hoje",
-            icone: "meuTempo" as const,
-            activePrefix: "/meu-tempo",
-            disabled: false,
+            sections: secoesEscritorio,
           },
           {
             label: "Acessos",
