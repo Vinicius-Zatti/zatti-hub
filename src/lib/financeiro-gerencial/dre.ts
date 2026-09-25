@@ -52,22 +52,13 @@ export type Dre = {
   geracaoCaixaAposSaidas: number;
 };
 
-/** Visões da DRE (V1, 25/09 - regra de Vinícius): pagamento NUNCA define
- * o que é realizado (pago/parcial/aberto/vencido são estados de caixa, não
- * da DRE). O que separa realizado de previsto é a Data de Competência:
- * - Realizada: fatos econômicos com competência até hoje (já aconteceram),
- *   pagos ou não;
- * - Projetada: competência depois de hoje (ainda previstos - ocorrências
- *   futuras de recorrência, lançamento agendado);
- * - Completa: realizada + projetada.
- * Parcela cancelada nunca entra em nenhuma. Usa só colunas que já existem
- * (`data_competencia` e `status` da parcela) - sem migração. */
-export type VisaoDre = "realizada" | "projetada" | "completa";
-
-export function lancamentosDaVisao(visao: VisaoDre, lancamentos: LancamentoBase[], hoje: string): LancamentoBase[] {
-  return lancamentos
-    .filter((l) => visao === "completa" || (visao === "realizada" ? l.dataCompetencia <= hoje : l.dataCompetencia > hoje))
-    .map((l) => ({ ...l, parcelas: l.parcelas.filter((p) => p.status !== "cancelado") }));
+/** DRE única por competência (25/09): todo lançamento entra no mês da sua
+ * Data de Competência, pago ou não (pagamento é estado de caixa, não da DRE).
+ * Meses até o corrente = o que foi lançado; meses futuros = previsão com o
+ * que já está lançado para eles (recorrências, lançamentos futuros) - a tela
+ * só muda o estilo desses meses. Parcela cancelada nunca entra. */
+export function lancamentosDaDre(lancamentos: LancamentoBase[]): LancamentoBase[] {
+  return lancamentos.map((l) => ({ ...l, parcelas: l.parcelas.filter((p) => p.status !== "cancelado") }));
 }
 
 /** Soma, por conta-folha, o valor de todos os lançamentos cuja competência

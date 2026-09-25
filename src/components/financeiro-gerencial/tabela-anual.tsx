@@ -54,7 +54,10 @@ export function LinhaTabelaAnual({
   linhaPercentual,
   avisos,
   dicas,
+  primeiroMesPrevisto = 12,
 }: {
+  /** Meses desse índice em diante são previsão: valor em cinza atenuado. */
+  primeiroMesPrevisto?: number;
   /** Como a linha é calculada (ícone "i"), por id da linha. */
   dicas?: Record<string, string>;
   /** Marcador discreto ao lado do nome da linha (ex: CMV "sem inventário"). */
@@ -116,7 +119,10 @@ export function LinhaTabelaAnual({
         {linha.valoresPorMes.map(
           (valor, indice) =>
             visiveis.has(`mes_${indice}`) && (
-              <td key={indice} className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>
+              <td
+                key={indice}
+                className={`whitespace-nowrap px-3 py-2 text-right font-mono ${indice >= primeiroMesPrevisto ? "text-cinza-medio opacity-60" : pesoTexto}`}
+              >
                 {formatar(valor)}
               </td>
             ),
@@ -131,6 +137,7 @@ export function LinhaTabelaAnual({
           nomeCompleto={nomeCompleto}
           avisos={avisos}
           dicas={dicas}
+          primeiroMesPrevisto={primeiroMesPrevisto}
         />
       )}
       {temFilhos &&
@@ -145,6 +152,7 @@ export function LinhaTabelaAnual({
             nomeCompleto={nomeCompleto}
             avisos={avisos}
             dicas={dicas}
+            primeiroMesPrevisto={primeiroMesPrevisto}
           />
         ))}
     </>

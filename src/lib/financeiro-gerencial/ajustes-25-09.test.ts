@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { gerarCompetenciasRecorrencia, gerarOcorrenciasRecorrencia } from "./recorrencia";
 import { listarContasComCaminho, rotuloContaComGrupo } from "./categorias";
-import { calcularDre, lancamentosDaVisao, type VisaoDre } from "./dre";
+import { calcularDre, lancamentosDaDre } from "./dre";
+import { avisosDre } from "./dre-avisos";
 import { montarDreAnual } from "./dre-anual";
 import type { CategoriaFinanceira, LancamentoBase } from "./tipos";
 
@@ -46,8 +47,7 @@ describe("rótulo curto do Plano de Contas no seletor (25/09)", () => {
   });
 });
 
-describe("DRE Realizada, Projetada e Completa pela competência, nunca pelo pagamento (V1, 25/09)", () => {
-  const HOJE = "2026-09-25";
+describe("DRE única por competência: meses futuros como previsão (25/09)", () => {
   const lancamento = (id: string, categoriaId: string, dataCompetencia: string, status: "aberto" | "quitado" | "cancelado", valor: number): LancamentoBase => ({
     id,
     tipo: "despesa",
@@ -59,42 +59,32 @@ describe("DRE Realizada, Projetada e Completa pela competência, nunca pelo paga
     parcelas: [{ id: `p_${id}`, valor, dataPrevista: dataCompetencia, contaFinanceiraId: null, status, numero: 1, totalParcelas: 1 }],
   });
   const LANCAMENTOS: LancamentoBase[] = [
-    lancamento("folha_set_aberta", "cmo_folha", "2026-09-05", "aberto", 3000), // aconteceu, não paga
-    lancamento("folha_out_paga", "cmo_folha", "2026-10-05", "quitado", 3000), // paga adiantada, competência futura
-    lancamento("aluguel_set_cancelado", "co_aluguel", "2026-09-01", "cancelado", 1000),
+    lancamento("folha_set_aberta", "cmo_folha", "2026-09-05", "aberto", 3000), // aconteceu, não paga: entra
+    lancamento("folha_out_paga", "cmo_folha", "2026-10-05", "quitado", 3000), // mês futuro: previsão
+    lancamento("aluguel_set_cancelado", "co_aluguel", "2026-09-01", "cancelado", 1000), // cancelada: nunca entra
   ];
-  const cmo = (visao: VisaoDre, competencia: string) =>
-    calcularDre({ competencia, lancamentos: lancamentosDaVisao(visao, LANCAMENTOS, HOJE), categorias: CATEGORIAS, estoqueMensal: null }).cmo.total;
+  const anual = () => {
+    const lancamentos = lancamentosDaDre(LANCAMENTOS);
+    const dres = Array.from({ length: 12 }, (_, i) =>
+      calcularDre({ competencia: `2026-${String(i + 1).padStart(2, "0")}`, lancamentos, categorias: CATEGORIAS, estoqueMensal: null }),
+    );
+    return montarDreAnual(dres, 2026, Array(12).fill(0), new Date("2026-09-25T15:00:00Z"), { incluirMesesFuturos: true });
+  };
 
-  it("Realizada = competência até hoje, paga ou não; pagamento adiantado de competência futura não entra", () => {
-    expect(cmo("realizada", "2026-09")).toBe(3000);
-    expect(cmo("realizada", "2026-10")).toBe(0);
+  it("uma tabela só: mês corrente com o lançado (pago ou não), mês futuro com a previsão, cancelada fora", () => {
+    const dre = anual();
+    const cmo = dre.linhas.find((l) => l.id === "cmo")!;
+    expect(cmo.valoresPorMes[8]).toBe(3000);
+    expect(cmo.valoresPorMes[9]).toBe(3000);
+    expect(dre.linhas.find((l) => l.id === "custos_operacionais")!.valoresPorMes[8]).toBe(0);
   });
 
-  it("Projetada = competência depois de hoje; Completa = as duas", () => {
-    expect(cmo("projetada", "2026-09")).toBe(0);
-    expect(cmo("projetada", "2026-10")).toBe(3000);
-    expect(cmo("completa", "2026-09") + cmo("completa", "2026-10")).toBe(6000);
-  });
-
-  it("parcela cancelada não entra em nenhuma visão", () => {
-    for (const visao of ["realizada", "projetada", "completa"] as VisaoDre[]) {
-      const dre = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao(visao, LANCAMENTOS, HOJE), categorias: CATEGORIAS, estoqueMensal: null });
-      expect(dre.custosOperacionais.total).toBe(0);
-    }
-  });
-
-  it("Projetada e Completa mostram os meses futuros (é onde está o previsto); Realizada continua mostrando '-' no futuro", () => {
-    const anual = (visao: VisaoDre) => {
-      const lancamentos = lancamentosDaVisao(visao, LANCAMENTOS, HOJE);
-      const dres = Array.from({ length: 12 }, (_, i) =>
-        calcularDre({ competencia: `2026-${String(i + 1).padStart(2, "0")}`, lancamentos, categorias: CATEGORIAS, estoqueMensal: null }),
-      );
-      return montarDreAnual(dres, 2026, Array(12).fill(0), new Date("2026-09-25T15:00:00Z"), { incluirMesesFuturos: visao !== "realizada" });
-    };
-    expect(anual("realizada").linhas.find((l) => l.id === "cmo")!.valoresPorMes[9]).toBeNull();
-    expect(anual("projetada").linhas.find((l) => l.id === "cmo")!.valoresPorMes[9]).toBe(3000);
-    expect(anual("completa").linhas.find((l) => l.id === "cmo")!.total).toBe(6000);
+  it("primeiro mês previsto = outubro; Total = ano completo (real + previsto) e Média = Total ÷ 12", () => {
+    const dre = anual();
+    expect(dre.primeiroMesPrevisto).toBe(9);
+    const cmo = dre.linhas.find((l) => l.id === "cmo")!;
+    expect(cmo.total).toBe(6000);
+    expect(cmo.media).toBe(500);
   });
 });
 
@@ -124,5 +114,24 @@ describe("% CMC provisório exclui a receita de entregas (25/09)", () => {
     const percentual = anual.linhas.find((l) => l.id === "cmv_percentual")!;
     expect(percentual.rotulo).toBe("% CMC (provisório)");
     expect(percentual.valoresPorMes[0]).toBeCloseTo(2000 / 8000, 10); // e não 2000 / 10000
+  });
+});
+
+describe("aviso único do que falta preencher (25/09)", () => {
+  it("cita estoque final e Venda de Produtos juntos, ou só o que falta, com o mês", () => {
+    const avisos = avisosDre({
+      ano: 2026,
+      meses: [7, 8],
+      cmvProvisorio: [false, false, false, false, false, false, false, false, true, false, false, false],
+      semReceitaVendasProdutos: [false, false, false, false, false, false, false, true, true, false, false, false],
+      caminhoCadastro: "Dados Complementares da DRE",
+    });
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].titulo).toBe("Ainda falta colocar a Venda de Produtos de agosto de 2026; o estoque final e a Venda de Produtos de setembro de 2026");
+    expect(avisos[0].texto).toContain("Preencha em Dados Complementares da DRE.");
+  });
+
+  it("nada faltando: nenhum aviso", () => {
+    expect(avisosDre({ ano: 2026, meses: [8], cmvProvisorio: Array(12).fill(false), semReceitaVendasProdutos: Array(12).fill(false), caminhoCadastro: "x" })).toEqual([]);
   });
 });

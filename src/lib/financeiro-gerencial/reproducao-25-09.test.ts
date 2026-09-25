@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aberturasDasContas, montarMovimentosCaixa } from "./caixa";
-import { calcularDre, lancamentosDaVisao, type VisaoDre } from "./dre";
+import { calcularDre, lancamentosDaDre } from "./dre";
 import { montarDreAnual } from "./dre-anual";
 import { montarDfcAnual, montarFluxoMensal } from "./relatorios-caixa";
 import type { BaixaBase, CategoriaFinanceira, ContaFinanceira, LancamentoBase } from "./tipos";
@@ -42,8 +42,8 @@ const FOLHA: LancamentoBase = {
 const BAIXA_FOLHA: BaixaBase = { id: "b_folha", parcelaId: "p_folha", tipo: "baixa", contaFinanceiraId: "b13fedf5", valor: 1580, data: "2026-09-25" };
 const HOJE = new Date("2026-09-25T15:00:00Z");
 
-function dreAnual(visao: VisaoDre) {
-  const lancamentos = lancamentosDaVisao(visao, [RECEITA, FOLHA], "2026-09-25");
+function dreAnual() {
+  const lancamentos = lancamentosDaDre([RECEITA, FOLHA]);
   const dres = Array.from({ length: 12 }, (_, i) =>
     calcularDre({ competencia: `2026-${String(i + 1).padStart(2, "0")}`, lancamentos, categorias: CATEGORIAS, estoqueMensal: null }),
   );
@@ -52,7 +52,7 @@ function dreAnual(visao: VisaoDre) {
 
 describe("reprodução do teste real de 25/09 (adega-alemao)", () => {
   it("bug 1: receita recebida no dia do saldo inicial da conta aparece na DRE Realizada de setembro", () => {
-    const receita = dreAnual("realizada").linhas.find((l) => l.id === "receita_bruta")!;
+    const receita = dreAnual().linhas.find((l) => l.id === "receita_bruta")!;
     expect(receita.valoresPorMes[8]).toBe(10000);
   });
 
@@ -66,14 +66,14 @@ describe("reprodução do teste real de 25/09 (adega-alemao)", () => {
   });
 
   it("bug 3: sem inventário do mês, Margem e Resultados aparecem (CMV = compras)", () => {
-    const linhas = dreAnual("realizada").linhas;
+    const linhas = dreAnual().linhas;
     for (const id of ["margem", "resultado_liquido", "resultado_economico"]) {
       expect(linhas.find((l) => l.id === id)!.valoresPorMes[8]).toBe(10000);
     }
   });
 
   it("bug 2: folha paga antecipada fica na competência dela (outubro) - regime de competência, mesmo na Realizada", () => {
-    const cmo = dreAnual("realizada").linhas.find((l) => l.id === "cmo")!;
+    const cmo = dreAnual().linhas.find((l) => l.id === "cmo")!;
     expect(cmo.valoresPorMes[8]).toBe(0);
     expect(cmo.valoresPorMes[9]).toBeNull(); // outubro ainda é mês futuro em 25/09
   });

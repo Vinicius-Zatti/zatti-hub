@@ -53,6 +53,9 @@ export function calcularIndicadoresPeriodo(linhas: LinhaDreAnual[], indicesMeses
 export type DreAnual = {
   ano: number;
   divisorMedia: number | null;
+  /** Índice (0-12) do primeiro mês ainda não começado: dele em diante os
+   * valores são previsão (estilo atenuado na tela). 12 = nenhum. */
+  primeiroMesPrevisto: number;
   /** Mês (0-11) sem inventário cadastrado - CMV calculado só com as compras. */
   /** Mês (0-11) com CMV provisório (estoque final ainda não informado). */
   cmvProvisorioPorMes: boolean[];
@@ -269,6 +272,7 @@ export function montarDreAnual(
     ano,
     divisorMedia,
     cmvProvisorioPorMes,
+    primeiroMesPrevisto: calcularDivisorMedia(ano, hoje) ?? 0,
     linhas: linhasComPercentualCmv,
     indicadores: calcularIndicadoresPeriodo(absoluto, Array.from({ length: mesesValidos }, (_, i) => i)),
   };

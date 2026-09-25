@@ -2,8 +2,7 @@ import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { listarCategorias, listarEstoqueMensal, listarSaidasSemReceita } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, listarParametrosProvisao, listarReversoesProvisao } from "@/lib/banco/financeiro-gerencial-v1";
 import { calcularProvisoes, valoresDreProvisao } from "@/lib/financeiro-gerencial/provisoes";
-import { calcularDre, lancamentosDaVisao, type VisaoDre } from "@/lib/financeiro-gerencial/dre";
-import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
+import { calcularDre, lancamentosDaDre } from "@/lib/financeiro-gerencial/dre";
 import { montarDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 import { DreVisualizacao } from "@/components/financeiro-gerencial/dre-visualizacao";
 import type { EstoqueMensal } from "@/lib/financeiro-gerencial/tipos";
@@ -16,11 +15,11 @@ function competenciaAnterior(competencia: string): string {
   return mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
 }
 
-export default async function DrePage({ searchParams }: { searchParams: Promise<{ ano?: string; visao?: string }> }) {
+// `?visao=` (Realizada/Projetada/Completa) saiu em 25/09 - link antigo com ele
+// continua abrindo, o parâmetro só é ignorado.
+export default async function DrePage({ searchParams }: { searchParams: Promise<{ ano?: string }> }) {
   const acesso = await requireFinanceiroGerencial();
-  const { ano: anoParam, visao: visaoParam } = await searchParams;
-  const visao: VisaoDre = visaoParam === "projetada" || visaoParam === "completa" ? visaoParam : "realizada";
-  const hoje = hojeIsoBrasil();
+  const { ano: anoParam } = await searchParams;
   const ano = anoParam && /^\d{4}$/.test(anoParam) ? Number(anoParam) : new Date().getFullYear();
   const podeGerir = acesso.role !== "operacional";
 
@@ -36,7 +35,7 @@ export default async function DrePage({ searchParams }: { searchParams: Promise<
   ]);
   // Visão pela competência (nunca pelo pagamento); as provisões seguem a
   // mesma base da visão escolhida.
-  const lancamentos = lancamentosDaVisao(visao, todosLancamentos, hoje);
+  const lancamentos = lancamentosDaDre(todosLancamentos);
   const provisoes = calcularProvisoes({ lancamentos, categorias, parametros, reversoes, ateCompetencia: `${ano}-12` });
 
   const estoquePorCompetencia = new Map(estoques.map((e) => [e.competencia.slice(0, 7), e]));
@@ -60,13 +59,14 @@ export default async function DrePage({ searchParams }: { searchParams: Promise<
     });
   });
 
-  const dreAnual = montarDreAnual(dresPorMes, ano, receitaVendasProdutosPorMes, new Date(), { incluirMesesFuturos: visao !== "realizada" });
+  // Ano completo: meses futuros aparecem como previsão; Total = 12 meses
+  // (real + previsto) e Média = Total ÷ 12.
+  const dreAnual = montarDreAnual(dresPorMes, ano, receitaVendasProdutosPorMes, new Date(), { incluirMesesFuturos: true });
 
   return (
     <DreVisualizacao
       dreAnual={dreAnual}
       ano={ano}
-      visao={visao}
       estoquesDoAno={estoquesDoAno}
       saidasSemReceitaDoAno={saidasSemReceitaDoAno}
       podeGerir={podeGerir}

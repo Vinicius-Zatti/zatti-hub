@@ -52,24 +52,25 @@ export function avisosDre(params: {
   const { ano, meses, cmvProvisorio, semReceitaVendasProdutos, caminhoCadastro } = params;
   const avisos: AvisoDre[] = [];
 
-  const mesesSemInventario = meses.filter((i) => cmvProvisorio[i]);
-  if (mesesSemInventario.length > 0) {
-    const plural = mesesSemInventario.length > 1;
-    avisos.push({
-      id: "cmv_provisorio",
-      titulo: `CMV provisório: informe o estoque final de mercadorias de ${listarMeses(mesesSemInventario, ano)} (e o de embalagens, se houver) para fechar o CMV`,
-      texto:
-        `Enquanto isso o CMV ${plural ? "desses meses" : "do mês"} é o estoque inicial mais o CMC (sem descontar o que sobrou em estoque) e o ` +
-        `percentual mostrado é o % CMC provisório (CMC ÷ Receita Operacional Bruta sem as receitas de entrega). Informe em ${caminhoCadastro}.`,
-    });
+  // Aviso único (25/09): o que falta preencher, agrupado por mês, com o
+  // efeito em uma frase e onde preencher.
+  const grupos = new Map<string, number[]>();
+  for (const i of meses) {
+    const falta = [cmvProvisorio[i] ? "o estoque final" : null, semReceitaVendasProdutos[i] ? "a Venda de Produtos" : null].filter(Boolean).join(" e ");
+    if (falta) grupos.set(falta, [...(grupos.get(falta) ?? []), i]);
   }
-
-  const mesesSemReceitaProdutos = meses.filter((i) => semReceitaVendasProdutos[i]);
-  if (mesesSemReceitaProdutos.length > 0) {
+  if (grupos.size > 0) {
+    const partes = Array.from(grupos.entries()).map(([falta, indices]) => `${falta} de ${listarMeses(indices, ano)}`);
+    const faltaEstoque = meses.some((i) => cmvProvisorio[i]);
+    const faltaVenda = meses.some((i) => semReceitaVendasProdutos[i]);
+    const efeito = [
+      faltaEstoque ? "sem o estoque final o CMV fica provisório (estoque inicial + CMC) e os resultados podem estar diferentes do real" : null,
+      faltaVenda ? "sem a Venda de Produtos aparece o % CMC provisório no lugar do % CMV" : null,
+    ].filter(Boolean);
     avisos.push({
-      id: "sem_receita_vendas_produtos",
-      titulo: `Venda de Produtos de ${listarMeses(mesesSemReceitaProdutos, ano)} não informada`,
-      texto: `Sem ela o % CMV (CMV ÷ Venda de Produtos) não aparece e a DRE mostra o % CMC provisório. Os valores em R$ não mudam. Informe em ${caminhoCadastro}.`,
+      id: "falta_preencher",
+      titulo: `Ainda falta colocar ${partes.join("; ")}`,
+      texto: `${efeito.join(", e ").replace(/^./, (c) => c.toUpperCase())}. Preencha em ${caminhoCadastro}.`,
     });
   }
 

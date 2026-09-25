@@ -13,8 +13,7 @@ import {
 } from "@/components/financeiro-gerencial/tabela-anual";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
-import { AlternadorVisao } from "@/components/financeiro-gerencial/fluxo-caixa-visualizacao";
-import type { VisaoDre } from "@/lib/financeiro-gerencial/dre";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
 import { MESES_ABREVIADOS, type DreAnual } from "@/lib/financeiro-gerencial/dre-anual";
@@ -22,16 +21,6 @@ import { mesDoResumo, montarQuadrosDre, type Quadro, type ValorQuadro } from "@/
 import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import { avisosDre, mesesConsiderados, mesesJaIniciados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
-
-// Pagamento nunca define o realizado (pago/aberto/vencido é estado de caixa);
-// o que separa realizado de previsto é a Data de Competência.
-const EXPLICACAO_VISAO_DRE: Record<VisaoDre, string> = {
-  realizada: "Realizada: lançamentos com competência até hoje, pagos ou não.",
-  projetada: "Projetada: lançamentos com competência depois de hoje, ainda previstos (ex: próximas parcelas de recorrência).",
-  completa: "Completa: realizada + projetada.",
-};
-
-const TITULO_VISAO: Record<VisaoDre, string> = { realizada: "Realizada", projetada: "Projetada", completa: "Completa" };
 
 function formatarValorQuadro(v: ValorQuadro | null): string {
   if (!v) return "-";
@@ -111,20 +100,18 @@ const COLUNAS_NUMERICAS: ColunaDre[] = COLUNAS_NUMERICAS_ANUAIS;
 export function DreVisualizacao({
   dreAnual,
   ano,
-  visao,
   estoquesDoAno,
   saidasSemReceitaDoAno,
   podeGerir,
 }: {
   dreAnual: DreAnual;
   ano: number;
-  visao: VisaoDre;
   estoquesDoAno: (EstoqueMensal | null)[];
   saidasSemReceitaDoAno: SaidaSemReceita[];
   podeGerir: boolean;
 }) {
   const router = useRouter();
-  const navegar = (novoAno: number, novaVisao: VisaoDre) => router.push(`/financeiro-gerencial/dre?ano=${novoAno}&visao=${novaVisao}`);
+  const navegar = (novoAno: number) => router.push(`/financeiro-gerencial/dre?ano=${novoAno}`);
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
   const { visiveis, alternar: alternarColuna, mostrarTodas, desmarcarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
 
@@ -181,26 +168,16 @@ export function DreVisualizacao({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">
-            DRE {TITULO_VISAO[visao]} - {ano}
+            DRE - {ano}
           </h1>
           <p className="text-sm text-cinza-medio">
-            Demonstrativo de Resultado por Data de Competência, ano completo, mês a mês.{" "}
-            {EXPLICACAO_VISAO_DRE[visao]}
+            Demonstrativo de Resultado por Data de Competência (pago ou não), ano completo, mês a mês.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <AlternadorVisao
-            opcoes={[
-              { valor: "realizada", rotulo: "Realizada" },
-              { valor: "projetada", rotulo: "Projetada" },
-              { valor: "completa", rotulo: "Completa" },
-            ]}
-            valor={visao}
-            onMudar={(v) => navegar(ano, v)}
-          />
           <select
             value={ano}
-            onChange={(e) => navegar(Number(e.target.value), visao)}
+            onChange={(e) => navegar(Number(e.target.value))}
             className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
           >
             {anos.map((a) => (
@@ -260,19 +237,25 @@ export function DreVisualizacao({
                 </Th>
                 {visiveis.has("media") && (
                   <Th align="right" larguraFixa="100px">
-                    Média
+                    <span className="inline-flex items-center gap-1">
+                      Média
+                      <DicaCalculo texto={EXPLICACAO_CALCULO.coluna_media} rotulo="Média" />
+                    </span>
                   </Th>
                 )}
                 {visiveis.has("total") && (
                   <Th align="right" larguraFixa="100px">
-                    Total
+                    <span className="inline-flex items-center gap-1">
+                      Total
+                      <DicaCalculo texto={EXPLICACAO_CALCULO.coluna_total} rotulo="Total" />
+                    </span>
                   </Th>
                 )}
                 {MESES_ABREVIADOS.map(
                   (mes, indice) =>
                     visiveis.has(`mes_${indice}`) && (
                       <Th key={mes} align="right" larguraFixa="88px">
-                        {mes}
+                        <span className={indice >= dreAnual.primeiroMesPrevisto ? "opacity-60" : ""}>{mes}</span>
                       </Th>
                     ),
                 )}
@@ -290,11 +273,15 @@ export function DreVisualizacao({
                   nomeCompleto={nomeCompleto}
                   avisos={avisosPorLinha}
                   dicas={EXPLICACAO_CALCULO}
+                  primeiroMesPrevisto={dreAnual.primeiroMesPrevisto}
                 />
               ))}
             </tbody>
           </table>
         </TabelaRolavel>
+        {dreAnual.primeiroMesPrevisto < 12 && (
+          <p className="text-xs text-cinza-medio">Meses futuros em cinza: previsão com o que já está lançado.</p>
+        )}
       </div>
 
       <DadosComplementaresDre ano={ano} estoquesDoAno={estoquesDoAno} podeGerir={podeGerir} />
