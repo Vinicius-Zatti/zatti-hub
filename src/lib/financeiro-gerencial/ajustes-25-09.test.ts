@@ -79,12 +79,12 @@ describe("DRE única por competência: meses futuros como previsão (25/09)", ()
     expect(dre.linhas.find((l) => l.id === "custos_operacionais")!.valoresPorMes[8]).toBe(0);
   });
 
-  it("primeiro mês previsto = outubro; Total = ano completo (real + previsto) e Média = Total ÷ 12", () => {
+  it("primeiro mês previsto = outubro; Total e Média só dos meses realizados (previsão de outubro fora)", () => {
     const dre = anual();
     expect(dre.primeiroMesPrevisto).toBe(9);
     const cmo = dre.linhas.find((l) => l.id === "cmo")!;
-    expect(cmo.total).toBe(6000);
-    expect(cmo.media).toBe(500);
+    expect(cmo.total).toBe(3000);
+    expect(cmo.media).toBe(333.33);
   });
 });
 

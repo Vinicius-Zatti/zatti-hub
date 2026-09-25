@@ -59,8 +59,8 @@ export default async function DrePage({ searchParams }: { searchParams: Promise<
     });
   });
 
-  // Ano completo: meses futuros aparecem como previsão; Total = 12 meses
-  // (real + previsto) e Média = Total ÷ 12.
+  // Ano completo: meses futuros aparecem como previsão; Total e Média são
+  // só dos meses realizados.
   const dreAnual = montarDreAnual(dresPorMes, ano, receitaVendasProdutosPorMes, new Date(), { incluirMesesFuturos: true });
 
   return (

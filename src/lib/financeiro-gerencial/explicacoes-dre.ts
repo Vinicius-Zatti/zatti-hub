@@ -2,9 +2,8 @@
  * fórmula - texto do ícone "i" (regra de interface de 25/09). Chave = id da
  * linha da DRE (`dre-linhas.ts` / `dre-anual.ts`) ou do quadro/tabela. */
 export const EXPLICACAO_CALCULO: Record<string, string> = {
-  coluna_total:
-    "Total do ano completo: soma dos 12 meses, incluindo os meses futuros (em cinza), que são previsão com o que já está lançado para eles (recorrências e lançamentos futuros).",
-  coluna_media: "Média = Total do ano ÷ 12, incluindo os meses futuros previstos (em cinza).",
+  coluna_total: "Total = soma só dos meses já realizados (até o mês atual). Os meses futuros em cinza são previsão e não entram no Total.",
+  coluna_media: "Média = Total ÷ número de meses já realizados (até o mês atual). Os meses futuros em cinza não entram na Média.",
   receita_liquida: "Receita Operacional Líquida = Receita Operacional Bruta - Deduções.",
   cmc: "CMC (Custo da Mercadoria Comprada) = soma das compras lançadas nas contas do CMC no mês de competência (mercadorias, bebidas, proteínas e embalagens).",
   cmv:

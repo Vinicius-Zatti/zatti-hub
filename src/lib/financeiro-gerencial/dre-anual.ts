@@ -114,18 +114,19 @@ function dividirRazao(a: number | null, b: number | null): number | null {
  * Total/Média (nem soma 0, nem invalida com `null`) e aparece na tabela como
  * "-" mesmo que a linha em si nunca seja nula (ex: Receita, sempre um número
  * real, mas ainda não aconteceu nesse mês futuro). */
-function combinarArvore(arvoresDoAno: LinhaDreMensal[][], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual[] {
+function combinarArvore(arvoresDoAno: LinhaDreMensal[][], mesesValidos: number, divisorMedia: number | null, mesesNoTotal: number = mesesValidos): LinhaDreAnual[] {
   const referencia = arvoresDoAno[0];
   return referencia.map((linhaRef, indice) => {
     const valoresBrutos = arvoresDoAno.map((mes) => mes[indice].valor);
     const valoresPorMes = valoresBrutos.map((v, mesIndice) => (mesIndice < mesesValidos ? v : null));
-    const total = mesesValidos === 0 ? null : somarOuNulo(valoresBrutos.slice(0, mesesValidos));
+    const total = mesesNoTotal === 0 ? null : somarOuNulo(valoresBrutos.slice(0, mesesNoTotal));
     const media = dividirMonetario(total, divisorMedia);
     const filhos = linhaRef.filhos
       ? combinarArvore(
           arvoresDoAno.map((mes) => mes[indice].filhos ?? []),
           mesesValidos,
           divisorMedia,
+          mesesNoTotal,
         )
       : undefined;
     return { id: linhaRef.id, rotulo: linhaRef.rotulo, nivel: linhaRef.nivel, destaque: linhaRef.destaque, valoresPorMes, total, media, filhos };
@@ -212,15 +213,15 @@ function comPercentualCmv(
  * mês já transcorrido sem valor preenchido entra como 0 no Total (nunca
  * invalida o ano inteiro - diferente da regra de estoque pendente do CMV em
  * R$, que é sobre integridade de cálculo, não sobre este denominador). */
-function montarLinhaAuxiliar(id: string, rotulo: string, valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
+function montarLinhaAuxiliar(id: string, rotulo: string, valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null, mesesNoTotal: number = mesesValidos): LinhaDreAnual {
   const valoresPorMes = valoresPorMesBrutos.map((v, indice) => (indice < mesesValidos ? v : null));
-  const total = mesesValidos === 0 ? null : somarValores(valoresPorMesBrutos.slice(0, mesesValidos));
+  const total = mesesNoTotal === 0 ? null : somarValores(valoresPorMesBrutos.slice(0, mesesNoTotal));
   const media = dividirMonetario(total, divisorMedia);
   return { id, rotulo, nivel: 0, valoresPorMes, total, media };
 }
 
-function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
-  return montarLinhaAuxiliar("receita_vendas_produtos", "Venda de Produtos", valoresPorMesBrutos, mesesValidos, divisorMedia);
+function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null, mesesNoTotal: number = mesesValidos): LinhaDreAnual {
+  return montarLinhaAuxiliar("receita_vendas_produtos", "Venda de Produtos", valoresPorMesBrutos, mesesValidos, divisorMedia, mesesNoTotal);
 }
 
 /** Monta a DRE anual a partir de 12 `Dre` já calculados (índice 0 = janeiro
@@ -237,15 +238,16 @@ export function montarDreAnual(
   hoje: Date = new Date(),
   opcoes: { incluirMesesFuturos?: boolean } = {},
 ): DreAnual {
-  // Projetada/Completa (25/09) mostram o ano inteiro, inclusive meses que
-  // ainda não começaram (é justamente onde está o previsto): Total soma os
-  // 12 meses e a Média divide por 12. Realizada segue a regra antiga.
-  const divisorMedia = opcoes.incluirMesesFuturos ? 12 : calcularDivisorMedia(ano, hoje);
-  const mesesValidos = divisorMedia ?? 0;
+  // Meses futuros podem ser exibidos como previsão (DRE única, 25/09), mas
+  // Total e Média são SEMPRE só dos meses realizados (regra de Vinícius):
+  // Total = soma dos meses já transcorridos, Média = Total ÷ esses meses.
+  const divisorMedia = calcularDivisorMedia(ano, hoje);
+  const mesesRealizados = divisorMedia ?? 0;
+  const mesesValidos = opcoes.incluirMesesFuturos ? 12 : mesesRealizados;
   const arvoresMensais = dresPorMes.map((dre) => montarArvoreMensal(dre));
 
-  const absoluto = combinarArvore(arvoresMensais, mesesValidos, divisorMedia);
-  const receitaVendasProdutos = montarLinhaReceitaVendasProdutos(receitaVendasProdutosPorMes, mesesValidos, divisorMedia);
+  const absoluto = combinarArvore(arvoresMensais, mesesValidos, divisorMedia, mesesRealizados);
+  const receitaVendasProdutos = montarLinhaReceitaVendasProdutos(receitaVendasProdutosPorMes, mesesValidos, divisorMedia, mesesRealizados);
 
   const receitaBruta = absoluto.find((l) => l.id === "receita_bruta")!;
   const cmvProvisorioPorMes = dresPorMes.map((dre) => dre.cmv.provisorio);
@@ -265,8 +267,9 @@ export function montarDreAnual(
     dresPorMes.map((dre) => somarValores([dre.receitas.total, -dre.receitaEntregas])),
     mesesValidos,
     divisorMedia,
+    mesesRealizados,
   );
-  const linhasComPercentualCmv = comPercentualCmv(linhas, absoluto, cmvProvisorioPorMes, receitaVendasProdutos, receitaSemEntregas, mesesValidos);
+  const linhasComPercentualCmv = comPercentualCmv(linhas, absoluto, cmvProvisorioPorMes, receitaVendasProdutos, receitaSemEntregas, mesesRealizados);
 
   return {
     ano,
@@ -274,6 +277,6 @@ export function montarDreAnual(
     cmvProvisorioPorMes,
     primeiroMesPrevisto: calcularDivisorMedia(ano, hoje) ?? 0,
     linhas: linhasComPercentualCmv,
-    indicadores: calcularIndicadoresPeriodo(absoluto, Array.from({ length: mesesValidos }, (_, i) => i)),
+    indicadores: calcularIndicadoresPeriodo(absoluto, Array.from({ length: mesesRealizados }, (_, i) => i)),
   };
 }
