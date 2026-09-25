@@ -79,3 +79,99 @@ export function gerarOcorrenciasRecorrencia(params: {
   }
   return datas;
 }
+
+// ── Editar pagamento recorrente (redesenho de 25/09) ──────────────────────
+
+/** Uma ocorrência já gerada (1 lançamento + 1 parcela). */
+export type OcorrenciaRecorrencia = {
+  lancamentoId: string;
+  parcelaId: string;
+  competencia: string;
+  dataPrevista: string;
+  valor: number;
+  categoriaId: string;
+  descricao: string;
+  contaFinanceiraId: string | null;
+  status: "aberto" | "parcial" | "quitado" | "cancelado";
+  valorBaixado: number;
+};
+
+export type ModeloRecorrencia = {
+  categoriaId: string;
+  descricao: string;
+  contaFinanceiraId: string | null;
+  valor: number;
+  /** Data de Competência da 1ª ocorrência. */
+  dataCompetencia: string;
+  /** Data de Pagamento/Recebimento da 1ª ocorrência (o dia vira o dia de vencimento). */
+  dataPrimeiroVencimento: string;
+  fim: FimRecorrencia;
+};
+
+export type PlanoEdicaoRecorrencia = {
+  atualizar: { lancamentoId: string; parcelaId: string; competencia: string; dataPrevista: string }[];
+  criar: { competencia: string; dataPrevista: string }[];
+  cancelar: { lancamentoId: string; parcelaId: string }[];
+  /** Ocorrência paga/recebida que a nova regra alteraria - fica como está. */
+  conflitos: { lancamentoId: string; competencia: string; dataPrevista: string; motivo: string }[];
+};
+
+export function ocorrenciaTemBaixa(o: OcorrenciaRecorrencia): boolean {
+  return o.valorBaixado !== 0 || o.status === "parcial" || o.status === "quitado";
+}
+
+/** Plano de reescrita da recorrência inteira a partir do novo modelo - função
+ * pura, a mesma conta roda na tela (pra avisar conflito antes de salvar) e no
+ * servidor (pra gravar). Posição i do calendário novo casa com a i-ésima
+ * ocorrência existente (ordem de competência, canceladas fora):
+ * - sem baixa: recebe o modelo novo inteiro (datas, valor, conta, descrição);
+ * - com baixa: nunca muda; se a regra nova pedir outra coisa, vira conflito;
+ * - sobrando no fim (nova quantidade menor): sem baixa = cancelamento lógico,
+ *   com baixa = fica e vira conflito;
+ * - faltando (nova quantidade maior): cria as ocorrências novas. */
+export function planejarEdicaoRecorrencia(ocorrencias: OcorrenciaRecorrencia[], modelo: ModeloRecorrencia): PlanoEdicaoRecorrencia {
+  const dia = Number(modelo.dataPrimeiroVencimento.slice(8, 10));
+  const vencimentos = gerarOcorrenciasRecorrencia({ diaVencimento: dia, dataInicio: modelo.dataPrimeiroVencimento, fim: modelo.fim });
+  const competencias = gerarCompetenciasRecorrencia(vencimentos, modelo.dataCompetencia);
+  const ativas = ocorrencias.filter((o) => o.status !== "cancelado").sort((a, b) => a.competencia.localeCompare(b.competencia) || a.dataPrevista.localeCompare(b.dataPrevista));
+
+  const plano: PlanoEdicaoRecorrencia = { atualizar: [], criar: [], cancelar: [], conflitos: [] };
+  const total = Math.max(ativas.length, vencimentos.length);
+  for (let i = 0; i < total; i++) {
+    const existente = ativas[i];
+    const novaData = vencimentos[i];
+    const novaCompetencia = competencias[i];
+    if (!existente) {
+      plano.criar.push({ competencia: novaCompetencia, dataPrevista: novaData });
+      continue;
+    }
+    if (novaData === undefined) {
+      if (ocorrenciaTemBaixa(existente)) {
+        plano.conflitos.push({ ...chave(existente), motivo: "passa da nova quantidade de parcelas, mas já tem pagamento/recebimento - continua valendo" });
+      } else {
+        plano.cancelar.push({ lancamentoId: existente.lancamentoId, parcelaId: existente.parcelaId });
+      }
+      continue;
+    }
+    if (!ocorrenciaTemBaixa(existente)) {
+      plano.atualizar.push({ lancamentoId: existente.lancamentoId, parcelaId: existente.parcelaId, competencia: novaCompetencia, dataPrevista: novaData });
+      continue;
+    }
+    const diferencas = [
+      existente.competencia !== novaCompetencia ? "competência" : null,
+      existente.dataPrevista !== novaData ? "data de pagamento" : null,
+      existente.valor !== modelo.valor ? "valor" : null,
+      existente.categoriaId !== modelo.categoriaId ? "plano de contas" : null,
+      existente.descricao !== modelo.descricao ? "descrição" : null,
+      (existente.contaFinanceiraId ?? null) !== (modelo.contaFinanceiraId ?? null) ? "conta financeira" : null,
+    ].filter((d): d is string => d !== null);
+    if (diferencas.length > 0) {
+      plano.conflitos.push({ ...chave(existente), motivo: `já tem pagamento/recebimento, então ${diferencas.join(", ")} não muda nela` });
+    }
+  }
+  return plano;
+}
+
+function chave(o: OcorrenciaRecorrencia) {
+  return { lancamentoId: o.lancamentoId, competencia: o.competencia, dataPrevista: o.dataPrevista };
+}

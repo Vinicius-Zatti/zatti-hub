@@ -10,10 +10,12 @@ export type ContaValorDre = { id: string; nome: string; valor: number };
 
 export type SubgrupoDre = { id: string; nome: string; contas: ContaValorDre[]; total: number };
 
-/** `null` quando o estoque mensal da competência ainda não foi cadastrado -
- * a DRE nunca finge que estoque não informado vale 0 (isso inflaria o CMV
- * de forma silenciosa e errada). */
+/** Regra de Vinícius (25/09): a DRE sempre calcula com o que tiver lançado.
+ * Sem inventário do mês cadastrado, os estoques valem 0 (na prática CMV =
+ * compras do CMC) e `semInventario` fica true pra tela avisar - nunca trava
+ * Margem nem Resultados. */
 export type CmvCalculado = {
+  semInventario: boolean;
   estoqueInicialMercadorias: number;
   estoqueInicialEmbalagens: number;
   comprasMercadorias: number;
@@ -32,17 +34,20 @@ export type Dre = {
    * que tem papel `receita`, igual antes da divisão em subgrupos. */
   receitas: { subgrupos: SubgrupoDre[]; contas: ContaValorDre[]; total: number };
   deducoes: { subgrupos: SubgrupoDre[]; total: number };
-  cmv: CmvCalculado | null;
+  cmv: CmvCalculado;
   /** Contas do CMC (mercadorias e embalagens) na ordem do plano de contas,
    * sempre presentes (mesmo sem estoque cadastrado) pra árvore da DRE ter a
    * mesma forma todo mês - o valor só é exibido quando `cmv` existe. */
   contasCmc: ContaValorDre[];
-  margemContribuicao: number | null;
-  cmo: { contas: ContaValorDre[]; total: number };
+  margemContribuicao: number;
+  /** Dois subgrupos fixos (25/09): "Pagamentos" (contas de CMO com
+   * lançamento real) e "Provisões" (férias, 13º e multa do FGTS, valor vindo
+   * do motor de Provisões - nunca do caixa). */
+  cmo: { subgrupos: SubgrupoDre[]; total: number };
   custosOperacionais: { subgrupos: SubgrupoDre[]; total: number };
-  resultadoOperacional: number | null;
+  resultadoOperacional: number;
   saidasNaoOperacionais: { contas: ContaValorDre[]; total: number };
-  geracaoCaixaAposSaidas: number | null;
+  geracaoCaixaAposSaidas: number;
 };
 
 /** DRE Projetada ou Realizada (pedido de 25/09), com a mesma regra de status
@@ -124,6 +129,13 @@ function receitasPorSubgrupo(categorias: CategoriaFinanceira[], totais: Map<stri
   return { subgrupos: linhasSubgrupos, contas: contasDiretas, total: somarValores(todas.map((c) => c.valor)) };
 }
 
+/** Nome da linha de provisão na DRE (INSS não tem provisão). */
+const ROTULO_PROVISAO_CMO: Partial<Record<PapelDre, string>> = {
+  cmo_ferias: "Provisão de férias",
+  cmo_decimo_terceiro: "Provisão de 13º",
+  cmo_multa_fgts: "Provisão de multa do FGTS",
+};
+
 const SUBGRUPOS_CUSTOS_OPERACIONAIS: Record<string, PapelDre> = {
   custos_ocupacao: "custo_ocupacao",
   custos_administrativos: "custo_administrativo",
@@ -142,8 +154,10 @@ function subgruposDeCustosOperacionais(categorias: CategoriaFinanceira[], totais
     });
 }
 
-function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, number>, estoqueMensal: EstoqueMensal | null): CmvCalculado | null {
-  if (!estoqueMensal) return null;
+const ESTOQUE_ZERADO = { estoqueInicialMercadorias: 0, estoqueInicialEmbalagens: 0, estoqueFinalMercadorias: 0, estoqueFinalEmbalagens: 0 };
+
+function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, number>, estoqueInformado: EstoqueMensal | null): CmvCalculado {
+  const estoqueMensal = estoqueInformado ?? ESTOQUE_ZERADO;
 
   const comprasMercadorias = somarValores(contasDoPapel(categorias, "cmc_mercadorias", totais).map((c) => c.valor));
   const comprasEmbalagens = somarValores(contasDoPapel(categorias, "cmc_embalagens", totais).map((c) => c.valor));
@@ -159,6 +173,7 @@ function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, numb
   ]);
 
   return {
+    semInventario: estoqueInformado === null,
     estoqueInicialMercadorias: estoqueMensal.estoqueInicialMercadorias,
     estoqueInicialEmbalagens: estoqueMensal.estoqueInicialEmbalagens,
     comprasMercadorias,
@@ -171,10 +186,8 @@ function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, numb
 }
 
 /** Motor de cálculo da DRE V1 - função pura, nunca decide bucket por nome de
- * texto (sempre via `papelDre`/`codigoSistema`). CMV e tudo que depende dele
- * (Margem de Contribuição, Resultado Operacional, Geração de Caixa) vem
- * `null` quando o estoque mensal da competência não foi cadastrado - nunca
- * calculado com estoque assumido em 0. */
+ * texto (sempre via `papelDre`/`codigoSistema`). Sempre calcula com o que
+ * tiver lançado: sem inventário do mês, CMV = compras (`cmv.semInventario`). */
 export function calcularDre(params: {
   competencia: string;
   lancamentos: LancamentoDre[];
@@ -199,26 +212,27 @@ export function calcularDre(params: {
     .filter((c) => c.nivel === "conta" && c.papelDre && papeisCmc.includes(c.papelDre))
     .sort((a, b) => a.ordem - b.ordem)
     .map((c) => ({ id: c.id, nome: c.nome, valor: totais.get(c.id) ?? 0 }));
-  const margemContribuicao = cmv ? somarValores([receitas.total, -deducoes.total, -cmv.total]) : null;
+  const margemContribuicao = somarValores([receitas.total, -deducoes.total, -cmv.total]);
 
-  const papeisCmo: PapelDre[] = ["cmo", "cmo_ferias", "cmo_decimo_terceiro", "cmo_multa_fgts"];
-  const contasCmo = categorias
-    .filter((c) => c.nivel === "conta" && c.papelDre && papeisCmo.includes(c.papelDre))
-    .sort((a, b) => a.ordem - b.ordem)
-    .map((c) => ({ id: c.id, nome: c.nome, valor: totais.get(c.id) ?? 0 }));
-  const cmo = { contas: contasCmo, total: somarValores(contasCmo.map((c) => c.valor)) };
+  const contasPagamentoCmo = contasDoPapel(categorias, "cmo", totais);
+  const contasProvisaoCmo = (["cmo_ferias", "cmo_decimo_terceiro", "cmo_multa_fgts"] as PapelDre[]).flatMap((papel) =>
+    contasDoPapel(categorias, papel, totais).map((c) => ({ ...c, nome: ROTULO_PROVISAO_CMO[papel] ?? c.nome })),
+  );
+  const subgruposCmo: SubgrupoDre[] = [
+    { id: "cmo_pagamentos", nome: "Pagamentos", contas: contasPagamentoCmo, total: somarValores(contasPagamentoCmo.map((c) => c.valor)) },
+    { id: "cmo_provisoes", nome: "Provisões", contas: contasProvisaoCmo, total: somarValores(contasProvisaoCmo.map((c) => c.valor)) },
+  ];
+  const cmo = { subgrupos: subgruposCmo, total: somarValores(subgruposCmo.map((s) => s.total)) };
 
   const subgruposCustos = subgruposDeCustosOperacionais(categorias, totais);
   const custosOperacionais = { subgrupos: subgruposCustos, total: somarValores(subgruposCustos.map((s) => s.total)) };
 
-  const resultadoOperacional =
-    margemContribuicao === null ? null : somarValores([margemContribuicao, -cmo.total, -custosOperacionais.total]);
+  const resultadoOperacional = somarValores([margemContribuicao, -cmo.total, -custosOperacionais.total]);
 
   const contasSaidas = contasDoPapel(categorias, "saida_nao_operacional", totais);
   const saidasNaoOperacionais = { contas: contasSaidas, total: somarValores(contasSaidas.map((c) => c.valor)) };
 
-  const geracaoCaixaAposSaidas =
-    resultadoOperacional === null ? null : somarValores([resultadoOperacional, -saidasNaoOperacionais.total]);
+  const geracaoCaixaAposSaidas = somarValores([resultadoOperacional, -saidasNaoOperacionais.total]);
 
   return {
     competencia,

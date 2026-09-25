@@ -17,7 +17,8 @@ import { AlternadorVisao } from "@/components/financeiro-gerencial/fluxo-caixa-v
 import type { VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
-import { MESES_ABREVIADOS, type DreAnual } from "@/lib/financeiro-gerencial/dre-anual";
+import { calcularIndicadoresPeriodo, MESES_ABREVIADOS, type DreAnual, type IndicadoresDre } from "@/lib/financeiro-gerencial/dre-anual";
+import { avisosDre, explicacaoIndicadores, mesesConsiderados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
 
 // Mesma regra de status do Fluxo de Caixa/DFC, mas no mês da competência.
@@ -26,8 +27,19 @@ const EXPLICACAO_VISAO_DRE: Record<VisaoCaixa, string> = {
   realizado: "Realizado: só o que já foi recebido ou pago (valor das baixas, estorno desconta).",
 };
 
-function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
-  return v === "nao_calculavel" ? "Não calculável" : formatarNumero(v);
+function formatarPontoDeEquilibrio(v: number | "sem_margem"): string {
+  return v === "sem_margem" ? "Sem margem" : formatarNumero(v);
+}
+
+/** Aviso de pendência - mesmo visual de aviso âmbar já usado no app
+ * (`calculadora-cmv.tsx`, `conectar-planilha.tsx`). */
+function AvisoPendenciaDre({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <div role="status" className="rounded-lg border border-ambar bg-ambar/10 p-4 text-sm text-cinza">
+      <p className="font-semibold text-azul-noite">{titulo}.</p>
+      <p className="mt-1">{texto}</p>
+    </div>
+  );
 }
 
 // Média/Total + 12 meses - "Mês de Competência" (a coluna de rótulo) nunca
@@ -71,7 +83,40 @@ export function DreVisualizacao({
 
   // Com um mês só (ou nenhum) selecionado nas Colunas sobra espaço - o nome
   // da linha aparece inteiro, sem reticências (pedido de 25/09).
-  const nomeCompleto = MESES_ABREVIADOS.filter((_, indice) => visiveis.has(`mes_${indice}`)).length <= 1;
+  const mesesMarcados = MESES_ABREVIADOS.map((_, indice) => indice).filter((indice) => visiveis.has(`mes_${indice}`));
+  const nomeCompleto = mesesMarcados.length <= 1;
+
+  // Indicadores do topo e avisos seguem os meses marcados em Colunas que já
+  // começaram (25/09): um mês = aquele mês, vários = a soma do período.
+  const meses = mesesConsiderados(mesesMarcados, dreAnual.divisorMedia ?? 0);
+  const indicadores: IndicadoresDre =
+    meses.length > 0
+      ? calcularIndicadoresPeriodo(dreAnual.linhas, meses)
+      : { resultadoEconomico: null, percentualResultadoEconomico: null, pontoDeEquilibrio: "sem_margem" };
+  const explicacoes = explicacaoIndicadores(indicadores, meses);
+  const rotuloPeriodo =
+    meses.length === 0
+      ? "Nenhum mês marcado já começou"
+      : meses.length === 1
+        ? `${MESES_POR_EXTENSO[meses[0]]} de ${ano}`
+        : `Soma de ${meses.length} meses (${meses.map((i) => MESES_ABREVIADOS[i]).join(", ")})`;
+  const avisos = avisosDre({
+    ano,
+    meses,
+    semInventario: dreAnual.semInventarioPorMes,
+    semReceitaVendasProdutos: estoquesDoAno.map((e) => !e || e.receitaVendasProdutos === 0),
+    caminhoCadastro: podeGerir
+      ? "Dados Complementares da DRE, no fim desta página"
+      : "Dados Complementares da DRE, no fim desta página (peça à Gestão)",
+  });
+  const avisosPorLinha: Record<string, string> = dreAnual.semInventarioPorMes.some((s, i) => s && meses.includes(i))
+    ? { cmv: "sem inventário" }
+    : {};
+
+  // "% Linha" aparece logo abaixo da própria linha (antes das contas-filhas
+  // quando ela está expandida) - pedido de 25/09.
+  const percentualPorId = new Map(dreAnual.linhas.filter((l) => l.percentual).map((l) => [l.id, l]));
+  const linhasPrincipais = dreAnual.linhas.filter((l) => !l.percentual);
 
   const anoAtual = new Date().getFullYear();
   const anos = Array.from({ length: 7 }, (_, i) => anoAtual + 1 - i);
@@ -111,10 +156,26 @@ export function DreVisualizacao({
         </div>
       </div>
 
+      {avisos.map((aviso) => (
+        <AvisoPendenciaDre key={aviso.id} titulo={aviso.titulo} texto={aviso.texto} />
+      ))}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <CartaoIndicador titulo="Resultado Econômico" valor={formatarNumero(dreAnual.indicadores.resultadoEconomico)} />
-        <CartaoIndicador titulo="% Resultado Econômico" valor={formatarPercentual(dreAnual.indicadores.percentualResultadoEconomico)} />
-        <CartaoIndicador titulo="Ponto de Equilíbrio" valor={formatarPontoDeEquilibrio(dreAnual.indicadores.pontoDeEquilibrio)} />
+        <CartaoIndicador
+          titulo="Resultado Econômico"
+          valor={formatarNumero(indicadores.resultadoEconomico)}
+          detalhe={explicacoes.resultadoEconomico ?? rotuloPeriodo}
+        />
+        <CartaoIndicador
+          titulo="% Resultado Econômico"
+          valor={formatarPercentual(indicadores.percentualResultadoEconomico)}
+          detalhe={explicacoes.percentual ?? rotuloPeriodo}
+        />
+        <CartaoIndicador
+          titulo="Ponto de Equilíbrio"
+          valor={formatarPontoDeEquilibrio(indicadores.pontoDeEquilibrio)}
+          detalhe={explicacoes.pontoDeEquilibrio ?? rotuloPeriodo}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -151,8 +212,17 @@ export function DreVisualizacao({
               </tr>
             </thead>
             <tbody>
-              {dreAnual.linhas.map((linha) => (
-                <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} />
+              {linhasPrincipais.map((linha) => (
+                <LinhaTabela
+                  key={linha.id}
+                  linha={linha}
+                  linhaPercentual={percentualPorId.get(`${linha.id}_percentual`)}
+                  expandidas={expandidas}
+                  alternar={alternar}
+                  visiveis={visiveis}
+                  nomeCompleto={nomeCompleto}
+                  avisos={avisosPorLinha}
+                />
               ))}
             </tbody>
           </table>

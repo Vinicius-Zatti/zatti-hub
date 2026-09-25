@@ -1,16 +1,28 @@
 "use server";
 
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { criarLancamento, criarRecorrencia, editarLancamento, estornarBaixa, excluirLancamento, listarBaixasDaParcela, registrarBaixa } from "@/lib/banco/financeiro-gerencial";
+import {
+  criarLancamento,
+  criarRecorrencia,
+  editarLancamento,
+  editarRecorrencia,
+  estornarBaixa,
+  excluirLancamento,
+  listarBaixasDaParcela,
+  obterRecorrenciaParaEdicao,
+  registrarBaixa,
+} from "@/lib/banco/financeiro-gerencial";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
 import { ErroPublico } from "@/lib/erros";
 import {
   baixaFinanceiraEntradaSchema,
   editarLancamentoFinanceiroEntradaSchema,
+  editarRecorrenciaEntradaSchema,
   estornarBaixaEntradaSchema,
   excluirLancamentoEntradaSchema,
   lancamentoFinanceiroEntradaSchema,
   listarBaixasParcelaEntradaSchema,
+  obterRecorrenciaEntradaSchema,
   recorrenciaFinanceiraEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
@@ -19,6 +31,7 @@ import { mensagemErroPublica } from "@/lib/erros";
 import { revalidatePath } from "next/cache";
 import type { Baixa, Lancamento, Parcela, Recorrencia } from "@/lib/financeiro-gerencial/tipos";
 import type { AcessoAtual } from "@/lib/acesso";
+import type { OcorrenciaRecorrencia, PlanoEdicaoRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
 
 /** Mês fechado barra o Operacional (a barreira real é o gatilho
  * `bloquear_periodo_fechado_financeiro`; aqui só falha antes, com mensagem
@@ -38,7 +51,7 @@ async function garantirMesesAbertos(acesso: AcessoAtual, datas: string[]): Promi
 // qualquer INSERT em `fin_lancamentos`/`fin_parcelas`/`fin_baixas`/`fin_recorrencias`,
 // e o UPDATE de status disparado por `recalcular_parcela_apos_baixa` também é
 // logado automaticamente.
-export type ResultadoLancamento = { ok: true; lancamento: Lancamento; proximosAtualizados?: number } | { ok: false; mensagem: string };
+export type ResultadoLancamento = { ok: true; lancamento: Lancamento } | { ok: false; mensagem: string };
 export type ResultadoBaixa = { ok: true; parcela: Parcela } | { ok: false; mensagem: string };
 export type ResultadoRecorrencia =
   | { ok: true; recorrencia: Recorrencia; ocorrenciasGeradas: number }
@@ -91,9 +104,9 @@ export async function editarLancamentoAction(input: unknown): Promise<ResultadoL
   try {
     await exigirLimiteRequisicao("fin_lancamento_editar");
     const entrada = validarEntrada(editarLancamentoFinanceiroEntradaSchema, input);
-    const { lancamento, proximosAtualizados } = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
+    const lancamento = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
     revalidarLancamentos();
-    return { ok: true, lancamento, proximosAtualizados };
+    return { ok: true, lancamento };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar o lançamento.") };
   }
@@ -156,5 +169,39 @@ export async function listarBaixasDaParcelaAction(input: unknown): Promise<Resul
     return { ok: true, baixas };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar as baixas.") };
+  }
+}
+
+// ── Editar pagamento recorrente (25/09) ────────────────────────────────────
+// Só Gestão/master, igual editar lançamento (`requireGestaoFinanceiroGerencial`
+// já inclui master; RLS de update e o gatilho de parcela são a barreira real).
+
+export type ResultadoObterRecorrencia =
+  | { ok: true; recorrencia: Recorrencia; ocorrencias: OcorrenciaRecorrencia[] }
+  | { ok: false; mensagem: string };
+export type ResultadoEditarRecorrencia = { ok: true; plano: PlanoEdicaoRecorrencia } | { ok: false; mensagem: string };
+
+export async function obterRecorrenciaParaEdicaoAction(input: unknown): Promise<ResultadoObterRecorrencia> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    const entrada = validarEntrada(obterRecorrenciaEntradaSchema, input);
+    const { recorrencia, ocorrencias } = await obterRecorrenciaParaEdicao(acesso.unidadeId, entrada.recorrenciaId);
+    return { ok: true, recorrencia, ocorrencias };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar a recorrência.") };
+  }
+}
+
+export async function editarRecorrenciaAction(input: unknown): Promise<ResultadoEditarRecorrencia> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_lancamento_editar");
+    const { recorrenciaId, ...modelo } = validarEntrada(editarRecorrenciaEntradaSchema, input);
+    const plano = await editarRecorrencia({ unidadeId: acesso.unidadeId, recorrenciaId, modelo, criadoPor: acesso.userId });
+    revalidarLancamentos();
+    revalidatePath("/financeiro-gerencial/recorrencias");
+    return { ok: true, plano };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar a recorrência.") };
   }
 }

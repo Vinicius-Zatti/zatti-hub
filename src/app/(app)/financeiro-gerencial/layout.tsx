@@ -41,7 +41,8 @@ export default async function FinanceiroGerencialLayout({ children }: { children
 
   return (
     <div className="flex flex-col gap-5">
-      <SubTabs items={items} />
+      {/* Fixo no topo ao rolar (pedido de 25/09) - relatórios longos. */}
+      <SubTabs items={items} fixoNoTopo />
       {children}
     </div>
   );

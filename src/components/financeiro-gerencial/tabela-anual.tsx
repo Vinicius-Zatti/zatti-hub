@@ -50,8 +50,15 @@ export function LinhaTabelaAnual({
   alternar,
   visiveis,
   nomeCompleto = false,
+  linhaPercentual,
+  avisos,
 }: {
+  /** Marcador discreto ao lado do nome da linha (ex: CMV "sem inventário"). */
+  avisos?: Record<string, string>;
   linha: LinhaDreAnual;
+  /** Linha "% ..." da própria linha - renderizada logo abaixo dela, antes
+   * das contas-filhas quando expandida. */
+  linhaPercentual?: LinhaDreAnual;
   expandidas: Set<string>;
   alternar: (id: string) => void;
   visiveis: Set<string>;
@@ -90,6 +97,11 @@ export function LinhaTabelaAnual({
             <span className={nomeCompleto ? "" : "min-w-0 truncate"} title={linha.rotulo}>
               {linha.rotulo}
             </span>
+            {avisos?.[linha.id] && (
+              <span className="shrink-0 rounded-full bg-ambar/20 px-1.5 py-0.5 text-[10px] font-semibold text-azul-noite" title="Veja o aviso acima dos quadros">
+                {avisos[linha.id]}
+              </span>
+            )}
           </span>
         </td>
         {visiveis.has("media") && <td className={`whitespace-nowrap px-3 py-2 text-right font-mono ${pesoTexto}`}>{formatar(linha.media)}</td>}
@@ -103,10 +115,13 @@ export function LinhaTabelaAnual({
             ),
         )}
       </tr>
+      {linhaPercentual && (
+        <LinhaTabelaAnual linha={linhaPercentual} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} avisos={avisos} />
+      )}
       {temFilhos &&
         expandida &&
         linha.filhos!.map((filho) => (
-          <LinhaTabelaAnual key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} />
+          <LinhaTabelaAnual key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} avisos={avisos} />
         ))}
     </>
   );

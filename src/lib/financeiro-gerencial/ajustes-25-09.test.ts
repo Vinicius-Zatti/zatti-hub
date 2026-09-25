@@ -76,14 +76,14 @@ describe("DRE Projetada x Realizada (25/09)", () => {
   it("Projetada usa o valor cheio; Realizada usa só o baixado (estorno desconta), sempre na competência", () => {
     const projetada = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("projetado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
     const realizada = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("realizado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
-    expect(projetada.cmo.contas.find((c) => c.id === "cmo_folha")?.valor).toBe(3000);
-    expect(realizada.cmo.contas.find((c) => c.id === "cmo_folha")?.valor).toBe(2000);
+    expect(projetada.cmo.subgrupos.flatMap((s) => s.contas).find((c) => c.id === "cmo_folha")?.valor).toBe(3000);
+    expect(realizada.cmo.subgrupos.flatMap((s) => s.contas).find((c) => c.id === "cmo_folha")?.valor).toBe(2000);
     expect(realizada.custosOperacionais.total).toBe(0);
   });
 
   it("despesa de folha paga aparece no CMO da competência mesmo sem estoque do mês cadastrado", () => {
     const dre = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("realizado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
     expect(dre.cmo.total).toBe(2000);
-    expect(dre.resultadoOperacional).toBeNull(); // sem estoque o resultado fica "-" (por desenho)
+    expect(dre.resultadoOperacional).toBe(-2000); // sem inventário a DRE calcula mesmo assim (regra de 25/09)
   });
 });

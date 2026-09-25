@@ -196,7 +196,7 @@ describe("Provisões trabalhistas (critério 2 e planilha)", () => {
       estoqueMensal: estoque,
       valoresProvisao: valoresDreProvisao(provisoes.get("2026-03"), CATEGORIAS),
     });
-    const linha13 = dre.cmo.contas.find((c) => c.id === "cmo_13")!;
+    const linha13 = dre.cmo.subgrupos.flatMap((s) => s.contas).find((c) => c.id === "cmo_13")!;
     expect(linha13.valor).toBe(1500);
 
     const caixa = montarMovimentosCaixa({ visao: "projetado", lancamentos, baixas: [], contas: CONTAS });

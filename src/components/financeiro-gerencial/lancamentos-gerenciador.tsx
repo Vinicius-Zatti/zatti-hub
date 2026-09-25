@@ -6,7 +6,9 @@ import {
   criarLancamentoAction,
   criarRecorrenciaAction,
   editarLancamentoAction,
+  editarRecorrenciaAction,
   excluirLancamentoAction,
+  obterRecorrenciaParaEdicaoAction,
   listarBaixasDaParcelaAction,
   registrarBaixaAction,
   registrarEstornoBaixaAction,
@@ -19,6 +21,14 @@ import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-b
 import { calcularSaldoAberto, somarValores } from "@/lib/financeiro-gerencial/parcelas";
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
+import { planejarEdicaoRecorrencia, type OcorrenciaRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
+import {
+  entradaEditarLancamento,
+  entradaEditarRecorrencia,
+  estadoInicialEdicaoRecorrencia,
+  modeloDaEdicaoRecorrencia,
+  type EstadoEdicaoRecorrencia,
+} from "@/lib/financeiro-gerencial/formularios-lancamento";
 import type {
   Baixa,
   CategoriaFinanceira,
@@ -399,15 +409,7 @@ export function LancamentosGerenciador({
       </ModalFlutuante>
 
       <ModalFlutuante aberto={editando !== null} onFechar={() => setEditando(null)}>
-        {editando && (
-          <FormularioEditarLancamento
-            lancamento={editando}
-            categorias={categorias}
-            contas={contas}
-            onSalvo={() => setEditando(null)}
-            onCancelar={() => setEditando(null)}
-          />
-        )}
+        {editando && <EdicaoLancamento lancamento={editando} categorias={categorias} contas={contas} onFechar={() => setEditando(null)} />}
       </ModalFlutuante>
     </div>
   );
@@ -683,6 +685,296 @@ function FormularioLancamento({
   );
 }
 
+/** Porta de entrada do lápis de editar (redesenho de 25/09): lançamento que
+ * pertence a uma recorrência pergunta ANTES o que editar - só este
+ * lançamento ou o pagamento recorrente inteiro. Os dois caminhos ficam no
+ * mesmo modal (padrão de confirmação de "Excluir lançamento"). */
+function EdicaoLancamento({
+  lancamento,
+  categorias,
+  contas,
+  onFechar,
+}: {
+  lancamento: Lancamento;
+  categorias: CategoriaFinanceira[];
+  contas: ContaFinanceira[];
+  onFechar: () => void;
+}) {
+  const recorrenciaId = lancamento.origem === "recorrencia" ? lancamento.recorrenciaId : null;
+  const [modo, setModo] = useState<"escolher" | "este" | "recorrente">(recorrenciaId ? "escolher" : "este");
+
+  if (modo === "escolher") {
+    return (
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-lg font-bold text-azul-noite">Editar lançamento recorrente</h2>
+        <p className="text-sm text-cinza">
+          <strong>{lancamento.descricao}</strong> faz parte de um pagamento recorrente. O que você quer editar?
+        </p>
+        <button
+          type="button"
+          onClick={() => setModo("este")}
+          className="rounded-lg border border-cinza-claro bg-branco px-4 py-3 text-left text-sm hover:border-ambar"
+        >
+          <span className="block font-bold text-azul-noite">Editar apenas este lançamento</span>
+          <span className="block text-xs text-cinza-medio">Muda só esta parcela ({formatarDataBr(lancamento.dataCompetencia)}). As outras ficam como estão.</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setModo("recorrente")}
+          className="rounded-lg border border-cinza-claro bg-branco px-4 py-3 text-left text-sm hover:border-ambar"
+        >
+          <span className="block font-bold text-azul-noite">Editar pagamento recorrente</span>
+          <span className="block text-xs text-cinza-medio">
+            Muda a regra inteira (plano de contas, valor, datas, quantidade). Parcelas já pagas ou recebidas nunca mudam.
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onFechar}
+          className="rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    );
+  }
+
+  if (modo === "recorrente" && recorrenciaId) {
+    return (
+      <FormularioEditarRecorrencia
+        recorrenciaId={recorrenciaId}
+        tipo={lancamento.tipo}
+        categorias={categorias}
+        contas={contas}
+        onSalvo={onFechar}
+        onCancelar={onFechar}
+      />
+    );
+  }
+
+  return <FormularioEditarLancamento lancamento={lancamento} categorias={categorias} contas={contas} onSalvo={onFechar} onCancelar={onFechar} />;
+}
+
+/** "Editar pagamento recorrente": formulário da recorrência inteira,
+ * preenchido com o que existe. Antes de salvar mostra o que vai acontecer
+ * (quantas parcelas mudam, são criadas ou canceladas) e avisa quando a regra
+ * nova conflita com parcela já paga/recebida - essa nunca muda. */
+function FormularioEditarRecorrencia({
+  recorrenciaId,
+  tipo,
+  categorias,
+  contas,
+  onSalvo,
+  onCancelar,
+}: {
+  recorrenciaId: string;
+  tipo: TipoLancamento;
+  categorias: CategoriaFinanceira[];
+  contas: ContaFinanceira[];
+  onSalvo: () => void;
+  onCancelar: () => void;
+}) {
+  const router = useRouter();
+  const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias).map((c) => ({ id: c.id, label: c.rotulo })), [categorias]);
+  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+  const rotuloData = rotuloDataParcela(tipo);
+  const [carregado, setCarregado] = useState<{ ocorrencias: OcorrenciaRecorrencia[] } | null>(null);
+  const [estado, setEstado] = useState<EstadoEdicaoRecorrencia | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let ativo = true;
+    obterRecorrenciaParaEdicaoAction({ recorrenciaId }).then((resultado) => {
+      if (!ativo) return;
+      if (!resultado.ok) {
+        setErro(resultado.mensagem);
+        return;
+      }
+      setCarregado({ ocorrencias: resultado.ocorrencias });
+      setEstado(estadoInicialEdicaoRecorrencia(resultado.recorrencia, resultado.ocorrencias));
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [recorrenciaId]);
+
+  const plano = useMemo(() => {
+    if (!carregado || !estado) return null;
+    try {
+      return planejarEdicaoRecorrencia(carregado.ocorrencias, modeloDaEdicaoRecorrencia(estado));
+    } catch (e) {
+      return e instanceof Error ? e.message : "Regra inválida";
+    }
+  }, [carregado, estado]);
+
+  function atualizar(patch: Partial<EstadoEdicaoRecorrencia>) {
+    setEstado((atual) => (atual ? { ...atual, ...patch } : atual));
+  }
+
+  function salvar(e: FormEvent) {
+    e.preventDefault();
+    if (!estado) return;
+    setErro(null);
+    startTransition(async () => {
+      const resultado = await editarRecorrenciaAction(entradaEditarRecorrencia(recorrenciaId, estado));
+      if (!resultado.ok) {
+        setErro(resultado.mensagem);
+        return;
+      }
+      router.refresh();
+      onSalvo();
+    });
+  }
+
+  if (!estado) {
+    return (
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-lg font-bold text-azul-noite">Editar pagamento recorrente</h2>
+        {erro ? <p className="text-sm text-vermelho">{erro}</p> : <p className="text-sm text-cinza-medio">Carregando a recorrência...</p>}
+        <button type="button" onClick={onCancelar} className="rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio">
+          Fechar
+        </button>
+      </div>
+    );
+  }
+
+  const planoValido = plano !== null && typeof plano !== "string" ? plano : null;
+
+  return (
+    <form onSubmit={salvar} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Editar pagamento recorrente</h2>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Plano de Contas
+        <SeletorComBusca value={estado.categoriaId} opcoes={opcoesCategoria} onChange={(v) => atualizar({ categoriaId: v })} placeholder="Selecionar conta..." />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Descrição
+        <input
+          required
+          value={estado.descricao}
+          onChange={(e) => atualizar({ descricao: e.target.value })}
+          className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Conta financeira
+        <SeletorComBusca
+          value={estado.contaFinanceiraId}
+          opcoes={opcoesConta}
+          onChange={(v) => atualizar({ contaFinanceiraId: v })}
+          placeholder="Nenhuma (decidir na baixa)"
+          vazioLabel="Nenhuma (decidir na baixa)"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Valor de cada parcela
+        <CampoNumero value={estado.valor} onChange={(v) => atualizar({ valor: v })} className="w-full" />
+      </label>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+          Data de Competência (1ª parcela)
+          <input
+            type="date"
+            required
+            value={estado.dataCompetencia}
+            onChange={(e) => atualizar({ dataCompetencia: e.target.value })}
+            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+          {rotuloData} (1ª parcela)
+          <input
+            type="date"
+            required
+            value={estado.dataPrimeiroVencimento}
+            onChange={(e) => atualizar({ dataPrimeiroVencimento: e.target.value })}
+            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+          />
+        </label>
+      </div>
+      <p className="-mt-1 text-xs text-cinza-medio">
+        As próximas avançam um mês por parcela, no mesmo dia da {rotuloData.toLowerCase()} acima.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <div className="text-sm font-semibold text-cinza-medio">Até quando</div>
+        <div className="flex gap-3 text-xs text-cinza-medio">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={estado.modoFim === "quantidade"} onChange={() => atualizar({ modoFim: "quantidade" })} />
+            Quantidade de parcelas
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={estado.modoFim === "data"} onChange={() => atualizar({ modoFim: "data" })} />
+            Data final
+          </label>
+        </div>
+        {estado.modoFim === "quantidade" ? (
+          <input
+            type="number"
+            min={1}
+            max={360}
+            required
+            value={estado.quantidadeOcorrencias}
+            onChange={(e) => atualizar({ quantidadeOcorrencias: Math.max(1, Number(e.target.value)) })}
+            className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+          />
+        ) : (
+          <input
+            type="date"
+            required
+            value={estado.dataFim}
+            onChange={(e) => atualizar({ dataFim: e.target.value })}
+            className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+          />
+        )}
+      </div>
+
+      {typeof plano === "string" && <p className="text-sm text-vermelho">{plano}</p>}
+      {planoValido && (
+        <div className="rounded-lg border border-cinza-claro bg-branco p-3 text-xs text-cinza">
+          Ao salvar: {planoValido.atualizar.length} parcela(s) sem pagamento serão reescritas
+          {planoValido.criar.length > 0 ? `, ${planoValido.criar.length} nova(s) serão criadas` : ""}
+          {planoValido.cancelar.length > 0 ? `, ${planoValido.cancelar.length} serão canceladas (ficam no histórico como Cancelado)` : ""}.
+        </div>
+      )}
+      {planoValido && planoValido.conflitos.length > 0 && (
+        <div role="status" className="rounded-lg border border-ambar bg-ambar/10 p-3 text-xs text-cinza">
+          <p className="font-semibold text-azul-noite">
+            {planoValido.conflitos.length} parcela(s) já paga(s) ou recebida(s) não seguem a regra nova e vão continuar como estão:
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {planoValido.conflitos.map((c) => (
+              <li key={c.lancamentoId}>
+                Competência {formatarDataBr(c.competencia)}, {rotuloData.toLowerCase()} {formatarDataBr(c.dataPrevista)}: {c.motivo}.
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">Para corrigir uma delas, use &ldquo;Editar apenas este lançamento&rdquo; nela.</p>
+        </div>
+      )}
+
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="mt-1 flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending || !planoValido || !estado.categoriaId}
+          className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Salvando..." : planoValido && planoValido.conflitos.length > 0 ? "Salvar mesmo assim" : "Salvar"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
 type LinhaParcelaEdicao = { id: string; valor: number | null; dataPrevista: string; contaFinanceiraId: string };
 
 /** Edita os campos do lançamento e o valor/data/conta de cada parcela já
@@ -725,12 +1017,6 @@ function FormularioEditarLancamento({
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Lançamento de recorrência: antes de salvar, pergunta "só este / este e
-  // os próximos" (pedido de 25/09) - confirmação no próprio modal, mesmo
-  // padrão visual de "Excluir lançamento".
-  const ehRecorrente = lancamento.origem === "recorrencia";
-  const [perguntandoAlcance, setPerguntandoAlcance] = useState(false);
-
   function atualizarParcela(indice: number, patch: Partial<LinhaParcelaEdicao>) {
     setParcelas((atual) => atual.map((p, i) => (i === indice ? { ...p, ...patch } : p)));
   }
@@ -738,31 +1024,10 @@ function FormularioEditarLancamento({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErro(null);
-    if (ehRecorrente) {
-      setPerguntandoAlcance(true);
-      return;
-    }
-    salvar(false);
-  }
-
-  function salvar(aplicarEmProximos: boolean) {
-    setErro(null);
     startTransition(async () => {
-      const resultado = await editarLancamentoAction({
-        id: lancamento.id,
-        categoriaId,
-        descricao,
-        dataCompetencia,
-        contaFinanceiraId: contaFinanceiraId || null,
-        observacao,
-        parcelas: parcelas.map((p) => ({
-          id: p.id,
-          valor: p.valor ?? 0,
-          dataPrevista: p.dataPrevista,
-          contaFinanceiraId: p.contaFinanceiraId || null,
-        })),
-        ...(ehRecorrente ? { aplicarEmProximos } : {}),
-      });
+      const resultado = await editarLancamentoAction(
+        entradaEditarLancamento(lancamento.id, { categoriaId, descricao, dataCompetencia, contaFinanceiraId, observacao, parcelas }),
+      );
       if (!resultado.ok) {
         setErro(resultado.mensagem);
         return;
@@ -770,49 +1035,6 @@ function FormularioEditarLancamento({
       router.refresh();
       onSalvo();
     });
-  }
-
-  if (perguntandoAlcance) {
-    return (
-      <div className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-bold text-azul-noite">Editar lançamento recorrente</h2>
-        <p className="text-sm text-cinza">
-          Aplicar as alterações em <strong>{descricao}</strong> só neste lançamento ou também nos próximos da mesma
-          recorrência?
-        </p>
-        <p className="text-xs text-cinza-medio">
-          Nos próximos mudam Plano de Contas, descrição, conta financeira, observação e valor. As datas de cada mês
-          continuam as mesmas, e lançamento que já tem pagamento ou recebimento registrado não é alterado.
-        </p>
-        {erro && <p className="text-sm text-vermelho">{erro}</p>}
-        <div className="mt-1 flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => salvar(false)}
-            disabled={isPending}
-            className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
-          >
-            {isPending ? "Salvando..." : "Só este"}
-          </button>
-          <button
-            type="button"
-            onClick={() => salvar(true)}
-            disabled={isPending}
-            className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
-          >
-            {isPending ? "Salvando..." : "Este e os próximos"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setPerguntandoAlcance(false)}
-            disabled={isPending}
-            className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
-          >
-            Voltar
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (

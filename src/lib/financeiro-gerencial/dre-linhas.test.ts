@@ -159,17 +159,34 @@ describe("montarArvoreMensal", () => {
     ]);
   });
 
-  it("quando o estoque mensal não foi cadastrado, todo o ramo do CMV vem null (nunca 0) mas mantém a mesma forma", () => {
+  it("sem inventário do mês as linhas de estoque mostram '-' mas CMV, CMC, Margem e Resultados têm valor (regra de 25/09)", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: null });
     const linhas = montarArvoreMensal(dre);
     const cmv = acharLinha(linhas, "cmv");
-    expect(cmv?.valor).toBeNull();
+    expect(cmv?.valor).toBe(2000); // CMV = compras
     expect(cmv?.filhos).toHaveLength(5);
-    expect(cmv?.filhos?.every((f) => f.valor === null)).toBe(true);
-    expect(cmv?.filhos?.find((f) => f.id === "cmv_cmc")?.filhos).toHaveLength(2);
+    expect(cmv?.filhos?.filter((f) => f.id.startsWith("cmv_estoque")).every((f) => f.valor === null)).toBe(true);
+    expect(cmv?.filhos?.find((f) => f.id === "cmv_cmc")?.valor).toBe(2000);
+    expect(acharLinha(linhas, "margem")?.valor).toBe(7500); // 10000 - 500 - 2000
+    expect(acharLinha(linhas, "resultado_operacional")?.valor).toBe(5200); // 7500 - 1500 - 800
+  });
 
-    const margem = acharLinha(linhas, "margem");
-    expect(margem?.valor).toBeNull();
+  it("CMO vem em dois subgrupos: Pagamentos e Provisões (provisões com nome próprio, somando no CMO)", () => {
+    const categorias = [
+      ...CATEGORIAS,
+      categoria({ id: "cmo_ferias", papelDre: "cmo_ferias", nome: "Férias", ordem: 3 }),
+      categoria({ id: "cmo_13", papelDre: "cmo_decimo_terceiro", nome: "13º salário", ordem: 17 }),
+      categoria({ id: "cmo_multa", papelDre: "cmo_multa_fgts", nome: "Provisão de multa do FGTS", ordem: 18 }),
+    ];
+    const valoresProvisao = new Map([["cmo_ferias", 100], ["cmo_13", 80], ["cmo_multa", 20]]);
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias, estoqueMensal: ESTOQUE_AGOSTO, valoresProvisao });
+    const cmo = acharLinha(montarArvoreMensal(dre), "cmo");
+    expect(cmo?.valor).toBe(1700); // 1500 de folha + 200 de provisões
+    expect(cmo?.filhos?.map((f) => [f.rotulo, f.valor])).toEqual([
+      ["Pagamentos", 1500],
+      ["Provisões", 200],
+    ]);
+    expect(cmo?.filhos?.[1].filhos?.map((f) => f.rotulo)).toEqual(["Provisão de férias", "Provisão de 13º", "Provisão de multa do FGTS"]);
   });
 
   it("linha de resultado (Margem, Resultado Operacional, Resultado Econômico, Resultado Líquido) não tem filhos - não é expansível", () => {

@@ -33,27 +33,27 @@ function linhasSubgrupos(subgrupos: SubgrupoDre[], nivelSubgrupo: 1, nivelConta:
 }
 
 /** As 5 linhas do CMV expandido (CMC como etapa interna, nunca grupo
- * principal) sempre com os mesmos 5 ids, mesmo quando o estoque mensal da
- * competência não foi cadastrado (`dre.cmv === null`) - nesse caso todo
- * mundo vem `null` (nunca 0), pra árvore de todo mês do ano ter exatamente a
- * mesma forma e dar pra combinar mês a mês na etapa anual. */
+ * principal) sempre com os mesmos 5 ids, pra árvore de todo mês do ano ter a
+ * mesma forma. Sem inventário do mês (`cmv.semInventario`), as 4 linhas de
+ * estoque mostram "-" (não informado) e o CMV vira só o CMC - regra de
+ * 25/09: a DRE nunca trava por falta de inventário. */
 function filhosCmv(dre: Dre): LinhaDreMensal[] {
   const cmv = dre.cmv;
+  const estoque = (v: number) => (cmv.semInventario ? null : v);
   return [
-    { id: "cmv_estoque_inicial_merc", rotulo: "Estoque inicial de Mercadorias", nivel: 1, valor: cmv?.estoqueInicialMercadorias ?? null },
-    { id: "cmv_estoque_inicial_emb", rotulo: "Estoque inicial de Embalagens", nivel: 1, valor: cmv?.estoqueInicialEmbalagens ?? null },
+    { id: "cmv_estoque_inicial_merc", rotulo: "Estoque inicial de Mercadorias", nivel: 1, valor: estoque(cmv.estoqueInicialMercadorias) },
+    { id: "cmv_estoque_inicial_emb", rotulo: "Estoque inicial de Embalagens", nivel: 1, valor: estoque(cmv.estoqueInicialEmbalagens) },
     {
       id: "cmv_cmc",
       rotulo: "CMC - Custo da Mercadoria Comprada",
       nivel: 1,
-      valor: cmv?.cmc ?? null,
+      valor: cmv.cmc,
       // Uma linha por conta do CMC (Custo com bebidas/mercadorias/proteínas,
-      // Compras de embalagens) - valor só aparece com estoque cadastrado,
-      // igual ao resto do ramo do CMV.
-      filhos: dre.contasCmc.map((c) => ({ id: c.id, rotulo: c.nome, nivel: 2, valor: cmv ? c.valor : null })),
+      // Compras de embalagens).
+      filhos: dre.contasCmc.map((c) => ({ id: c.id, rotulo: c.nome, nivel: 2, valor: c.valor })),
     },
-    { id: "cmv_estoque_final_merc", rotulo: "(-) Estoque final de Mercadorias", nivel: 1, valor: cmv?.estoqueFinalMercadorias ?? null },
-    { id: "cmv_estoque_final_emb", rotulo: "(-) Estoque final de Embalagens", nivel: 1, valor: cmv?.estoqueFinalEmbalagens ?? null },
+    { id: "cmv_estoque_final_merc", rotulo: "(-) Estoque final de Mercadorias", nivel: 1, valor: estoque(cmv.estoqueFinalMercadorias) },
+    { id: "cmv_estoque_final_emb", rotulo: "(-) Estoque final de Embalagens", nivel: 1, valor: estoque(cmv.estoqueFinalEmbalagens) },
   ];
 }
 
@@ -80,9 +80,9 @@ export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
     },
     { id: "deducoes", rotulo: "(-) Deduções", nivel: 0, valor: dre.deducoes.total, filhos: linhasSubgrupos(dre.deducoes.subgrupos, 1, 2) },
     { id: "receita_liquida", rotulo: "= Receita Operacional Líquida", nivel: 0, valor: receitaLiquida, destaque: true },
-    { id: "cmv", rotulo: "(-) CMV - Custo da Mercadoria Vendida", nivel: 0, valor: dre.cmv?.total ?? null, filhos: filhosCmv(dre) },
+    { id: "cmv", rotulo: "(-) CMV - Custo da Mercadoria Vendida", nivel: 0, valor: dre.cmv.total, filhos: filhosCmv(dre) },
     { id: "margem", rotulo: "= Margem de Contribuição", nivel: 0, valor: dre.margemContribuicao, destaque: true },
-    { id: "cmo", rotulo: "(-) CMO - Custo de Mão de Obra", nivel: 0, valor: dre.cmo.total, filhos: linhasContas(dre.cmo.contas, 1) },
+    { id: "cmo", rotulo: "(-) CMO - Custo de Mão de Obra", nivel: 0, valor: dre.cmo.total, filhos: linhasSubgrupos(dre.cmo.subgrupos, 1, 2) },
     {
       id: "custos_operacionais",
       rotulo: "(-) Custos Operacionais",

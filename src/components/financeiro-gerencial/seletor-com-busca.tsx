@@ -33,6 +33,9 @@ export function SeletorComBusca({
   const [aberto, setAberto] = useState(false);
   const [posicao, setPosicao] = useState<{ top: number; left: number; width: number } | null>(null);
   const [termo, setTermo] = useState("");
+  // Opção destacada pelo teclado (setas + Enter) - antes só o clique
+  // selecionava, e digitar a busca + Enter não escolhia nada (25/09).
+  const [destaque, setDestaque] = useState(0);
   const botaoRef = useRef<HTMLButtonElement>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const inputBuscaRef = useRef<HTMLInputElement>(null);
@@ -44,6 +47,28 @@ export function SeletorComBusca({
     const alvo = termo.trim().toLowerCase();
     return !alvo || o.label.toLowerCase().includes(alvo);
   });
+
+  function escolher(id: string) {
+    onChange(id);
+    setAberto(false);
+  }
+
+  function aoTeclar(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setDestaque((d) => Math.min(d + 1, Math.max(opcoesFiltradas.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setDestaque((d) => Math.max(d - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const alvo = opcoesFiltradas[Math.min(destaque, opcoesFiltradas.length - 1)];
+      if (alvo) escolher(alvo.id);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setAberto(false);
+    }
+  }
 
   function reposicionar() {
     const rect = botaoRef.current?.getBoundingClientRect();
@@ -88,6 +113,7 @@ export function SeletorComBusca({
         onClick={() => {
           setAberto((a) => !a);
           setTermo("");
+          setDestaque(0);
         }}
         className={`w-full truncate rounded-md border border-cinza-claro bg-branco px-3 py-2 text-left text-sm hover:border-ambar ${
           value === "" && !vazioLabel ? "text-cinza-medio" : "text-cinza"
@@ -120,7 +146,11 @@ export function SeletorComBusca({
                 ref={inputBuscaRef}
                 type="text"
                 value={termo}
-                onChange={(e) => setTermo(e.target.value)}
+                onChange={(e) => {
+                  setTermo(e.target.value);
+                  setDestaque(0);
+                }}
+                onKeyDown={aoTeclar}
                 placeholder="Buscar..."
                 className="w-full text-sm text-cinza outline-none"
               />
@@ -140,17 +170,15 @@ export function SeletorComBusca({
                   {vazioLabel}
                 </button>
               )}
-              {opcoesFiltradas.map((o) => (
+              {opcoesFiltradas.map((o, indice) => (
                 <button
                   key={o.id}
                   type="button"
-                  onClick={() => {
-                    onChange(o.id);
-                    setAberto(false);
-                  }}
+                  onClick={() => escolher(o.id)}
+                  onMouseEnter={() => setDestaque(indice)}
                   className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-off-white ${
                     o.id === value ? "bg-ambar/10 font-semibold text-azul-noite" : "text-cinza"
-                  }`}
+                  } ${indice === destaque ? "bg-off-white" : ""}`}
                 >
                   {o.label}
                 </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularDivisorMedia, montarDreAnual } from "./dre-anual";
+import { calcularDivisorMedia, calcularIndicadoresPeriodo, montarDreAnual } from "./dre-anual";
 import { calcularDre } from "./dre";
 import type { CategoriaFinanceira, EstoqueMensal, Lancamento } from "./tipos";
 
@@ -133,20 +133,22 @@ describe("montarDreAnual", () => {
     expect(margem.total).toBe(6000); // 10000 - 4000, calculável mesmo com set-dez sem estoque
     expect(resultadoOperacional.total).toBe(5000); // 6000 - 1000 de CMO
     expect(margem.valoresPorMes[8]).toBeNull(); // setembro (futuro) continua "-" na tabela
-    expect(anual.indicadores.pontoDeEquilibrio).not.toBe("nao_calculavel");
+    expect(anual.indicadores.pontoDeEquilibrio).not.toBe("sem_margem");
   });
 
-  it("Total/Média de uma linha dependente de CMV viram null se QUALQUER mês JÁ TRANSCORRIDO estiver com estoque pendente", () => {
-    const lancamentos = [lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 1000 })];
-    // só janeiro tem estoque cadastrado; fevereiro a agosto (todos já
-    // transcorridos, estamos em 25/08) ficam pendentes de verdade.
+  it("mês já transcorrido sem inventário não trava Total/Média da Margem (regra de 25/09: CMV = compras)", () => {
+    const lancamentos = [
+      lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 1000 }),
+      lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-02-10", valor: 500 }),
+      lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-02-10", valor: 200 }),
+    ];
     const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, { "2026-01": estoque("2026-01") });
     const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
 
     const margem = anual.linhas.find((l) => l.id === "margem")!;
-    expect(margem.valoresPorMes[0]).not.toBeNull(); // janeiro calculável isoladamente
-    expect(margem.total).toBeNull();
-    expect(margem.media).toBeNull();
+    expect(margem.valoresPorMes[1]).toBe(300); // fevereiro sem inventário: 500 - 200 de compras
+    expect(margem.total).toBe(1300);
+    expect(margem.media).toBe(162.5);
   });
 
   it("linha percentual usa Total/Média já agregados (nunca a média das 12 razões mensais)", () => {
@@ -204,13 +206,35 @@ describe("montarDreAnual", () => {
     );
     const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, estoquePorMes);
     const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
-    expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
+    expect(anual.indicadores.pontoDeEquilibrio).toBe("sem_margem");
   });
 
-  it("Ponto de Equilíbrio é 'Não calculável' quando a Margem do ano está pendente (mês já transcorrido sem estoque)", () => {
+  it("sem receita no período o Ponto de Equilíbrio mostra 'sem margem' (nunca vazio)", () => {
     const { dres, receitaVendasProdutosPorMes } = montarAno(2026, [], {});
     const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
-    expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
+    expect(anual.indicadores.pontoDeEquilibrio).toBe("sem_margem");
+  });
+
+  it("indicadores do topo seguem os meses marcados: 1 mês = aquele mês, vários = soma do período (25/09)", () => {
+    const lancamentos = [
+      lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-01-10", valor: 10000 }),
+      lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-01-10", valor: 4000 }),
+      lancamento({ categoriaId: "cmo_folha", dataCompetencia: "2026-01-10", valor: 1000 }),
+      lancamento({ categoriaId: "receita_salao", tipo: "receita", dataCompetencia: "2026-02-10", valor: 5000 }),
+      lancamento({ categoriaId: "cmo_folha", dataCompetencia: "2026-02-10", valor: 1000 }),
+    ];
+    const { dres, receitaVendasProdutosPorMes } = montarAno(2026, lancamentos, {});
+    const anual = montarDreAnual(dres, 2026, receitaVendasProdutosPorMes, hoje);
+
+    const janeiro = calcularIndicadoresPeriodo(anual.linhas, [0]);
+    expect(janeiro.resultadoEconomico).toBe(5000);
+    expect(janeiro.percentualResultadoEconomico).toBeCloseTo(0.5, 10);
+    expect(janeiro.pontoDeEquilibrio).toBe(1666.67); // 1000 / 0.6
+
+    const periodo = calcularIndicadoresPeriodo(anual.linhas, [0, 1]);
+    expect(periodo.resultadoEconomico).toBe(9000); // 5000 + 4000
+    expect(periodo.percentualResultadoEconomico).toBeCloseTo(0.6, 10); // 9000 / 15000
+    expect(periodo.pontoDeEquilibrio).toBe(2727.27); // 2000 / (11000/15000)
   });
 
   it("ano futuro (nenhum mês transcorrido) mostra Total/Média '-' em toda linha, inclusive Receita", () => {
@@ -220,7 +244,7 @@ describe("montarDreAnual", () => {
     expect(receita.total).toBeNull();
     expect(receita.media).toBeNull();
     expect(receita.valoresPorMes.every((v) => v === null)).toBe(true);
-    expect(anual.indicadores.pontoDeEquilibrio).toBe("nao_calculavel");
+    expect(anual.indicadores.pontoDeEquilibrio).toBe("sem_margem");
   });
 
   it("Saídas Não Operacionais e Resultado Econômico ficam na mesma tabela anual, logo após Resultado Líquido", () => {

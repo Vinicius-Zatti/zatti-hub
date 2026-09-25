@@ -505,11 +505,24 @@ export const editarLancamentoFinanceiroEntradaSchema = z
     // `20260825140000_...sql`) - nunca adiciona/remove linha, número e total
     // de parcelas continuam fixos.
     parcelas: z.array(parcelaEdicaoEntradaSchema).min(1).max(360),
-    // Lançamento de recorrência: true = aplica também às próximas ocorrências
-    // ainda sem baixa (pergunta "só este / este e os próximos", 25/09).
-    aplicarEmProximos: z.boolean().optional(),
   })
   .strict();
+
+// "Editar pagamento recorrente" (25/09): o modelo inteiro da recorrência.
+export const editarRecorrenciaEntradaSchema = z
+  .object({
+    recorrenciaId: idUuidSchema,
+    categoriaId: idUuidSchema,
+    descricao: textoObrigatorio(200),
+    contaFinanceiraId: idUuidSchema.nullable(),
+    valor: dinheiroPositivo,
+    dataCompetencia: dataIsoSchema,
+    dataPrimeiroVencimento: dataIsoSchema,
+    fim: fimRecorrenciaEntradaSchema,
+  })
+  .strict();
+
+export const obterRecorrenciaEntradaSchema = z.object({ recorrenciaId: idUuidSchema }).strict();
 
 export const excluirLancamentoEntradaSchema = z
   .object({

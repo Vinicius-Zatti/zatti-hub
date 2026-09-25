@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export function SubTabs({ items }: { items: { label: string; href: string }[] }) {
+/** `fixoNoTopo`: o menu de abas acompanha a rolagem da página (sticky),
+ * com o fundo da página por trás pra não sobrepor o conteúdo. */
+export function SubTabs({ items, fixoNoTopo = false }: { items: { label: string; href: string }[]; fixoNoTopo?: boolean }) {
   const pathname = usePathname();
 
   // Quando dois hrefs da lista são prefixo um do outro (ex: /estoque/contagem
@@ -19,7 +21,11 @@ export function SubTabs({ items }: { items: { label: string; href: string }[] })
     .sort((a, b) => b.href.split("?")[0].length - a.href.split("?")[0].length)[0]?.href;
 
   return (
-    <div className="flex gap-1 overflow-x-auto border-b border-cinza-claro">
+    <div
+      className={`flex gap-1 overflow-x-auto border-b border-cinza-claro ${
+        fixoNoTopo ? "sticky top-0 z-30 -mx-3 bg-off-white px-3 pt-2 sm:-mx-6 sm:px-6" : ""
+      }`}
+    >
       {items.map((item) => {
         const active = item.href === hrefAtivo;
         return (

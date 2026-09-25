@@ -19,12 +19,42 @@ export type LinhaDreAnual = {
 export type IndicadoresDre = {
   resultadoEconomico: number | null;
   percentualResultadoEconomico: number | null;
-  pontoDeEquilibrio: number | "nao_calculavel";
+  /** "sem_margem" quando a margem de contribuição do período é zero ou
+   * negativa (ou não há receita pra calcular o percentual). */
+  pontoDeEquilibrio: number | "sem_margem";
 };
+
+/** Indicadores do topo da DRE sobre os meses marcados em Colunas (pedido de
+ * 25/09): um mês = aquele mês, vários = a soma deles. Percentual e Ponto de
+ * Equilíbrio sempre sobre essa soma, nunca média de razões. Ponto de
+ * Equilíbrio = custos fixos (CMO + Custos Operacionais) / % margem de
+ * contribuição. Mês futuro (valor null) nunca entra na soma. Sem nenhum mês
+ * informado, vale o ano inteiro já transcorrido. */
+export function calcularIndicadoresPeriodo(linhas: LinhaDreAnual[], indicesMeses: number[]): IndicadoresDre {
+  const indices = indicesMeses.length > 0 ? indicesMeses : Array.from({ length: 12 }, (_, i) => i);
+  const soma = (id: string): number | null => {
+    const linha = linhas.find((l) => l.id === id);
+    if (!linha) return null;
+    const valores = indices.map((i) => linha.valoresPorMes[i]).filter((v): v is number => v !== null && v !== undefined);
+    return valores.length === 0 ? null : somarValores(valores);
+  };
+  const receita = soma("receita_bruta");
+  const resultadoEconomico = soma("resultado_economico");
+  const margem = soma("margem");
+  const custosFixos = somarValores([soma("cmo") ?? 0, soma("custos_operacionais") ?? 0]);
+  const percentualMargem = dividirRazao(margem, receita);
+  return {
+    resultadoEconomico,
+    percentualResultadoEconomico: dividirRazao(resultadoEconomico, receita),
+    pontoDeEquilibrio: percentualMargem === null || percentualMargem <= 0 ? "sem_margem" : arredondar2(custosFixos / percentualMargem),
+  };
+}
 
 export type DreAnual = {
   ano: number;
   divisorMedia: number | null;
+  /** Mês (0-11) sem inventário cadastrado - CMV calculado só com as compras. */
+  semInventarioPorMes: boolean[];
   linhas: LinhaDreAnual[];
   indicadores: IndicadoresDre;
 };
@@ -177,26 +207,11 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProd
     resultado_liquido: receitaBruta,
   });
 
-  const cmo = absoluto.find((l) => l.id === "cmo")!;
-  const custosOperacionais = absoluto.find((l) => l.id === "custos_operacionais")!;
-  const margem = absoluto.find((l) => l.id === "margem")!;
-  const resultadoEconomico = absoluto.find((l) => l.id === "resultado_economico")!;
-
-  const custosFixosTotal = somarOuNulo([cmo.total, custosOperacionais.total]);
-  const percentualMargemTotal = dividirRazao(margem.total, receitaBruta.total);
-  const pontoDeEquilibrio: number | "nao_calculavel" =
-    percentualMargemTotal === null || percentualMargemTotal <= 0 || custosFixosTotal === null
-      ? "nao_calculavel"
-      : arredondar2(custosFixosTotal / percentualMargemTotal);
-
   return {
     ano,
     divisorMedia,
+    semInventarioPorMes: dresPorMes.map((dre) => dre.cmv.semInventario),
     linhas,
-    indicadores: {
-      resultadoEconomico: resultadoEconomico.total,
-      percentualResultadoEconomico: dividirRazao(resultadoEconomico.total, receitaBruta.total),
-      pontoDeEquilibrio,
-    },
+    indicadores: calcularIndicadoresPeriodo(absoluto, Array.from({ length: mesesValidos }, (_, i) => i)),
   };
 }
