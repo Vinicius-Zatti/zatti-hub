@@ -8,7 +8,7 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
   cmc: "CMC (Custo da Mercadoria Comprada) = soma das compras lançadas nas contas do CMC no mês de competência (mercadorias, bebidas, proteínas e embalagens).",
   cmv:
     "CMV (Custo da Mercadoria Vendida) = Estoque inicial (mercadorias + embalagens) + CMC - Estoque final (mercadorias + embalagens). " +
-    "O estoque inicial é o informado no mês; se não houver, o estoque final do mês anterior. Sem o estoque final de mercadorias do mês, o CMV fica provisório: estoque inicial + CMC (estoque de embalagens zero é aceito).",
+    "O estoque inicial é o informado no mês (senão, o estoque final do mês anterior); o estoque final é o informado no mês (senão, o estoque inicial do mês seguinte). Sem estoque final de mercadorias por nenhuma das duas fontes, o CMV fica provisório: estoque inicial + CMC (estoque de embalagens zero é aceito).",
   cmv_percentual:
     "% CMV = CMV ÷ Venda de Produtos, quando o estoque final e a Venda de Produtos do mês estão informados. " +
     "Enquanto não estão, aparece o % CMC provisório = CMC ÷ (Receita Operacional Bruta - receitas de entrega).",

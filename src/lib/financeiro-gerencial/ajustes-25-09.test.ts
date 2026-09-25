@@ -127,7 +127,9 @@ describe("aviso único do que falta preencher (25/09)", () => {
       caminhoCadastro: "Dados Complementares da DRE",
     });
     expect(avisos).toHaveLength(1);
-    expect(avisos[0].titulo).toBe("Ainda falta colocar a Venda de Produtos de agosto de 2026; o estoque final e a Venda de Produtos de setembro de 2026");
+    expect(avisos[0].titulo).toBe(
+      "Ainda falta colocar a Venda de Produtos de agosto; o estoque final de setembro (ou o estoque inicial de outubro) e a Venda de Produtos de setembro de 2026",
+    );
     expect(avisos[0].texto).toContain("Preencha em Dados Complementares da DRE.");
   });
 

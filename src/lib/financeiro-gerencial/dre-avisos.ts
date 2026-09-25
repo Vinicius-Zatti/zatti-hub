@@ -29,12 +29,6 @@ export function mesesJaIniciados(ano: number, hoje: Date = new Date()): number {
   return hoje.getMonth() + 1;
 }
 
-function listarMeses(indices: number[], ano: number): string {
-  const nomes = indices.map((i) => MESES_POR_EXTENSO[i]);
-  const lista = nomes.length <= 1 ? nomes.join("") : `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
-  return `${lista} de ${ano}`;
-}
-
 /** Meses considerados = os marcados em Colunas que já começaram (mês futuro
  * não tem dado a cobrar). Sem mês marcado, vale o ano já transcorrido. */
 export function mesesConsiderados(indicesMarcados: number[], mesesTranscorridos: number): number[] {
@@ -52,15 +46,21 @@ export function avisosDre(params: {
   const { ano, meses, cmvProvisorio, semReceitaVendasProdutos, caminhoCadastro } = params;
   const avisos: AvisoDre[] = [];
 
-  // Aviso único (25/09): o que falta preencher, agrupado por mês, com o
-  // efeito em uma frase e onde preencher.
-  const grupos = new Map<string, number[]>();
-  for (const i of meses) {
-    const falta = [cmvProvisorio[i] ? "o estoque final" : null, semReceitaVendasProdutos[i] ? "a Venda de Produtos" : null].filter(Boolean).join(" e ");
-    if (falta) grupos.set(falta, [...(grupos.get(falta) ?? []), i]);
-  }
-  if (grupos.size > 0) {
-    const partes = Array.from(grupos.entries()).map(([falta, indices]) => `${falta} de ${listarMeses(indices, ano)}`);
+  // Aviso único (25/09): o que falta preencher em cada mês, com o efeito em
+  // uma frase e onde preencher. Estoque final pode vir do estoque inicial do
+  // mês seguinte (regra da planilha), por isso o aviso cita as duas fontes.
+  const partes = meses
+    .map((i) => {
+      const mes = MESES_POR_EXTENSO[i];
+      const seguinte = i === 11 ? `janeiro de ${ano + 1}` : MESES_POR_EXTENSO[i + 1];
+      const falta = [
+        cmvProvisorio[i] ? `o estoque final de ${mes} (ou o estoque inicial de ${seguinte})` : null,
+        semReceitaVendasProdutos[i] ? `a Venda de Produtos de ${mes}` : null,
+      ].filter(Boolean);
+      return falta.join(" e ");
+    })
+    .filter((p) => p !== "");
+  if (partes.length > 0) {
     const faltaEstoque = meses.some((i) => cmvProvisorio[i]);
     const faltaVenda = meses.some((i) => semReceitaVendasProdutos[i]);
     const efeito = [
@@ -69,7 +69,7 @@ export function avisosDre(params: {
     ].filter(Boolean);
     avisos.push({
       id: "falta_preencher",
-      titulo: `Ainda falta colocar ${partes.join("; ")}`,
+      titulo: `Ainda falta colocar ${partes.join("; ")} de ${ano}`,
       texto: `${efeito.join(", e ").replace(/^./, (c) => c.toUpperCase())}. Preencha em ${caminhoCadastro}.`,
     });
   }

@@ -120,6 +120,26 @@ describe("calcularDre", () => {
     expect(dre.cmv.total).toBe(1500); // 1000 + 200 + 300
   });
 
+  it("estoque final vem do estoque inicial informado no mês seguinte (regra da planilha) e fecha o CMV", () => {
+    const lancamentos = [lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-09-01", valor: 300 })];
+    const setembro = { ...ESTOQUE_AGOSTO, competencia: "2026-09-01", estoqueFinalMercadorias: 0, estoqueFinalEmbalagens: 0 };
+    const outubro = { ...ESTOQUE_AGOSTO, competencia: "2026-10-01", estoqueInicialMercadorias: 700, estoqueInicialEmbalagens: 100 };
+    const dre = calcularDre({ competencia: "2026-09", lancamentos, categorias: CATEGORIAS, estoqueMensal: setembro, estoqueMesSeguinte: outubro });
+    expect(dre.cmv.provisorio).toBe(false);
+    expect(dre.cmv.estoqueFinalMercadorias).toBe(700);
+    expect(dre.cmv.total).toBe(700); // 1000 + 200 + 300 - 700 - 100
+  });
+
+  it("setembro sem estoque final e sem estoque inicial de outubro fica provisório", () => {
+    const lancamentos = [lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-09-01", valor: 300 })];
+    const setembro = { ...ESTOQUE_AGOSTO, competencia: "2026-09-01", estoqueFinalMercadorias: 0, estoqueFinalEmbalagens: 0 };
+    const outubroVazio = { ...ESTOQUE_AGOSTO, competencia: "2026-10-01", estoqueInicialMercadorias: 0, estoqueInicialEmbalagens: 0 };
+    const dre = calcularDre({ competencia: "2026-09", lancamentos, categorias: CATEGORIAS, estoqueMensal: setembro, estoqueMesSeguinte: outubroVazio });
+    expect(dre.cmv.provisorio).toBe(true);
+    expect(dre.cmv.total).toBe(1500); // 1000 + 200 + 300
+    expect(calcularDre({ competencia: "2026-09", lancamentos, categorias: CATEGORIAS, estoqueMensal: setembro }).cmv.provisorio).toBe(true);
+  });
+
   it("CMV fecha com o estoque final de mercadorias informado; embalagens zero é valor real", () => {
     const lancamentos = [lancamento({ categoriaId: "cmc_mercadorias", dataCompetencia: "2026-08-01", valor: 300 })];
     const semEmbalagens = { ...ESTOQUE_AGOSTO, estoqueInicialEmbalagens: 0, estoqueFinalEmbalagens: 0 };

@@ -161,8 +161,11 @@ function informado(v: number | undefined | null): v is number {
 /** CMV (regra final de Vinícius, 25/09):
  * - Estoque inicial de cada tipo: o informado no mês; senão o estoque final
  *   do mês anterior; senão zero.
- * - Fechado (estoque final de MERCADORIAS informado; embalagens zero é
- *   aceito como valor real, muita operação não controla embalagem):
+ * - Estoque final de cada tipo (regra da planilha: o estoque final de um mês
+ *   é o estoque inicial do mês seguinte): o informado no mês; senão o
+ *   estoque inicial informado no mês seguinte; senão não informado.
+ * - Fechado (estoque final de MERCADORIAS por qualquer das duas fontes;
+ *   embalagens zero é aceito como valor real):
  *   CMV = EI Merc + EI Emb + CMC - EF Merc - EF Emb.
  * - Provisório (falta estoque final): CMV = EI Merc + EI Emb + CMC. */
 function calcularCmv(
@@ -170,6 +173,7 @@ function calcularCmv(
   totais: Map<string, number>,
   estoqueDoMes: EstoqueMensal | null,
   estoqueMesAnterior: EstoqueMensal | null,
+  estoqueMesSeguinte: EstoqueMensal | null,
 ): CmvCalculado {
   const comprasMercadorias = somarValores(contasDoPapel(categorias, "cmc_mercadorias", totais).map((c) => c.valor));
   const comprasEmbalagens = somarValores(contasDoPapel(categorias, "cmc_embalagens", totais).map((c) => c.valor));
@@ -180,9 +184,12 @@ function calcularCmv(
   const estoqueInicialMercadorias = inicial(estoqueDoMes?.estoqueInicialMercadorias, estoqueMesAnterior?.estoqueFinalMercadorias);
   const estoqueInicialEmbalagens = inicial(estoqueDoMes?.estoqueInicialEmbalagens, estoqueMesAnterior?.estoqueFinalEmbalagens);
 
-  const fechado = informado(estoqueDoMes?.estoqueFinalMercadorias);
-  const estoqueFinalMercadorias = fechado ? estoqueDoMes!.estoqueFinalMercadorias : 0;
-  const estoqueFinalEmbalagens = fechado ? estoqueDoMes!.estoqueFinalEmbalagens : 0;
+  const final = (doMes: number | undefined, inicialSeguinte: number | undefined) =>
+    informado(doMes) ? doMes : informado(inicialSeguinte) ? inicialSeguinte : null;
+  const finalMercadorias = final(estoqueDoMes?.estoqueFinalMercadorias, estoqueMesSeguinte?.estoqueInicialMercadorias);
+  const fechado = finalMercadorias !== null;
+  const estoqueFinalMercadorias = finalMercadorias ?? 0;
+  const estoqueFinalEmbalagens = fechado ? (final(estoqueDoMes?.estoqueFinalEmbalagens, estoqueMesSeguinte?.estoqueInicialEmbalagens) ?? 0) : 0;
 
   return {
     provisorio: !fechado,
@@ -208,11 +215,14 @@ export function calcularDre(params: {
   /** Estoque do mês anterior - o estoque final dele é o estoque inicial
    * deste mês quando o inicial não foi informado. */
   estoqueMesAnterior?: EstoqueMensal | null;
+  /** Estoque do mês seguinte - o estoque inicial dele é o estoque final deste
+   * mês quando o final não foi informado (regra da planilha). */
+  estoqueMesSeguinte?: EstoqueMensal | null;
   /** Valor do mês das 3 contas de provisão (id da categoria -> valor), de
    * `valoresDreProvisao` em provisoes.ts. Ausente = 0. */
   valoresProvisao?: Map<string, number>;
 }): Dre {
-  const { competencia, lancamentos, categorias, estoqueMensal, estoqueMesAnterior = null, valoresProvisao } = params;
+  const { competencia, lancamentos, categorias, estoqueMensal, estoqueMesAnterior = null, estoqueMesSeguinte = null, valoresProvisao } = params;
   const totais = somarPorCategoria(lancamentos, competencia);
   for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
 
@@ -224,7 +234,7 @@ export function calcularDre(params: {
   const subgruposDeducoes = subgruposDaDeducoes(categorias, totais);
   const deducoes = { subgrupos: subgruposDeducoes, total: somarValores(subgruposDeducoes.map((s) => s.total)) };
 
-  const cmv = calcularCmv(categorias, totais, estoqueMensal, estoqueMesAnterior);
+  const cmv = calcularCmv(categorias, totais, estoqueMensal, estoqueMesAnterior, estoqueMesSeguinte);
   const papeisCmc: PapelDre[] = ["cmc_mercadorias", "cmc_embalagens"];
   const contasCmc = categorias
     .filter((c) => c.nivel === "conta" && c.papelDre && papeisCmc.includes(c.papelDre))

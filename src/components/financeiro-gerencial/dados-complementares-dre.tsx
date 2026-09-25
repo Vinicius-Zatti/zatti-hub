@@ -116,8 +116,8 @@ export function DadosComplementaresDre({
         <p className="text-sm text-cinza-medio">
           Venda de Produtos: valor dos produtos vendidos, produzidos ou entregues no mês, com ou sem entrada de dinheiro (inclui voucher,
           cortesia, bonificação e produção de conteúdo). É só a base do % CMV (CMV ÷ Venda de Produtos): não soma na Receita
-          Operacional Bruta e não gera lançamento. Estoque inicial vazio usa o estoque final do mês anterior; o estoque final de mercadorias fecha
-          o CMV do mês (embalagens, se houver).
+          Operacional Bruta e não gera lançamento. O estoque final de um mês é o estoque inicial do mês seguinte: basta informar um dos dois
+          (embalagens, se houver) para fechar o CMV do mês.
         </p>
       </div>
       <TabelaRolavel ariaLabel="Tabela de dados complementares da DRE">

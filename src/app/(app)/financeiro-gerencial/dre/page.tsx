@@ -10,6 +10,11 @@ import type { EstoqueMensal } from "@/lib/financeiro-gerencial/tipos";
 export const dynamic = "force-dynamic";
 
 /** "2026-01" -> "2025-12" (estoque final do mês anterior vira o inicial). */
+function competenciaSeguinte(competencia: string): string {
+  const [ano, mes] = competencia.split("-").map(Number);
+  return mes === 12 ? `${ano + 1}-01` : `${ano}-${String(mes + 1).padStart(2, "0")}`;
+}
+
 function competenciaAnterior(competencia: string): string {
   const [ano, mes] = competencia.split("-").map(Number);
   return mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
@@ -55,6 +60,8 @@ export default async function DrePage({ searchParams }: { searchParams: Promise<
       categorias,
       estoqueMensal: estoquePorCompetencia.get(competencia) ?? null,
       estoqueMesAnterior: estoquePorCompetencia.get(competenciaAnterior(competencia)) ?? null,
+      // Dezembro olha janeiro do ano seguinte (a carga de estoque é o histórico inteiro da unidade).
+      estoqueMesSeguinte: estoquePorCompetencia.get(competenciaSeguinte(competencia)) ?? null,
       valoresProvisao: valoresDreProvisao(provisoes.get(competencia), categorias),
     });
   });
