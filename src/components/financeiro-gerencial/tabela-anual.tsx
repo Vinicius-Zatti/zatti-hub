@@ -251,7 +251,20 @@ export function TabelaAnualBloco({
   );
 }
 
-export function CartaoIndicador({ titulo, valor, detalhe, dica }: { titulo: string; valor: string; detalhe?: string; dica?: string }) {
+export function CartaoIndicador({
+  titulo,
+  valor,
+  detalhe,
+  dica,
+  children,
+}: {
+  titulo: string;
+  valor: string;
+  detalhe?: string;
+  dica?: string;
+  /** Conteúdo extra abaixo do valor (ex: comparativos dos quadros da DRE). */
+  children?: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-cinza-claro bg-branco p-3">
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cinza-medio">
@@ -260,6 +273,7 @@ export function CartaoIndicador({ titulo, valor, detalhe, dica }: { titulo: stri
       </div>
       <div className="mt-1 font-mono text-lg font-bold text-azul-noite">{valor}</div>
       {detalhe && <div className="mt-0.5 text-xs text-cinza-medio">{detalhe}</div>}
+      {children}
     </div>
   );
 }

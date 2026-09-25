@@ -17,9 +17,10 @@ import { AlternadorVisao } from "@/components/financeiro-gerencial/fluxo-caixa-v
 import type { VisaoDre } from "@/lib/financeiro-gerencial/dre";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
-import { calcularIndicadoresPeriodo, MESES_ABREVIADOS, type DreAnual, type IndicadoresDre } from "@/lib/financeiro-gerencial/dre-anual";
+import { MESES_ABREVIADOS, type DreAnual } from "@/lib/financeiro-gerencial/dre-anual";
+import { mesDoResumo, montarQuadrosDre, type Quadro, type ValorQuadro } from "@/lib/financeiro-gerencial/quadros-dre";
 import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
-import { avisosDre, explicacaoIndicadores, mesesConsiderados, mesesJaIniciados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
+import { avisosDre, mesesConsiderados, mesesJaIniciados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
 
 // Pagamento nunca define o realizado (pago/aberto/vencido é estado de caixa);
@@ -32,8 +33,58 @@ const EXPLICACAO_VISAO_DRE: Record<VisaoDre, string> = {
 
 const TITULO_VISAO: Record<VisaoDre, string> = { realizada: "Realizada", projetada: "Projetada", completa: "Completa" };
 
-function formatarPontoDeEquilibrio(v: number | "sem_margem"): string {
-  return v === "sem_margem" ? "Sem margem" : formatarNumero(v);
+function formatarValorQuadro(v: ValorQuadro | null): string {
+  if (!v) return "-";
+  if (v.semMargem) return "Sem margem";
+  return formatarNumero(v.valor);
+}
+
+function formatarDiferenca(atual: number | null, referencia: number | null): string {
+  if (atual === null || referencia === null) return "";
+  const diferenca = Math.round((atual - referencia) * 100) / 100;
+  return ` (${diferenca >= 0 ? "+" : ""}${formatarNumero(diferenca)})`;
+}
+
+/** Um quadro do topo: valor e % do mês do resumo, e abaixo o comparativo com
+ * o mês anterior e com a média do trimestre anterior (valor e diferença). */
+function QuadroResumo({
+  titulo,
+  quadro,
+  mes,
+  mesesTrimestre,
+  rotuloPercentual,
+  dica,
+}: {
+  titulo: string;
+  quadro: Quadro;
+  mes: string;
+  mesesTrimestre: number[];
+  rotuloPercentual: string;
+  dica: string;
+}) {
+  const { atual } = quadro;
+  const detalhe = atual.semMargem
+    ? `${mes}: margem de contribuição zero ou negativa, sem ponto de equilíbrio.`
+    : atual.valor === null
+      ? `${mes}: sem lançamentos no mês.`
+      : `${formatarPercentual(atual.percentual)} ${rotuloPercentual} - ${mes}`;
+  const rotuloTrimestre = mesesTrimestre.length > 0 ? `Média ${mesesTrimestre.map((i) => MESES_ABREVIADOS[i]).join("/")}` : "Média do trimestre";
+  return (
+    <CartaoIndicador titulo={titulo} valor={formatarValorQuadro(atual)} detalhe={detalhe} dica={dica}>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-t border-cinza-claro pt-2 text-xs text-cinza-medio">
+        <dt>Mês anterior</dt>
+        <dd className="text-right font-mono">
+          {formatarValorQuadro(quadro.mesAnterior)}
+          {formatarDiferenca(atual.valor, quadro.mesAnterior?.valor ?? null)}
+        </dd>
+        <dt>{rotuloTrimestre}</dt>
+        <dd className="text-right font-mono">
+          {formatarValorQuadro(quadro.mediaTrimestre)}
+          {formatarDiferenca(atual.valor, quadro.mediaTrimestre?.valor ?? null)}
+        </dd>
+      </dl>
+    </CartaoIndicador>
+  );
 }
 
 /** Aviso de pendência - mesmo visual de aviso âmbar já usado no app
@@ -91,23 +142,19 @@ export function DreVisualizacao({
   const mesesMarcados = MESES_ABREVIADOS.map((_, indice) => indice).filter((indice) => visiveis.has(`mes_${indice}`));
   const nomeCompleto = mesesMarcados.length <= 1;
 
-  // Indicadores do topo e avisos seguem os meses marcados em Colunas que já
-  // começaram (25/09): um mês = aquele mês, vários = a soma do período.
-  const meses = mesesConsiderados(mesesMarcados, dreAnual.divisorMedia ?? 0);
-  const indicadores: IndicadoresDre =
-    meses.length > 0
-      ? calcularIndicadoresPeriodo(dreAnual.linhas, meses)
-      : { resultadoEconomico: null, percentualResultadoEconomico: null, pontoDeEquilibrio: "sem_margem" };
-  const explicacoes = explicacaoIndicadores(indicadores, meses);
+  // Quadros do topo (25/09): sempre o resumo de UM mês de competência (o mês
+  // corrente; em outro ano, o último mês com receita), independente das
+  // Colunas, com comparativo contra o mês anterior e a média do trimestre.
+  const mesResumo = mesDoResumo(ano, dreAnual.linhas);
+  const quadros = montarQuadrosDre(dreAnual.linhas, mesResumo);
+  const nomeMesResumo = `${MESES_POR_EXTENSO[mesResumo]} de ${ano}`;
   // Inventário e Venda de Produtos só são cobrados de mês que já começou
-  // (Projetada/Completa mostram meses futuros, que ainda não têm como ter).
-  const mesesComInventarioCobravel = mesesConsiderados(mesesMarcados, mesesJaIniciados(ano));
-  const rotuloPeriodo =
-    meses.length === 0
-      ? "Nenhum mês marcado já começou"
-      : meses.length === 1
-        ? `${MESES_POR_EXTENSO[meses[0]]} de ${ano}`
-        : `Soma de ${meses.length} meses (${meses.map((i) => MESES_ABREVIADOS[i]).join(", ")})`;
+  // (Projetada/Completa mostram meses futuros, que ainda não têm como ter);
+  // o mês do resumo sempre entra.
+  const mesesIniciados = mesesJaIniciados(ano);
+  const mesesComInventarioCobravel = Array.from(
+    new Set([...mesesConsiderados(mesesMarcados, mesesIniciados), ...(mesResumo < mesesIniciados ? [mesResumo] : [])]),
+  ).sort((a, b) => a - b);
   const avisos = avisosDre({
     ano,
     meses: mesesComInventarioCobravel,
@@ -170,22 +217,28 @@ export function DreVisualizacao({
       ))}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <CartaoIndicador
+        <QuadroResumo
+          titulo="Resultado Líquido do Exercício"
+          quadro={quadros.resultadoLiquido}
+          mes={nomeMesResumo}
+          mesesTrimestre={quadros.mesesTrimestre}
+          rotuloPercentual="da Receita Operacional Bruta"
+          dica={EXPLICACAO_CALCULO.quadro_resultado_liquido}
+        />
+        <QuadroResumo
           titulo="Resultado Econômico"
-          valor={formatarNumero(indicadores.resultadoEconomico)}
-          detalhe={explicacoes.resultadoEconomico ?? rotuloPeriodo}
+          quadro={quadros.resultadoEconomico}
+          mes={nomeMesResumo}
+          mesesTrimestre={quadros.mesesTrimestre}
+          rotuloPercentual="da Receita Operacional Bruta"
           dica={EXPLICACAO_CALCULO.quadro_resultado_economico}
         />
-        <CartaoIndicador
-          titulo="% Resultado Econômico"
-          valor={formatarPercentual(indicadores.percentualResultadoEconomico)}
-          detalhe={explicacoes.percentual ?? rotuloPeriodo}
-          dica={EXPLICACAO_CALCULO.quadro_percentual_resultado_economico}
-        />
-        <CartaoIndicador
+        <QuadroResumo
           titulo="Ponto de Equilíbrio"
-          valor={formatarPontoDeEquilibrio(indicadores.pontoDeEquilibrio)}
-          detalhe={explicacoes.pontoDeEquilibrio ?? rotuloPeriodo}
+          quadro={quadros.pontoDeEquilibrio}
+          mes={nomeMesResumo}
+          mesesTrimestre={quadros.mesesTrimestre}
+          rotuloPercentual="do ponto de equilíbrio coberto pela receita"
           dica={EXPLICACAO_CALCULO.quadro_ponto_equilibrio}
         />
       </div>

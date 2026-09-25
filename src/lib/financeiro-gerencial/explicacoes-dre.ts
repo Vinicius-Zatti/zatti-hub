@@ -22,10 +22,15 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
   saidas_percentual: "% Saídas não Operacionais = Saídas não Operacionais ÷ Receita Operacional Bruta.",
   resultado_economico: "Resultado Econômico = Resultado Líquido do Exercício - Saídas não Operacionais (retiradas, empréstimos, investimentos).",
   resultado_economico_percentual: "% Resultado Econômico = Resultado Econômico ÷ Receita Operacional Bruta.",
-  quadro_resultado_economico: "Soma do Resultado Econômico dos meses marcados em Colunas (um mês marcado = aquele mês).",
-  quadro_percentual_resultado_economico: "Resultado Econômico dos meses marcados ÷ Receita Operacional Bruta dos mesmos meses.",
+  quadro_resultado_liquido:
+    "Resultado Líquido do Exercício do mês de competência (Resultado Operacional Bruto - Custos Fixos). % = Resultado Líquido ÷ Receita Operacional Bruta do mês. " +
+    "Abaixo: o mês anterior e a média dos três meses anteriores, com a diferença para o mês atual.",
+  quadro_resultado_economico:
+    "Resultado Econômico do mês de competência (Resultado Líquido do Exercício - Saídas não Operacionais). % = Resultado Econômico ÷ Receita Operacional Bruta do mês. " +
+    "Abaixo: o mês anterior e a média dos três meses anteriores, com a diferença para o mês atual.",
   quadro_ponto_equilibrio:
-    "Ponto de Equilíbrio = Custos Fixos ÷ % Margem de Contribuição, sobre os meses marcados. É a receita necessária para cobrir os custos fixos. Com margem zero ou negativa não existe ponto de equilíbrio.",
+    "Ponto de Equilíbrio do mês = Custos Fixos ÷ % Margem de Contribuição: a receita necessária para cobrir os custos fixos. " +
+    "% = Receita Operacional Bruta do mês ÷ Ponto de Equilíbrio (100% = empatou; acima de 100% = passou do ponto). Com margem zero ou negativa não existe ponto de equilíbrio.",
   venda_produtos:
     "Venda de Produtos = valor dos produtos vendidos, produzidos ou entregues no mês, com ou sem entrada de dinheiro (inclui voucher, cortesia, bonificação e produção de conteúdo). Preenchido à mão; é só a base do % CMV (CMV ÷ Venda de Produtos) e não soma na receita.",
   produtos_sem_receita:
