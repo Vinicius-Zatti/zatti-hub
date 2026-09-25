@@ -22,11 +22,14 @@ export function CampoNumero({
   const [edicao, setEdicao] = useState<string | null>(null);
 
   function aoFocar() {
+    if (edicao !== null) return; // texto não numérico mantido do blur anterior
     setEdicao(value === null ? "" : String(value).replace(".", ","));
   }
 
   function interpretar(texto: string): number | null {
-    const limpo = texto.trim();
+    // "R$ 1.500,00" colado ou digitado vale 1500 (antes virava NaN e o campo
+    // aparecia vazio ao sair dele).
+    const limpo = texto.replace(/R\$/gi, "").replace(/\s/g, "");
     if (limpo === "") {
       return null;
     }
@@ -42,6 +45,9 @@ export function CampoNumero({
   }
 
   function aoDesfocar() {
+    // Texto que não virou número fica na tela como foi digitado (campo segue
+    // marcado como vazio) - nunca apaga o que a pessoa escreveu.
+    if (edicao !== null && edicao.trim() !== "" && interpretar(edicao) === null) return;
     setEdicao(null);
   }
 

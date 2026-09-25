@@ -13,8 +13,9 @@ function lerColunasSalvas(idsValidos: string[]): Set<string> | null {
     if (!bruto) return null;
     const lista = JSON.parse(bruto) as unknown;
     if (!Array.isArray(lista)) return null;
+    // Lista vazia salva de propósito ("Desmarcar todos") continua vazia.
     const validas = lista.filter((id): id is string => typeof id === "string" && idsValidos.includes(id));
-    return validas.length > 0 ? new Set(validas) : null;
+    return new Set(validas);
   } catch {
     return null;
   }
@@ -57,8 +58,8 @@ function definirColunas(colunas: Set<string>) {
 /** Quais colunas numéricas (Média/Total/meses) da DRE ficam visíveis - só
  * muda a visualização, nunca o cálculo (os totais continuam somando os 12
  * meses reais por trás). Preferência salva no navegador da pessoa (nunca
- * sincronizada entre dispositivos/pessoas). Nunca some a última coluna
- * visível. */
+ * sincronizada entre dispositivos/pessoas). "Desmarcar todos" (pedido de
+ * 25/09) pode deixar só a coluna de nomes, pra depois marcar o que quiser. */
 export function useColunasVisiveis(colunas: ColunaDre[]) {
   const idsValidos = colunas.map((c) => c.id);
   const visiveis = useSyncExternalStore(
@@ -68,7 +69,6 @@ export function useColunasVisiveis(colunas: ColunaDre[]) {
   );
 
   function alternar(id: string) {
-    if (visiveis.has(id) && visiveis.size === 1) return; // nunca zero colunas visíveis
     const proximo = new Set(visiveis);
     if (proximo.has(id)) proximo.delete(id);
     else proximo.add(id);
@@ -79,7 +79,11 @@ export function useColunasVisiveis(colunas: ColunaDre[]) {
     definirColunas(new Set(idsValidos));
   }
 
-  return { visiveis, alternar, mostrarTodas };
+  function desmarcarTodas() {
+    definirColunas(new Set());
+  }
+
+  return { visiveis, alternar, mostrarTodas, desmarcarTodas };
 }
 
 function IconeColunas() {
@@ -101,11 +105,13 @@ export function BotaoColunasDre({
   visiveis,
   onAlternar,
   onMostrarTodas,
+  onDesmarcarTodas,
 }: {
   colunas: ColunaDre[];
   visiveis: Set<string>;
   onAlternar: (id: string) => void;
   onMostrarTodas: () => void;
+  onDesmarcarTodas: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [posicao, setPosicao] = useState<{ top: number; left: number } | null>(null);
@@ -165,27 +171,30 @@ export function BotaoColunasDre({
             <div className="max-h-72 overflow-y-auto p-2">
               {colunas.map((coluna) => {
                 const marcada = visiveis.has(coluna.id);
-                const ultimaVisivel = marcada && visiveis.size === 1;
                 return (
-                  <label
-                    key={coluna.id}
-                    className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
-                      ultimaVisivel ? "cursor-not-allowed text-cinza-medio" : "cursor-pointer text-cinza hover:bg-off-white"
-                    }`}
-                  >
-                    <input type="checkbox" checked={marcada} disabled={ultimaVisivel} onChange={() => onAlternar(coluna.id)} className="h-3.5 w-3.5" />
+                  <label key={coluna.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-cinza hover:bg-off-white">
+                    <input type="checkbox" checked={marcada} onChange={() => onAlternar(coluna.id)} className="h-3.5 w-3.5" />
                     {coluna.rotulo}
                   </label>
                 );
               })}
             </div>
-            <button
-              type="button"
-              onClick={onMostrarTodas}
-              className="block w-full whitespace-nowrap border-t border-cinza-claro px-3 py-1.5 text-left text-xs font-semibold text-ambar hover:bg-ambar/10"
-            >
-              Mostrar todas
-            </button>
+            <div className="flex border-t border-cinza-claro">
+              <button
+                type="button"
+                onClick={onMostrarTodas}
+                className="flex-1 whitespace-nowrap px-3 py-1.5 text-left text-xs font-semibold text-ambar hover:bg-ambar/10"
+              >
+                Mostrar todas
+              </button>
+              <button
+                type="button"
+                onClick={onDesmarcarTodas}
+                className="flex-1 whitespace-nowrap border-l border-cinza-claro px-3 py-1.5 text-left text-xs font-semibold text-ambar hover:bg-ambar/10"
+              >
+                Desmarcar todas
+              </button>
+            </div>
           </div>,
           document.body,
         )}

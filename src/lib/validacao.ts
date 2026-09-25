@@ -477,6 +477,9 @@ export const recorrenciaFinanceiraEntradaSchema = z
     valor: dinheiroPositivo,
     diaVencimento: z.number().int().min(1).max(31),
     dataInicio: dataIsoSchema,
+    // Competência da 1ª ocorrência (avança mês a mês a partir dela). Ausente
+    // = competência igual ao vencimento, como era antes de 25/09.
+    dataCompetencia: dataIsoSchema.optional(),
     fim: fimRecorrenciaEntradaSchema,
   })
   .strict();
@@ -502,6 +505,9 @@ export const editarLancamentoFinanceiroEntradaSchema = z
     // `20260825140000_...sql`) - nunca adiciona/remove linha, número e total
     // de parcelas continuam fixos.
     parcelas: z.array(parcelaEdicaoEntradaSchema).min(1).max(360),
+    // Lançamento de recorrência: true = aplica também às próximas ocorrências
+    // ainda sem baixa (pergunta "só este / este e os próximos", 25/09).
+    aplicarEmProximos: z.boolean().optional(),
   })
   .strict();
 

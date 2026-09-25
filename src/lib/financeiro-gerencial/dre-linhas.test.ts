@@ -93,14 +93,70 @@ describe("montarArvoreMensal", () => {
     expect(ocupacao?.filhos?.map((f) => f.rotulo)).toContain("Aluguel");
   });
 
-  it("CMC fica dentro do CMV (nunca grupo principal) com Compras de Mercadorias/Embalagens como netos", () => {
+  it("CMC fica dentro do CMV (nunca grupo principal) com uma linha por conta do CMC como netos", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
     const linhas = montarArvoreMensal(dre);
     const cmv = acharLinha(linhas, "cmv");
     const cmc = cmv?.filhos?.find((f) => f.id === "cmv_cmc");
     expect(cmc?.valor).toBe(2000);
-    expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Compras de Mercadorias", "Compras de Embalagens"]);
-    expect(linhas.some((l) => l.rotulo === "CMC")).toBe(false);
+    expect(cmc?.rotulo).toBe("CMC - Custo da Mercadoria Comprada");
+    expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Compras de mercadorias", "Compras de embalagens"]);
+    expect(cmc?.filhos?.map((f) => f.valor)).toEqual([2000, 0]);
+    expect(linhas.some((l) => l.rotulo.startsWith("CMC"))).toBe(false);
+    expect(acharLinha(linhas, "cmv")?.rotulo).toBe("(-) CMV - Custo da Mercadoria Vendida");
+    expect(acharLinha(linhas, "cmo")?.rotulo).toBe("(-) CMO - Custo de Mão de Obra");
+  });
+
+  it("CMC com várias contas de mercadoria (bebidas, mercadorias, proteínas) mostra cada uma e soma todas no CMC", () => {
+    const categorias = [
+      ...CATEGORIAS.filter((c) => c.papelDre !== "cmc_mercadorias" && c.papelDre !== "cmc_embalagens"),
+      categoria({ id: "cmc_bebidas", papelDre: "cmc_mercadorias", nome: "Custo com bebidas", ordem: 1 }),
+      categoria({ id: "cmc_mercadorias", papelDre: "cmc_mercadorias", nome: "Custo com mercadorias", ordem: 2 }),
+      categoria({ id: "cmc_proteinas", papelDre: "cmc_mercadorias", nome: "Custo com proteínas", ordem: 3 }),
+      categoria({ id: "cmc_embalagens", papelDre: "cmc_embalagens", nome: "Compras de embalagens", ordem: 4 }),
+    ];
+    const lancamentos = [
+      ...LANCAMENTOS,
+      lancamento({ categoriaId: "cmc_bebidas", dataCompetencia: "2026-08-10", valor: 300 }),
+      lancamento({ categoriaId: "cmc_proteinas", dataCompetencia: "2026-08-10", valor: 700 }),
+    ];
+    const dre = calcularDre({ competencia: "2026-08", lancamentos, categorias, estoqueMensal: ESTOQUE_AGOSTO });
+    const cmc = acharLinha(montarArvoreMensal(dre), "cmv")?.filhos?.find((f) => f.id === "cmv_cmc");
+    expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Custo com bebidas", "Custo com mercadorias", "Custo com proteínas", "Compras de embalagens"]);
+    expect(cmc?.filhos?.map((f) => f.valor)).toEqual([300, 2000, 700, 0]);
+    expect(cmc?.valor).toBe(3000);
+    expect(dre.cmv?.comprasMercadorias).toBe(3000);
+  });
+
+  it("Receita Operacional Bruta mostra os subgrupos (Loja, Delivery, Outras) com contas e a conta direta do grupo depois", () => {
+    const categorias = [
+      ...CATEGORIAS.filter((c) => c.papelDre !== "receita"),
+      categoria({ id: "g_receita", nivel: "grupo_principal", codigoSistema: "receita", nome: "Receita Operacional Bruta", ordem: 1 }),
+      categoria({ id: "sub_loja", parentId: "g_receita", nivel: "subgrupo", codigoSistema: "receitas_loja", nome: "Receitas da Loja", ordem: 1 }),
+      categoria({ id: "sub_delivery", parentId: "g_receita", nivel: "subgrupo", codigoSistema: "receitas_delivery", nome: "Receitas de Delivery", ordem: 2 }),
+      categoria({ id: "loja_pix", parentId: "sub_loja", papelDre: "receita", nome: "Venda Pix", ordem: 4 }),
+      categoria({ id: "loja_credito", parentId: "sub_loja", papelDre: "receita", nome: "Venda cartão de crédito", ordem: 1 }),
+      categoria({ id: "ifood_venda", parentId: "sub_delivery", papelDre: "receita", nome: "Venda iFood", ordem: 1 }),
+      categoria({ id: "receita_outras", parentId: "g_receita", papelDre: "receita", nome: "Outras receitas", ordem: 4 }),
+    ];
+    const lancamentos = [
+      lancamento({ categoriaId: "loja_pix", tipo: "receita", dataCompetencia: "2026-08-10", valor: 1000 }),
+      lancamento({ categoriaId: "loja_credito", tipo: "receita", dataCompetencia: "2026-08-10", valor: 2000 }),
+      lancamento({ categoriaId: "ifood_venda", tipo: "receita", dataCompetencia: "2026-08-10", valor: 500 }),
+      lancamento({ categoriaId: "receita_outras", tipo: "receita", dataCompetencia: "2026-08-10", valor: 100 }),
+    ];
+    const dre = calcularDre({ competencia: "2026-08", lancamentos, categorias, estoqueMensal: ESTOQUE_AGOSTO });
+    const receita = acharLinha(montarArvoreMensal(dre), "receita_bruta");
+    expect(receita?.valor).toBe(3600);
+    expect(receita?.filhos?.map((f) => [f.rotulo, f.valor, f.nivel])).toEqual([
+      ["Receitas da Loja", 3000, 1],
+      ["Receitas de Delivery", 500, 1],
+      ["Outras receitas", 100, 1],
+    ]);
+    expect(receita?.filhos?.[0].filhos?.map((f) => [f.rotulo, f.nivel])).toEqual([
+      ["Venda cartão de crédito", 2],
+      ["Venda Pix", 2],
+    ]);
   });
 
   it("quando o estoque mensal não foi cadastrado, todo o ramo do CMV vem null (nunca 0) mas mantém a mesma forma", () => {

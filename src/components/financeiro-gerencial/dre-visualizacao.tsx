@@ -3,13 +3,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
-import { CartaoIndicador, COLUNAS_NUMERICAS_ANUAIS, formatarNumero, formatarPercentual, LinhaTabelaAnual as LinhaTabela } from "@/components/financeiro-gerencial/tabela-anual";
+import {
+  BotaoExpandirTudo,
+  CartaoIndicador,
+  COLUNAS_NUMERICAS_ANUAIS,
+  formatarNumero,
+  formatarPercentual,
+  LinhaTabelaAnual as LinhaTabela,
+} from "@/components/financeiro-gerencial/tabela-anual";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
+import { AlternadorVisao } from "@/components/financeiro-gerencial/fluxo-caixa-visualizacao";
+import type { VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
 import { MESES_ABREVIADOS, type DreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
+
+// Mesma regra de status do Fluxo de Caixa/DFC, mas no mês da competência.
+const EXPLICACAO_VISAO_DRE: Record<VisaoCaixa, string> = {
+  projetado: "Projetado: toda parcela não cancelada, pelo valor cheio.",
+  realizado: "Realizado: só o que já foi recebido ou pago (valor das baixas, estorno desconta).",
+};
 
 function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
   return v === "nao_calculavel" ? "Não calculável" : formatarNumero(v);
@@ -19,27 +34,31 @@ function formatarPontoDeEquilibrio(v: number | "nao_calculavel"): string {
 // entra aqui, nunca pode ser ocultada (regra do botão "Colunas").
 const COLUNAS_NUMERICAS: ColunaDre[] = COLUNAS_NUMERICAS_ANUAIS;
 
-/** Visualização anual da DRE - único seletor é o Ano (nunca mês), sem toggle
- * global de Resumida/Expandida: cada grupo principal abre a própria seta,
- * hierarquicamente (CMC dentro de CMV, contas dentro de subgrupo). Saídas Não
+/** Visualização anual da DRE - único seletor é o Ano (nunca mês). Cada grupo
+ * principal abre a própria seta, hierarquicamente (CMC dentro de CMV, contas
+ * dentro de subgrupo), e o botão Expandida/Resumida (mesmo das outras
+ * tabelas anuais) abre ou recolhe tudo de uma vez (pedido de 25/09). Saídas Não
  * Operacionais e Resultado Econômico vêm na mesma tabela, não numa seção à
  * parte. */
 export function DreVisualizacao({
   dreAnual,
   ano,
+  visao,
   estoquesDoAno,
   saidasSemReceitaDoAno,
   podeGerir,
 }: {
   dreAnual: DreAnual;
   ano: number;
+  visao: VisaoCaixa;
   estoquesDoAno: (EstoqueMensal | null)[];
   saidasSemReceitaDoAno: SaidaSemReceita[];
   podeGerir: boolean;
 }) {
   const router = useRouter();
+  const navegar = (novoAno: number, novaVisao: VisaoCaixa) => router.push(`/financeiro-gerencial/dre?ano=${novoAno}&visao=${novaVisao}`);
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
-  const { visiveis, alternar: alternarColuna, mostrarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
+  const { visiveis, alternar: alternarColuna, mostrarTodas, desmarcarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
 
   function alternar(id: string) {
     setExpandidas((atual) => {
@@ -50,6 +69,10 @@ export function DreVisualizacao({
     });
   }
 
+  // Com um mês só (ou nenhum) selecionado nas Colunas sobra espaço - o nome
+  // da linha aparece inteiro, sem reticências (pedido de 25/09).
+  const nomeCompleto = MESES_ABREVIADOS.filter((_, indice) => visiveis.has(`mes_${indice}`)).length <= 1;
+
   const anoAtual = new Date().getFullYear();
   const anos = Array.from({ length: 7 }, (_, i) => anoAtual + 1 - i);
 
@@ -57,20 +80,35 @@ export function DreVisualizacao({
     <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-azul-noite">DRE - {ano}</h1>
-          <p className="text-sm text-cinza-medio">Demonstrativo de Resultado por Data de Competência, ano completo, mês a mês.</p>
+          <h1 className="font-display text-2xl font-bold text-azul-noite">
+            DRE {visao === "projetado" ? "Projetada" : "Realizada"} - {ano}
+          </h1>
+          <p className="text-sm text-cinza-medio">
+            Demonstrativo de Resultado por Data de Competência, ano completo, mês a mês.{" "}
+            {EXPLICACAO_VISAO_DRE[visao]}
+          </p>
         </div>
-        <select
-          value={ano}
-          onChange={(e) => router.push(`/financeiro-gerencial/dre?ano=${e.target.value}`)}
-          className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
-        >
-          {anos.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <AlternadorVisao
+            opcoes={[
+              { valor: "projetado", rotulo: "Projetada" },
+              { valor: "realizado", rotulo: "Realizada" },
+            ]}
+            valor={visao}
+            onMudar={(v) => navegar(ano, v)}
+          />
+          <select
+            value={ano}
+            onChange={(e) => navegar(Number(e.target.value), visao)}
+            className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
+          >
+            {anos.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -82,7 +120,10 @@ export function DreVisualizacao({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold text-azul-noite">Resultado</h2>
-          <BotaoColunasDre colunas={COLUNAS_NUMERICAS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} />
+          <div className="flex items-center gap-2">
+            <BotaoExpandirTudo linhas={dreAnual.linhas} expandidas={expandidas} onDefinir={setExpandidas} />
+            <BotaoColunasDre colunas={COLUNAS_NUMERICAS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} onDesmarcarTodas={desmarcarTodas} />
+          </div>
         </div>
         <TabelaRolavel ariaLabel="Tabela de resultado da DRE">
           <table className="w-full min-w-[1180px] text-sm">
@@ -111,7 +152,7 @@ export function DreVisualizacao({
             </thead>
             <tbody>
               {dreAnual.linhas.map((linha) => (
-                <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} visiveis={visiveis} />
+                <LinhaTabela key={linha.id} linha={linha} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} />
               ))}
             </tbody>
           </table>

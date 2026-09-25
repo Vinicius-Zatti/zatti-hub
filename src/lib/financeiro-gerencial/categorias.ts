@@ -9,6 +9,9 @@ import { PAPEIS_DRE_SOMENTE_PROVISAO, type CategoriaFinanceira, type NoArvoreCat
  * inicial + CMC − estoque final), não um plano de contas livre. */
 export const CATEGORIAS_PAI_PERMITIDAS: Record<string, PapelDre> = {
   receita: "receita",
+  receitas_loja: "receita",
+  receitas_delivery: "receita",
+  outras_receitas: "receita",
   deducoes_da_receita: "deducao_receita",
   custos_venda_variaveis: "custo_venda_variavel",
   cmo: "cmo",
@@ -74,18 +77,42 @@ export function caminhoCategoria(categoriaId: string, categorias: CategoriaFinan
   return partes.join(" > ");
 }
 
-/** Contas-folha lançáveis já com o caminho pronto pro seletor com busca de
- * Receitas/Despesas. */
+/** "Custo com mercadorias - CMV", "Aluguel - Custos Operacionais": nome da
+ * conta + só a referência do grupo principal (a sigla quando o nome do grupo
+ * é "SIGLA - Nome por extenso", senão o nome inteiro). Pedido de Vinícius em
+ * 25/09 - o caminho inteiro ficava longo demais no seletor. */
+export function rotuloContaComGrupo(categoriaId: string, categorias: CategoriaFinanceira[]): string {
+  const porId = new Map(categorias.map((c) => [c.id, c]));
+  const conta = porId.get(categoriaId);
+  if (!conta) return "";
+  let raiz = conta;
+  while (raiz.parentId && porId.get(raiz.parentId)) raiz = porId.get(raiz.parentId)!;
+  if (raiz.id === conta.id) return conta.nome;
+  const referencia = raiz.nome.includes(" - ") ? raiz.nome.split(" - ")[0].trim() : raiz.nome;
+  return `${conta.nome} - ${referencia}`;
+}
+
+/** Contas-folha lançáveis já com o caminho e o rótulo curto (o que o seletor
+ * com busca de Receitas/Despesas mostra) prontos. */
 export function listarContasComCaminho(
   categorias: CategoriaFinanceira[],
   opcoes: { incluirProvisao?: boolean } = {},
-): { id: string; caminho: string }[] {
-  const lancaveis = listarContasLancaveis(categorias).map((c) => ({ id: c.id, caminho: caminhoCategoria(c.id, categorias) }));
+): { id: string; caminho: string; rotulo: string }[] {
+  const lancaveis = listarContasLancaveis(categorias).map((c) => ({
+    id: c.id,
+    caminho: caminhoCategoria(c.id, categorias),
+    rotulo: rotuloContaComGrupo(c.id, categorias),
+  }));
   if (!opcoes.incluirProvisao) return lancaveis;
   // Despesa avulsa numa conta de provisão = guia paga (liquidação): o servidor
   // grava origem `liquidacao_provisao`, caixa sim, DRE não.
+  const sufixo = " (liquidação de provisão)";
   const provisao = categorias
     .filter((c) => c.nivel === "conta" && !c.arquivado && c.papelDre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(c.papelDre))
-    .map((c) => ({ id: c.id, caminho: `${caminhoCategoria(c.id, categorias)} (liquidação de provisão)` }));
+    .map((c) => ({
+      id: c.id,
+      caminho: `${caminhoCategoria(c.id, categorias)}${sufixo}`,
+      rotulo: `${rotuloContaComGrupo(c.id, categorias)}${sufixo}`,
+    }));
   return [...lancaveis, ...provisao];
 }

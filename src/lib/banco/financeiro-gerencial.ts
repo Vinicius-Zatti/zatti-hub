@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { CATEGORIAS_PAI_PERMITIDAS } from "@/lib/financeiro-gerencial/categorias";
 import { calcularSaldoAberto, numerarParcelasManuais, somarValores } from "@/lib/financeiro-gerencial/parcelas";
-import { gerarOcorrenciasRecorrencia, type FimRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
+import { gerarCompetenciasRecorrencia, gerarOcorrenciasRecorrencia, type FimRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
 import { PAPEIS_DRE_SOMENTE_PROVISAO } from "@/lib/financeiro-gerencial/tipos";
 import type {
   Baixa,
@@ -16,6 +16,7 @@ import type {
   ParcelaManualEntrada,
   Recorrencia,
   SaidaSemReceita,
+  StatusParcela,
   TipoBaixa,
   TipoContaFinanceira,
   TipoLancamento,
@@ -583,16 +584,22 @@ export async function editarLancamento(params: {
   contaFinanceiraId: string | null;
   observacao: string;
   parcelas: { id: string; valor: number; dataPrevista: string; contaFinanceiraId: string | null }[];
-}): Promise<Lancamento> {
+  aplicarEmProximos?: boolean;
+}): Promise<{ lancamento: Lancamento; proximosAtualizados: number }> {
   const supabase = await createClient();
 
   const { data: existente } = await supabase
     .from("fin_lancamentos")
-    .select("tipo, origem")
+    .select("tipo, origem, recorrencia_id, data_competencia")
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id)
     .maybeSingle();
-  const existenteRow = existente as { tipo: TipoLancamento; origem: OrigemLancamento } | null;
+  const existenteRow = existente as {
+    tipo: TipoLancamento;
+    origem: OrigemLancamento;
+    recorrencia_id: string | null;
+    data_competencia: string;
+  } | null;
   const tipo = existenteRow?.tipo;
   if (!tipo) throw new ErroPublico("Lançamento não encontrado.");
 
@@ -629,9 +636,110 @@ export async function editarLancamento(params: {
     if (erroParcela) throw erroDeNegocio(erroParcela);
   }
 
+  let proximosAtualizados = 0;
+  if (params.aplicarEmProximos && existenteRow.origem === "recorrencia" && existenteRow.recorrencia_id) {
+    proximosAtualizados = await aplicarEdicaoNasProximasOcorrencias(supabase, {
+      unidadeId: params.unidadeId,
+      recorrenciaId: existenteRow.recorrencia_id,
+      depoisDaCompetencia: existenteRow.data_competencia,
+      categoriaId: params.categoriaId,
+      descricao: params.descricao,
+      contaFinanceiraId: params.contaFinanceiraId,
+      observacao: params.observacao,
+      // Recorrência gera sempre 1 parcela por ocorrência.
+      parcela: params.parcelas.length === 1 ? params.parcelas[0] : null,
+    });
+  }
+
   const salvo = await obterLancamento(params.unidadeId, params.id);
   if (!salvo) throw new Error("Lançamento editado mas não encontrado na releitura");
-  return salvo;
+  return { lancamento: salvo, proximosAtualizados };
+}
+
+/** "Este e os próximos" na edição de lançamento recorrente: as ocorrências
+ * da mesma recorrência com competência depois da editada e ainda sem baixa
+ * nenhuma recebem Plano de Contas, descrição, conta financeira, observação e
+ * valor. Datas (competência e pagamento) de cada uma não mudam - cada
+ * ocorrência continua no próprio mês. Ocorrência já paga/recebida nunca é
+ * tocada. O modelo da recorrência (valor/descrição/Plano de Contas) acompanha. */
+async function aplicarEdicaoNasProximasOcorrencias(
+  supabase: SupabaseClient,
+  params: {
+    unidadeId: string;
+    recorrenciaId: string;
+    depoisDaCompetencia: string;
+    categoriaId: string;
+    descricao: string;
+    contaFinanceiraId: string | null;
+    observacao: string;
+    parcela: { valor: number; contaFinanceiraId: string | null } | null;
+  },
+): Promise<number> {
+  const { data: ocorrencias, error } = await supabase
+    .from("fin_lancamentos")
+    .select("id, fin_parcelas(id, status)")
+    .eq("unidade_id", params.unidadeId)
+    .eq("recorrencia_id", params.recorrenciaId)
+    .gt("data_competencia", params.depoisDaCompetencia);
+  if (error) throw erroDeNegocio(error);
+
+  type Ocorrencia = { id: string; fin_parcelas: { id: string; status: StatusParcela }[] };
+  const candidatas = (ocorrencias as unknown as Ocorrencia[] | null) ?? [];
+  const idsParcelas = candidatas.flatMap((o) => o.fin_parcelas.map((p) => p.id));
+  // Recorrência pode ter até 360 ocorrências - `.in()` em lotes de 100 pra
+  // não estourar o tamanho da URL do PostgREST (mesmo cuidado de
+  // `encerrarRecorrencia`).
+  const lotes = <T,>(itens: T[]): T[][] => Array.from({ length: Math.ceil(itens.length / 100) }, (_, i) => itens.slice(i * 100, i * 100 + 100));
+
+  const comBaixa = new Set<string>();
+  for (const lote of lotes(idsParcelas)) {
+    const { data: baixas, error: erroBaixas } = await supabase
+      .from("fin_baixas")
+      .select("parcela_id")
+      .eq("unidade_id", params.unidadeId)
+      .in("parcela_id", lote);
+    if (erroBaixas) throw erroDeNegocio(erroBaixas);
+    for (const b of (baixas as { parcela_id: string }[] | null) ?? []) comBaixa.add(b.parcela_id);
+  }
+  const alvos = candidatas.filter((o) => o.fin_parcelas.every((p) => p.status === "aberto" && !comBaixa.has(p.id)));
+  if (alvos.length === 0) return 0;
+  const ids = alvos.map((o) => o.id);
+
+  for (const lote of lotes(ids)) {
+    const { error: erroLancamentos } = await supabase
+      .from("fin_lancamentos")
+      .update({
+        categoria_id: params.categoriaId,
+        descricao: params.descricao,
+        conta_financeira_id: params.contaFinanceiraId,
+        observacao: params.observacao,
+      })
+      .eq("unidade_id", params.unidadeId)
+      .in("id", lote);
+    if (erroLancamentos) throw erroDeNegocio(erroLancamentos);
+
+    if (params.parcela) {
+      const { error: erroParcelas } = await supabase
+        .from("fin_parcelas")
+        .update({ valor: params.parcela.valor, conta_financeira_id: params.parcela.contaFinanceiraId })
+        .eq("unidade_id", params.unidadeId)
+        .in("lancamento_id", lote);
+      if (erroParcelas) throw erroDeNegocio(erroParcelas);
+    }
+  }
+
+  const { error: erroModelo } = await supabase
+    .from("fin_recorrencias")
+    .update({
+      categoria_id: params.categoriaId,
+      descricao: params.descricao,
+      ...(params.parcela ? { valor: params.parcela.valor } : {}),
+    })
+    .eq("unidade_id", params.unidadeId)
+    .eq("id", params.recorrenciaId);
+  if (erroModelo) throw erroDeNegocio(erroModelo);
+
+  return ids.length;
 }
 
 /** Exclui o lançamento (e as parcelas dele, por `on delete cascade`) - só
@@ -704,6 +812,7 @@ export async function criarRecorrencia(params: {
   valor: number;
   diaVencimento: number;
   dataInicio: string;
+  dataCompetencia?: string;
   fim: FimRecorrencia;
   criadoPor: string;
 }): Promise<{ recorrencia: Recorrencia; ocorrenciasGeradas: number }> {
@@ -715,6 +824,7 @@ export async function criarRecorrencia(params: {
     dataInicio: params.dataInicio,
     fim: params.fim,
   });
+  const competencias = gerarCompetenciasRecorrencia(datas, params.dataCompetencia);
 
   const { data: recorrenciaInserida, error: erroRecorrencia } = await supabase
     .from("fin_recorrencias")
@@ -739,12 +849,12 @@ export async function criarRecorrencia(params: {
   const { data: lancamentosInseridos, error: erroLancamentos } = await supabase
     .from("fin_lancamentos")
     .insert(
-      datas.map((data) => ({
+      datas.map((_, indice) => ({
         unidade_id: params.unidadeId,
         tipo: params.tipo,
         categoria_id: params.categoriaId,
         descricao: params.descricao,
-        data_competencia: data,
+        data_competencia: competencias[indice],
         conta_financeira_id: null,
         observacao: "",
         origem: "recorrencia",

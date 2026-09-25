@@ -38,7 +38,7 @@ async function garantirMesesAbertos(acesso: AcessoAtual, datas: string[]): Promi
 // qualquer INSERT em `fin_lancamentos`/`fin_parcelas`/`fin_baixas`/`fin_recorrencias`,
 // e o UPDATE de status disparado por `recalcular_parcela_apos_baixa` também é
 // logado automaticamente.
-export type ResultadoLancamento = { ok: true; lancamento: Lancamento } | { ok: false; mensagem: string };
+export type ResultadoLancamento = { ok: true; lancamento: Lancamento; proximosAtualizados?: number } | { ok: false; mensagem: string };
 export type ResultadoBaixa = { ok: true; parcela: Parcela } | { ok: false; mensagem: string };
 export type ResultadoRecorrencia =
   | { ok: true; recorrencia: Recorrencia; ocorrenciasGeradas: number }
@@ -71,7 +71,7 @@ export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoR
   try {
     await exigirLimiteRequisicao("fin_recorrencia_criar");
     const entrada = validarEntrada(recorrenciaFinanceiraEntradaSchema, input);
-    await garantirMesesAbertos(acesso, [entrada.dataInicio]);
+    await garantirMesesAbertos(acesso, [entrada.dataInicio, ...(entrada.dataCompetencia ? [entrada.dataCompetencia] : [])]);
     const { recorrencia, ocorrenciasGeradas } = await criarRecorrencia({
       ...entrada,
       unidadeId: acesso.unidadeId,
@@ -91,9 +91,9 @@ export async function editarLancamentoAction(input: unknown): Promise<ResultadoL
   try {
     await exigirLimiteRequisicao("fin_lancamento_editar");
     const entrada = validarEntrada(editarLancamentoFinanceiroEntradaSchema, input);
-    const lancamento = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
+    const { lancamento, proximosAtualizados } = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
     revalidarLancamentos();
-    return { ok: true, lancamento };
+    return { ok: true, lancamento, proximosAtualizados };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar o lançamento.") };
   }

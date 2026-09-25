@@ -1,5 +1,6 @@
 import { somarValores } from "./parcelas";
-import type { CategoriaFinanceira, EstoqueMensal, Lancamento, PapelDre } from "./tipos";
+import type { VisaoCaixa } from "./caixa";
+import type { BaixaBase, CategoriaFinanceira, EstoqueMensal, Lancamento, LancamentoBase, PapelDre } from "./tipos";
 
 /** O mínimo de um lançamento que a DRE lê - aceita tanto `Lancamento` quanto
  * `LancamentoBase` (carga completa da unidade). */
@@ -25,9 +26,17 @@ export type CmvCalculado = {
 
 export type Dre = {
   competencia: string;
-  receitas: { contas: ContaValorDre[]; total: number };
+  /** `subgrupos` = Receitas da Loja/de Delivery/Outras Receitas; `contas` =
+   * contas de receita fora desses subgrupos (ex: conta própria criada
+   * direto no grupo). `total` soma tudo
+   * que tem papel `receita`, igual antes da divisão em subgrupos. */
+  receitas: { subgrupos: SubgrupoDre[]; contas: ContaValorDre[]; total: number };
   deducoes: { subgrupos: SubgrupoDre[]; total: number };
   cmv: CmvCalculado | null;
+  /** Contas do CMC (mercadorias e embalagens) na ordem do plano de contas,
+   * sempre presentes (mesmo sem estoque cadastrado) pra árvore da DRE ter a
+   * mesma forma todo mês - o valor só é exibido quando `cmv` existe. */
+  contasCmc: ContaValorDre[];
   margemContribuicao: number | null;
   cmo: { contas: ContaValorDre[]; total: number };
   custosOperacionais: { subgrupos: SubgrupoDre[]; total: number };
@@ -35,6 +44,28 @@ export type Dre = {
   saidasNaoOperacionais: { contas: ContaValorDre[]; total: number };
   geracaoCaixaAposSaidas: number | null;
 };
+
+/** DRE Projetada ou Realizada (pedido de 25/09), com a mesma regra de status
+ * do Fluxo de Caixa/DFC (`montarMovimentosCaixa`), mas sempre no regime de
+ * competência (cada lançamento continua no mês da Data de Competência):
+ * - Projetado: toda parcela não cancelada, pelo valor cheio.
+ * - Realizado: só o que já foi recebido/pago - o valor de cada parcela vira
+ *   a soma das baixas dela (estorno subtrai); parcela sem baixa vale 0.
+ * Devolve a lista no mesmo formato, pronta pra `calcularDre`/provisões. */
+export function lancamentosDaVisao(visao: VisaoCaixa, lancamentos: LancamentoBase[], baixas: BaixaBase[]): LancamentoBase[] {
+  if (visao === "projetado") {
+    return lancamentos.map((l) => ({ ...l, parcelas: l.parcelas.filter((p) => p.status !== "cancelado") }));
+  }
+  const baixadoPorParcela = new Map<string, number>();
+  for (const b of baixas) {
+    const valor = b.tipo === "estorno" ? -b.valor : b.valor;
+    baixadoPorParcela.set(b.parcelaId, somarValores([baixadoPorParcela.get(b.parcelaId) ?? 0, valor]));
+  }
+  return lancamentos.map((l) => ({
+    ...l,
+    parcelas: l.parcelas.map((p) => ({ ...p, valor: baixadoPorParcela.get(p.id) ?? 0 })),
+  }));
+}
 
 /** Soma, por conta-folha, o valor de todos os lançamentos cuja competência
  * cai no mês pedido - por Data de Competência, independente de a parcela
@@ -74,6 +105,23 @@ function subgruposDaDeducoes(categorias: CategoriaFinanceira[], totais: Map<stri
       const contas = papel ? contasDoPapel(categorias, papel, totais) : [];
       return { id: sg.id, nome: sg.nome, contas, total: somarValores(contas.map((c) => c.valor)) };
     });
+}
+
+const SUBGRUPOS_RECEITA = ["receitas_loja", "receitas_delivery", "outras_receitas"];
+
+function receitasPorSubgrupo(categorias: CategoriaFinanceira[], totais: Map<string, number>): Dre["receitas"] {
+  const todas = contasDoPapel(categorias, "receita", totais);
+  const subgrupos = categorias
+    .filter((c) => c.nivel === "subgrupo" && c.codigoSistema && SUBGRUPOS_RECEITA.includes(c.codigoSistema))
+    .sort((a, b) => a.ordem - b.ordem);
+  const idsSubgrupos = new Set(subgrupos.map((sg) => sg.id));
+  const paiPorId = new Map(categorias.map((c) => [c.id, c.parentId]));
+  const linhasSubgrupos = subgrupos.map((sg) => {
+    const contas = todas.filter((c) => paiPorId.get(c.id) === sg.id);
+    return { id: sg.id, nome: sg.nome, contas, total: somarValores(contas.map((c) => c.valor)) };
+  });
+  const contasDiretas = todas.filter((c) => !idsSubgrupos.has(paiPorId.get(c.id) ?? ""));
+  return { subgrupos: linhasSubgrupos, contas: contasDiretas, total: somarValores(todas.map((c) => c.valor)) };
 }
 
 const SUBGRUPOS_CUSTOS_OPERACIONAIS: Record<string, PapelDre> = {
@@ -140,13 +188,17 @@ export function calcularDre(params: {
   const totais = somarPorCategoria(lancamentos, competencia);
   for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
 
-  const contasReceita = contasDoPapel(categorias, "receita", totais);
-  const receitas = { contas: contasReceita, total: somarValores(contasReceita.map((c) => c.valor)) };
+  const receitas = receitasPorSubgrupo(categorias, totais);
 
   const subgruposDeducoes = subgruposDaDeducoes(categorias, totais);
   const deducoes = { subgrupos: subgruposDeducoes, total: somarValores(subgruposDeducoes.map((s) => s.total)) };
 
   const cmv = calcularCmv(categorias, totais, estoqueMensal);
+  const papeisCmc: PapelDre[] = ["cmc_mercadorias", "cmc_embalagens"];
+  const contasCmc = categorias
+    .filter((c) => c.nivel === "conta" && c.papelDre && papeisCmc.includes(c.papelDre))
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((c) => ({ id: c.id, nome: c.nome, valor: totais.get(c.id) ?? 0 }));
   const margemContribuicao = cmv ? somarValores([receitas.total, -deducoes.total, -cmv.total]) : null;
 
   const papeisCmo: PapelDre[] = ["cmo", "cmo_ferias", "cmo_decimo_terceiro", "cmo_multa_fgts"];
@@ -173,6 +225,7 @@ export function calcularDre(params: {
     receitas,
     deducoes,
     cmv,
+    contasCmc,
     margemContribuicao,
     cmo,
     custosOperacionais,

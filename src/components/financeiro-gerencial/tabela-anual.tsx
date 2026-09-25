@@ -49,11 +49,15 @@ export function LinhaTabelaAnual({
   expandidas,
   alternar,
   visiveis,
+  nomeCompleto = false,
 }: {
   linha: LinhaDreAnual;
   expandidas: Set<string>;
   alternar: (id: string) => void;
   visiveis: Set<string>;
+  /** Nome da linha inteiro, sem cortar com reticências - usado quando sobra
+   * espaço na tabela (ex: DRE com um mês só selecionado). */
+  nomeCompleto?: boolean;
 }) {
   const temFilhos = !!linha.filhos && linha.filhos.length > 0;
   const expandida = expandidas.has(linha.id);
@@ -70,7 +74,7 @@ export function LinhaTabelaAnual({
     <>
       <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
         <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
-          <span className="inline-flex max-w-[190px] items-center gap-1.5">
+          <span className={`inline-flex items-center gap-1.5 ${nomeCompleto ? "whitespace-nowrap" : "max-w-[190px]"}`}>
             {temFilhos ? (
               <button
                 type="button"
@@ -83,7 +87,7 @@ export function LinhaTabelaAnual({
             ) : (
               <span className="inline-block h-3.5 w-3.5 shrink-0" />
             )}
-            <span className="min-w-0 truncate" title={linha.rotulo}>
+            <span className={nomeCompleto ? "" : "min-w-0 truncate"} title={linha.rotulo}>
               {linha.rotulo}
             </span>
           </span>
@@ -101,13 +105,39 @@ export function LinhaTabelaAnual({
       </tr>
       {temFilhos &&
         expandida &&
-        linha.filhos!.map((filho) => <LinhaTabelaAnual key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} />)}
+        linha.filhos!.map((filho) => (
+          <LinhaTabelaAnual key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} />
+        ))}
     </>
   );
 }
 
-function idsComFilhos(linhas: LinhaDreAnual[]): string[] {
+export function idsComFilhos(linhas: LinhaDreAnual[]): string[] {
   return linhas.flatMap((l) => (l.filhos && l.filhos.length > 0 ? [l.id, ...idsComFilhos(l.filhos)] : []));
+}
+
+/** Expandir/Recolher tudo (visão resumida = tudo recolhido, expandida = tudo
+ * aberto) - mesmo botão em todas as tabelas anuais. */
+export function BotaoExpandirTudo({
+  linhas,
+  expandidas,
+  onDefinir,
+}: {
+  linhas: LinhaDreAnual[];
+  expandidas: Set<string>;
+  onDefinir: (ids: Set<string>) => void;
+}) {
+  const todosIds = idsComFilhos(linhas);
+  const tudoAberto = todosIds.length > 0 && todosIds.every((id) => expandidas.has(id));
+  return (
+    <button
+      type="button"
+      onClick={() => onDefinir(tudoAberto ? new Set() : new Set(todosIds))}
+      className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza hover:border-azul-petroleo"
+    >
+      {tudoAberto ? "Resumida" : "Expandida"}
+    </button>
+  );
 }
 
 /** Bloco completo: título, botão Colunas, Expandir/Recolher tudo (visão
@@ -124,9 +154,7 @@ export function TabelaAnualBloco({
   linhas: LinhaDreAnual[];
 }) {
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
-  const { visiveis, alternar: alternarColuna, mostrarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS_ANUAIS);
-  const todosIds = idsComFilhos(linhas);
-  const tudoAberto = todosIds.length > 0 && todosIds.every((id) => expandidas.has(id));
+  const { visiveis, alternar: alternarColuna, mostrarTodas, desmarcarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS_ANUAIS);
 
   function alternar(id: string) {
     setExpandidas((atual) => {
@@ -142,14 +170,8 @@ export function TabelaAnualBloco({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setExpandidas(tudoAberto ? new Set() : new Set(todosIds))}
-            className="rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza hover:border-azul-petroleo"
-          >
-            {tudoAberto ? "Resumida" : "Expandida"}
-          </button>
-          <BotaoColunasDre colunas={COLUNAS_NUMERICAS_ANUAIS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} />
+          <BotaoExpandirTudo linhas={linhas} expandidas={expandidas} onDefinir={setExpandidas} />
+          <BotaoColunasDre colunas={COLUNAS_NUMERICAS_ANUAIS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} onDesmarcarTodas={desmarcarTodas} />
         </div>
       </div>
       <TabelaRolavel ariaLabel={ariaLabel}>

@@ -44,13 +44,13 @@ function filhosCmv(dre: Dre): LinhaDreMensal[] {
     { id: "cmv_estoque_inicial_emb", rotulo: "Estoque inicial de Embalagens", nivel: 1, valor: cmv?.estoqueInicialEmbalagens ?? null },
     {
       id: "cmv_cmc",
-      rotulo: "CMC",
+      rotulo: "CMC - Custo da Mercadoria Comprada",
       nivel: 1,
       valor: cmv?.cmc ?? null,
-      filhos: [
-        { id: "cmv_compras_merc", rotulo: "Compras de Mercadorias", nivel: 2, valor: cmv?.comprasMercadorias ?? null },
-        { id: "cmv_compras_emb", rotulo: "Compras de Embalagens", nivel: 2, valor: cmv?.comprasEmbalagens ?? null },
-      ],
+      // Uma linha por conta do CMC (Custo com bebidas/mercadorias/proteínas,
+      // Compras de embalagens) - valor só aparece com estoque cadastrado,
+      // igual ao resto do ramo do CMV.
+      filhos: dre.contasCmc.map((c) => ({ id: c.id, rotulo: c.nome, nivel: 2, valor: cmv ? c.valor : null })),
     },
     { id: "cmv_estoque_final_merc", rotulo: "(-) Estoque final de Mercadorias", nivel: 1, valor: cmv?.estoqueFinalMercadorias ?? null },
     { id: "cmv_estoque_final_emb", rotulo: "(-) Estoque final de Embalagens", nivel: 1, valor: cmv?.estoqueFinalEmbalagens ?? null },
@@ -71,12 +71,18 @@ export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
   const resultadoEconomico = dre.geracaoCaixaAposSaidas;
 
   return [
-    { id: "receita_bruta", rotulo: "Receita Operacional Bruta", nivel: 0, valor: dre.receitas.total, filhos: linhasContas(dre.receitas.contas, 1) },
+    {
+      id: "receita_bruta",
+      rotulo: "Receita Operacional Bruta",
+      nivel: 0,
+      valor: dre.receitas.total,
+      filhos: [...linhasSubgrupos(dre.receitas.subgrupos, 1, 2), ...linhasContas(dre.receitas.contas, 1)],
+    },
     { id: "deducoes", rotulo: "(-) Deduções", nivel: 0, valor: dre.deducoes.total, filhos: linhasSubgrupos(dre.deducoes.subgrupos, 1, 2) },
     { id: "receita_liquida", rotulo: "= Receita Operacional Líquida", nivel: 0, valor: receitaLiquida, destaque: true },
-    { id: "cmv", rotulo: "(-) CMV", nivel: 0, valor: dre.cmv?.total ?? null, filhos: filhosCmv(dre) },
+    { id: "cmv", rotulo: "(-) CMV - Custo da Mercadoria Vendida", nivel: 0, valor: dre.cmv?.total ?? null, filhos: filhosCmv(dre) },
     { id: "margem", rotulo: "= Margem de Contribuição", nivel: 0, valor: dre.margemContribuicao, destaque: true },
-    { id: "cmo", rotulo: "(-) CMO", nivel: 0, valor: dre.cmo.total, filhos: linhasContas(dre.cmo.contas, 1) },
+    { id: "cmo", rotulo: "(-) CMO - Custo de Mão de Obra", nivel: 0, valor: dre.cmo.total, filhos: linhasContas(dre.cmo.contas, 1) },
     {
       id: "custos_operacionais",
       rotulo: "(-) Custos Operacionais",

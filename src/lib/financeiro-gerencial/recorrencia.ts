@@ -1,4 +1,4 @@
-import { ultimoDiaDoMes } from "./datas";
+import { somarMesesClampado, ultimoDiaDoMes } from "./datas";
 
 /** Todas as ocorrências nascem de uma vez na criação (sem job/cron nesta
  * fase) - por isso uma recorrência nunca é "pra sempre", sempre termina numa
@@ -38,8 +38,16 @@ function dataDaOcorrencia(anoBase: number, mesBase0: number, indice: number, dia
   return `${String(ano).padStart(4, "0")}-${String(mes0 + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
-/** Gera as datas de vencimento (competência = vencimento, 1 lançamento + 1
- * parcela por ocorrência) de uma recorrência mensal. */
+/** Competência de cada ocorrência (pedido de Vinícius em 25/09): parte da
+ * competência informada e avança um mês por ocorrência, independente do dia
+ * de vencimento. Sem competência informada, vale o vencimento (regra antiga). */
+export function gerarCompetenciasRecorrencia(vencimentos: string[], dataCompetencia?: string): string[] {
+  if (!dataCompetencia) return vencimentos;
+  return vencimentos.map((_, indice) => somarMesesClampado(dataCompetencia, indice));
+}
+
+/** Gera as datas de vencimento (1 lançamento + 1 parcela por ocorrência) de
+ * uma recorrência mensal - a competência sai de `gerarCompetenciasRecorrencia`. */
 export function gerarOcorrenciasRecorrencia(params: {
   diaVencimento: number;
   dataInicio: string;

@@ -17,7 +17,7 @@ import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { calcularSaldoAberto, somarValores } from "@/lib/financeiro-gerencial/parcelas";
-import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
+import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
 import type {
   Baixa,
@@ -47,8 +47,9 @@ function formatarMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Fuso de Brasília - `toISOString()` (UTC) já dava o dia seguinte depois das 21h.
 function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hojeIsoBrasil();
 }
 
 function IconeEditar({ className = "h-4 w-4" }: { className?: string }) {
@@ -250,7 +251,7 @@ export function LancamentosGerenciador({
             Plano de Contas
             <SeletorComBusca
               value={filtroCategoriaId}
-              opcoes={opcoesCategoriaFiltro.map((c) => ({ id: c.id, label: c.caminho }))}
+              opcoes={opcoesCategoriaFiltro.map((c) => ({ id: c.id, label: c.rotulo }))}
               onChange={setFiltroCategoriaId}
               placeholder="Todas"
               vazioLabel="Todas"
@@ -444,10 +445,9 @@ function FormularioLancamento({
   // Modo comum: linhas manuais de Vencimento/Valor - 1 linha = à vista, 2+ = parcelado.
   const [linhas, setLinhas] = useState<LinhaValor[]>([{ valor: null, dataPrevista: hoje() }]);
 
-  // Modo recorrente
-  const [valorRecorrencia, setValorRecorrencia] = useState<number | null>(null);
-  const [diaVencimento, setDiaVencimento] = useState(hoje().slice(8, 10));
-  const [dataInicio, setDataInicio] = useState(hoje());
+  // Modo recorrente: reaproveita Data de Competência, Data de Pagamento e
+  // Valor já digitados (1ª linha) - nunca um segundo conjunto de campos que
+  // nasce com a data de hoje (bug relatado em 25/09). Só "até quando" é próprio.
   const [modoFim, setModoFim] = useState<"data" | "quantidade">("quantidade");
   const [dataFim, setDataFim] = useState("");
   const [quantidadeOcorrencias, setQuantidadeOcorrencias] = useState(12);
@@ -471,13 +471,15 @@ function FormularioLancamento({
           modoFim === "data"
             ? { modo: "data" as const, dataFim }
             : { modo: "quantidade" as const, quantidadeOcorrencias };
+        const primeira = linhas[0];
         const resultado = await criarRecorrenciaAction({
           tipo,
           categoriaId,
           descricao,
-          valor: valorRecorrencia ?? 0,
-          diaVencimento: Number(diaVencimento),
-          dataInicio,
+          valor: primeira.valor ?? 0,
+          diaVencimento: Number(primeira.dataPrevista.slice(8, 10)),
+          dataInicio: primeira.dataPrevista,
+          dataCompetencia,
           fim,
         });
         if (!resultado.ok) {
@@ -519,7 +521,7 @@ function FormularioLancamento({
         Plano de Contas
         <SeletorComBusca
           value={categoriaId}
-          opcoes={opcoesCategoria.map((c) => ({ id: c.id, label: c.caminho }))}
+          opcoes={opcoesCategoria.map((c) => ({ id: c.id, label: c.rotulo }))}
           onChange={setCategoriaId}
           placeholder="Selecionar conta..."
         />
@@ -535,18 +537,16 @@ function FormularioLancamento({
         />
       </label>
 
-      {!recorrente && (
-        <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-          Data de Competência
-          <input
-            type="date"
-            required
-            value={dataCompetencia}
-            onChange={(e) => setDataCompetencia(e.target.value)}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-          />
-        </label>
-      )}
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        {recorrente ? "Data de Competência (1ª ocorrência)" : "Data de Competência"}
+        <input
+          type="date"
+          required
+          value={dataCompetencia}
+          onChange={(e) => setDataCompetencia(e.target.value)}
+          className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+        />
+      </label>
 
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
         Conta financeira
@@ -559,43 +559,45 @@ function FormularioLancamento({
         />
       </label>
 
-      {!recorrente && (
-        <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro p-3">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
-            {linhas.length > 1 ? "Parcelas" : rotuloData}
+      <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro p-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+          {recorrente ? `${rotuloData} e valor da 1ª ocorrência` : linhas.length > 1 ? "Parcelas" : rotuloData}
+        </div>
+        {/* Recorrente usa só a 1ª linha; as demais ficam guardadas (nada
+            digitado some ao marcar/desmarcar). */}
+        {(recorrente ? linhas.slice(0, 1) : linhas).map((linha, indice) => (
+          <div key={indice} className="flex items-end gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              {!recorrente && linhas.length > 1 ? `${rotuloData} ${indice + 1}/${linhas.length}` : rotuloData}
+              <input
+                type="date"
+                required
+                value={linha.dataPrevista}
+                onChange={(e) => atualizarLinha(indice, { dataPrevista: e.target.value })}
+                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+              />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              Valor
+              <CampoNumero value={linha.valor} onChange={(v) => atualizarLinha(indice, { valor: v })} className="w-full" />
+            </label>
+            {!recorrente && linhas.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removerLinha(indice)}
+                className="mb-1.5 shrink-0 text-xs font-semibold text-vermelho"
+              >
+                Remover
+              </button>
+            )}
           </div>
-          {linhas.map((linha, indice) => (
-            <div key={indice} className="flex items-end gap-2">
-              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                {linhas.length > 1 ? `${rotuloData} ${indice + 1}/${linhas.length}` : rotuloData}
-                <input
-                  type="date"
-                  required
-                  value={linha.dataPrevista}
-                  onChange={(e) => atualizarLinha(indice, { dataPrevista: e.target.value })}
-                  className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-                />
-              </label>
-              <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
-                Valor
-                <CampoNumero value={linha.valor} onChange={(v) => atualizarLinha(indice, { valor: v })} className="w-full" />
-              </label>
-              {linhas.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removerLinha(indice)}
-                  className="mb-1.5 shrink-0 text-xs font-semibold text-vermelho"
-                >
-                  Remover
-                </button>
-              )}
-            </div>
-          ))}
+        ))}
+        {!recorrente && (
           <button type="button" onClick={adicionarLinha} className="self-start text-xs font-semibold text-azul-petroleo">
             {rotuloAdicionar}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex flex-col gap-1">
         <label className="flex items-center gap-2 text-sm font-semibold text-cinza-medio">
@@ -604,7 +606,9 @@ function FormularioLancamento({
         </label>
         <p className="pl-6 text-xs text-cinza-medio">
           Use aqui pra conta fixa que se repete todo mês (ex: aluguel) - cada mês vira um lançamento
-          próprio, com a competência daquele mês. Diferente de parcelar (as linhas de{" "}
+          próprio: a competência começa na Data de Competência informada e o{" "}
+          {tipo === "receita" ? "recebimento" : "pagamento"} na {rotuloData} acima, os dois avançando um mês por
+          ocorrência. Diferente de parcelar (as linhas de{" "}
           {rotuloAdicionar.toLowerCase()} acima), que é um valor só dividido em parcelas dentro da
           mesma competência.
         </p>
@@ -612,34 +616,6 @@ function FormularioLancamento({
 
       {recorrente && (
         <div className="flex flex-col gap-3 rounded-lg border border-cinza-claro p-3">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-            Valor de cada ocorrência
-            <CampoNumero value={valorRecorrencia} onChange={setValorRecorrencia} className="w-full" />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-              Dia de vencimento
-              <input
-                type="number"
-                min={1}
-                max={31}
-                required
-                value={diaVencimento}
-                onChange={(e) => setDiaVencimento(e.target.value)}
-                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-              Data inicial
-              <input
-                type="date"
-                required
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-                className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
-              />
-            </label>
-          </div>
           <div className="flex flex-col gap-1.5">
             <div className="text-xs font-semibold text-cinza-medio">Até quando</div>
             <div className="flex gap-3 text-xs text-cinza-medio">
@@ -749,12 +725,27 @@ function FormularioEditarLancamento({
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Lançamento de recorrência: antes de salvar, pergunta "só este / este e
+  // os próximos" (pedido de 25/09) - confirmação no próprio modal, mesmo
+  // padrão visual de "Excluir lançamento".
+  const ehRecorrente = lancamento.origem === "recorrencia";
+  const [perguntandoAlcance, setPerguntandoAlcance] = useState(false);
+
   function atualizarParcela(indice: number, patch: Partial<LinhaParcelaEdicao>) {
     setParcelas((atual) => atual.map((p, i) => (i === indice ? { ...p, ...patch } : p)));
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    setErro(null);
+    if (ehRecorrente) {
+      setPerguntandoAlcance(true);
+      return;
+    }
+    salvar(false);
+  }
+
+  function salvar(aplicarEmProximos: boolean) {
     setErro(null);
     startTransition(async () => {
       const resultado = await editarLancamentoAction({
@@ -770,6 +761,7 @@ function FormularioEditarLancamento({
           dataPrevista: p.dataPrevista,
           contaFinanceiraId: p.contaFinanceiraId || null,
         })),
+        ...(ehRecorrente ? { aplicarEmProximos } : {}),
       });
       if (!resultado.ok) {
         setErro(resultado.mensagem);
@@ -780,6 +772,49 @@ function FormularioEditarLancamento({
     });
   }
 
+  if (perguntandoAlcance) {
+    return (
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-lg font-bold text-azul-noite">Editar lançamento recorrente</h2>
+        <p className="text-sm text-cinza">
+          Aplicar as alterações em <strong>{descricao}</strong> só neste lançamento ou também nos próximos da mesma
+          recorrência?
+        </p>
+        <p className="text-xs text-cinza-medio">
+          Nos próximos mudam Plano de Contas, descrição, conta financeira, observação e valor. As datas de cada mês
+          continuam as mesmas, e lançamento que já tem pagamento ou recebimento registrado não é alterado.
+        </p>
+        {erro && <p className="text-sm text-vermelho">{erro}</p>}
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => salvar(false)}
+            disabled={isPending}
+            className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+          >
+            {isPending ? "Salvando..." : "Só este"}
+          </button>
+          <button
+            type="button"
+            onClick={() => salvar(true)}
+            disabled={isPending}
+            className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+          >
+            {isPending ? "Salvando..." : "Este e os próximos"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPerguntandoAlcance(false)}
+            disabled={isPending}
+            className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+          >
+            Voltar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <h2 className="font-display text-lg font-bold text-azul-noite">Editar lançamento</h2>
@@ -787,7 +822,7 @@ function FormularioEditarLancamento({
         Plano de Contas
         <SeletorComBusca
           value={categoriaId}
-          opcoes={opcoesCategoria.map((c) => ({ id: c.id, label: c.caminho }))}
+          opcoes={opcoesCategoria.map((c) => ({ id: c.id, label: c.rotulo }))}
           onChange={setCategoriaId}
           placeholder="Selecionar conta..."
         />
