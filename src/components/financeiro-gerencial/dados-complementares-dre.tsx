@@ -6,6 +6,8 @@ import { salvarEstoqueMensalAction } from "@/app/(app)/financeiro-gerencial/dre/
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaCalculo } from "@/components/dica-calculo";
+import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import { MESES_ABREVIADOS } from "@/lib/financeiro-gerencial/dre-anual";
 import type { EstoqueMensal } from "@/lib/financeiro-gerencial/tipos";
 
@@ -18,7 +20,7 @@ type CamposMes = {
 };
 
 const LINHAS: { campo: keyof CamposMes; rotulo: string }[] = [
-  { campo: "receitaVendasProdutos", rotulo: "Receita de Vendas de Produtos" },
+  { campo: "receitaVendasProdutos", rotulo: "Venda de Produtos" },
   { campo: "estoqueInicialMercadorias", rotulo: "Estoque Inicial de Mercadorias" },
   { campo: "estoqueInicialEmbalagens", rotulo: "Estoque Inicial de Embalagens" },
   { campo: "estoqueFinalMercadorias", rotulo: "Estoque Final de Mercadorias" },
@@ -112,15 +114,19 @@ export function DadosComplementaresDre({
       <div>
         <h2 className="font-display text-lg font-bold text-azul-noite">Dados Complementares da DRE</h2>
         <p className="text-sm text-cinza-medio">
-          Receita de Vendas de Produtos e estoque mensal (Mercadorias/Embalagens) - usados só no % CMV e no CMV em R$, nunca somam na Receita
-          Operacional Bruta.
+          Venda de Produtos: valor dos produtos vendidos, produzidos ou entregues no mês, com ou sem entrada de dinheiro (inclui voucher,
+          cortesia, bonificação e produção de conteúdo). É só a base do % CMV (CMV ÷ Venda de Produtos): não soma na Receita
+          Operacional Bruta e não gera lançamento. Estoque inicial vazio usa o estoque final do mês anterior; o estoque final de mercadorias fecha
+          o CMV do mês (embalagens, se houver).
         </p>
       </div>
       <TabelaRolavel ariaLabel="Tabela de dados complementares da DRE">
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th larguraFixa="220px">Mês de Competência</Th>
+              <Th larguraFixa="220px" fixo>
+                Mês de Competência
+              </Th>
               {MESES_ABREVIADOS.map((mes) => (
                 <Th key={mes} align="right" larguraFixa="84px">
                   {mes}
@@ -131,9 +137,12 @@ export function DadosComplementaresDre({
           <tbody>
             {LINHAS.map(({ campo, rotulo }) => (
               <tr key={campo} className="border-t border-cinza-claro">
-                <td className="py-2 pr-3 pl-3 font-semibold text-cinza">
-                  <span className="block min-w-0 truncate" title={rotulo}>
-                    {rotulo}
+                <td className="sticky left-0 z-10 bg-branco py-2 pr-3 pl-3 font-semibold text-cinza">
+                  <span className="flex items-center gap-1.5">
+                    <span className="block min-w-0 truncate" title={rotulo}>
+                      {rotulo}
+                    </span>
+                    {campo === "receitaVendasProdutos" && <DicaCalculo texto={EXPLICACAO_CALCULO.venda_produtos} rotulo={rotulo} />}
                   </span>
                 </td>
                 {valores.map((mes, indiceMes) => {

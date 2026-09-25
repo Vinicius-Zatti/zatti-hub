@@ -6,16 +6,21 @@ import { salvarSaidaSemReceitaAction } from "@/app/(app)/financeiro-gerencial/dr
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaCalculo } from "@/components/dica-calculo";
+import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import { MESES_ABREVIADOS } from "@/lib/financeiro-gerencial/dre-anual";
 import type { SaidaSemReceita, TipoSaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
 
+// Grupos de 25/09 - cada um já é um tipo próprio em `fin_saidas_sem_receita`,
+// então é só nome e ordem (sem migração). "Produção para marketing e
+// conteúdo" não é a conta Marketing da DRE: aqui é produto que saiu sem venda.
 const TIPOS: { tipo: TipoSaidaSemReceita; rotulo: string }[] = [
-  { tipo: "bonificacao_cortesia", rotulo: "Bonificação / cortesia" },
-  { tipo: "fidelidade", rotulo: "Fidelidade" },
-  { tipo: "doacao", rotulo: "Doação" },
-  { tipo: "marketing_degustacao", rotulo: "Marketing / degustação" },
+  { tipo: "bonificacao_cortesia", rotulo: "Cortesias e bonificações" },
+  { tipo: "fidelidade", rotulo: "Vouchers e fidelidade" },
+  { tipo: "marketing_degustacao", rotulo: "Produção para marketing e conteúdo" },
   { tipo: "consumo_interno", rotulo: "Consumo interno" },
-  { tipo: "perda_desperdicio", rotulo: "Perda / desperdício" },
+  { tipo: "doacao", rotulo: "Doações" },
+  { tipo: "perda_desperdicio", rotulo: "Perdas e desperdícios" },
 ];
 
 function competenciaDoMes(ano: number, indiceMes: number): string {
@@ -108,16 +113,21 @@ export function SaidasSemReceitaDre({
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <h2 className="font-display text-lg font-bold text-azul-noite">Saídas de Produtos sem Receita</h2>
+        <h2 className="flex items-center gap-1.5 font-display text-lg font-bold text-azul-noite">
+          Produtos sem receita
+          <DicaCalculo texto={EXPLICACAO_CALCULO.produtos_sem_receita} rotulo="Produtos sem receita" />
+        </h2>
         <p className="text-sm text-cinza-medio">
-          Análise gerencial - não somam Receita, não alteram o CMV de novo, não duplicam custo. Explicam consumo de estoque sem venda associada.
+          Produto que saiu sem entrada de dinheiro. Não gera receita, não vira despesa e não altera o CMV - só explica o consumo sem venda.
         </p>
       </div>
-      <TabelaRolavel ariaLabel="Tabela de saídas de produtos sem receita">
+      <TabelaRolavel ariaLabel="Tabela de produtos sem receita">
         <table className="w-full min-w-[1180px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th larguraFixa="200px">Mês de Competência</Th>
+              <Th larguraFixa="200px" fixo>
+                Mês de Competência
+              </Th>
               {MESES_ABREVIADOS.map((mes) => (
                 <Th key={mes} align="right" larguraFixa="84px">
                   {mes}
@@ -131,7 +141,7 @@ export function SaidasSemReceitaDre({
           <tbody>
             {TIPOS.map(({ tipo, rotulo }) => (
               <tr key={tipo} className="border-t border-cinza-claro">
-                <td className="py-2 pr-3 pl-3 font-semibold text-cinza">
+                <td className="sticky left-0 z-10 bg-branco py-2 pr-3 pl-3 font-semibold text-cinza">
                   <span className="block min-w-0 truncate" title={rotulo}>
                     {rotulo}
                   </span>

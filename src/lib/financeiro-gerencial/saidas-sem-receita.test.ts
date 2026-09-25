@@ -48,9 +48,9 @@ const ESTOQUE_JANEIRO: EstoqueMensal = {
   competencia: "2026-01-01",
   receitaVendasProdutos: 5000,
   estoqueInicialMercadorias: 500,
-  estoqueInicialEmbalagens: 0,
+  estoqueInicialEmbalagens: 50,
   estoqueFinalMercadorias: 500,
-  estoqueFinalEmbalagens: 0,
+  estoqueFinalEmbalagens: 50,
   criadoPorNome: "Gestão",
   atualizadoEm: "2026-01-01T00:00:00Z",
 };

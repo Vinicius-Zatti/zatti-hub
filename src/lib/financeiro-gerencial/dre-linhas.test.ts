@@ -93,18 +93,31 @@ describe("montarArvoreMensal", () => {
     expect(ocupacao?.filhos?.map((f) => f.rotulo)).toContain("Aluguel");
   });
 
-  it("CMC fica dentro do CMV (nunca grupo principal) com uma linha por conta do CMC como netos", () => {
+  it("CMC e CMV em duas linhas; CMV fechado = EI + CMC - EF, com o estoque dentro do CMV ao expandir", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
     const linhas = montarArvoreMensal(dre);
+    expect(linhas.map((l) => l.rotulo)).toEqual([
+      "Receita Operacional Bruta",
+      "Deduções",
+      "Receita Operacional Líquida",
+      "CMC - Custo da Mercadoria Comprada",
+      "CMV - Custo da Mercadoria Vendida",
+      "Resultado Operacional Bruto",
+      "Custos Fixos",
+      "Custo com Mão de Obra (CMO)",
+      "Custos Operacionais",
+      "Resultado Líquido do Exercício",
+      "Saídas não Operacionais",
+      "Resultado Econômico",
+    ]);
+    expect(acharLinha(linhas, "cmc")?.filhos?.map((f) => [f.rotulo, f.valor])).toEqual([
+      ["Compras de mercadorias", 2000],
+      ["Compras de embalagens", 0],
+    ]);
     const cmv = acharLinha(linhas, "cmv");
-    const cmc = cmv?.filhos?.find((f) => f.id === "cmv_cmc");
-    expect(cmc?.valor).toBe(2000);
-    expect(cmc?.rotulo).toBe("CMC - Custo da Mercadoria Comprada");
-    expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Compras de mercadorias", "Compras de embalagens"]);
-    expect(cmc?.filhos?.map((f) => f.valor)).toEqual([2000, 0]);
-    expect(linhas.some((l) => l.rotulo.startsWith("CMC"))).toBe(false);
-    expect(acharLinha(linhas, "cmv")?.rotulo).toBe("(-) CMV - Custo da Mercadoria Vendida");
-    expect(acharLinha(linhas, "cmo")?.rotulo).toBe("(-) CMO - Custo de Mão de Obra");
+    expect(cmv?.valor).toBe(2250); // 1000 + 200 + 2000 - 800 - 150
+    expect(cmv?.filhos?.map((f) => f.valor)).toEqual([1000, 200, 2000, 800, 150]);
+    expect(acharLinha(linhas, "margem")?.valor).toBe(7250); // 10000 - 500 - 2250: um CMV só para todos os resultados
   });
 
   it("CMC com várias contas de mercadoria (bebidas, mercadorias, proteínas) mostra cada uma e soma todas no CMC", () => {
@@ -121,7 +134,7 @@ describe("montarArvoreMensal", () => {
       lancamento({ categoriaId: "cmc_proteinas", dataCompetencia: "2026-08-10", valor: 700 }),
     ];
     const dre = calcularDre({ competencia: "2026-08", lancamentos, categorias, estoqueMensal: ESTOQUE_AGOSTO });
-    const cmc = acharLinha(montarArvoreMensal(dre), "cmv")?.filhos?.find((f) => f.id === "cmv_cmc");
+    const cmc = acharLinha(montarArvoreMensal(dre), "cmc");
     expect(cmc?.filhos?.map((f) => f.rotulo)).toEqual(["Custo com bebidas", "Custo com mercadorias", "Custo com proteínas", "Compras de embalagens"]);
     expect(cmc?.filhos?.map((f) => f.valor)).toEqual([300, 2000, 700, 0]);
     expect(cmc?.valor).toBe(3000);
@@ -159,19 +172,18 @@ describe("montarArvoreMensal", () => {
     ]);
   });
 
-  it("sem inventário do mês as linhas de estoque mostram '-' mas CMV, CMC, Margem e Resultados têm valor (regra de 25/09)", () => {
-    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: null });
+  it("CMV provisório sem estoque final: EI do mês anterior + CMC, estoque final '-' (regra final de 25/09)", () => {
+    const julho = { ...ESTOQUE_AGOSTO, competencia: "2026-07-01", estoqueFinalMercadorias: 900, estoqueFinalEmbalagens: 120 };
+    const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: null, estoqueMesAnterior: julho });
     const linhas = montarArvoreMensal(dre);
     const cmv = acharLinha(linhas, "cmv");
-    expect(cmv?.valor).toBe(2000); // CMV = compras
-    expect(cmv?.filhos).toHaveLength(5);
-    expect(cmv?.filhos?.filter((f) => f.id.startsWith("cmv_estoque")).every((f) => f.valor === null)).toBe(true);
-    expect(cmv?.filhos?.find((f) => f.id === "cmv_cmc")?.valor).toBe(2000);
-    expect(acharLinha(linhas, "margem")?.valor).toBe(7500); // 10000 - 500 - 2000
-    expect(acharLinha(linhas, "resultado_operacional")?.valor).toBe(5200); // 7500 - 1500 - 800
+    expect(dre.cmv.provisorio).toBe(true);
+    expect(cmv?.valor).toBe(3020); // 900 + 120 (finais de julho) + 2000 de CMC
+    expect(cmv?.filhos?.slice(3).every((f) => f.valor === null)).toBe(true);
+    expect(acharLinha(linhas, "margem")?.valor).toBe(6480); // 10000 - 500 - 3020
   });
 
-  it("CMO vem em dois subgrupos: Pagamentos e Provisões (provisões com nome próprio, somando no CMO)", () => {
+  it("CMO como na planilha: contas de pagamento e o bloco Provisionamento (Provisão 13º, Férias, Multa FGTS) somando no CMO", () => {
     const categorias = [
       ...CATEGORIAS,
       categoria({ id: "cmo_ferias", papelDre: "cmo_ferias", nome: "Férias", ordem: 3 }),
@@ -183,17 +195,17 @@ describe("montarArvoreMensal", () => {
     const cmo = acharLinha(montarArvoreMensal(dre), "cmo");
     expect(cmo?.valor).toBe(1700); // 1500 de folha + 200 de provisões
     expect(cmo?.filhos?.map((f) => [f.rotulo, f.valor])).toEqual([
-      ["Pagamentos", 1500],
-      ["Provisões", 200],
+      ["Folha salarial contábil", 1500],
+      ["Provisionamento", 200],
     ]);
-    expect(cmo?.filhos?.[1].filhos?.map((f) => f.rotulo)).toEqual(["Provisão de férias", "Provisão de 13º", "Provisão de multa do FGTS"]);
+    expect(cmo?.filhos?.[1].filhos?.map((f) => f.rotulo)).toEqual(["Provisão 13º", "Provisão Férias", "Provisão Multa FGTS"]);
   });
 
   it("linha de resultado (Margem, Resultado Operacional, Resultado Econômico, Resultado Líquido) não tem filhos - não é expansível", () => {
     const dre = calcularDre({ competencia: "2026-08", lancamentos: LANCAMENTOS, categorias: CATEGORIAS, estoqueMensal: ESTOQUE_AGOSTO });
     const linhas = montarArvoreMensal(dre);
     expect(acharLinha(linhas, "margem")?.filhos).toBeUndefined();
-    expect(acharLinha(linhas, "resultado_operacional")?.filhos).toBeUndefined();
+    expect(acharLinha(linhas, "resultado_operacional")).toBeUndefined(); // duplicava o Resultado Líquido do Exercício
     expect(acharLinha(linhas, "receita_liquida")?.filhos).toBeUndefined();
     expect(acharLinha(linhas, "resultado_economico")?.filhos).toBeUndefined();
     expect(acharLinha(linhas, "resultado_liquido")?.filhos).toBeUndefined();
@@ -222,14 +234,12 @@ describe("montarArvoreMensal", () => {
 
     const resultadoLiquidoComSaidas = acharLinha(linhasComSaidas, "resultado_liquido");
     const resultadoLiquidoSemSaidas = acharLinha(linhasSemSaidas, "resultado_liquido");
-    const resultadoOperacional = acharLinha(linhasComSaidas, "resultado_operacional");
     const resultadoEconomico = acharLinha(linhasComSaidas, "resultado_economico");
 
     // Resultado Líquido é igual com ou sem Saídas Não Operacionais lançadas.
     expect(resultadoLiquidoComSaidas?.valor).toBe(resultadoLiquidoSemSaidas?.valor);
-    expect(resultadoLiquidoComSaidas?.valor).toBe(resultadoOperacional?.valor);
     // Resultado Econômico = Resultado Líquido - Saídas Não Operacionais.
-    expect(resultadoEconomico?.valor).toBe(resultadoOperacional!.valor! - 300);
-    expect(resultadoEconomico?.rotulo).toBe("= Resultado Econômico");
+    expect(resultadoEconomico?.valor).toBe(resultadoLiquidoComSaidas!.valor! - 300);
+    expect(resultadoEconomico?.rotulo).toBe("Resultado Econômico");
   });
 });

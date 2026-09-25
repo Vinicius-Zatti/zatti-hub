@@ -15,6 +15,8 @@ export default async function VisaoGeralPage() {
   const acesso = await requireFinanceiroGerencial();
   const hoje = hojeIsoBrasil();
   const competencia = hoje.slice(0, 7);
+  const [anoAtual, mesAtual] = competencia.split("-").map(Number);
+  const competenciaAnterior = mesAtual === 1 ? `${anoAtual - 1}-12` : `${anoAtual}-${String(mesAtual - 1).padStart(2, "0")}`;
 
   const [{ lancamentos, baixas }, categorias, contas, estoques, parametros, reversoes] = await Promise.all([
     carregarBaseFinanceira(acesso.unidadeId),
@@ -32,6 +34,8 @@ export default async function VisaoGeralPage() {
     lancamentos,
     categorias,
     estoqueMensal: estoques.find((e) => e.competencia.startsWith(competencia)) ?? null,
+    // Estoque final do mês anterior vira o inicial quando o do mês não foi informado.
+    estoqueMesAnterior: estoques.find((e) => e.competencia.startsWith(competenciaAnterior)) ?? null,
     valoresProvisao: valoresDreProvisao(provisoes.get(competencia), categorias),
   });
 

@@ -21,6 +21,14 @@ export const MESES_POR_EXTENSO = [
 
 export type AvisoDre = { id: string; titulo: string; texto: string };
 
+/** Meses do ano que já começaram (calendário), independente da visão. */
+export function mesesJaIniciados(ano: number, hoje: Date = new Date()): number {
+  const anoAtual = hoje.getFullYear();
+  if (ano < anoAtual) return 12;
+  if (ano > anoAtual) return 0;
+  return hoje.getMonth() + 1;
+}
+
 function listarMeses(indices: number[], ano: number): string {
   const nomes = indices.map((i) => MESES_POR_EXTENSO[i]);
   const lista = nomes.length <= 1 ? nomes.join("") : `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
@@ -37,22 +45,22 @@ export function mesesConsiderados(indicesMarcados: number[], mesesTranscorridos:
 export function avisosDre(params: {
   ano: number;
   meses: number[];
-  semInventario: boolean[];
+  cmvProvisorio: boolean[];
   semReceitaVendasProdutos: boolean[];
   caminhoCadastro: string;
 }): AvisoDre[] {
-  const { ano, meses, semInventario, semReceitaVendasProdutos, caminhoCadastro } = params;
+  const { ano, meses, cmvProvisorio, semReceitaVendasProdutos, caminhoCadastro } = params;
   const avisos: AvisoDre[] = [];
 
-  const mesesSemInventario = meses.filter((i) => semInventario[i]);
+  const mesesSemInventario = meses.filter((i) => cmvProvisorio[i]);
   if (mesesSemInventario.length > 0) {
     const plural = mesesSemInventario.length > 1;
     avisos.push({
-      id: "sem_inventario",
-      titulo: `Inventário de ${listarMeses(mesesSemInventario, ano)} não cadastrado`,
+      id: "cmv_provisorio",
+      titulo: `CMV provisório: informe o estoque final de mercadorias de ${listarMeses(mesesSemInventario, ano)} (e o de embalagens, se houver) para fechar o CMV`,
       texto:
-        `O CMV ${plural ? "desses meses" : "do mês"} está considerando só as compras, então a margem de contribuição, os resultados ` +
-        `e o ponto de equilíbrio podem estar diferentes do real. Cadastre o inventário em ${caminhoCadastro} para corrigir.`,
+        `Enquanto isso o CMV ${plural ? "desses meses" : "do mês"} é o estoque inicial mais o CMC (sem descontar o que sobrou em estoque) e o ` +
+        `percentual mostrado é o % CMC provisório (CMC ÷ Receita Operacional Bruta sem as receitas de entrega). Informe em ${caminhoCadastro}.`,
     });
   }
 
@@ -60,8 +68,8 @@ export function avisosDre(params: {
   if (mesesSemReceitaProdutos.length > 0) {
     avisos.push({
       id: "sem_receita_vendas_produtos",
-      titulo: `Receita de Vendas de Produtos de ${listarMeses(mesesSemReceitaProdutos, ano)} não informada`,
-      texto: `Sem ela o % CMV não pode ser calculado e aparece como "-". Os valores em R$ não mudam. Informe em ${caminhoCadastro}.`,
+      titulo: `Venda de Produtos de ${listarMeses(mesesSemReceitaProdutos, ano)} não informada`,
+      texto: `Sem ela o % CMV (CMV ÷ Venda de Produtos) não aparece e a DRE mostra o % CMC provisório. Os valores em R$ não mudam. Informe em ${caminhoCadastro}.`,
     });
   }
 

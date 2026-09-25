@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { gerarCompetenciasRecorrencia, gerarOcorrenciasRecorrencia } from "./recorrencia";
 import { listarContasComCaminho, rotuloContaComGrupo } from "./categorias";
-import { calcularDre, lancamentosDaVisao } from "./dre";
-import type { BaixaBase, CategoriaFinanceira, LancamentoBase } from "./tipos";
+import { calcularDre, lancamentosDaVisao, type VisaoDre } from "./dre";
+import { montarDreAnual } from "./dre-anual";
+import type { CategoriaFinanceira, LancamentoBase } from "./tipos";
 
 function categoria(over: Partial<CategoriaFinanceira> & { id: string }): CategoriaFinanceira {
   return { parentId: null, nivel: "conta", papelDre: null, nome: over.id, codigoSistema: null, padrao: true, ordem: 1, arquivado: false, ...over };
@@ -45,45 +46,83 @@ describe("rótulo curto do Plano de Contas no seletor (25/09)", () => {
   });
 });
 
-describe("DRE Projetada x Realizada (25/09)", () => {
-  const lancamentos: LancamentoBase[] = [
-    {
-      id: "l1",
-      tipo: "despesa",
-      categoriaId: "cmo_folha",
-      descricao: "Folha",
-      dataCompetencia: "2026-09-05",
-      origem: "comum",
-      recorrenciaId: null,
-      parcelas: [{ id: "p1", valor: 3000, dataPrevista: "2026-10-05", contaFinanceiraId: null, status: "parcial", numero: 1, totalParcelas: 1 }],
-    },
-    {
-      id: "l2",
-      tipo: "despesa",
-      categoriaId: "co_aluguel",
-      descricao: "Aluguel",
-      dataCompetencia: "2026-09-01",
-      origem: "comum",
-      recorrenciaId: null,
-      parcelas: [{ id: "p2", valor: 1000, dataPrevista: "2026-09-10", contaFinanceiraId: null, status: "aberto", numero: 1, totalParcelas: 1 }],
-    },
+describe("DRE Realizada, Projetada e Completa pela competência, nunca pelo pagamento (V1, 25/09)", () => {
+  const HOJE = "2026-09-25";
+  const lancamento = (id: string, categoriaId: string, dataCompetencia: string, status: "aberto" | "quitado" | "cancelado", valor: number): LancamentoBase => ({
+    id,
+    tipo: "despesa",
+    categoriaId,
+    descricao: id,
+    dataCompetencia,
+    origem: "recorrencia",
+    recorrenciaId: "r",
+    parcelas: [{ id: `p_${id}`, valor, dataPrevista: dataCompetencia, contaFinanceiraId: null, status, numero: 1, totalParcelas: 1 }],
+  });
+  const LANCAMENTOS: LancamentoBase[] = [
+    lancamento("folha_set_aberta", "cmo_folha", "2026-09-05", "aberto", 3000), // aconteceu, não paga
+    lancamento("folha_out_paga", "cmo_folha", "2026-10-05", "quitado", 3000), // paga adiantada, competência futura
+    lancamento("aluguel_set_cancelado", "co_aluguel", "2026-09-01", "cancelado", 1000),
   ];
-  const baixas: BaixaBase[] = [
-    { id: "b1", parcelaId: "p1", tipo: "baixa", contaFinanceiraId: "c1", valor: 2500, data: "2026-10-05" },
-    { id: "b2", parcelaId: "p1", tipo: "estorno", contaFinanceiraId: "c1", valor: 500, data: "2026-10-06" },
-  ];
+  const cmo = (visao: VisaoDre, competencia: string) =>
+    calcularDre({ competencia, lancamentos: lancamentosDaVisao(visao, LANCAMENTOS, HOJE), categorias: CATEGORIAS, estoqueMensal: null }).cmo.total;
 
-  it("Projetada usa o valor cheio; Realizada usa só o baixado (estorno desconta), sempre na competência", () => {
-    const projetada = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("projetado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
-    const realizada = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("realizado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
-    expect(projetada.cmo.subgrupos.flatMap((s) => s.contas).find((c) => c.id === "cmo_folha")?.valor).toBe(3000);
-    expect(realizada.cmo.subgrupos.flatMap((s) => s.contas).find((c) => c.id === "cmo_folha")?.valor).toBe(2000);
-    expect(realizada.custosOperacionais.total).toBe(0);
+  it("Realizada = competência até hoje, paga ou não; pagamento adiantado de competência futura não entra", () => {
+    expect(cmo("realizada", "2026-09")).toBe(3000);
+    expect(cmo("realizada", "2026-10")).toBe(0);
   });
 
-  it("despesa de folha paga aparece no CMO da competência mesmo sem estoque do mês cadastrado", () => {
-    const dre = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao("realizado", lancamentos, baixas), categorias: CATEGORIAS, estoqueMensal: null });
-    expect(dre.cmo.total).toBe(2000);
-    expect(dre.resultadoOperacional).toBe(-2000); // sem inventário a DRE calcula mesmo assim (regra de 25/09)
+  it("Projetada = competência depois de hoje; Completa = as duas", () => {
+    expect(cmo("projetada", "2026-09")).toBe(0);
+    expect(cmo("projetada", "2026-10")).toBe(3000);
+    expect(cmo("completa", "2026-09") + cmo("completa", "2026-10")).toBe(6000);
+  });
+
+  it("parcela cancelada não entra em nenhuma visão", () => {
+    for (const visao of ["realizada", "projetada", "completa"] as VisaoDre[]) {
+      const dre = calcularDre({ competencia: "2026-09", lancamentos: lancamentosDaVisao(visao, LANCAMENTOS, HOJE), categorias: CATEGORIAS, estoqueMensal: null });
+      expect(dre.custosOperacionais.total).toBe(0);
+    }
+  });
+
+  it("Projetada e Completa mostram os meses futuros (é onde está o previsto); Realizada continua mostrando '-' no futuro", () => {
+    const anual = (visao: VisaoDre) => {
+      const lancamentos = lancamentosDaVisao(visao, LANCAMENTOS, HOJE);
+      const dres = Array.from({ length: 12 }, (_, i) =>
+        calcularDre({ competencia: `2026-${String(i + 1).padStart(2, "0")}`, lancamentos, categorias: CATEGORIAS, estoqueMensal: null }),
+      );
+      return montarDreAnual(dres, 2026, Array(12).fill(0), new Date("2026-09-25T15:00:00Z"), { incluirMesesFuturos: visao !== "realizada" });
+    };
+    expect(anual("realizada").linhas.find((l) => l.id === "cmo")!.valoresPorMes[9]).toBeNull();
+    expect(anual("projetada").linhas.find((l) => l.id === "cmo")!.valoresPorMes[9]).toBe(3000);
+    expect(anual("completa").linhas.find((l) => l.id === "cmo")!.total).toBe(6000);
+  });
+});
+
+describe("% CMC provisório exclui a receita de entregas (25/09)", () => {
+  it("% CMC = CMC ÷ (Receita Operacional Bruta - contas de entrega por codigo_sistema)", () => {
+    const categorias: CategoriaFinanceira[] = [
+      ...CATEGORIAS,
+      categoria({ id: "venda_ifood", papelDre: "receita", codigoSistema: "receita_ifood_venda", nome: "Venda iFood" }),
+      categoria({ id: "entrega_ifood", papelDre: "receita", codigoSistema: "receita_ifood_entrega", nome: "Entrega iFood" }),
+      categoria({ id: "compras", papelDre: "cmc_mercadorias", codigoSistema: "cmc_compras_mercadorias", nome: "Custo com mercadorias" }),
+    ];
+    const lanc = (id: string, categoriaId: string, tipo: "receita" | "despesa", valor: number): LancamentoBase => ({
+      id,
+      tipo,
+      categoriaId,
+      descricao: id,
+      dataCompetencia: "2026-01-10",
+      origem: "comum",
+      recorrenciaId: null,
+      parcelas: [{ id: `p_${id}`, valor, dataPrevista: "2026-01-10", contaFinanceiraId: null, status: "aberto", numero: 1, totalParcelas: 1 }],
+    });
+    const lancamentos = [lanc("v", "venda_ifood", "receita", 8000), lanc("e", "entrega_ifood", "receita", 2000), lanc("c", "compras", "despesa", 2000)];
+    const dres = Array.from({ length: 12 }, (_, i) =>
+      calcularDre({ competencia: `2026-${String(i + 1).padStart(2, "0")}`, lancamentos, categorias, estoqueMensal: null }),
+    );
+    const anual = montarDreAnual(dres, 2026, Array(12).fill(0), new Date(2026, 0, 25));
+    const percentual = anual.linhas.find((l) => l.id === "cmv_percentual")!;
+    expect(percentual.rotulo).toBe("% CMC (provisório)");
+    expect(percentual.valoresPorMes[0]).toBeCloseTo(2000 / 8000, 10); // e não 2000 / 10000
   });
 });

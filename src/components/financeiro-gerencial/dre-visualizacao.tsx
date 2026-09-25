@@ -14,18 +14,23 @@ import {
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
 import { AlternadorVisao } from "@/components/financeiro-gerencial/fluxo-caixa-visualizacao";
-import type { VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
+import type { VisaoDre } from "@/lib/financeiro-gerencial/dre";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
 import { SaidasSemReceitaDre } from "@/components/financeiro-gerencial/saidas-sem-receita-dre";
 import { calcularIndicadoresPeriodo, MESES_ABREVIADOS, type DreAnual, type IndicadoresDre } from "@/lib/financeiro-gerencial/dre-anual";
-import { avisosDre, explicacaoIndicadores, mesesConsiderados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
+import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
+import { avisosDre, explicacaoIndicadores, mesesConsiderados, mesesJaIniciados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
 
-// Mesma regra de status do Fluxo de Caixa/DFC, mas no mês da competência.
-const EXPLICACAO_VISAO_DRE: Record<VisaoCaixa, string> = {
-  projetado: "Projetado: toda parcela não cancelada, pelo valor cheio.",
-  realizado: "Realizado: só o que já foi recebido ou pago (valor das baixas, estorno desconta).",
+// Pagamento nunca define o realizado (pago/aberto/vencido é estado de caixa);
+// o que separa realizado de previsto é a Data de Competência.
+const EXPLICACAO_VISAO_DRE: Record<VisaoDre, string> = {
+  realizada: "Realizada: lançamentos com competência até hoje, pagos ou não.",
+  projetada: "Projetada: lançamentos com competência depois de hoje, ainda previstos (ex: próximas parcelas de recorrência).",
+  completa: "Completa: realizada + projetada.",
 };
+
+const TITULO_VISAO: Record<VisaoDre, string> = { realizada: "Realizada", projetada: "Projetada", completa: "Completa" };
 
 function formatarPontoDeEquilibrio(v: number | "sem_margem"): string {
   return v === "sem_margem" ? "Sem margem" : formatarNumero(v);
@@ -62,13 +67,13 @@ export function DreVisualizacao({
 }: {
   dreAnual: DreAnual;
   ano: number;
-  visao: VisaoCaixa;
+  visao: VisaoDre;
   estoquesDoAno: (EstoqueMensal | null)[];
   saidasSemReceitaDoAno: SaidaSemReceita[];
   podeGerir: boolean;
 }) {
   const router = useRouter();
-  const navegar = (novoAno: number, novaVisao: VisaoCaixa) => router.push(`/financeiro-gerencial/dre?ano=${novoAno}&visao=${novaVisao}`);
+  const navegar = (novoAno: number, novaVisao: VisaoDre) => router.push(`/financeiro-gerencial/dre?ano=${novoAno}&visao=${novaVisao}`);
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
   const { visiveis, alternar: alternarColuna, mostrarTodas, desmarcarTodas } = useColunasVisiveis(COLUNAS_NUMERICAS);
 
@@ -94,6 +99,9 @@ export function DreVisualizacao({
       ? calcularIndicadoresPeriodo(dreAnual.linhas, meses)
       : { resultadoEconomico: null, percentualResultadoEconomico: null, pontoDeEquilibrio: "sem_margem" };
   const explicacoes = explicacaoIndicadores(indicadores, meses);
+  // Inventário e Venda de Produtos só são cobrados de mês que já começou
+  // (Projetada/Completa mostram meses futuros, que ainda não têm como ter).
+  const mesesComInventarioCobravel = mesesConsiderados(mesesMarcados, mesesJaIniciados(ano));
   const rotuloPeriodo =
     meses.length === 0
       ? "Nenhum mês marcado já começou"
@@ -102,15 +110,15 @@ export function DreVisualizacao({
         : `Soma de ${meses.length} meses (${meses.map((i) => MESES_ABREVIADOS[i]).join(", ")})`;
   const avisos = avisosDre({
     ano,
-    meses,
-    semInventario: dreAnual.semInventarioPorMes,
+    meses: mesesComInventarioCobravel,
+    cmvProvisorio: dreAnual.cmvProvisorioPorMes,
     semReceitaVendasProdutos: estoquesDoAno.map((e) => !e || e.receitaVendasProdutos === 0),
     caminhoCadastro: podeGerir
       ? "Dados Complementares da DRE, no fim desta página"
       : "Dados Complementares da DRE, no fim desta página (peça à Gestão)",
   });
-  const avisosPorLinha: Record<string, string> = dreAnual.semInventarioPorMes.some((s, i) => s && meses.includes(i))
-    ? { cmv: "sem inventário" }
+  const avisosPorLinha: Record<string, string> = dreAnual.cmvProvisorioPorMes.some((s, i) => s && mesesComInventarioCobravel.includes(i))
+    ? { cmv: "provisório" }
     : {};
 
   // "% Linha" aparece logo abaixo da própria linha (antes das contas-filhas
@@ -126,7 +134,7 @@ export function DreVisualizacao({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">
-            DRE {visao === "projetado" ? "Projetada" : "Realizada"} - {ano}
+            DRE {TITULO_VISAO[visao]} - {ano}
           </h1>
           <p className="text-sm text-cinza-medio">
             Demonstrativo de Resultado por Data de Competência, ano completo, mês a mês.{" "}
@@ -136,8 +144,9 @@ export function DreVisualizacao({
         <div className="flex items-center gap-2">
           <AlternadorVisao
             opcoes={[
-              { valor: "projetado", rotulo: "Projetada" },
-              { valor: "realizado", rotulo: "Realizada" },
+              { valor: "realizada", rotulo: "Realizada" },
+              { valor: "projetada", rotulo: "Projetada" },
+              { valor: "completa", rotulo: "Completa" },
             ]}
             valor={visao}
             onMudar={(v) => navegar(ano, v)}
@@ -165,16 +174,19 @@ export function DreVisualizacao({
           titulo="Resultado Econômico"
           valor={formatarNumero(indicadores.resultadoEconomico)}
           detalhe={explicacoes.resultadoEconomico ?? rotuloPeriodo}
+          dica={EXPLICACAO_CALCULO.quadro_resultado_economico}
         />
         <CartaoIndicador
           titulo="% Resultado Econômico"
           valor={formatarPercentual(indicadores.percentualResultadoEconomico)}
           detalhe={explicacoes.percentual ?? rotuloPeriodo}
+          dica={EXPLICACAO_CALCULO.quadro_percentual_resultado_economico}
         />
         <CartaoIndicador
           titulo="Ponto de Equilíbrio"
           valor={formatarPontoDeEquilibrio(indicadores.pontoDeEquilibrio)}
           detalhe={explicacoes.pontoDeEquilibrio ?? rotuloPeriodo}
+          dica={EXPLICACAO_CALCULO.quadro_ponto_equilibrio}
         />
       </div>
 
@@ -190,7 +202,9 @@ export function DreVisualizacao({
           <table className="w-full min-w-[1180px] text-sm">
             <thead>
               <tr className="bg-azul-petroleo text-branco">
-                <Th larguraFixa="240px">Mês de Competência</Th>
+                <Th larguraFixa="240px" fixo>
+                  Mês de Competência
+                </Th>
                 {visiveis.has("media") && (
                   <Th align="right" larguraFixa="100px">
                     Média
@@ -222,6 +236,7 @@ export function DreVisualizacao({
                   visiveis={visiveis}
                   nomeCompleto={nomeCompleto}
                   avisos={avisosPorLinha}
+                  dicas={EXPLICACAO_CALCULO}
                 />
               ))}
             </tbody>

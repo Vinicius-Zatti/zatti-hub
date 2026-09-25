@@ -41,7 +41,7 @@ export function calcularIndicadoresPeriodo(linhas: LinhaDreAnual[], indicesMeses
   const receita = soma("receita_bruta");
   const resultadoEconomico = soma("resultado_economico");
   const margem = soma("margem");
-  const custosFixos = somarValores([soma("cmo") ?? 0, soma("custos_operacionais") ?? 0]);
+  const custosFixos = soma("custos_fixos") ?? 0;
   const percentualMargem = dividirRazao(margem, receita);
   return {
     resultadoEconomico,
@@ -54,7 +54,8 @@ export type DreAnual = {
   ano: number;
   divisorMedia: number | null;
   /** Mês (0-11) sem inventário cadastrado - CMV calculado só com as compras. */
-  semInventarioPorMes: boolean[];
+  /** Mês (0-11) com CMV provisório (estoque final ainda não informado). */
+  cmvProvisorioPorMes: boolean[];
   linhas: LinhaDreAnual[];
   indicadores: IndicadoresDre;
 };
@@ -128,15 +129,15 @@ function combinarArvore(arvoresDoAno: LinhaDreMensal[][], mesesValidos: number, 
   });
 }
 
+// Nomes dos percentuais da Planilha Financeiro da Zatti (V1, 25/09).
 const ROTULOS_PERCENTUAL: Record<string, string> = {
-  deducoes: "% Deduções",
-  cmv: "% CMV",
   margem: "% Margem de Contribuição",
-  cmo: "% CMO",
+  custos_fixos: "% Custos Fixos",
+  cmo: "% Custo com Mão de Obra (CMO)",
   custos_operacionais: "% Custos Operacionais",
+  resultado_liquido: "% Resultado Líquido do Exercício",
+  saidas: "% Saídas não Operacionais",
   resultado_economico: "% Resultado Econômico",
-  saidas: "% Saídas Não Operacionais",
-  resultado_liquido: "% Resultado Líquido",
 };
 
 /** Linha de percentual frente a um denominador - Total e Média são a divisão
@@ -166,6 +167,41 @@ function comPercentuais(linhas: LinhaDreAnual[], denominadorPorId: Record<string
   });
 }
 
+/** Percentual logo abaixo do CMV (regra final de 25/09), mês a mês:
+ * - "% CMV" = CMV / Venda de Produtos, só com o CMV fechado (estoque final
+ *   informado) E a Venda de Produtos preenchida;
+ * - senão "% CMC" provisório = CMC / (Receita Operacional Bruta - receitas
+ *   de entrega), porque entrega não é venda de produto.
+ * Nunca CMV sobre Receita Bruta. Total/Média só quando todos os meses
+ * considerados estão no mesmo estado; misturado fica "-". O rótulo diz qual
+ * dos dois está na tela. */
+function comPercentualCmv(
+  linhas: LinhaDreAnual[],
+  absoluto: LinhaDreAnual[],
+  provisorioPorMes: boolean[],
+  vendaProdutos: LinhaDreAnual,
+  receitaBruta: LinhaDreAnual,
+  mesesValidos: number,
+): LinhaDreAnual[] {
+  const cmv = absoluto.find((l) => l.id === "cmv");
+  const cmc = absoluto.find((l) => l.id === "cmc");
+  if (!cmv || !cmc) return linhas;
+
+  const usaCmv = (i: number) => !provisorioPorMes[i] && (vendaProdutos.valoresPorMes[i] ?? 0) > 0;
+  const valoresPorMes = cmv.valoresPorMes.map((_, i) =>
+    usaCmv(i) ? dividirRazao(cmv.valoresPorMes[i], vendaProdutos.valoresPorMes[i]) : dividirRazao(cmc.valoresPorMes[i], receitaBruta.valoresPorMes[i]),
+  );
+  const considerados = Array.from({ length: mesesValidos }, (_, i) => i);
+  const todosCmv = considerados.length > 0 && considerados.every(usaCmv);
+  const nenhumCmv = considerados.every((i) => !usaCmv(i));
+  const total = todosCmv ? dividirRazao(cmv.total, vendaProdutos.total) : nenhumCmv ? dividirRazao(cmc.total, receitaBruta.total) : null;
+  const media = todosCmv ? dividirRazao(cmv.media, vendaProdutos.media) : nenhumCmv ? dividirRazao(cmc.media, receitaBruta.media) : null;
+  const rotulo = todosCmv ? "% CMV" : nenhumCmv ? "% CMC (provisório)" : "% CMV / % CMC (provisório nos meses sem fechamento)";
+
+  const linhaPercentualCmv: LinhaDreAnual = { id: "cmv_percentual", rotulo, nivel: 0, percentual: true, valoresPorMes, total, media };
+  return linhas.flatMap((l) => (l.id === "cmv" ? [l, linhaPercentualCmv] : [l]));
+}
+
 /** Linha auxiliar (não aparece em `linhas`) só pra servir de denominador do
  * % CMV - Receita de Vendas de Produtos nunca soma na Receita Operacional
  * Bruta nem entra no CMV em R$, é puramente o "por quanto dividir" do % CMV.
@@ -173,11 +209,15 @@ function comPercentuais(linhas: LinhaDreAnual[], denominadorPorId: Record<string
  * mês já transcorrido sem valor preenchido entra como 0 no Total (nunca
  * invalida o ano inteiro - diferente da regra de estoque pendente do CMV em
  * R$, que é sobre integridade de cálculo, não sobre este denominador). */
-function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
+function montarLinhaAuxiliar(id: string, rotulo: string, valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
   const valoresPorMes = valoresPorMesBrutos.map((v, indice) => (indice < mesesValidos ? v : null));
   const total = mesesValidos === 0 ? null : somarValores(valoresPorMesBrutos.slice(0, mesesValidos));
   const media = dividirMonetario(total, divisorMedia);
-  return { id: "receita_vendas_produtos", rotulo: "Receita de Vendas de Produtos", nivel: 0, valoresPorMes, total, media };
+  return { id, rotulo, nivel: 0, valoresPorMes, total, media };
+}
+
+function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesValidos: number, divisorMedia: number | null): LinhaDreAnual {
+  return montarLinhaAuxiliar("receita_vendas_produtos", "Venda de Produtos", valoresPorMesBrutos, mesesValidos, divisorMedia);
 }
 
 /** Monta a DRE anual a partir de 12 `Dre` já calculados (índice 0 = janeiro
@@ -187,8 +227,17 @@ function montarLinhaReceitaVendasProdutos(valoresPorMesBrutos: number[], mesesVa
  * 11 = dezembro, valor bruto de `fin_estoque_mensal.receita_vendas_produtos`,
  * 0 quando o mês não tem linha) é o dado complementar manual usado só como
  * denominador do % CMV. */
-export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProdutosPorMes: number[], hoje: Date = new Date()): DreAnual {
-  const divisorMedia = calcularDivisorMedia(ano, hoje);
+export function montarDreAnual(
+  dresPorMes: Dre[],
+  ano: number,
+  receitaVendasProdutosPorMes: number[],
+  hoje: Date = new Date(),
+  opcoes: { incluirMesesFuturos?: boolean } = {},
+): DreAnual {
+  // Projetada/Completa (25/09) mostram o ano inteiro, inclusive meses que
+  // ainda não começaram (é justamente onde está o previsto): Total soma os
+  // 12 meses e a Média divide por 12. Realizada segue a regra antiga.
+  const divisorMedia = opcoes.incluirMesesFuturos ? 12 : calcularDivisorMedia(ano, hoje);
   const mesesValidos = divisorMedia ?? 0;
   const arvoresMensais = dresPorMes.map((dre) => montarArvoreMensal(dre));
 
@@ -196,22 +245,31 @@ export function montarDreAnual(dresPorMes: Dre[], ano: number, receitaVendasProd
   const receitaVendasProdutos = montarLinhaReceitaVendasProdutos(receitaVendasProdutosPorMes, mesesValidos, divisorMedia);
 
   const receitaBruta = absoluto.find((l) => l.id === "receita_bruta")!;
+  const cmvProvisorioPorMes = dresPorMes.map((dre) => dre.cmv.provisorio);
   const linhas = comPercentuais(absoluto, {
-    deducoes: receitaBruta,
-    cmv: receitaVendasProdutos,
     margem: receitaBruta,
+    custos_fixos: receitaBruta,
     cmo: receitaBruta,
     custos_operacionais: receitaBruta,
-    resultado_economico: receitaBruta,
-    saidas: receitaBruta,
     resultado_liquido: receitaBruta,
+    saidas: receitaBruta,
+    resultado_economico: receitaBruta,
   });
+
+  const receitaSemEntregas = montarLinhaAuxiliar(
+    "receita_sem_entregas",
+    "Receita Operacional Bruta sem entregas",
+    dresPorMes.map((dre) => somarValores([dre.receitas.total, -dre.receitaEntregas])),
+    mesesValidos,
+    divisorMedia,
+  );
+  const linhasComPercentualCmv = comPercentualCmv(linhas, absoluto, cmvProvisorioPorMes, receitaVendasProdutos, receitaSemEntregas, mesesValidos);
 
   return {
     ano,
     divisorMedia,
-    semInventarioPorMes: dresPorMes.map((dre) => dre.cmv.semInventario),
-    linhas,
+    cmvProvisorioPorMes,
+    linhas: linhasComPercentualCmv,
     indicadores: calcularIndicadoresPeriodo(absoluto, Array.from({ length: mesesValidos }, (_, i) => i)),
   };
 }

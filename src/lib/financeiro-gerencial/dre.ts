@@ -1,6 +1,5 @@
 import { somarValores } from "./parcelas";
-import type { VisaoCaixa } from "./caixa";
-import type { BaixaBase, CategoriaFinanceira, EstoqueMensal, Lancamento, LancamentoBase, PapelDre } from "./tipos";
+import type { CategoriaFinanceira, EstoqueMensal, Lancamento, LancamentoBase, PapelDre } from "./tipos";
 
 /** O mínimo de um lançamento que a DRE lê - aceita tanto `Lancamento` quanto
  * `LancamentoBase` (carga completa da unidade). */
@@ -10,12 +9,11 @@ export type ContaValorDre = { id: string; nome: string; valor: number };
 
 export type SubgrupoDre = { id: string; nome: string; contas: ContaValorDre[]; total: number };
 
-/** Regra de Vinícius (25/09): a DRE sempre calcula com o que tiver lançado.
- * Sem inventário do mês cadastrado, os estoques valem 0 (na prática CMV =
- * compras do CMC) e `semInventario` fica true pra tela avisar - nunca trava
- * Margem nem Resultados. */
+/** A DRE sempre calcula com o que tiver lançado (regra de 25/09). `provisorio`
+ * = estoque final do mês ainda não informado: CMV = EI + CMC, sem descontar
+ * o estoque final - a tela avisa e mostra % CMC em vez de % CMV. */
 export type CmvCalculado = {
-  semInventario: boolean;
+  provisorio: boolean;
   estoqueInicialMercadorias: number;
   estoqueInicialEmbalagens: number;
   comprasMercadorias: number;
@@ -33,6 +31,10 @@ export type Dre = {
    * direto no grupo). `total` soma tudo
    * que tem papel `receita`, igual antes da divisão em subgrupos. */
   receitas: { subgrupos: SubgrupoDre[]; contas: ContaValorDre[]; total: number };
+  /** Receita de entregas (Entrega iFood, Entrega 99, Entrega app próprio -
+   * contas com `codigo_sistema` terminando em "_entrega"). Entrega não é
+   * venda de produto: sai do denominador do % CMC provisório. */
+  receitaEntregas: number;
   deducoes: { subgrupos: SubgrupoDre[]; total: number };
   cmv: CmvCalculado;
   /** Contas do CMC (mercadorias e embalagens) na ordem do plano de contas,
@@ -43,33 +45,29 @@ export type Dre = {
   /** Dois subgrupos fixos (25/09): "Pagamentos" (contas de CMO com
    * lançamento real) e "Provisões" (férias, 13º e multa do FGTS, valor vindo
    * do motor de Provisões - nunca do caixa). */
-  cmo: { subgrupos: SubgrupoDre[]; total: number };
+  cmo: { contas: ContaValorDre[]; provisionamento: SubgrupoDre; total: number };
   custosOperacionais: { subgrupos: SubgrupoDre[]; total: number };
   resultadoOperacional: number;
   saidasNaoOperacionais: { contas: ContaValorDre[]; total: number };
   geracaoCaixaAposSaidas: number;
 };
 
-/** DRE Projetada ou Realizada (pedido de 25/09), com a mesma regra de status
- * do Fluxo de Caixa/DFC (`montarMovimentosCaixa`), mas sempre no regime de
- * competência (cada lançamento continua no mês da Data de Competência):
- * - Projetado: toda parcela não cancelada, pelo valor cheio.
- * - Realizado: só o que já foi recebido/pago - o valor de cada parcela vira
- *   a soma das baixas dela (estorno subtrai); parcela sem baixa vale 0.
- * Devolve a lista no mesmo formato, pronta pra `calcularDre`/provisões. */
-export function lancamentosDaVisao(visao: VisaoCaixa, lancamentos: LancamentoBase[], baixas: BaixaBase[]): LancamentoBase[] {
-  if (visao === "projetado") {
-    return lancamentos.map((l) => ({ ...l, parcelas: l.parcelas.filter((p) => p.status !== "cancelado") }));
-  }
-  const baixadoPorParcela = new Map<string, number>();
-  for (const b of baixas) {
-    const valor = b.tipo === "estorno" ? -b.valor : b.valor;
-    baixadoPorParcela.set(b.parcelaId, somarValores([baixadoPorParcela.get(b.parcelaId) ?? 0, valor]));
-  }
-  return lancamentos.map((l) => ({
-    ...l,
-    parcelas: l.parcelas.map((p) => ({ ...p, valor: baixadoPorParcela.get(p.id) ?? 0 })),
-  }));
+/** Visões da DRE (V1, 25/09 - regra de Vinícius): pagamento NUNCA define
+ * o que é realizado (pago/parcial/aberto/vencido são estados de caixa, não
+ * da DRE). O que separa realizado de previsto é a Data de Competência:
+ * - Realizada: fatos econômicos com competência até hoje (já aconteceram),
+ *   pagos ou não;
+ * - Projetada: competência depois de hoje (ainda previstos - ocorrências
+ *   futuras de recorrência, lançamento agendado);
+ * - Completa: realizada + projetada.
+ * Parcela cancelada nunca entra em nenhuma. Usa só colunas que já existem
+ * (`data_competencia` e `status` da parcela) - sem migração. */
+export type VisaoDre = "realizada" | "projetada" | "completa";
+
+export function lancamentosDaVisao(visao: VisaoDre, lancamentos: LancamentoBase[], hoje: string): LancamentoBase[] {
+  return lancamentos
+    .filter((l) => visao === "completa" || (visao === "realizada" ? l.dataCompetencia <= hoje : l.dataCompetencia > hoje))
+    .map((l) => ({ ...l, parcelas: l.parcelas.filter((p) => p.status !== "cancelado") }));
 }
 
 /** Soma, por conta-folha, o valor de todos os lançamentos cuja competência
@@ -112,6 +110,13 @@ function subgruposDaDeducoes(categorias: CategoriaFinanceira[], totais: Map<stri
     });
 }
 
+/** Conta de receita de entrega/taxa de entrega, sempre por `codigo_sistema`
+ * (nunca por nome): receita_ifood_entrega, receita_99_entrega,
+ * receita_app_proprio_entrega e qualquer código novo que termine em "_entrega". */
+export function ehContaDeEntrega(categoria: CategoriaFinanceira): boolean {
+  return !!categoria.codigoSistema && categoria.codigoSistema.endsWith("_entrega");
+}
+
 const SUBGRUPOS_RECEITA = ["receitas_loja", "receitas_delivery", "outras_receitas"];
 
 function receitasPorSubgrupo(categorias: CategoriaFinanceira[], totais: Map<string, number>): Dre["receitas"] {
@@ -130,10 +135,11 @@ function receitasPorSubgrupo(categorias: CategoriaFinanceira[], totais: Map<stri
 }
 
 /** Nome da linha de provisão na DRE (INSS não tem provisão). */
+// Nomes e ordem da Planilha Financeiro da Zatti (bloco "Provisionamento").
 const ROTULO_PROVISAO_CMO: Partial<Record<PapelDre, string>> = {
-  cmo_ferias: "Provisão de férias",
-  cmo_decimo_terceiro: "Provisão de 13º",
-  cmo_multa_fgts: "Provisão de multa do FGTS",
+  cmo_decimo_terceiro: "Provisão 13º",
+  cmo_ferias: "Provisão Férias",
+  cmo_multa_fgts: "Provisão Multa FGTS",
 };
 
 const SUBGRUPOS_CUSTOS_OPERACIONAIS: Record<string, PapelDre> = {
@@ -154,59 +160,80 @@ function subgruposDeCustosOperacionais(categorias: CategoriaFinanceira[], totais
     });
 }
 
-const ESTOQUE_ZERADO = { estoqueInicialMercadorias: 0, estoqueInicialEmbalagens: 0, estoqueFinalMercadorias: 0, estoqueFinalEmbalagens: 0 };
+/** Estoque "informado" = valor maior que zero. As colunas de
+ * `fin_estoque_mensal` nascem com default 0 e a grade salva célula vazia
+ * como 0, então zero é tratado como "não informado" (sem migração). */
+function informado(v: number | undefined | null): v is number {
+  return typeof v === "number" && v > 0;
+}
 
-function calcularCmv(categorias: CategoriaFinanceira[], totais: Map<string, number>, estoqueInformado: EstoqueMensal | null): CmvCalculado {
-  const estoqueMensal = estoqueInformado ?? ESTOQUE_ZERADO;
-
+/** CMV (regra final de Vinícius, 25/09):
+ * - Estoque inicial de cada tipo: o informado no mês; senão o estoque final
+ *   do mês anterior; senão zero.
+ * - Fechado (estoque final de MERCADORIAS informado; embalagens zero é
+ *   aceito como valor real, muita operação não controla embalagem):
+ *   CMV = EI Merc + EI Emb + CMC - EF Merc - EF Emb.
+ * - Provisório (falta estoque final): CMV = EI Merc + EI Emb + CMC. */
+function calcularCmv(
+  categorias: CategoriaFinanceira[],
+  totais: Map<string, number>,
+  estoqueDoMes: EstoqueMensal | null,
+  estoqueMesAnterior: EstoqueMensal | null,
+): CmvCalculado {
   const comprasMercadorias = somarValores(contasDoPapel(categorias, "cmc_mercadorias", totais).map((c) => c.valor));
   const comprasEmbalagens = somarValores(contasDoPapel(categorias, "cmc_embalagens", totais).map((c) => c.valor));
   const cmc = somarValores([comprasMercadorias, comprasEmbalagens]);
 
-  const total = somarValores([
-    estoqueMensal.estoqueInicialMercadorias,
-    estoqueMensal.estoqueInicialEmbalagens,
-    comprasMercadorias,
-    comprasEmbalagens,
-    -estoqueMensal.estoqueFinalMercadorias,
-    -estoqueMensal.estoqueFinalEmbalagens,
-  ]);
+  const inicial = (doMes: number | undefined, finalAnterior: number | undefined) =>
+    informado(doMes) ? doMes : informado(finalAnterior) ? finalAnterior : 0;
+  const estoqueInicialMercadorias = inicial(estoqueDoMes?.estoqueInicialMercadorias, estoqueMesAnterior?.estoqueFinalMercadorias);
+  const estoqueInicialEmbalagens = inicial(estoqueDoMes?.estoqueInicialEmbalagens, estoqueMesAnterior?.estoqueFinalEmbalagens);
+
+  const fechado = informado(estoqueDoMes?.estoqueFinalMercadorias);
+  const estoqueFinalMercadorias = fechado ? estoqueDoMes!.estoqueFinalMercadorias : 0;
+  const estoqueFinalEmbalagens = fechado ? estoqueDoMes!.estoqueFinalEmbalagens : 0;
 
   return {
-    semInventario: estoqueInformado === null,
-    estoqueInicialMercadorias: estoqueMensal.estoqueInicialMercadorias,
-    estoqueInicialEmbalagens: estoqueMensal.estoqueInicialEmbalagens,
+    provisorio: !fechado,
+    estoqueInicialMercadorias,
+    estoqueInicialEmbalagens,
     comprasMercadorias,
     comprasEmbalagens,
     cmc,
-    estoqueFinalMercadorias: estoqueMensal.estoqueFinalMercadorias,
-    estoqueFinalEmbalagens: estoqueMensal.estoqueFinalEmbalagens,
-    total,
+    estoqueFinalMercadorias,
+    estoqueFinalEmbalagens,
+    total: somarValores([estoqueInicialMercadorias, estoqueInicialEmbalagens, cmc, -estoqueFinalMercadorias, -estoqueFinalEmbalagens]),
   };
 }
 
 /** Motor de cálculo da DRE V1 - função pura, nunca decide bucket por nome de
  * texto (sempre via `papelDre`/`codigoSistema`). Sempre calcula com o que
- * tiver lançado: sem inventário do mês, CMV = compras (`cmv.semInventario`). */
+ * tiver lançado: sem estoque final do mês o CMV fica provisório (`cmv.provisorio`). */
 export function calcularDre(params: {
   competencia: string;
   lancamentos: LancamentoDre[];
   categorias: CategoriaFinanceira[];
   estoqueMensal: EstoqueMensal | null;
+  /** Estoque do mês anterior - o estoque final dele é o estoque inicial
+   * deste mês quando o inicial não foi informado. */
+  estoqueMesAnterior?: EstoqueMensal | null;
   /** Valor do mês das 3 contas de provisão (id da categoria -> valor), de
    * `valoresDreProvisao` em provisoes.ts. Ausente = 0. */
   valoresProvisao?: Map<string, number>;
 }): Dre {
-  const { competencia, lancamentos, categorias, estoqueMensal, valoresProvisao } = params;
+  const { competencia, lancamentos, categorias, estoqueMensal, estoqueMesAnterior = null, valoresProvisao } = params;
   const totais = somarPorCategoria(lancamentos, competencia);
   for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
 
   const receitas = receitasPorSubgrupo(categorias, totais);
+  const receitaEntregas = somarValores(
+    categorias.filter((c) => c.nivel === "conta" && c.papelDre === "receita" && ehContaDeEntrega(c)).map((c) => totais.get(c.id) ?? 0),
+  );
 
   const subgruposDeducoes = subgruposDaDeducoes(categorias, totais);
   const deducoes = { subgrupos: subgruposDeducoes, total: somarValores(subgruposDeducoes.map((s) => s.total)) };
 
-  const cmv = calcularCmv(categorias, totais, estoqueMensal);
+  const cmv = calcularCmv(categorias, totais, estoqueMensal, estoqueMesAnterior);
   const papeisCmc: PapelDre[] = ["cmc_mercadorias", "cmc_embalagens"];
   const contasCmc = categorias
     .filter((c) => c.nivel === "conta" && c.papelDre && papeisCmc.includes(c.papelDre))
@@ -215,14 +242,17 @@ export function calcularDre(params: {
   const margemContribuicao = somarValores([receitas.total, -deducoes.total, -cmv.total]);
 
   const contasPagamentoCmo = contasDoPapel(categorias, "cmo", totais);
-  const contasProvisaoCmo = (["cmo_ferias", "cmo_decimo_terceiro", "cmo_multa_fgts"] as PapelDre[]).flatMap((papel) =>
+  const contasProvisaoCmo = (["cmo_decimo_terceiro", "cmo_ferias", "cmo_multa_fgts"] as PapelDre[]).flatMap((papel) =>
     contasDoPapel(categorias, papel, totais).map((c) => ({ ...c, nome: ROTULO_PROVISAO_CMO[papel] ?? c.nome })),
   );
-  const subgruposCmo: SubgrupoDre[] = [
-    { id: "cmo_pagamentos", nome: "Pagamentos", contas: contasPagamentoCmo, total: somarValores(contasPagamentoCmo.map((c) => c.valor)) },
-    { id: "cmo_provisoes", nome: "Provisões", contas: contasProvisaoCmo, total: somarValores(contasProvisaoCmo.map((c) => c.valor)) },
-  ];
-  const cmo = { subgrupos: subgruposCmo, total: somarValores(subgruposCmo.map((s) => s.total)) };
+  const provisionamento: SubgrupoDre = {
+    id: "cmo_provisionamento",
+    nome: "Provisionamento",
+    contas: contasProvisaoCmo,
+    total: somarValores(contasProvisaoCmo.map((c) => c.valor)),
+  };
+  const totalPagamentosCmo = somarValores(contasPagamentoCmo.map((c) => c.valor));
+  const cmo = { contas: contasPagamentoCmo, provisionamento, total: somarValores([totalPagamentosCmo, provisionamento.total]) };
 
   const subgruposCustos = subgruposDeCustosOperacionais(categorias, totais);
   const custosOperacionais = { subgrupos: subgruposCustos, total: somarValores(subgruposCustos.map((s) => s.total)) };
@@ -237,6 +267,7 @@ export function calcularDre(params: {
   return {
     competencia,
     receitas,
+    receitaEntregas,
     deducoes,
     cmv,
     contasCmc,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
 import { MESES_ABREVIADOS, type LinhaDreAnual } from "@/lib/financeiro-gerencial/dre-anual";
 
@@ -52,7 +53,10 @@ export function LinhaTabelaAnual({
   nomeCompleto = false,
   linhaPercentual,
   avisos,
+  dicas,
 }: {
+  /** Como a linha é calculada (ícone "i"), por id da linha. */
+  dicas?: Record<string, string>;
   /** Marcador discreto ao lado do nome da linha (ex: CMV "sem inventário"). */
   avisos?: Record<string, string>;
   linha: LinhaDreAnual;
@@ -80,7 +84,9 @@ export function LinhaTabelaAnual({
   return (
     <>
       <tr className={linha.destaque ? "border-t-2 border-azul-petroleo bg-off-white" : "border-t border-cinza-claro"}>
-        <td className={`py-2 pr-3 ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
+        {/* Primeira coluna congelada na rolagem horizontal (25/09) - fundo
+            próprio pra os números não aparecerem por baixo do nome. */}
+        <td className={`sticky left-0 z-10 py-2 pr-3 ${linha.destaque ? "bg-off-white" : "bg-branco"} ${PADDING_NIVEL[linha.nivel]} ${pesoTexto}`}>
           <span className={`inline-flex items-center gap-1.5 ${nomeCompleto ? "whitespace-nowrap" : "max-w-[190px]"}`}>
             {temFilhos ? (
               <button
@@ -97,6 +103,7 @@ export function LinhaTabelaAnual({
             <span className={nomeCompleto ? "" : "min-w-0 truncate"} title={linha.rotulo}>
               {linha.rotulo}
             </span>
+            {dicas?.[linha.id] && <DicaCalculo texto={dicas[linha.id]} rotulo={linha.rotulo} />}
             {avisos?.[linha.id] && (
               <span className="shrink-0 rounded-full bg-ambar/20 px-1.5 py-0.5 text-[10px] font-semibold text-azul-noite" title="Veja o aviso acima dos quadros">
                 {avisos[linha.id]}
@@ -116,12 +123,29 @@ export function LinhaTabelaAnual({
         )}
       </tr>
       {linhaPercentual && (
-        <LinhaTabelaAnual linha={linhaPercentual} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} avisos={avisos} />
+        <LinhaTabelaAnual
+          linha={linhaPercentual}
+          expandidas={expandidas}
+          alternar={alternar}
+          visiveis={visiveis}
+          nomeCompleto={nomeCompleto}
+          avisos={avisos}
+          dicas={dicas}
+        />
       )}
       {temFilhos &&
         expandida &&
         linha.filhos!.map((filho) => (
-          <LinhaTabelaAnual key={filho.id} linha={filho} expandidas={expandidas} alternar={alternar} visiveis={visiveis} nomeCompleto={nomeCompleto} avisos={avisos} />
+          <LinhaTabelaAnual
+            key={filho.id}
+            linha={filho}
+            expandidas={expandidas}
+            alternar={alternar}
+            visiveis={visiveis}
+            nomeCompleto={nomeCompleto}
+            avisos={avisos}
+            dicas={dicas}
+          />
         ))}
     </>
   );
@@ -193,7 +217,9 @@ export function TabelaAnualBloco({
         <table className="w-full min-w-[1180px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
-              <Th larguraFixa="240px">{rotuloPrimeiraColuna}</Th>
+              <Th larguraFixa="240px" fixo>
+                {rotuloPrimeiraColuna}
+              </Th>
               {visiveis.has("media") && (
                 <Th align="right" larguraFixa="100px">
                   Média
@@ -225,10 +251,13 @@ export function TabelaAnualBloco({
   );
 }
 
-export function CartaoIndicador({ titulo, valor, detalhe }: { titulo: string; valor: string; detalhe?: string }) {
+export function CartaoIndicador({ titulo, valor, detalhe, dica }: { titulo: string; valor: string; detalhe?: string; dica?: string }) {
   return (
     <div className="rounded-lg border border-cinza-claro bg-branco p-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-cinza-medio">{titulo}</div>
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cinza-medio">
+        {titulo}
+        {dica && <DicaCalculo texto={dica} rotulo={titulo} />}
+      </div>
       <div className="mt-1 font-mono text-lg font-bold text-azul-noite">{valor}</div>
       {detalhe && <div className="mt-0.5 text-xs text-cinza-medio">{detalhe}</div>}
     </div>

@@ -32,43 +32,49 @@ function linhasSubgrupos(subgrupos: SubgrupoDre[], nivelSubgrupo: 1, nivelConta:
   }));
 }
 
-/** As 5 linhas do CMV expandido (CMC como etapa interna, nunca grupo
- * principal) sempre com os mesmos 5 ids, pra árvore de todo mês do ano ter a
- * mesma forma. Sem inventário do mês (`cmv.semInventario`), as 4 linhas de
- * estoque mostram "-" (não informado) e o CMV vira só o CMC - regra de
- * 25/09: a DRE nunca trava por falta de inventário. */
-function filhosCmv(dre: Dre): LinhaDreMensal[] {
+/** Bloco de custo da mercadoria (regra final de 25/09): duas linhas só.
+ * "CMC - Custo da Mercadoria Comprada" = compras lançadas (uma linha por
+ * conta ao expandir). "CMV - Custo da Mercadoria Vendida" = EI + CMC - EF,
+ * com o detalhe de estoque ao expandir; enquanto o estoque final do mês não
+ * for informado o CMV é provisório (EI + CMC) e o estoque final mostra "-". */
+function linhasCmv(dre: Dre): LinhaDreMensal[] {
   const cmv = dre.cmv;
-  const estoque = (v: number) => (cmv.semInventario ? null : v);
+  const final = (v: number) => (cmv.provisorio ? null : v);
   return [
-    { id: "cmv_estoque_inicial_merc", rotulo: "Estoque inicial de Mercadorias", nivel: 1, valor: estoque(cmv.estoqueInicialMercadorias) },
-    { id: "cmv_estoque_inicial_emb", rotulo: "Estoque inicial de Embalagens", nivel: 1, valor: estoque(cmv.estoqueInicialEmbalagens) },
     {
-      id: "cmv_cmc",
+      id: "cmc",
       rotulo: "CMC - Custo da Mercadoria Comprada",
-      nivel: 1,
+      nivel: 0,
       valor: cmv.cmc,
-      // Uma linha por conta do CMC (Custo com bebidas/mercadorias/proteínas,
-      // Compras de embalagens).
-      filhos: dre.contasCmc.map((c) => ({ id: c.id, rotulo: c.nome, nivel: 2, valor: c.valor })),
+      filhos: dre.contasCmc.map((c) => ({ id: c.id, rotulo: c.nome, nivel: 1, valor: c.valor })),
     },
-    { id: "cmv_estoque_final_merc", rotulo: "(-) Estoque final de Mercadorias", nivel: 1, valor: estoque(cmv.estoqueFinalMercadorias) },
-    { id: "cmv_estoque_final_emb", rotulo: "(-) Estoque final de Embalagens", nivel: 1, valor: estoque(cmv.estoqueFinalEmbalagens) },
+    {
+      id: "cmv",
+      rotulo: "CMV - Custo da Mercadoria Vendida",
+      nivel: 0,
+      valor: cmv.total,
+      filhos: [
+        { id: "cmv_estoque_inicial_merc", rotulo: "Estoque inicial de Mercadorias", nivel: 1, valor: cmv.estoqueInicialMercadorias },
+        { id: "cmv_estoque_inicial_emb", rotulo: "Estoque inicial de Embalagens", nivel: 1, valor: cmv.estoqueInicialEmbalagens },
+        { id: "cmv_cmc", rotulo: "(+) CMC", nivel: 1, valor: cmv.cmc },
+        { id: "cmv_estoque_final_merc", rotulo: "(-) Estoque final de Mercadorias", nivel: 1, valor: final(cmv.estoqueFinalMercadorias) },
+        { id: "cmv_estoque_final_emb", rotulo: "(-) Estoque final de Embalagens", nivel: 1, valor: final(cmv.estoqueFinalEmbalagens) },
+      ],
+    },
   ];
 }
 
-/** Árvore hierárquica de um único mês, numa tabela só, pronta pra combinar
- * com os outros 11 meses do ano (`dre-anual.ts`). Preserva a estrutura já
- * calculada por `calcularDre` - só monta a apresentação, nenhuma fórmula
- * nova aqui além de Receita Operacional Líquida (Receita Bruta − Deduções) e
- * Resultado Econômico (Resultado Líquido − Saídas Não Operacionais), ambas
- * derivadas de totais já existentes, não um cálculo novo no motor. */
+/** Árvore de um único mês com nomes e ordem da Planilha Financeiro da Zatti
+ * (V1 de 25/09), pronta pra combinar com os outros 11 meses do ano
+ * (`dre-anual.ts`). Só apresentação: todo valor vem de `calcularDre`.
+ * "Custos Fixos" é o subtotal de CMO + Custos Operacionais (igual à
+ * planilha, que mostra Custos Fixos e logo depois os blocos que o compõem).
+ * "Resultado Operacional" saiu: tinha o mesmo cálculo do Resultado Líquido do
+ * Exercício. Resultado Econômico fica (cálculo diferente: Resultado Líquido
+ * menos Saídas não Operacionais). */
 export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
   const receitaLiquida = somarValores([dre.receitas.total, -dre.deducoes.total]);
-  // Resultado Econômico é exatamente o que já era `geracaoCaixaAposSaidas` no
-  // motor (Resultado Operacional − Saídas Não Operacionais) - só o nome/lugar
-  // na apresentação mudou, nenhuma conta nova.
-  const resultadoEconomico = dre.geracaoCaixaAposSaidas;
+  const custosFixos = somarValores([dre.cmo.total, dre.custosOperacionais.total]);
 
   return [
     {
@@ -78,31 +84,33 @@ export function montarArvoreMensal(dre: Dre): LinhaDreMensal[] {
       valor: dre.receitas.total,
       filhos: [...linhasSubgrupos(dre.receitas.subgrupos, 1, 2), ...linhasContas(dre.receitas.contas, 1)],
     },
-    { id: "deducoes", rotulo: "(-) Deduções", nivel: 0, valor: dre.deducoes.total, filhos: linhasSubgrupos(dre.deducoes.subgrupos, 1, 2) },
-    { id: "receita_liquida", rotulo: "= Receita Operacional Líquida", nivel: 0, valor: receitaLiquida, destaque: true },
-    { id: "cmv", rotulo: "(-) CMV - Custo da Mercadoria Vendida", nivel: 0, valor: dre.cmv.total, filhos: filhosCmv(dre) },
-    { id: "margem", rotulo: "= Margem de Contribuição", nivel: 0, valor: dre.margemContribuicao, destaque: true },
-    { id: "cmo", rotulo: "(-) CMO - Custo de Mão de Obra", nivel: 0, valor: dre.cmo.total, filhos: linhasSubgrupos(dre.cmo.subgrupos, 1, 2) },
+    { id: "deducoes", rotulo: "Deduções", nivel: 0, valor: dre.deducoes.total, filhos: linhasSubgrupos(dre.deducoes.subgrupos, 1, 2) },
+    { id: "receita_liquida", rotulo: "Receita Operacional Líquida", nivel: 0, valor: receitaLiquida, destaque: true },
+    ...linhasCmv(dre),
+    { id: "margem", rotulo: "Resultado Operacional Bruto", nivel: 0, valor: dre.margemContribuicao, destaque: true },
+    { id: "custos_fixos", rotulo: "Custos Fixos", nivel: 0, valor: custosFixos, destaque: true },
+    {
+      id: "cmo",
+      rotulo: "Custo com Mão de Obra (CMO)",
+      nivel: 0,
+      valor: dre.cmo.total,
+      filhos: [...linhasContas(dre.cmo.contas, 1), ...linhasSubgrupos([dre.cmo.provisionamento], 1, 2)],
+    },
     {
       id: "custos_operacionais",
-      rotulo: "(-) Custos Operacionais",
+      rotulo: "Custos Operacionais",
       nivel: 0,
       valor: dre.custosOperacionais.total,
       filhos: linhasSubgrupos(dre.custosOperacionais.subgrupos, 1, 2),
     },
-    { id: "resultado_operacional", rotulo: "= Resultado Operacional", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
-    // Definição de Vinícius (22/09): Resultado Líquido fecha a própria DRE -
-    // Saídas Não Operacionais nunca reduzem esta linha (mesmo valor de
-    // Resultado Operacional, sem cálculo novo). Resultado Econômico é o
-    // Resultado Líquido menos as Saídas Não Operacionais.
-    { id: "resultado_liquido", rotulo: "= Resultado Líquido", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
+    { id: "resultado_liquido", rotulo: "Resultado Líquido do Exercício", nivel: 0, valor: dre.resultadoOperacional, destaque: true },
     {
       id: "saidas",
-      rotulo: "(-) Saídas Não Operacionais",
+      rotulo: "Saídas não Operacionais",
       nivel: 0,
       valor: dre.saidasNaoOperacionais.total,
       filhos: linhasContas(dre.saidasNaoOperacionais.contas, 1),
     },
-    { id: "resultado_economico", rotulo: "= Resultado Econômico", nivel: 0, valor: resultadoEconomico, destaque: true },
+    { id: "resultado_economico", rotulo: "Resultado Econômico", nivel: 0, valor: dre.geracaoCaixaAposSaidas, destaque: true },
   ];
 }

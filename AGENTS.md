@@ -53,6 +53,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   formulário de largura cheia, valor com rótulo longo ou caminho, ex.
   "CMO > Folha salarial contábil"). Não criar um terceiro sem antes conferir
   se um dos dois já resolve.
+- **Todo dado calculado tem o ícone "i" com a explicação do cálculo** (linha, percentual, quadro ou indicador): `DicaCalculo` de `src/components/dica-calculo.tsx` ao lado do nome, texto em linguagem simples com a fórmula (hover, toque e teclado) - regra de 25/09/2026.
 - **Data exibida (não input) é sempre DD/MM/AAAA** — nunca a data ISO crua do
   banco (`AAAA-MM-DD`). Converter com uma função de string pura (nunca via
   `Date`, que arrisca fuso horário puxando pro dia anterior/seguinte) - ver
