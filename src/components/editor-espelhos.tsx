@@ -555,21 +555,21 @@ export function EditorEspelhos({
       return soma + quantidadeDe(item.sku) * preco;
     }, 0);
     try {
-      const blob = await gerarImagemPedido(
+      const imagem = gerarImagemPedido(
         fornecedor,
         linhas,
         `${organizacaoNome} · Pedido de Compra`,
         formatMoeda(total)
       );
       const nomeArquivo = `pedido-${fornecedor.toLowerCase().replace(/\s+/g, "-")}.png`;
-      const resultado = await compartilharOuCopiarImagem(blob, nomeArquivo, `Pedido de Compra ${fornecedor}`);
+      const resultado = await compartilharOuCopiarImagem(imagem, nomeArquivo, `Pedido de Compra ${fornecedor}`);
       setStatus((s) => ({
         ...s,
         [fornecedor]:
           resultado === "compartilhado"
             ? "Compartilhado."
             : resultado === "copiado"
-              ? "Copiado - cola no WhatsApp."
+              ? "Imagem copiada. Abra a conversa no WhatsApp e cole (Cmd+V no Mac, Ctrl+V no Windows)."
               : "Esse navegador não copia/compartilha direto - baixei a imagem.",
       }));
     } catch (err) {

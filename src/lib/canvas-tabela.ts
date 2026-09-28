@@ -216,15 +216,35 @@ export function baixarImagem(blob: Blob, nomeArquivo: string) {
 
 export class CompartilharCancelado extends Error {}
 
+/** Computador = mouse/trackpad como ponteiro principal. No Mac o menu de
+ * compartilhar do sistema não lista o WhatsApp Web (Ingrid, The House,
+ * 28/09/2026), então no computador copiar a imagem é o caminho certo. */
+function ehComputador(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches === true;
+}
+
 /** No celular, abrir direto o menu nativo de compartilhar (Web Share API)
  * evita a pré-visualização estranha do "copiar imagem" e manda a pessoa
- * direto pro WhatsApp sem sair do app. Só cai pra copiar/baixar quando o
- * navegador não suporta compartilhar arquivo (a maioria dos desktops). */
+ * direto pro WhatsApp sem sair do app. No computador, copia a imagem pra
+ * pessoa colar no WhatsApp. Baixa o arquivo quando nada disso funciona.
+ *
+ * Recebe a promessa da imagem, sem `await` antes: o Safari só deixa copiar
+ * se o ClipboardItem nascer ainda dentro do clique. */
 export async function compartilharOuCopiarImagem(
-  blob: Blob,
+  imagem: Promise<Blob>,
   nomeArquivo: string,
   titulo: string
 ): Promise<"compartilhado" | "copiado" | "baixado"> {
+  if (ehComputador() && typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": imagem })]);
+      return "copiado";
+    } catch {
+      // navegador recusou copiar: segue pro compartilhar/baixar abaixo
+    }
+  }
+
+  const blob = await imagem;
   const arquivo = new File([blob], nomeArquivo, { type: "image/png" });
 
   if (navigator.canShare?.({ files: [arquivo] })) {

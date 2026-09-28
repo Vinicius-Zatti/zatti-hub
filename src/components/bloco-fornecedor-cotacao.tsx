@@ -141,21 +141,21 @@ export function BlocoFornecedorCotacao({
     }));
 
     try {
-      const blob = await gerarImagemCotacao(fornecedor, dadosImagem, legenda);
+      const imagem = gerarImagemCotacao(fornecedor, dadosImagem, legenda);
       const nomeArquivo = `cotacao-${fornecedor.toLowerCase().replace(/\s+/g, "-")}.png`;
-      const resultado = await compartilharOuCopiarImagem(blob, nomeArquivo, `Cotação ${fornecedor}`);
+      const resultado = await compartilharOuCopiarImagem(imagem, nomeArquivo, `Cotação ${fornecedor}`);
       setStatus(
         resultado === "compartilhado"
           ? "Compartilhado."
           : resultado === "copiado"
-            ? "Copiado - cola no WhatsApp."
+            ? "Imagem copiada. Abra a conversa no WhatsApp e cole (Cmd+V no Mac, Ctrl+V no Windows)."
             : "Esse navegador não copia/compartilha direto - baixei a imagem.",
       );
     } catch (err) {
       if (err instanceof CompartilharCancelado) {
         setStatus("");
       } else {
-        setStatus("Nao foi possivel confirmar o item.");
+        setStatus("Não foi possível gerar a imagem da cotação. Tenta de novo.");
       }
     }
     setCompartilhando(false);
