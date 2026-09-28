@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { buscarTudo } from "@/lib/banco/paginacao";
 import type { Fornecedor, ItemInventario, Produto } from "@/lib/types";
 
 export type NovaContagemBanco = {
@@ -226,6 +227,20 @@ function calcularAlerta(
   return "";
 }
 
+type ContagemItemRow = {
+  id: string;
+  contagem_id: string;
+  setor_id: string | null;
+  sku: string;
+  grupo: string;
+  nome: string;
+  unidade_base: string;
+  quantidade: number | string | null;
+  preco_unitario: number | string | null;
+  total: number | string | null;
+  alerta: string;
+};
+
 export async function listarInventarioBanco(unidadeId: string): Promise<ItemInventario[]> {
   const supabase = await createClient();
   const { data: contagens, error: erroContagens } = await supabase
@@ -238,19 +253,29 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
   const contagemPorId = new Map(
     contagens.map((contagem) => [contagem.id, { data: contagem.data, mes: contagem.mes }]),
   );
-  const [{ data: itens, error: erroItens }, nomePorSetor] = await Promise.all([
-    supabase
-      .from("contagem_itens")
-      .select(
-        "id, contagem_id, setor_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta",
-      )
-      .in("contagem_id", contagens.map((contagem) => contagem.id))
-      .order("ordem"),
+  const [itens, nomePorSetor] = await Promise.all([
+    // Paginado: a unidade soma itens de todas as contagens e passa fácil do
+    // teto de 1.000 linhas do PostgREST (Dom Quixote, 28/09/2026 - as
+    // contagens mais recentes sumiam). Mesma ordem de antes (`ordem`), com
+    // desempate por contagem e id para as páginas não pularem nem repetirem.
+    buscarTudo<ContagemItemRow>((de, ate) =>
+      supabase
+        .from("contagem_itens")
+        .select(
+          "id, contagem_id, setor_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta",
+        )
+        .in("contagem_id", contagens.map((contagem) => contagem.id))
+        .order("ordem")
+        .order("contagem_id")
+        .order("id")
+        .range(de, ate),
+    ).catch((erro: Error) => {
+      throw new Error(`Não foi possível carregar os itens contados: ${erro.message}`);
+    }),
     nomesDeSetor(unidadeId),
   ]);
-  if (erroItens) throw new Error(`Não foi possível carregar os itens contados: ${erroItens.message}`);
 
-  return (itens ?? []).map((item) => {
+  return itens.map((item) => {
     const contagem = contagemPorId.get(item.contagem_id)!;
     return {
       data: dataIsoParaBr(contagem.data),

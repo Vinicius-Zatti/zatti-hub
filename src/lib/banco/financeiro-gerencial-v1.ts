@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { erroDeNegocio, nomesPorUserId } from "@/lib/banco/financeiro-gerencial";
+import { buscarTudo } from "@/lib/banco/paginacao";
 import type {
   BaixaBase,
   FechamentoMensal,
@@ -21,22 +22,6 @@ import type {
 // Fechamento, Recorrências e auditoria. Separado de `financeiro-gerencial.ts`
 // (já com ~1100 linhas); mesmas regras: unidade sempre vinda de
 // `getAcessoAtual()`, RLS + gatilhos como barreira real.
-
-type RespostaConsulta = { data: unknown; error: { message: string } | null };
-
-/** Lê tudo, 1000 linhas por vez - o PostgREST corta em 1000 sem avisar, e
- * DRE/Provisões/Caixa precisam do histórico inteiro da unidade. */
-async function buscarTudo<T>(montar: (de: number, ate: number) => PromiseLike<RespostaConsulta>): Promise<T[]> {
-  const tamanho = 1000;
-  const todas: T[] = [];
-  for (let de = 0; ; de += tamanho) {
-    const { data, error } = await montar(de, de + tamanho - 1);
-    if (error) throw new Error(error.message);
-    const linhas = (data as T[] | null) ?? [];
-    todas.push(...linhas);
-    if (linhas.length < tamanho) return todas;
-  }
-}
 
 // ── Carga completa da unidade ───────────────────────────────────────────────
 
