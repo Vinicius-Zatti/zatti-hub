@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
-import { buscarTudo } from "@/lib/banco/paginacao";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { Fornecedor, ItemInventario, Produto } from "@/lib/types";
 
 export type NovaContagemBanco = {
@@ -239,16 +239,30 @@ type ContagemItemRow = {
   preco_unitario: number | string | null;
   total: number | string | null;
   alerta: string;
+  ordem: number;
 };
+
+/** Mesma ordem que o banco dava numa consulta só: `ordem`, depois contagem e
+ * id (uuid compara como o texto hexadecimal minúsculo). */
+function compararItensContagem(a: ContagemItemRow, b: ContagemItemRow): number {
+  const ordemA = Number(a.ordem);
+  const ordemB = Number(b.ordem);
+  if (ordemA !== ordemB) return ordemA - ordemB;
+  if (a.contagem_id !== b.contagem_id) return a.contagem_id < b.contagem_id ? -1 : 1;
+  if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+  return 0;
+}
 
 export async function listarInventarioBanco(unidadeId: string): Promise<ItemInventario[]> {
   const supabase = await createClient();
-  const { data: contagens, error: erroContagens } = await supabase
-    .from("contagens")
-    .select("id, data, mes")
-    .eq("unidade_id", unidadeId);
-  if (erroContagens) throw new Error(`Não foi possível carregar as contagens: ${erroContagens.message}`);
-  if (!contagens?.length) return [];
+  // Cabeçalhos também lidos por completo: uma unidade com mais de 1.000
+  // contagens perderia as que passassem do teto do PostgREST.
+  const contagens = await buscarTudo<{ id: string; data: string; mes: string }>((de, ate) =>
+    supabase.from("contagens").select("id, data, mes").eq("unidade_id", unidadeId).order("id").range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar as contagens: ${erro.message}`);
+  });
+  if (!contagens.length) return [];
 
   const contagemPorId = new Map(
     contagens.map((contagem) => [contagem.id, { data: contagem.data, mes: contagem.mes }]),
@@ -256,22 +270,27 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
   const [itens, nomePorSetor] = await Promise.all([
     // Paginado: a unidade soma itens de todas as contagens e passa fácil do
     // teto de 1.000 linhas do PostgREST (Dom Quixote, 28/09/2026 - as
-    // contagens mais recentes sumiam). Mesma ordem de antes (`ordem`), com
-    // desempate por contagem e id para as páginas não pularem nem repetirem.
-    buscarTudo<ContagemItemRow>((de, ate) =>
-      supabase
-        .from("contagem_itens")
-        .select(
-          "id, contagem_id, setor_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta",
-        )
-        .in("contagem_id", contagens.map((contagem) => contagem.id))
-        .order("ordem")
-        .order("contagem_id")
-        .order("id")
-        .range(de, ate),
-    ).catch((erro: Error) => {
-      throw new Error(`Não foi possível carregar os itens contados: ${erro.message}`);
-    }),
+    // contagens mais recentes sumiam). `.in()` em lotes de contagens, cada
+    // lote paginado; a ordem global de antes (`ordem`, contagem, id) é
+    // refeita depois de juntar os lotes.
+    buscarTudoEmLotes<ContagemItemRow>(
+      contagens.map((contagem) => contagem.id),
+      (lote, de, ate) =>
+        supabase
+          .from("contagem_itens")
+          .select(
+            "id, contagem_id, setor_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta, ordem",
+          )
+          .in("contagem_id", lote)
+          .order("ordem")
+          .order("contagem_id")
+          .order("id")
+          .range(de, ate),
+    )
+      .then((linhas) => linhas.sort(compararItensContagem))
+      .catch((erro: Error) => {
+        throw new Error(`Não foi possível carregar os itens contados: ${erro.message}`);
+      }),
     nomesDeSetor(unidadeId),
   ]);
 

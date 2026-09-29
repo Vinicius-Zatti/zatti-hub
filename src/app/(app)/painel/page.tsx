@@ -1,4 +1,5 @@
 import { ConectarPlanilha } from "@/components/conectar-planilha";
+import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PainelGeral, type DadosPainelGeral } from "@/components/painel-geral";
 import { getAcessoAtual } from "@/lib/acesso";
 import { listPedidosFeitos } from "@/lib/pedidos";
@@ -57,6 +58,9 @@ export default async function PainelPage() {
       listPedidosFeitos(acesso.unidadeId),
     ]);
   } catch {
+    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
+    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
+    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
     return <ConectarPlanilha erro="Nao foi possivel carregar o painel." />;
   }
 

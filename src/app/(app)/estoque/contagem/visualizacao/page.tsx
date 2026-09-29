@@ -1,5 +1,6 @@
 import { listInventario } from "@/lib/sheets/inventario";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
+import { ErroCarregamento } from "@/components/erro-carregamento";
 import { VisualizacaoContagens } from "@/components/visualizacao-contagens";
 import { getAcessoAtual } from "@/lib/acesso";
 import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
@@ -13,6 +14,9 @@ export default async function VisualizacaoContagensPage() {
   try {
     itens = await listInventario(acesso.spreadsheetId);
   } catch {
+    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
+    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
+    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
     return <ConectarPlanilha erro="Nao foi possivel carregar as contagens." />;
   }
 

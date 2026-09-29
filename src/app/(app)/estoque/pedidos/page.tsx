@@ -2,6 +2,7 @@ import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
+import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
 import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
@@ -48,6 +49,9 @@ export default async function PedidosPage({
       listFornecedores(acesso.spreadsheetId),
     ]);
   } catch {
+    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
+    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
+    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
     return <ConectarPlanilha erro="Nao foi possivel carregar os dados do pedido." />;
   }
 

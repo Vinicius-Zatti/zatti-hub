@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Banco em memória só com o que as funções de edição usam (select/insert/
-// update/eq/in/gt/maybeSingle/single + embed de fin_parcelas e
+// update/eq/in/gt/range/maybeSingle/single + embed de fin_parcelas e
 // fin_categorias). Serve pra provar que o que a tela manda (ex: Plano de
 // Contas trocado pra INSS) é o que chega ao UPDATE - bug 5 de 25/09.
 type Linha = Record<string, unknown>;
@@ -16,6 +16,7 @@ function construtor(tabela: string) {
   const filtros: ((l: Linha) => boolean)[] = [];
   let unico: "maybe" | "single" | null = null;
   let selecionarDepois = false;
+  let faixa: [number, number] | null = null;
 
   const linhas = () => (tabelas[tabela] ??= []);
   const comEmbed = (l: Linha): Linha => {
@@ -36,7 +37,7 @@ function construtor(tabela: string) {
       updates.push({ tabela, valores: valores as Linha, ids: alvo.map((l) => l.id) });
       return { data: null, error: null };
     }
-    const dados = alvo.map(comEmbed);
+    const dados = (faixa ? alvo.slice(faixa[0], faixa[1] + 1) : alvo).map(comEmbed);
     return { data: unico ? (dados[0] ?? null) : dados, error: null };
   }
   const b = {
@@ -68,6 +69,10 @@ function construtor(tabela: string) {
       return b;
     },
     order() {
+      return b;
+    },
+    range(de: number, ate: number) {
+      faixa = [de, ate];
       return b;
     },
     maybeSingle() {

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import { CATEGORIAS_PAI_PERMITIDAS } from "@/lib/financeiro-gerencial/categorias";
 import { calcularSaldoAberto, numerarParcelasManuais, somarValores } from "@/lib/financeiro-gerencial/parcelas";
 import {
@@ -131,50 +132,65 @@ export async function listarContasFinanceirasComSaldos(unidadeId: string): Promi
   const contas = await listarContasFinanceiras(unidadeId);
   if (contas.length === 0) return [];
 
-  const [{ data: baixasData }, { data: parcelasAbertasData }] = await Promise.all([
+  // Leituras completas (sem o teto de 1.000 linhas do PostgREST), ordenadas
+  // por `id` só para a paginação não pular nem repetir linha.
+  const [baixasData, parcelasAbertasData] = await Promise.all([
     // Toda baixa realizada, pela conta que o dinheiro de fato usou
     // (`fin_baixas.conta_financeira_id`, escolhida na hora da baixa - pode
     // divergir da conta prevista na parcela) - isso é o saldo atual.
-    supabase
-      .from("fin_baixas")
-      .select("conta_financeira_id, valor, tipo, fin_parcelas!inner(fin_lancamentos!inner(tipo))")
-      .eq("unidade_id", unidadeId),
+    buscarTudo<{
+      conta_financeira_id: string;
+      valor: number;
+      tipo: TipoBaixa;
+      fin_parcelas: { fin_lancamentos: { tipo: TipoLancamento } };
+    }>((de, ate) =>
+      supabase
+        .from("fin_baixas")
+        .select("id, conta_financeira_id, valor, tipo, fin_parcelas!inner(fin_lancamentos!inner(tipo))")
+        .eq("unidade_id", unidadeId)
+        .order("id")
+        .range(de, ate),
+    ),
     // Parcelas ainda em aberto/parcial com conta prevista definida - isso
     // vira saldo projetado. Sem conta prevista (item 5: conta financeira
     // opcional) nunca compõe projeção de conta nenhuma.
-    supabase
-      .from("fin_parcelas")
-      .select("id, conta_financeira_id, valor, fin_lancamentos!inner(tipo)")
-      .eq("unidade_id", unidadeId)
-      .not("conta_financeira_id", "is", null)
-      .in("status", ["aberto", "parcial"]),
+    buscarTudo<{ id: string; conta_financeira_id: string; valor: number; fin_lancamentos: { tipo: TipoLancamento } }>(
+      (de, ate) =>
+        supabase
+          .from("fin_parcelas")
+          .select("id, conta_financeira_id, valor, fin_lancamentos!inner(tipo)")
+          .eq("unidade_id", unidadeId)
+          .not("conta_financeira_id", "is", null)
+          .in("status", ["aberto", "parcial"])
+          .order("id")
+          .range(de, ate),
+    ),
   ]);
 
   const saldoAtualPorConta = new Map<string, number>();
-  for (const b of (baixasData as
-    | { conta_financeira_id: string; valor: number; tipo: TipoBaixa; fin_parcelas: { fin_lancamentos: { tipo: TipoLancamento } } }[]
-    | null) ?? []) {
+  for (const b of baixasData) {
     const sinalTipo = b.fin_parcelas.fin_lancamentos.tipo === "receita" ? 1 : -1;
     const sinalEstorno = b.tipo === "estorno" ? -1 : 1;
     const atual = saldoAtualPorConta.get(b.conta_financeira_id) ?? 0;
     saldoAtualPorConta.set(b.conta_financeira_id, atual + sinalTipo * sinalEstorno * Number(b.valor));
   }
 
-  const idsParcelasAbertas = ((parcelasAbertasData as { id: string }[] | null) ?? []).map((p) => p.id);
-  const { data: baixasDasAbertasData } =
-    idsParcelasAbertas.length > 0
-      ? await supabase.from("fin_baixas").select("parcela_id, valor, tipo").in("parcela_id", idsParcelasAbertas)
-      : { data: [] };
+  const idsParcelasAbertas = parcelasAbertasData.map((p) => p.id);
+  // `.in()` em lotes de ids, cada lote paginado (poucas parcelas podem ter
+  // muitas baixas).
+  const baixasDasAbertasData = await buscarTudoEmLotes<{ parcela_id: string; valor: number; tipo: TipoBaixa }>(
+    idsParcelasAbertas,
+    (lote, de, ate) =>
+      supabase.from("fin_baixas").select("id, parcela_id, valor, tipo").in("parcela_id", lote).order("id").range(de, ate),
+  );
   const valorBaixadoPorParcela = new Map<string, number>();
-  for (const b of (baixasDasAbertasData as { parcela_id: string; valor: number; tipo: TipoBaixa }[] | null) ?? []) {
+  for (const b of baixasDasAbertasData) {
     const sinal = b.tipo === "estorno" ? -1 : 1;
     valorBaixadoPorParcela.set(b.parcela_id, (valorBaixadoPorParcela.get(b.parcela_id) ?? 0) + sinal * Number(b.valor));
   }
 
   const saldoAbertoPorConta = new Map<string, number>();
-  for (const p of (parcelasAbertasData as
-    | { id: string; conta_financeira_id: string; valor: number; fin_lancamentos: { tipo: TipoLancamento } }[]
-    | null) ?? []) {
+  for (const p of parcelasAbertasData) {
     const sinalTipo = p.fin_lancamentos.tipo === "receita" ? 1 : -1;
     const saldoAberto = calcularSaldoAberto(Number(p.valor), valorBaixadoPorParcela.get(p.id) ?? 0);
     const atual = saldoAbertoPorConta.get(p.conta_financeira_id) ?? 0;
@@ -378,20 +394,27 @@ async function montarParcelas(supabase: SupabaseClient, lancamentoIds: string[])
   const porLancamento = new Map<string, Parcela[]>();
   if (lancamentoIds.length === 0) return porLancamento;
 
-  const { data: parcelasData } = await supabase
-    .from("fin_parcelas")
-    .select("id, lancamento_id, numero, total_parcelas, valor, data_prevista, conta_financeira_id, status")
-    .in("lancamento_id", lancamentoIds)
-    .order("numero");
-  const parcelas = (parcelasData as ParcelaRow[] | null) ?? [];
+  // Leitura completa em lotes de ids, cada lote paginado. Todas as parcelas
+  // de um lançamento caem no mesmo lote, então a ordem por `numero` dentro
+  // do lançamento continua a mesma (`id` só desempata a paginação).
+  const parcelas = await buscarTudoEmLotes<ParcelaRow>(lancamentoIds, (lote, de, ate) =>
+    supabase
+      .from("fin_parcelas")
+      .select("id, lancamento_id, numero, total_parcelas, valor, data_prevista, conta_financeira_id, status")
+      .in("lancamento_id", lote)
+      .order("numero")
+      .order("id")
+      .range(de, ate),
+  );
 
   const parcelaIds = parcelas.map((p) => p.id);
-  const { data: baixasData } =
-    parcelaIds.length > 0
-      ? await supabase.from("fin_baixas").select("parcela_id, valor, tipo").in("parcela_id", parcelaIds)
-      : { data: [] };
+  const baixasData = await buscarTudoEmLotes<{ parcela_id: string; valor: number; tipo: TipoBaixa }>(
+    parcelaIds,
+    (lote, de, ate) =>
+      supabase.from("fin_baixas").select("id, parcela_id, valor, tipo").in("parcela_id", lote).order("id").range(de, ate),
+  );
   const baixadoPorParcela = new Map<string, number>();
-  for (const b of (baixasData as { parcela_id: string; valor: number; tipo: TipoBaixa }[] | null) ?? []) {
+  for (const b of baixasData) {
     const delta = b.tipo === "estorno" ? -Number(b.valor) : Number(b.valor);
     baixadoPorParcela.set(b.parcela_id, (baixadoPorParcela.get(b.parcela_id) ?? 0) + delta);
   }
@@ -437,18 +460,15 @@ export async function listarLancamentos(
   filtro?: { tipo?: TipoLancamento; de?: string; ate?: string },
 ): Promise<Lancamento[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("fin_lancamentos")
-    .select(COLUNAS_LANCAMENTO)
-    .eq("unidade_id", unidadeId)
-    .order("data_competencia", { ascending: false });
-
-  if (filtro?.tipo) query = query.eq("tipo", filtro.tipo);
-  if (filtro?.de) query = query.gte("data_competencia", filtro.de);
-  if (filtro?.ate) query = query.lte("data_competencia", filtro.ate);
-
-  const { data } = await query;
-  const linhas = (data as unknown as LancamentoRow[] | null) ?? [];
+  // Leitura completa (sem o teto de 1.000 linhas do PostgREST), mesma ordem
+  // de antes - `id` só desempata a paginação dentro da mesma competência.
+  const linhas = await buscarTudo<LancamentoRow>((de, ate) => {
+    let query = supabase.from("fin_lancamentos").select(COLUNAS_LANCAMENTO).eq("unidade_id", unidadeId);
+    if (filtro?.tipo) query = query.eq("tipo", filtro.tipo);
+    if (filtro?.de) query = query.gte("data_competencia", filtro.de);
+    if (filtro?.ate) query = query.lte("data_competencia", filtro.ate);
+    return query.order("data_competencia", { ascending: false }).order("id").range(de, ate);
+  });
   if (linhas.length === 0) return [];
 
   const [parcelasPorLancamento, nomes] = await Promise.all([
