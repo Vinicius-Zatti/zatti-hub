@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
+import { buscarTudo } from "@/lib/banco/paginacao";
 import { calcularDuracaoMinutosPorHorario, calcularDuracaoSegundosCronometro, dataLocalBrasil, horaLocalBrasil } from "@/lib/meu-tempo/tempo";
 import type {
   FrenteTempo,
@@ -44,7 +45,8 @@ export async function listarFrentesTempo(userId: string, somenteAtivas = false):
   const supabase = await createClient();
   let query = supabase.from("zh_tempo_frentes").select("id, nome, tipo, ativo").eq("criado_por", userId).order("nome");
   if (somenteAtivas) query = query.eq("ativo", true);
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw new Error(`Não foi possível carregar as frentes: ${error.message}`);
   return ((data as FrenteRow[] | null) ?? []).map(frenteDaLinha);
 }
 
@@ -93,11 +95,12 @@ function valorHoraDaLinha(row: ValorHoraRow): ValorHoraTempo {
 /** Mais recente primeiro - mesma ordem que `itemVigenteEm` espera receber. */
 export async function listarValoresHoraTempo(userId: string): Promise<ValorHoraTempo[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("zh_tempo_valores_hora")
     .select("id, valor, vigente_desde")
     .eq("criado_por", userId)
     .order("vigente_desde", { ascending: false });
+  if (error) throw new Error(`Não foi possível carregar o valor da hora: ${error.message}`);
   return ((data as ValorHoraRow[] | null) ?? []).map(valorHoraDaLinha);
 }
 
@@ -132,11 +135,12 @@ function metaMensalDaLinha(row: MetaMensalRow): MetaMensalTempo {
  * `frenteId` quando precisar (ver `montarPainelMensal`). */
 export async function listarMetasMensaisTempo(userId: string): Promise<MetaMensalTempo[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("zh_tempo_metas_mensais")
     .select("id, frente_id, valor_mensal, vigente_desde")
     .eq("criado_por", userId)
     .order("vigente_desde", { ascending: false });
+  if (error) throw new Error(`Não foi possível carregar as metas: ${error.message}`);
   return ((data as MetaMensalRow[] | null) ?? []).map(metaMensalDaLinha);
 }
 
@@ -211,20 +215,23 @@ export async function listarLancamentosTempo(
   filtro?: { de?: string; ate?: string; frenteId?: string; tipoTrabalho?: TipoTrabalhoTempo },
 ): Promise<LancamentoTempo[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("zh_tempo_lancamentos")
-    .select(COLUNAS_LANCAMENTO)
-    .eq("criado_por", userId)
-    .eq("status", "encerrado")
-    .order("data", { ascending: false });
-
-  if (filtro?.de) query = query.gte("data", filtro.de);
-  if (filtro?.ate) query = query.lte("data", filtro.ate);
-  if (filtro?.frenteId) query = query.eq("frente_id", filtro.frenteId);
-  if (filtro?.tipoTrabalho) query = query.eq("tipo_trabalho", filtro.tipoTrabalho);
-
-  const { data } = await query;
-  return ((data as unknown as LancamentoRow[] | null) ?? []).map(lancamentoDaLinha);
+  // Vários lançamentos por dia: passa de 1.000 em poucos meses - leitura
+  // completa com erro checado, mesma ordem (`id` só desempata a paginação).
+  const linhas = await buscarTudo<LancamentoRow>((de, ate) => {
+    let query = supabase
+      .from("zh_tempo_lancamentos")
+      .select(COLUNAS_LANCAMENTO)
+      .eq("criado_por", userId)
+      .eq("status", "encerrado");
+    if (filtro?.de) query = query.gte("data", filtro.de);
+    if (filtro?.ate) query = query.lte("data", filtro.ate);
+    if (filtro?.frenteId) query = query.eq("frente_id", filtro.frenteId);
+    if (filtro?.tipoTrabalho) query = query.eq("tipo_trabalho", filtro.tipoTrabalho);
+    return query.order("data", { ascending: false }).order("id").range(de, ate);
+  }).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os lançamentos de tempo: ${erro.message}`);
+  });
+  return linhas.map(lancamentoDaLinha);
 }
 
 /** Cronômetro em andamento ou pausado dessa pessoa - nunca mais de 1 (índice

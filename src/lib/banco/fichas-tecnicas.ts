@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import { ErroPublico } from "@/lib/erros";
 import { listarProdutosBanco } from "@/lib/banco/estoque";
 import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
@@ -65,10 +66,13 @@ export async function criarCategoriaFicha(params: {
  * exclusão foi bloqueada. */
 export async function contarFichasPorCategoria(unidadeId: string): Promise<Record<string, number>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("fichas_tecnicas").select("categoria_id").eq("unidade_id", unidadeId);
-  if (error) throw new Error(`Não foi possível contar as fichas por categoria: ${error.message}`);
+  const linhas = await buscarTudo<{ categoria_id: string }>((de, ate) =>
+    supabase.from("fichas_tecnicas").select("categoria_id").eq("unidade_id", unidadeId).order("id").range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível contar as fichas por categoria: ${erro.message}`);
+  });
   const contagem: Record<string, number> = {};
-  for (const row of (data as { categoria_id: string }[] | null) ?? []) {
+  for (const row of linhas) {
     contagem[row.categoria_id] = (contagem[row.categoria_id] ?? 0) + 1;
   }
   return contagem;
@@ -324,12 +328,14 @@ export async function listarFichasTecnicas(
   filtro?: { camada?: CamadaFicha },
 ): Promise<FichaTecnicaResumo[]> {
   const supabase = await createClient();
-  let query = supabase.from("fichas_tecnicas").select(RESUMO_COLUNAS).eq("unidade_id", unidadeId).order("nome");
-  if (filtro?.camada) query = query.eq("camada", filtro.camada);
-
-  const { data, error } = await query;
-  if (error) throw new Error(`Não foi possível carregar as fichas técnicas: ${error.message}`);
-  const linhas = (data as FichaResumoRow[] | null) ?? [];
+  // Leitura completa, mesma ordem (`id` só desempata a paginação).
+  const linhas = await buscarTudo<FichaResumoRow>((de, ate) => {
+    let query = supabase.from("fichas_tecnicas").select(RESUMO_COLUNAS).eq("unidade_id", unidadeId);
+    if (filtro?.camada) query = query.eq("camada", filtro.camada);
+    return query.order("nome").order("id").range(de, ate);
+  }).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar as fichas técnicas: ${erro.message}`);
+  });
   if (linhas.length === 0) return [];
 
   const nomes = await nomesCategoriasPorId(
@@ -722,17 +728,21 @@ export async function sincronizarFichasRevenda(
 ): Promise<void> {
   if (produtos.length === 0) return;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("produtos")
-    .select("sku, ficha_revenda_id")
-    .eq("unidade_id", unidadeId)
-    .in(
-      "sku",
-      produtos.map((p) => p.sku),
-    );
-  const fichaIdPorSku = new Map(
-    ((data as { sku: string; ficha_revenda_id: string | null }[] | null) ?? []).map((r) => [r.sku, r.ficha_revenda_id]),
+  // Em lotes e com erro checado: a grade inteira passa de 1.000 SKUs, e um SKU
+  // fora do teto (ou uma leitura que falha) pareceria sem ficha e ganharia
+  // ficha duplicada.
+  const data = await buscarTudoEmLotes<{ sku: string; ficha_revenda_id: string | null }>(
+    produtos.map((p) => p.sku),
+    (lote, de, ate) =>
+      supabase
+        .from("produtos")
+        .select("sku, ficha_revenda_id")
+        .eq("unidade_id", unidadeId)
+        .in("sku", lote)
+        .order("id")
+        .range(de, ate),
   );
+  const fichaIdPorSku = new Map(data.map((r) => [r.sku, r.ficha_revenda_id]));
 
   for (const produto of produtos) {
     const fichaAtualId = fichaIdPorSku.get(produto.sku) ?? null;
@@ -841,16 +851,23 @@ export type ConversaoProduto = {
 
 export async function listarConversoesProduto(unidadeId: string): Promise<ConversaoProduto[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("produto_conversoes")
-    .select("produto_sku, unidade_saida, fator_por_unidade_base, fator_correcao, descricao")
-    .eq("unidade_id", unidadeId);
-  if (error) throw new Error(`Não foi possível carregar as conversões: ${error.message}`);
-  return (
-    (data as
-      | { produto_sku: string; unidade_saida: string; fator_por_unidade_base: number; fator_correcao: number; descricao: string }[]
-      | null) ?? []
-  ).map((r) => ({
+  const data = await buscarTudo<{
+    produto_sku: string;
+    unidade_saida: string;
+    fator_por_unidade_base: number;
+    fator_correcao: number;
+    descricao: string;
+  }>((de, ate) =>
+    supabase
+      .from("produto_conversoes")
+      .select("produto_sku, unidade_saida, fator_por_unidade_base, fator_correcao, descricao")
+      .eq("unidade_id", unidadeId)
+      .order("produto_sku")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar as conversões: ${erro.message}`);
+  });
+  return data.map((r) => ({
     produtoSku: r.produto_sku,
     unidadeSaida: r.unidade_saida,
     fatorPorUnidadeBase: Number(r.fator_por_unidade_base),

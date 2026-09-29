@@ -3,6 +3,7 @@ import {
   type ItemNavegacao,
   type SecaoNavegacao,
 } from "@/components/estrutura-aplicativo";
+import { UnidadeSuporteProvider } from "@/components/contexto-suporte";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
 import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
 import { getAcessoAtual } from "@/lib/acesso";
@@ -14,6 +15,10 @@ export default async function AppLayout({
 }) {
   const acesso = await getAcessoAtual();
   const podeGerir = acesso.role !== "operacional";
+  const nomeUnidadeSuporte =
+    acesso.organizacaoNome && acesso.organizacaoNome !== acesso.unidadeNome
+      ? `${acesso.organizacaoNome} - ${acesso.unidadeNome}`
+      : acesso.unidadeNome;
 
   const secoesEstoque: SecaoNavegacao[] = [
     {
@@ -241,7 +246,8 @@ export default async function AppLayout({
           usuarioEmail={acesso.usuarioEmail}
           usuarioNome={acesso.usuarioNome}
         >
-          {children}
+          {/* Nome da unidade para a mensagem de suporte do cartão de erro. */}
+          <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>{children}</UnidadeSuporteProvider>
         </EstruturaAplicativo>
       </GuardaEdicaoProvider>
     </GuardaContagemProvider>

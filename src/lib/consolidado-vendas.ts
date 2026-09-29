@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { ConsolidadoVenda } from "@/lib/types";
 
 export type EntradaConsolidado = {
@@ -84,9 +85,12 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]): Promise<Map<string, string>> {
   const idsUnicos = Array.from(new Set(userIds));
   if (idsUnicos.length === 0) return new Map();
-  const { data } = await supabase.from("perfis").select("id, nome").in("id", idsUnicos);
+  // Sem perfil = fallback "Usuário"; leitura que falha = erro (nunca nome errado).
+  const perfis = await buscarTudoEmLotes<{ id: string; nome: string | null }>(idsUnicos, (lote, de, ate) =>
+    supabase.from("perfis").select("id, nome").in("id", lote).order("id").range(de, ate),
+  );
   const mapa = new Map<string, string>();
-  for (const p of (data as { id: string; nome: string | null }[] | null) ?? []) {
+  for (const p of perfis) {
     mapa.set(p.id, p.nome?.trim() || "Usuário");
   }
   return mapa;
@@ -142,12 +146,13 @@ function valoresToRow(valores: EntradaConsolidado, totais: TotaisConsolidado) {
  * existe" na criação e da tela de edição. */
 export async function getConsolidadoPorData(unidadeId: string, data: string): Promise<ConsolidadoVenda | null> {
   const supabase = await createClient();
-  const { data: row } = await supabase
+  const { data: row, error } = await supabase
     .from("consolidados_vendas")
     .select("*")
     .eq("unidade_id", unidadeId)
     .eq("data", data)
     .maybeSingle();
+  if (error) throw new Error(error.message);
   if (!row) return null;
   const nomes = await nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean) as string[]);
   return rowToConsolidado(row as ConsolidadoRow, nomes);
@@ -155,12 +160,13 @@ export async function getConsolidadoPorData(unidadeId: string, data: string): Pr
 
 export async function getConsolidadoPorId(unidadeId: string, id: string): Promise<ConsolidadoVenda | null> {
   const supabase = await createClient();
-  const { data: row } = await supabase
+  const { data: row, error } = await supabase
     .from("consolidados_vendas")
     .select("*")
     .eq("unidade_id", unidadeId)
     .eq("id", id)
     .maybeSingle();
+  if (error) throw new Error(error.message);
   if (!row) return null;
   const nomes = await nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean) as string[]);
   return rowToConsolidado(row as ConsolidadoRow, nomes);
@@ -235,18 +241,15 @@ export async function listConsolidados(
   filtro?: { de?: string; ate?: string; status?: "conferido" | "divergente" }
 ): Promise<ConsolidadoVenda[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("consolidados_vendas")
-    .select("*")
-    .eq("unidade_id", unidadeId)
-    .order("data", { ascending: false });
-
-  if (filtro?.de) query = query.gte("data", filtro.de);
-  if (filtro?.ate) query = query.lte("data", filtro.ate);
-  if (filtro?.status) query = query.eq("status", filtro.status);
-
-  const { data: rows } = await query;
-  const lista = (rows as ConsolidadoRow[] | null) ?? [];
+  // Um lançamento por dia: passa de 1.000 em menos de 3 anos - leitura
+  // completa, mesma ordem (`id` só desempata a paginação).
+  const lista = await buscarTudo<ConsolidadoRow>((de, ate) => {
+    let query = supabase.from("consolidados_vendas").select("*").eq("unidade_id", unidadeId);
+    if (filtro?.de) query = query.gte("data", filtro.de);
+    if (filtro?.ate) query = query.lte("data", filtro.ate);
+    if (filtro?.status) query = query.eq("status", filtro.status);
+    return query.order("data", { ascending: false }).order("id").range(de, ate);
+  });
   if (lista.length === 0) return [];
 
   const idsUsuarios = lista.flatMap((r) => [r.criado_por, r.atualizado_por].filter(Boolean) as string[]);

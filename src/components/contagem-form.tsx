@@ -10,13 +10,13 @@ import {
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import type { Setor } from "@/lib/types";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
+import { WHATSAPP_VINICIUS } from "@/lib/suporte";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 
-const WHATSAPP_VINICIUS = "5511963898411";
 const PENDENTE_PREFIX = "PENDENTE-";
 
 type ItemCustom = {

@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { Setor } from "@/lib/types";
 import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
 
@@ -16,20 +17,30 @@ export type DesignacaoProduto = {
 
 export async function listarSetoresBanco(unidadeId: string): Promise<Setor[]> {
   const supabase = await createClient();
-  const [{ data: setores, error }, { data: vinculos, error: erroVinculos }] = await Promise.all([
+  const [{ data: setores, error }, vinculos] = await Promise.all([
     supabase
       .from("setores")
       .select("id, nome, ordem, ativo")
       .eq("unidade_id", unidadeId)
       .order("ordem")
       .order("nome"),
-    supabase.from("produto_setores").select("setor_id").eq("unidade_id", unidadeId),
+    // Um vínculo por produto x setor: passa fácil de 1.000 - leitura completa.
+    buscarTudo<{ setor_id: string }>((de, ate) =>
+      supabase
+        .from("produto_setores")
+        .select("setor_id")
+        .eq("unidade_id", unidadeId)
+        .order("produto_id")
+        .order("setor_id")
+        .range(de, ate),
+    ).catch((erro: Error) => {
+      throw new Error(`Não foi possível contar os produtos: ${erro.message}`);
+    }),
   ]);
   if (error) throw new Error(`Não foi possível carregar os setores: ${error.message}`);
-  if (erroVinculos) throw new Error(`Não foi possível contar os produtos: ${erroVinculos.message}`);
 
   const porSetor = new Map<string, number>();
-  for (const vinculo of vinculos ?? []) {
+  for (const vinculo of vinculos) {
     const id = vinculo.setor_id as string;
     porSetor.set(id, (porSetor.get(id) ?? 0) + 1);
   }
@@ -86,14 +97,20 @@ export async function listarDesignacoesBanco(
   unidadeId: string,
 ): Promise<Map<string, string[]>> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("produto_setores")
-    .select("setor_id, produtos!inner(sku)")
-    .eq("unidade_id", unidadeId);
-  if (error) throw new Error(`Não foi possível carregar a designação: ${error.message}`);
+  const linhas = await buscarTudo<{ setor_id: string; produtos: unknown }>((de, ate) =>
+    supabase
+      .from("produto_setores")
+      .select("setor_id, produtos!inner(sku)")
+      .eq("unidade_id", unidadeId)
+      .order("produto_id")
+      .order("setor_id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar a designação: ${erro.message}`);
+  });
 
   const porSku = new Map<string, string[]>();
-  for (const linha of data ?? []) {
+  for (const linha of linhas) {
     const produto = linha.produtos as unknown as { sku: string };
     const atual = porSku.get(produto.sku) ?? [];
     atual.push(linha.setor_id as string);
@@ -113,14 +130,15 @@ export async function salvarDesignacoesBanco(
   const supabase = await createClient();
 
   const skus = designacoes.map((d) => d.sku);
-  const { data: produtos, error: erroProdutos } = await supabase
-    .from("produtos")
-    .select("id, sku")
-    .eq("unidade_id", unidadeId)
-    .in("sku", skus);
-  if (erroProdutos) throw new Error(`Não foi possível localizar os produtos: ${erroProdutos.message}`);
+  // Em lotes: salvar a grade inteira passa de 1.000 SKUs, e o que ficasse fora
+  // do teto viraria "Produto não encontrado".
+  const produtos = await buscarTudoEmLotes<{ id: string; sku: string }>(skus, (lote, de, ate) =>
+    supabase.from("produtos").select("id, sku").eq("unidade_id", unidadeId).in("sku", lote).order("id").range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível localizar os produtos: ${erro.message}`);
+  });
 
-  const idPorSku = new Map((produtos ?? []).map((p) => [p.sku as string, p.id as string]));
+  const idPorSku = new Map(produtos.map((p) => [p.sku, p.id]));
   const desconhecidos = skus.filter((sku) => !idPorSku.has(sku));
   if (desconhecidos.length > 0) {
     throw new ErroPublico(`Produto não encontrado nesta unidade: ${desconhecidos.join(", ")}`);
@@ -159,14 +177,20 @@ export async function listarAndamentoBanco(
   unidadeId: string,
 ): Promise<Map<string, AndamentoSetor[]>> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("contagem_setores")
-    .select("situacao, enviado_em, enviado_por, setores!inner(id, nome), contagens!inner(data, unidade_id)")
-    .eq("contagens.unidade_id", unidadeId);
-  if (error) throw new Error(`Não foi possível carregar o andamento: ${error.message}`);
+  // Uma linha por setor de cada contagem: acumula com o tempo - leitura completa.
+  const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
+    supabase
+      .from("contagem_setores")
+      .select("situacao, enviado_em, enviado_por, setores!inner(id, nome), contagens!inner(data, unidade_id)")
+      .eq("contagens.unidade_id", unidadeId)
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar o andamento: ${erro.message}`);
+  });
 
   const porData = new Map<string, AndamentoSetor[]>();
-  for (const linha of data ?? []) {
+  for (const linha of linhas) {
     const setor = linha.setores as unknown as { id: string; nome: string };
     const contagem = linha.contagens as unknown as { data: string };
     const dataBr = isoParaBr(contagem.data);
@@ -190,14 +214,22 @@ export async function listarEscopoBanco(
   dataBr: string,
 ): Promise<EscopoSetor[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("contagem_escopo")
-    .select("sku, setores!inner(id, nome), contagens!inner(data, unidade_id)")
-    .eq("contagens.unidade_id", unidadeId)
-    .eq("contagens.data", brParaIso(dataBr));
-  if (error) throw new Error(`Não foi possível carregar o escopo da contagem: ${error.message}`);
+  // Um SKU por setor da data: passa de 1.000 numa unidade grande - leitura completa.
+  const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
+    supabase
+      .from("contagem_escopo")
+      .select("sku, setores!inner(id, nome), contagens!inner(data, unidade_id)")
+      .eq("contagens.unidade_id", unidadeId)
+      .eq("contagens.data", brParaIso(dataBr))
+      .order("contagem_id")
+      .order("setor_id")
+      .order("sku")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar o escopo da contagem: ${erro.message}`);
+  });
 
-  return (data ?? []).map((linha) => {
+  return linhas.map((linha) => {
     const setor = linha.setores as unknown as { id: string; nome: string };
     return { sku: linha.sku as string, setorId: setor.id, setorNome: setor.nome };
   });

@@ -96,13 +96,20 @@ function fornecedorDaLinha(row: FornecedorRow): Fornecedor {
 
 export async function listarProdutosBanco(unidadeId: string): Promise<Produto[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("produtos")
-    .select("sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo, revenda")
-    .eq("unidade_id", unidadeId)
-    .order("ordem");
-  if (error) throw new Error(`Não foi possível carregar os produtos: ${error.message}`);
-  return ((data as ProdutoRow[] | null) ?? []).map(produtoDaLinha);
+  // Leitura completa (sem o teto de 1.000 linhas do PostgREST), mesma ordem de
+  // antes - `id` só desempata a paginação.
+  const linhas = await buscarTudo<ProdutoRow>((de, ate) =>
+    supabase
+      .from("produtos")
+      .select("sku, posicao, grupo, nome, unidade_base, preco_unitario, estoque_necessario_semana, estoque_minimo, nome_compra, unidade_embalagem_fornecedor, qtd_unidade_base_por_embalagem, preco_fornecedor, fornecedor_1, fornecedor_2, fornecedor_3, fornecedor_4, observacoes, ativo, revenda")
+      .eq("unidade_id", unidadeId)
+      .order("ordem")
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os produtos: ${erro.message}`);
+  });
+  return linhas.map(produtoDaLinha);
 }
 
 export async function salvarProdutosBanco(
@@ -159,13 +166,18 @@ export async function excluirProdutoBanco(unidadeId: string, sku: string): Promi
 
 export async function listarFornecedoresBanco(unidadeId: string): Promise<Fornecedor[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("fornecedores")
-    .select("codigo, razao_social, nome_fantasia, grupos, nome_vendedor, whatsapp, condicoes_pagamento, prazo_boleto, limite_credito, pedido_minimo, dias_entrega, observacoes")
-    .eq("unidade_id", unidadeId)
-    .order("ordem");
-  if (error) throw new Error(`Não foi possível carregar os fornecedores: ${error.message}`);
-  return ((data as FornecedorRow[] | null) ?? []).map(fornecedorDaLinha);
+  const linhas = await buscarTudo<FornecedorRow>((de, ate) =>
+    supabase
+      .from("fornecedores")
+      .select("codigo, razao_social, nome_fantasia, grupos, nome_vendedor, whatsapp, condicoes_pagamento, prazo_boleto, limite_credito, pedido_minimo, dias_entrega, observacoes")
+      .eq("unidade_id", unidadeId)
+      .order("ordem")
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os fornecedores: ${erro.message}`);
+  });
+  return linhas.map(fornecedorDaLinha);
 }
 
 export async function salvarFornecedoresBanco(
@@ -324,12 +336,12 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
 async function nomesDeSetor(unidadeId: string): Promise<Map<string, string>> {
   if (!CONTAGEM_POR_SETOR_ATIVA) return new Map();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("setores")
-    .select("id, nome")
-    .eq("unidade_id", unidadeId);
-  if (error) throw new Error(`Não foi possível carregar os setores: ${error.message}`);
-  return new Map((data ?? []).map((setor) => [setor.id as string, setor.nome as string]));
+  const setores = await buscarTudo<{ id: string; nome: string }>((de, ate) =>
+    supabase.from("setores").select("id, nome").eq("unidade_id", unidadeId).order("id").range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os setores: ${erro.message}`);
+  });
+  return new Map(setores.map((setor) => [setor.id, setor.nome]));
 }
 
 export async function registrarContagemBanco(

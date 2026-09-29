@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { Pedido, PedidoItem } from "@/lib/types";
 
 type PedidoRow = {
@@ -62,13 +63,14 @@ async function garantirPedido(
   dataContagemBase: string,
   criadoPor: string
 ): Promise<string> {
-  const { data: existente } = await supabase
+  const { data: existente, error: erroExistente } = await supabase
     .from("pedidos")
     .select("id")
     .eq("unidade_id", unidadeId)
     .eq("fornecedor", fornecedor)
     .eq("data_contagem_base", dataContagemBase)
     .maybeSingle();
+  if (erroExistente) throw new Error(erroExistente.message);
   if (existente) return existente.id;
 
   const { data: novo, error } = await supabase
@@ -142,12 +144,14 @@ export async function confirmarItem(params: {
     preco_confirmado: params.item.precoConfirmado,
   };
 
-  const { data: existente } = await supabase
+  const { data: existente, error: erroExistente } = await supabase
     .from("pedido_itens")
     .select("id")
     .eq("pedido_id", pedidoId)
     .eq("sku", params.item.sku)
     .maybeSingle();
+  // Leitura que falha não pode virar "item novo" (duplicaria o SKU no pedido).
+  if (erroExistente) throw new Error(erroExistente.message);
 
   if (existente) {
     const { error } = await supabase
@@ -162,14 +166,18 @@ export async function confirmarItem(params: {
     if (error) throw new Error(error.message);
   }
 
-  const { data: outrosPedidos } = await supabase
-    .from("pedidos")
-    .select("id")
-    .eq("unidade_id", params.unidadeId)
-    .eq("data_contagem_base", params.dataContagemBase)
-    .neq("fornecedor", params.fornecedor);
+  const outrosPedidos = await buscarTudo<{ id: string }>((de, ate) =>
+    supabase
+      .from("pedidos")
+      .select("id")
+      .eq("unidade_id", params.unidadeId)
+      .eq("data_contagem_base", params.dataContagemBase)
+      .neq("fornecedor", params.fornecedor)
+      .order("id")
+      .range(de, ate),
+  );
 
-  const outrosIds = (outrosPedidos ?? []).map((p) => p.id);
+  const outrosIds = outrosPedidos.map((p) => p.id);
   if (outrosIds.length > 0) {
     await supabase
       .from("pedido_itens")
@@ -310,58 +318,59 @@ export async function atualizarPrevisaoEntrega(params: {
  * sem isso, o pedido salvo fica invisível na tela, embora exista no banco). */
 export async function listPedidosPorContagemBase(unidadeId: string, dataContagemBase: string): Promise<Pedido[]> {
   const supabase = await createClient();
-
-  const { data: pedidos } = await supabase
-    .from("pedidos")
-    .select("*")
-    .eq("unidade_id", unidadeId)
-    .eq("data_contagem_base", dataContagemBase);
-
-  const rows = (pedidos as PedidoRow[] | null) ?? [];
-  if (rows.length === 0) return [];
-
-  const { data: todosItens } = await supabase
-    .from("pedido_itens")
-    .select("*")
-    .in(
-      "pedido_id",
-      rows.map((r) => r.id)
-    );
-
-  const itensPorPedido = new Map<string, PedidoItemRow[]>();
-  for (const it of (todosItens as (PedidoItemRow & { pedido_id: string })[] | null) ?? []) {
-    const lista = itensPorPedido.get(it.pedido_id) ?? [];
-    lista.push(it);
-    itensPorPedido.set(it.pedido_id, lista);
-  }
-
-  return rows.map((row) => rowToPedido(row, itensPorPedido.get(row.id) ?? []));
+  const rows = await buscarTudo<PedidoRow>((de, ate) =>
+    supabase
+      .from("pedidos")
+      .select("*")
+      .eq("unidade_id", unidadeId)
+      .eq("data_contagem_base", dataContagemBase)
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os pedidos: ${erro.message}`);
+  });
+  return montarPedidosComItens(supabase, rows);
 }
 
 /** Todos os pedidos já salvos de uma unidade, mais recente primeiro - base
  * da tela Pedidos Feitos. */
 export async function listPedidosFeitos(unidadeId: string): Promise<Pedido[]> {
   const supabase = await createClient();
+  // Mesma ordem de antes (mais recente primeiro); `id` só desempata a paginação.
+  const rows = await buscarTudo<PedidoRow>((de, ate) =>
+    supabase
+      .from("pedidos")
+      .select("*")
+      .eq("unidade_id", unidadeId)
+      .order("criado_em", { ascending: false })
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os pedidos: ${erro.message}`);
+  });
+  return montarPedidosComItens(supabase, rows);
+}
 
-  const { data: pedidos } = await supabase
-    .from("pedidos")
-    .select("*")
-    .eq("unidade_id", unidadeId)
-    .order("criado_em", { ascending: false });
-
-  const rows = (pedidos as PedidoRow[] | null) ?? [];
+/** Junta os itens de cada pedido. Leitura completa: `.in()` em lotes de
+ * pedidos, cada lote paginado - sem o teto de 1.000 linhas do PostgREST, que
+ * cortava itens (e o total) dos pedidos mais antigos sem avisar. Falha em
+ * qualquer página lança erro, nunca devolve pedido com item faltando. */
+async function montarPedidosComItens(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: PedidoRow[],
+): Promise<Pedido[]> {
   if (rows.length === 0) return [];
 
-  const { data: todosItens } = await supabase
-    .from("pedido_itens")
-    .select("*")
-    .in(
-      "pedido_id",
-      rows.map((r) => r.id)
-    );
+  const todosItens = await buscarTudoEmLotes<PedidoItemRow & { pedido_id: string }>(
+    rows.map((r) => r.id),
+    (lote, de, ate) =>
+      supabase.from("pedido_itens").select("*").in("pedido_id", lote).order("pedido_id").order("id").range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar os itens dos pedidos: ${erro.message}`);
+  });
 
   const itensPorPedido = new Map<string, PedidoItemRow[]>();
-  for (const it of (todosItens as (PedidoItemRow & { pedido_id: string })[] | null) ?? []) {
+  for (const it of todosItens) {
     const lista = itensPorPedido.get(it.pedido_id) ?? [];
     lista.push(it);
     itensPorPedido.set(it.pedido_id, lista);

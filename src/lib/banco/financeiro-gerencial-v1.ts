@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { erroDeNegocio, nomesPorUserId } from "@/lib/banco/financeiro-gerencial";
-import { buscarTudo } from "@/lib/banco/paginacao";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type {
   BaixaBase,
   FechamentoMensal,
@@ -178,34 +178,44 @@ export async function encerrarRecorrencia(params: { unidadeId: string; id: strin
   if (error) throw erroDeNegocio(error);
   if (!atualizada || atualizada.length === 0) throw new ErroPublico("Recorrência não encontrada.");
 
-  const { data: ocorrencias } = await supabase
-    .from("fin_lancamentos")
-    .select("id")
-    .eq("unidade_id", params.unidadeId)
-    .eq("recorrencia_id", params.id);
-  const ids = ((ocorrencias as { id: string }[] | null) ?? []).map((o) => o.id);
+  // Leitura que falha lança erro: nunca "0 excluídas" por engano.
+  const ocorrencias = await buscarTudo<{ id: string }>((de, ate) =>
+    supabase
+      .from("fin_lancamentos")
+      .select("id")
+      .eq("unidade_id", params.unidadeId)
+      .eq("recorrencia_id", params.id)
+      .order("id")
+      .range(de, ate),
+  );
+  const ids = ocorrencias.map((o) => o.id);
   if (ids.length === 0) return { excluidas: 0 };
 
   // Recorrência pode ter até 360 ocorrências - `.in()` em lotes pra não
-  // estourar o tamanho da URL do PostgREST.
+  // estourar o tamanho da URL do PostgREST, cada lote paginado.
   type ParcelaOcorrencia = { id: string; lancamento_id: string; data_prevista: string; status: StatusParcela };
-  const parcelasRows: ParcelaOcorrencia[] = [];
-  for (const lote of emLotes(ids)) {
-    const { data, error: erroParcelas } = await supabase
+  const parcelasRows = await buscarTudoEmLotes<ParcelaOcorrencia>(ids, (lote, de, ate) =>
+    supabase
       .from("fin_parcelas")
       .select("id, lancamento_id, data_prevista, status")
       .eq("unidade_id", params.unidadeId)
-      .in("lancamento_id", lote);
-    if (erroParcelas) throw new Error(erroParcelas.message);
-    parcelasRows.push(...((data as ParcelaOcorrencia[] | null) ?? []));
-  }
+      .in("lancamento_id", lote)
+      .order("id")
+      .range(de, ate),
+  );
   if (parcelasRows.length === 0) return { excluidas: 0 };
-  const comBaixa = new Set<string>();
-  for (const lote of emLotes(parcelasRows.map((p) => p.id))) {
-    const { data, error: erroBaixas } = await supabase.from("fin_baixas").select("parcela_id").eq("unidade_id", params.unidadeId).in("parcela_id", lote);
-    if (erroBaixas) throw new Error(erroBaixas.message);
-    for (const b of (data as { parcela_id: string }[] | null) ?? []) comBaixa.add(b.parcela_id);
-  }
+  const baixas = await buscarTudoEmLotes<{ parcela_id: string }>(
+    parcelasRows.map((p) => p.id),
+    (lote, de, ate) =>
+      supabase
+        .from("fin_baixas")
+        .select("parcela_id")
+        .eq("unidade_id", params.unidadeId)
+        .in("parcela_id", lote)
+        .order("id")
+        .range(de, ate),
+  );
+  const comBaixa = new Set(baixas.map((b) => b.parcela_id));
 
   const porLancamento = new Map<string, typeof parcelasRows>();
   for (const p of parcelasRows) porLancamento.set(p.lancamento_id, [...(porLancamento.get(p.lancamento_id) ?? []), p]);

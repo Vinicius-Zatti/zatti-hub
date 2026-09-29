@@ -1,7 +1,8 @@
 // Banco em memória para testes que imita o PostgREST: toda resposta é cortada
 // em `maxRows` linhas, sem erro (como `max_rows` em `supabase/config.toml`).
-// Só o que as leituras paginadas usam: select/eq/in/not is null/gte/lte/
-// order/range, mais os embeds do Financeiro Gerencial. Só para testes.
+// Só o que as leituras paginadas usam: select/eq/neq/in/not is null/gte/lte/
+// order/range, mais os embeds do Financeiro Gerencial e os embeds `!inner` de
+// setores/contagens/produtos (com filtro `tabela.coluna`). Só para testes.
 
 export type Linha = Record<string, unknown>;
 
@@ -14,6 +15,14 @@ export type BancoMemoria = {
   falharNaLeitura: Record<string, number>;
   cliente: { from: (tabela: string) => unknown };
   limpar: () => void;
+};
+
+/** Embeds simples por chave estrangeira: nome da tabela embutida -> coluna da
+ * linha que aponta para o `id` dela. */
+const CHAVE_DO_EMBED: Record<string, string> = {
+  setores: "setor_id",
+  contagens: "contagem_id",
+  produtos: "produto_id",
 };
 
 export function criarBancoMemoria(maxRows = 1000): BancoMemoria {
@@ -32,8 +41,15 @@ export function criarBancoMemoria(maxRows = 1000): BancoMemoria {
       banco.maxRows = maxRows;
     },
   };
+  function relacionada(rel: string, l: Linha): Linha | undefined {
+    return (banco.tabelas[rel] ?? []).find((x) => x.id === l[CHAVE_DO_EMBED[rel]]);
+  }
+
   function comEmbed(tabela: string, colunas: string, l: Linha): Linha {
     const r: Linha = { ...l };
+    for (const rel of Object.keys(CHAVE_DO_EMBED)) {
+      if (colunas.includes(`${rel}!inner(`) || colunas.includes(`${rel}(`)) r[rel] = relacionada(rel, l) ?? null;
+    }
     const lancamento = (id: unknown) => (banco.tabelas.fin_lancamentos ?? []).find((x) => x.id === id);
     if (tabela === "fin_baixas" && colunas.includes("fin_parcelas!inner(")) {
       const parcela = (banco.tabelas.fin_parcelas ?? []).find((p) => p.id === l.parcela_id);
@@ -59,7 +75,11 @@ export function criarBancoMemoria(maxRows = 1000): BancoMemoria {
       if (banco.falharNaLeitura[tabela] === leituras[tabela]) {
         return { data: null, error: { message: `falha simulada em ${tabela}` } };
       }
-      const alvo = (banco.tabelas[tabela] ?? []).filter((l) => filtros.every((f) => f(l)));
+      // Embed `!inner` descarta a linha sem par na tabela embutida.
+      const inner = Object.keys(CHAVE_DO_EMBED).filter((rel) => colunas.includes(`${rel}!inner(`));
+      const alvo = (banco.tabelas[tabela] ?? []).filter(
+        (l) => inner.every((rel) => relacionada(rel, l)) && filtros.every((f) => f(l)),
+      );
       alvo.sort((a, b) => {
         for (const { campo, asc } of ordens) {
           const x = a[campo] as string | number;
@@ -74,13 +94,24 @@ export function criarBancoMemoria(maxRows = 1000): BancoMemoria {
       return { data: fatia.map((l) => comEmbed(tabela, colunas, l)), error: null };
     }
 
+    // `contagens.unidade_id` filtra pela tabela embutida.
+    function valorDe(l: Linha, campo: string): unknown {
+      if (!campo.includes(".")) return l[campo];
+      const [rel, coluna] = campo.split(".");
+      return relacionada(rel, l)?.[coluna];
+    }
+
     const b = {
       select(c = "") {
         colunas = c;
         return b;
       },
       eq(campo: string, valor: unknown) {
-        filtros.push((l) => l[campo] === valor);
+        filtros.push((l) => valorDe(l, campo) === valor);
+        return b;
+      },
+      neq(campo: string, valor: unknown) {
+        filtros.push((l) => valorDe(l, campo) !== valor);
         return b;
       },
       in(campo: string, lista: unknown[]) {

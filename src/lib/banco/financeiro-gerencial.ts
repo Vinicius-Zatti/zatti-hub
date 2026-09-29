@@ -50,9 +50,13 @@ export function erroDeNegocio(error: { code?: string; message: string }): Error 
 export async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]): Promise<Map<string, string>> {
   const idsUnicos = Array.from(new Set(userIds));
   if (idsUnicos.length === 0) return new Map();
-  const { data } = await supabase.from("perfis").select("id, nome").in("id", idsUnicos);
+  // Sem perfil = fallback "Usuário"; leitura que falha = erro (nunca nome errado).
+  // Em lotes: a lista de lançamentos pode trazer muitos autores.
+  const perfis = await buscarTudoEmLotes<{ id: string; nome: string | null }>(idsUnicos, (lote, de, ate) =>
+    supabase.from("perfis").select("id, nome").in("id", lote).order("id").range(de, ate),
+  );
   const mapa = new Map<string, string>();
-  for (const p of (data as { id: string; nome: string | null }[] | null) ?? []) {
+  for (const p of perfis) {
     mapa.set(p.id, p.nome?.trim() || "Usuário");
   }
   return mapa;
@@ -825,12 +829,15 @@ export async function obterRecorrenciaParaEdicao(
     .maybeSingle();
   if (!recorrenciaRow) throw new ErroPublico("Recorrência não encontrada.");
 
-  const { data: lancamentosRows, error } = await supabase
-    .from("fin_lancamentos")
-    .select("id, categoria_id, descricao, data_competencia, fin_parcelas(id, valor, data_prevista, conta_financeira_id, status)")
-    .eq("unidade_id", unidadeId)
-    .eq("recorrencia_id", recorrenciaId);
-  if (error) throw erroDeNegocio(error);
+  const lancamentosRows = await buscarTudo<unknown>((de, ate) =>
+    supabase
+      .from("fin_lancamentos")
+      .select("id, categoria_id, descricao, data_competencia, fin_parcelas(id, valor, data_prevista, conta_financeira_id, status)")
+      .eq("unidade_id", unidadeId)
+      .eq("recorrencia_id", recorrenciaId)
+      .order("id")
+      .range(de, ate),
+  );
 
   type LinhaOcorrencia = {
     id: string;
@@ -839,20 +846,23 @@ export async function obterRecorrenciaParaEdicao(
     data_competencia: string;
     fin_parcelas: { id: string; valor: number; data_prevista: string; conta_financeira_id: string | null; status: StatusParcela }[];
   };
-  const linhas = (lancamentosRows as unknown as LinhaOcorrencia[] | null) ?? [];
+  const linhas = lancamentosRows as LinhaOcorrencia[];
   const idsParcelas = linhas.flatMap((l) => l.fin_parcelas.map((p) => p.id));
   const baixado = new Map<string, number>();
-  // `.in()` em lotes de 100 (até 360 ocorrências) - mesmo cuidado de `encerrarRecorrencia`.
-  for (let i = 0; i < idsParcelas.length; i += 100) {
-    const { data: baixas, error: erroBaixas } = await supabase
-      .from("fin_baixas")
-      .select("parcela_id, valor, tipo")
-      .eq("unidade_id", unidadeId)
-      .in("parcela_id", idsParcelas.slice(i, i + 100));
-    if (erroBaixas) throw erroDeNegocio(erroBaixas);
-    for (const b of (baixas as { parcela_id: string; valor: number; tipo: TipoBaixa }[] | null) ?? []) {
-      baixado.set(b.parcela_id, somarValores([baixado.get(b.parcela_id) ?? 0, (b.tipo === "estorno" ? -1 : 1) * Number(b.valor)]));
-    }
+  // `.in()` em lotes de 100 (até 360 ocorrências), cada lote paginado.
+  const baixas = await buscarTudoEmLotes<{ parcela_id: string; valor: number; tipo: TipoBaixa }>(
+    idsParcelas,
+    (lote, de, ate) =>
+      supabase
+        .from("fin_baixas")
+        .select("parcela_id, valor, tipo")
+        .eq("unidade_id", unidadeId)
+        .in("parcela_id", lote)
+        .order("id")
+        .range(de, ate),
+  );
+  for (const b of baixas) {
+    baixado.set(b.parcela_id, somarValores([baixado.get(b.parcela_id) ?? 0, (b.tipo === "estorno" ? -1 : 1) * Number(b.valor)]));
   }
 
   const ocorrencias: OcorrenciaRecorrencia[] = linhas.flatMap((l) =>
@@ -983,9 +993,11 @@ async function obterParcela(unidadeId: string, parcelaId: string): Promise<Parce
   if (!data) return null;
   const linha = data as ParcelaRow;
 
-  const { data: baixasData } = await supabase.from("fin_baixas").select("valor, tipo").eq("parcela_id", parcelaId);
+  const baixasData = await buscarTudo<{ valor: number; tipo: TipoBaixa }>((de, ate) =>
+    supabase.from("fin_baixas").select("valor, tipo").eq("parcela_id", parcelaId).order("id").range(de, ate),
+  );
   const valorBaixado = somarValores(
-    ((baixasData as { valor: number; tipo: TipoBaixa }[] | null) ?? []).map((b) =>
+    baixasData.map((b) =>
       b.tipo === "estorno" ? -Number(b.valor) : Number(b.valor),
     ),
   );
@@ -1081,25 +1093,30 @@ export async function estornarBaixa(params: {
 
 export async function listarBaixasDaParcela(unidadeId: string, parcelaId: string): Promise<Baixa[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("fin_baixas")
-    .select("id, parcela_id, tipo, estorno_de_baixa_id, conta_financeira_id, valor, data, observacao, criado_por, criado_em")
-    .eq("unidade_id", unidadeId)
-    .eq("parcela_id", parcelaId)
-    .order("data");
-  const linhas =
-    (data as {
-      id: string;
-      parcela_id: string;
-      tipo: TipoBaixa;
-      estorno_de_baixa_id: string | null;
-      conta_financeira_id: string;
-      valor: number;
-      data: string;
-      observacao: string;
-      criado_por: string;
-      criado_em: string;
-    }[] | null) ?? [];
+  // Leitura completa com erro checado, mesma ordem (`data`); `criado_em` e
+  // `id` só desempatam a paginação.
+  const linhas = await buscarTudo<{
+    id: string;
+    parcela_id: string;
+    tipo: TipoBaixa;
+    estorno_de_baixa_id: string | null;
+    conta_financeira_id: string;
+    valor: number;
+    data: string;
+    observacao: string;
+    criado_por: string;
+    criado_em: string;
+  }>((de, ate) =>
+    supabase
+      .from("fin_baixas")
+      .select("id, parcela_id, tipo, estorno_de_baixa_id, conta_financeira_id, valor, data, observacao, criado_por, criado_em")
+      .eq("unidade_id", unidadeId)
+      .eq("parcela_id", parcelaId)
+      .order("data")
+      .order("criado_em")
+      .order("id")
+      .range(de, ate),
+  );
   if (linhas.length === 0) return [];
 
   const nomes = await nomesPorUserId(supabase, linhas.map((l) => l.criado_por));
