@@ -194,7 +194,7 @@ describe("Fichas Técnicas - cadastros sem teto de linhas", () => {
       const sku = `SKU${pad(i)}`;
       skus.push(sku);
       banco.tabelas.produtos.push({ id: `p${pad(i)}`, unidade_id: "u1", sku, preco_unitario: 10 });
-      banco.tabelas.produto_conversoes.push({ id: `c${pad(i)}`, unidade_id: "u1", produto_sku: sku, fator_por_unidade_base: 1000, fator_correcao: 1 });
+      banco.tabelas.produto_conversoes.push({ unidade_id: "u1", produto_sku: sku, fator_por_unidade_base: 1000, fator_correcao: 1 });
     }
     const custos = await custosUnitariosProdutos(banco.cliente as never, "u1", skus);
     expect(custos.size).toBe(1001);
@@ -203,7 +203,7 @@ describe("Fichas Técnicas - cadastros sem teto de linhas", () => {
 
   it("falha ao ler conversões lança erro, nunca custo com fator 1", async () => {
     banco.tabelas.produtos.push({ id: "p1", unidade_id: "u1", sku: "A", preco_unitario: 10 });
-    banco.tabelas.produto_conversoes.push({ id: "c1", unidade_id: "u1", produto_sku: "A", fator_por_unidade_base: 1000, fator_correcao: 1 });
+    banco.tabelas.produto_conversoes.push({ unidade_id: "u1", produto_sku: "A", fator_por_unidade_base: 1000, fator_correcao: 1 });
     banco.falharNaLeitura.produto_conversoes = segundaPaginaDaProxima("produto_conversoes") - 1;
     await expect(custosUnitariosProdutos(banco.cliente as never, "u1", ["A"])).rejects.toThrow("conversões");
   });

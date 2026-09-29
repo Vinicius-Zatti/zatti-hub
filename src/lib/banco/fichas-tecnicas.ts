@@ -388,8 +388,7 @@ export async function custosUnitariosProdutos(
           .select("produto_sku, fator_por_unidade_base, fator_correcao")
           .eq("unidade_id", unidadeId)
           .in("produto_sku", lote)
-          .order("produto_sku")
-          .order("id")
+          .order("produto_sku") // chave primária é (unidade_id, produto_sku)
           .range(de, ate),
     ).catch((err: Error) => {
       throw new Error(`Não foi possível carregar as conversões dos produtos: ${err.message}`);
