@@ -19,6 +19,13 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
+  // Leitura de PDF da Conciliação roda só no servidor, pelo pacote Node.
+  serverExternalPackages: ["pdfjs-dist"],
+  experimental: {
+    // Upload de extrato pela Server Action: arquivo de até 4 MB + multipart,
+    // abaixo do limite de 4,5 MB de corpo da Vercel.
+    serverActions: { bodySizeLimit: "4.4mb" },
+  },
   async headers() {
     return [
       {
