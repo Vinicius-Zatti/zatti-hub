@@ -13,7 +13,7 @@ ref.banco = banco;
 const { listConsolidados } = await import("./consolidado-vendas");
 const { listarBaixasDaParcela, nomesPorUserId } = await import("./banco/financeiro-gerencial");
 const { listarLancamentosTempo } = await import("./banco/meu-tempo");
-const { contarFichasPorCategoria, listarConversoesProduto } = await import("./banco/fichas-tecnicas");
+const { contarFichasPorCategoria, listarConversoesProduto, custosUnitariosProdutos } = await import("./banco/fichas-tecnicas");
 
 const pad = (n: number) => String(n).padStart(5, "0");
 /** Leituras acumulam por tabela: a 2ª página da próxima chamada vem depois delas. */
@@ -27,7 +27,7 @@ function dia(i: number): string {
 
 beforeEach(() => {
   banco.limpar();
-  for (const t of ["consolidados_vendas", "perfis", "fin_baixas", "zh_tempo_lancamentos", "fichas_tecnicas", "produto_conversoes"]) {
+  for (const t of ["consolidados_vendas", "perfis", "fin_baixas", "zh_tempo_lancamentos", "fichas_tecnicas", "produto_conversoes", "produtos"]) {
     banco.tabelas[t] = [];
   }
 });
@@ -186,5 +186,25 @@ describe("Fichas Técnicas - cadastros sem teto de linhas", () => {
       });
     }
     expect(await listarConversoesProduto("u1")).toHaveLength(1001);
+  });
+
+  it("custo unitário lê preços e conversões de mais de 1.000 SKUs e aplica o fator", async () => {
+    const skus: string[] = [];
+    for (let i = 0; i < 1001; i++) {
+      const sku = `SKU${pad(i)}`;
+      skus.push(sku);
+      banco.tabelas.produtos.push({ id: `p${pad(i)}`, unidade_id: "u1", sku, preco_unitario: 10 });
+      banco.tabelas.produto_conversoes.push({ id: `c${pad(i)}`, unidade_id: "u1", produto_sku: sku, fator_por_unidade_base: 1000, fator_correcao: 1 });
+    }
+    const custos = await custosUnitariosProdutos(banco.cliente as never, "u1", skus);
+    expect(custos.size).toBe(1001);
+    expect(custos.get("SKU01000")).toBeCloseTo(0.01, 6);
+  });
+
+  it("falha ao ler conversões lança erro, nunca custo com fator 1", async () => {
+    banco.tabelas.produtos.push({ id: "p1", unidade_id: "u1", sku: "A", preco_unitario: 10 });
+    banco.tabelas.produto_conversoes.push({ id: "c1", unidade_id: "u1", produto_sku: "A", fator_por_unidade_base: 1000, fator_correcao: 1 });
+    banco.falharNaLeitura.produto_conversoes = segundaPaginaDaProxima("produto_conversoes") - 1;
+    await expect(custosUnitariosProdutos(banco.cliente as never, "u1", ["A"])).rejects.toThrow("conversões");
   });
 });

@@ -359,31 +359,51 @@ export async function listarFichasTecnicas(
  * menos peso que o comprado - dimensão separada, se aplica mesmo sem trocar
  * de unidade). Sem conversão cadastrada, os dois fatores ficam em 1
  * (comportamento de hoje: preço do Cadastro direto). */
-async function custosUnitariosProdutos(
+export async function custosUnitariosProdutos(
   supabase: SupabaseClient,
   unidadeId: string,
   skus: string[],
 ): Promise<Map<string, number | null>> {
   const skusUnicos = Array.from(new Set(skus));
   if (skusUnicos.length === 0) return new Map();
-  const [{ data: produtosData }, { data: conversoesData }] = await Promise.all([
-    supabase.from("produtos").select("sku, preco_unitario").eq("unidade_id", unidadeId).in("sku", skusUnicos),
-    supabase
-      .from("produto_conversoes")
-      .select("produto_sku, fator_por_unidade_base, fator_correcao")
-      .eq("unidade_id", unidadeId)
-      .in("produto_sku", skusUnicos),
+  // Leitura completa e com erro propagado: sem as conversões o custo sairia
+  // com fator 1 e pareceria certo.
+  const [produtosData, conversoesData] = await Promise.all([
+    buscarTudoEmLotes<{ sku: string; preco_unitario: number | null }>(skusUnicos, (lote, de, ate) =>
+      supabase
+        .from("produtos")
+        .select("sku, preco_unitario")
+        .eq("unidade_id", unidadeId)
+        .in("sku", lote)
+        .order("sku")
+        .range(de, ate),
+    ).catch((err: Error) => {
+      throw new Error(`Não foi possível carregar os preços dos produtos: ${err.message}`);
+    }),
+    buscarTudoEmLotes<{ produto_sku: string; fator_por_unidade_base: number; fator_correcao: number }>(
+      skusUnicos,
+      (lote, de, ate) =>
+        supabase
+          .from("produto_conversoes")
+          .select("produto_sku, fator_por_unidade_base, fator_correcao")
+          .eq("unidade_id", unidadeId)
+          .in("produto_sku", lote)
+          .order("produto_sku")
+          .order("id")
+          .range(de, ate),
+    ).catch((err: Error) => {
+      throw new Error(`Não foi possível carregar as conversões dos produtos: ${err.message}`);
+    }),
   ]);
   const conversaoPorSku = new Map<string, { fator: number; fatorCorrecao: number }>();
-  for (const c of (conversoesData as { produto_sku: string; fator_por_unidade_base: number; fator_correcao: number }[] | null) ??
-    []) {
+  for (const c of conversoesData) {
     conversaoPorSku.set(c.produto_sku, {
       fator: Number(c.fator_por_unidade_base),
       fatorCorrecao: Number(c.fator_correcao),
     });
   }
   const mapa = new Map<string, number | null>();
-  for (const p of (produtosData as { sku: string; preco_unitario: number | null }[] | null) ?? []) {
+  for (const p of produtosData) {
     if (p.preco_unitario === null) {
       mapa.set(p.sku, null);
       continue;
