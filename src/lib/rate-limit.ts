@@ -51,7 +51,9 @@ export type ChaveLimiteRequisicao =
   | "agenda_tarefa_excluir"
   | "agenda_marcar_execucao"
   | "clientes_salvar"
-  | "clientes_reuniao";
+  | "clientes_reuniao"
+  | "fin_conciliacao_importar"
+  | "fin_conciliacao_reprocessar";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do
  * banco estiver indisponivel, a mutacao nao continua sem protecao. */
