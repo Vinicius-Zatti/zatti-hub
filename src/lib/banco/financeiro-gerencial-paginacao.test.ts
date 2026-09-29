@@ -188,4 +188,9 @@ describe("listarContasFinanceirasComSaldos - leitura completa", () => {
     banco.falharNaLeitura.fin_baixas = 2;
     await expect(listarContasFinanceirasComSaldos(U)).rejects.toThrow();
   });
+
+  it("erro ao ler as contas financeiras lança erro, nunca vira lista vazia", async () => {
+    banco.falharNaLeitura.fin_contas_financeiras = 1;
+    await expect(listarContasFinanceirasComSaldos(U)).rejects.toThrow();
+  });
 });

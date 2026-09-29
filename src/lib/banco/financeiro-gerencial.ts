@@ -89,7 +89,9 @@ export async function listarContasFinanceiras(unidadeId: string, somenteAtivas =
     .order("nome");
   if (somenteAtivas) query = query.eq("ativo", true);
 
-  const { data } = await query;
+  // Sem conferir o erro, uma falha virava "nenhuma conta" na tela.
+  const { data, error } = await query;
+  if (error) throw new Error(`Não foi possível carregar as contas financeiras: ${error.message}`);
   return ((data as ContaFinanceiraRow[] | null) ?? []).map(contaFinanceiraDaLinha);
 }
 
