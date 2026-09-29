@@ -18,6 +18,7 @@ import {
 } from "./ia";
 import { aplicarSugestoesIa, itensParaIa, montarConteudoRegistro, prepararMovimentos } from "./preparacao";
 import { categoriaCompativel } from "./classificacao";
+import { criarPrazo, MINIMO_CHAMADA_IA_MS, type Prazo } from "./prazo";
 import type { ResultadoLeitura, TipoDocumento } from "./tipos";
 import {
   baixarArquivo,
@@ -49,6 +50,8 @@ export async function importarDocumento(
   ctx: Contexto,
   entrada: { bytes: Uint8Array; nomeOriginal: string; contaFinanceiraId: string; tipoDocumento: TipoDocumento },
 ): Promise<ResultadoImportacao> {
+  // O prazo começa com o pedido: criar, guardar e ler cabem no maxDuration.
+  const prazo = criarPrazo();
   const deteccao = detectarArquivo(entrada.bytes);
   const sha256 = createHash("sha256").update(entrada.bytes).digest("hex");
   const nome = sanitizarNomeArquivo(entrada.nomeOriginal);
@@ -69,7 +72,7 @@ export async function importarDocumento(
   if (!deteccao.ok) throw new Error("conciliacao_estado_inconsistente");
 
   await enviarArquivo(criada.caminho, entrada.bytes, deteccao.mime);
-  return processarImportacao(ctx, { importacaoId: criada.id, sha256, bytes: entrada.bytes, tipoDocumento: entrada.tipoDocumento });
+  return processarImportacao(ctx, { importacaoId: criada.id, sha256, bytes: entrada.bytes, tipoDocumento: entrada.tipoDocumento, prazo });
 }
 
 /** Reprocessa uma importação presa (processamento interrompido há mais de
@@ -78,24 +81,28 @@ export async function reprocessarImportacao(
   ctx: Contexto,
   importacao: { id: string; sha256: string; caminhoArquivo: string; tipoDocumento: TipoDocumento },
 ): Promise<ResultadoImportacao> {
+  const prazo = criarPrazo();
   const bytes = await baixarArquivo(importacao.caminhoArquivo);
   const sha = createHash("sha256").update(bytes).digest("hex");
   if (sha !== importacao.sha256) throw new Error("conciliacao_arquivo_divergente");
-  return processarImportacao(ctx, { importacaoId: importacao.id, sha256: sha, bytes, tipoDocumento: importacao.tipoDocumento });
+  return processarImportacao(ctx, { importacaoId: importacao.id, sha256: sha, bytes, tipoDocumento: importacao.tipoDocumento, prazo });
 }
 
 async function processarImportacao(
   ctx: Contexto,
-  p: { importacaoId: string; sha256: string; bytes: Uint8Array; tipoDocumento: TipoDocumento },
+  p: { importacaoId: string; sha256: string; bytes: Uint8Array; tipoDocumento: TipoDocumento; prazo: Prazo },
 ): Promise<ResultadoImportacao> {
   const { tentativa, nonce } = await iniciarProcessamento(ctx.acesso.userId, p.importacaoId, p.sha256);
+  // Orçamento único: PDF, IA e classificação usam o que sobra do prazo,
+  // sempre com reserva para gravar o resultado dentro do maxDuration.
+  const { prazo } = p;
   const deteccao = detectarArquivo(p.bytes);
   if (!deteccao.ok) {
     await quarentenar(ctx.acesso.userId, { importacao: p.importacaoId, tentativa, nonce, motivo: deteccao.motivo });
     return { tipo: "quarentena", motivo: deteccao.motivo };
   }
 
-  const leitura = await lerConteudo(ctx, p.importacaoId, deteccao, p.bytes, p.tipoDocumento);
+  const leitura = await lerConteudo(ctx, p.importacaoId, deteccao, p.bytes, p.tipoDocumento, prazo);
   if (!leitura.ok && leitura.quarentena) {
     await quarentenar(ctx.acesso.userId, { importacao: p.importacaoId, tentativa, nonce, motivo: leitura.codigo });
     return { tipo: "quarentena", motivo: leitura.codigo };
@@ -117,7 +124,7 @@ async function processarImportacao(
   const { categorias, regras } = await carregarContextoMotor(ctx.acesso.unidadeId, ctx.acesso.organizacaoId);
   let movimentos = prepararMovimentos(leitura, categorias, regras);
   if (ctx.flags.iaClassificacao) {
-    movimentos = aplicarSugestoesIa(movimentos, await classificarComIa(ctx, p.importacaoId, movimentos, categorias), categorias);
+    movimentos = aplicarSugestoesIa(movimentos, await classificarComIa(ctx, p.importacaoId, movimentos, categorias, prazo), categorias);
   }
   const resultado = await registrarResultado(
     ctx.acesso.userId,
@@ -132,13 +139,14 @@ async function lerConteudo(
   deteccao: Extract<ReturnType<typeof detectarArquivo>, { ok: true }>,
   bytes: Uint8Array,
   tipoDocumento: TipoDocumento,
+  prazo: Prazo,
 ): Promise<ResultadoLeitura> {
   if (deteccao.formato === "ofx") return lerOfx(deteccao.texto ?? "");
   if (deteccao.formato === "csv") return lerCsv(deteccao.texto ?? "");
 
   // PDF: leitura local primeiro. IA só se a local falhar (P1 de Vinícius).
   if (deteccao.formato === "pdf") {
-    const texto = await extrairTextoPdf(bytes);
+    const texto = await extrairTextoPdf(bytes, prazo);
     if (!texto.ok) return { ok: false, codigo: texto.motivo, quarentena: true };
     const local = lerPagSeguro(texto.trechos);
     if (local) return local;
@@ -160,6 +168,8 @@ async function lerConteudo(
     conteudo: [bloco, { type: "text", text: `Tipo de documento informado pelo usuário: ${tipoDocumento}. Transcreva seguindo as regras.` }],
     esquema: ESQUEMA_DOCUMENTO as unknown as Record<string, unknown>,
     maxTokens: 32_000,
+    tempoMaximoMs: 75_000,
+    prazo,
     registro: registroUsoIa({ usuarioId: ctx.acesso.userId, unidadeId: ctx.acesso.unidadeId, importacaoId, finalidade: "extracao_documento" }),
   });
   if (!resposta.ok) return { ok: false, codigo: resposta.codigo, quarentena: false };
@@ -173,6 +183,7 @@ async function classificarComIa(
   importacaoId: string,
   movimentos: ReturnType<typeof prepararMovimentos>,
   categorias: Awaited<ReturnType<typeof carregarContextoMotor>>["categorias"],
+  prazo: Prazo,
 ) {
   const itens = itensParaIa(movimentos);
   const resultado = new Map<number, { contaId: string; confianca: "media" | "baixa" }>();
@@ -183,6 +194,8 @@ async function classificarComIa(
     else if (categoriaCompativel(c, "saida")) contas.push({ id: c.id, caminho: c.caminho, direcao: "saida" });
   }
   for (let i = 0; i < itens.length; i += LOTE_CLASSIFICACAO) {
+    // Classificação é opcional: sem orçamento, o resto fica "sem evidência".
+    if (prazo.restante() < MINIMO_CHAMADA_IA_MS) break;
     const lote = itens.slice(i, i + LOTE_CLASSIFICACAO);
     const { texto, codigos } = montarPedidoClassificacao(lote, contas);
     const resposta = await chamarIa({
@@ -190,6 +203,8 @@ async function classificarComIa(
       conteudo: [{ type: "text", text: texto }],
       esquema: ESQUEMA_CLASSIFICACAO as unknown as Record<string, unknown>,
       maxTokens: 8_000,
+      tempoMaximoMs: 40_000,
+      prazo,
       registro: registroUsoIa({ usuarioId: ctx.acesso.userId, unidadeId: ctx.acesso.unidadeId, importacaoId, finalidade: "classificacao" }),
     });
     if (!resposta.ok) continue; // sem sugestão de IA: o item fica "sem evidência"

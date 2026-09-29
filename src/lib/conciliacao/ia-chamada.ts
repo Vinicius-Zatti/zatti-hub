@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
 import { custoEstimadoUsd, MODELO_IA_CONCILIACAO, VERSAO_TABELA_PRECOS } from "./ia-custo";
+import { MINIMO_CHAMADA_IA_MS, type Prazo } from "./prazo";
 
 // Chamada de rede à Anthropic, sempre com registro de uso: a chamada é
 // gravada ANTES (situação "iniciada") e finalizada DEPOIS com tokens e custo.
@@ -28,18 +29,23 @@ export type RespostaIa = { ok: true; texto: string; stopReason: string | null } 
 
 type Conteudo = Anthropic.Messages.ContentBlockParam[];
 
-const TEMPO_MAXIMO_MS = 120_000;
-
 export async function chamarIa(params: {
   sistema: string;
   conteudo: Conteudo;
   esquema: Record<string, unknown>;
   maxTokens: number;
   registro: RegistroUsoIa;
+  /** Teto desta chamada; o efetivo é o menor entre ele e o que sobra do prazo. */
+  tempoMaximoMs: number;
+  prazo: Prazo;
 }): Promise<RespostaIa> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, codigo: "ia_sem_chave" };
-  const cliente = new Anthropic({ apiKey, maxRetries: 0, timeout: TEMPO_MAXIMO_MS });
+  const limite = Math.min(params.tempoMaximoMs, params.prazo.restante());
+  // Sem tempo para uma chamada completa: nem começa (nada cobrado).
+  if (limite < MINIMO_CHAMADA_IA_MS) return { ok: false, codigo: "prazo_insuficiente" };
+  const cliente = new Anthropic({ apiKey, maxRetries: 0, timeout: limite });
+  const sinal = AbortSignal.any([params.prazo.sinal, AbortSignal.timeout(limite)]);
   const chave = randomUUID();
   await params.registro.iniciar(chave);
 
@@ -52,7 +58,7 @@ export async function chamarIa(params: {
         system: params.sistema,
         output_config: { format: { type: "json_schema", schema: params.esquema } },
         messages: [{ role: "user", content: params.conteudo }],
-      })
+      }, { signal: sinal, timeout: limite })
       .finalMessage();
   } catch (erro) {
     // 4xx de validação não gera cobrança; o resto (tempo, rede, 5xx) pode ter gerado.

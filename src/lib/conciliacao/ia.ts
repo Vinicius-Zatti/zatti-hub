@@ -135,7 +135,11 @@ export function validarSaidaDocumento(texto: string, tipoDocumento: TipoDocument
   if ((saida.data.periodo_inicio && !periodoInicio) || (saida.data.periodo_fim && !periodoFim)) {
     return { ok: false, codigo: "ia_resposta_invalida", quarentena: false };
   }
-  const naoEfetivado = tipoDocumento === "comprovante" && situacao_documento !== "comprovante_efetivado";
+  // Agendado ou cancelado nunca prova pagamento, mesmo enviado como "extrato".
+  const naoEfetivado =
+    situacao_documento === "comprovante_agendado" ||
+    situacao_documento === "comprovante_cancelado" ||
+    (tipoDocumento === "comprovante" && situacao_documento !== "comprovante_efetivado");
 
   const linhas: LinhaExtraida[] = brutas.map((l, posicao): LinhaExtraida => {
     const data = isoValida(l.data);

@@ -77,6 +77,16 @@ describe("leitura de documento pela IA: saída tratada como não confiável", ()
     );
     expect(r.ok && r.linhas[0]).toMatchObject({ tipo: "erro", codigo: "comprovante_nao_efetivado" });
   });
+
+  it("agendamento enviado como extrato também não vira movimento", () => {
+    const r = validarSaidaDocumento(
+      doc([{ tipo: "movimento", data: "2026-08-10", data_texto: "10/08/2026", cabecalho_dia: "", descricao: "Boleto", valor_texto: "-R$ 9,00" }], {
+        situacao_documento: "comprovante_agendado",
+      }),
+      "extrato",
+    );
+    expect(r.ok && r.linhas[0]).toMatchObject({ tipo: "erro", codigo: "comprovante_nao_efetivado" });
+  });
 });
 
 const contas: ContaPermitida[] = [
