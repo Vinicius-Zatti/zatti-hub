@@ -1,5 +1,6 @@
 import { SubTabs } from "@/components/sub-tabs";
 import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
 
 // Ordem pedida por Vinícius em 25/08: Plano de Contas primeiro (é a base de
 // tudo o resto), depois Contas Financeiras, Receitas, Despesas. Rota de
@@ -37,7 +38,12 @@ export default async function FinanceiroGerencialLayout({ children }: { children
   // ligada pra essa unidade, igual `fichas-tecnicas/layout.tsx` faz hoje.
   const acesso = await requireFinanceiroGerencial();
 
-  const items = acesso.role === "operacional" ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : SUB_ITEMS;
+  // Conciliação (piloto, 30/09): aparece só com a flag da unidade ligada.
+  const conciliacao = await lerFlagsConciliacao(acesso.unidadeId);
+  const todos = conciliacao.habilitada
+    ? [...SUB_ITEMS, { label: "Conciliação", href: "/financeiro-gerencial/conciliacao" }]
+    : SUB_ITEMS;
+  const items = acesso.role === "operacional" ? todos.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : todos;
 
   return (
     <div className="flex flex-col gap-5">
