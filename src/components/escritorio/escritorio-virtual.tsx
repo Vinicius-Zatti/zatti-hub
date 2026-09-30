@@ -41,6 +41,7 @@ export function EscritorioVirtual({ salas, atualizadoEm }: { salas: SalaMontada[
   const empresa = salas.filter((s) => s.grupo === "empresa");
   const clientes = salas.filter((s) => s.grupo === "clientes");
   const horizzon = salas.filter((s) => s.grupo === "horizzon");
+  const verato = salas.filter((s) => s.grupo === "verato");
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
@@ -120,6 +121,13 @@ export function EscritorioVirtual({ salas, atualizadoEm }: { salas: SalaMontada[
           Horizzon Work - empresa separada. Documentos, tarefas e indicadores não se misturam com a Zatti.
         </p>
         {horizzon.map((s) => <SalaEscritorio key={s.id} sala={s} aoAbrir={setAberta} />)}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-cinza-medio">
+          Verato Construtora - empresa separada. Relatórios de obra e efetivo não se misturam com a Zatti.
+        </p>
+        {verato.map((s) => <SalaEscritorio key={s.id} sala={s} aoAbrir={setAberta} />)}
       </div>
 
       <details className="rounded-lg border border-cinza-claro bg-branco p-3 text-sm text-cinza">

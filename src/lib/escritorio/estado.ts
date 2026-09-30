@@ -4,7 +4,7 @@ import type { EstadoPosicao } from "./tipos";
  * integração. Quem atualiza (Vini ou sessão autorizada) muda este arquivo e a
  * data abaixo. Regra: nível só sobe com evidência escrita (skill, serviço ou
  * arquivo que existe), e situação "aguardando"/"com problema" exige motivo. */
-export const ESTADO_ATUALIZADO_EM = "2026-09-24";
+export const ESTADO_ATUALIZADO_EM = "2026-09-30";
 
 const definido = (): EstadoPosicao => ({ nivel: "definido", situacao: "disponivel", entregas: [], alertas: [] });
 const pessoa = (): EstadoPosicao => ({ nivel: null, situacao: "disponivel", entregas: [], alertas: [] });
@@ -92,4 +92,12 @@ export const ESTADO: Record<string, EstadoPosicao> = {
   "hzz-relatorios": vaga(),
   "hzz-comercial": vaga(),
   "hzz-entregas": vaga(),
+
+  "vrt-socio": pessoa(),
+  "vrt-relatorios": {
+    nivel: "processo", situacao: "disponivel",
+    evidencia: "Coleta automática no serviço vini (relatorios-verato.js e efetivo-verato.js); montagem do HTML ainda em sessão com a skill relatorio-verato (proc-relatorio-semanal-obra); envio ao grupo Fotos só com aprovação de Vinícius.",
+    entregas: [{ data: "2026-09-30", descricao: "Núcleo criado." }],
+    alertas: [],
+  },
 };

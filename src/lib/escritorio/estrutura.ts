@@ -12,6 +12,7 @@ export const SALAS: Sala[] = [
   { id: "corporativa", nome: "Diretoria Corporativa", empresa: "zatti", tipo: "diretoria", grupo: "empresa", resumo: "Financeiro da Zatti, jurídico, processos e melhoria contínua." },
   { id: "clientes", nome: "Clientes Zatti", empresa: "zatti", tipo: "diretoria", grupo: "clientes", resumo: "Conhecimento de Vinícius e do Método M.E.G.A. aplicado aos restaurantes." },
   { id: "horizzon", nome: "Núcleo Estratégico Horizzon", empresa: "horizzon", tipo: "nucleo", grupo: "horizzon", resumo: "Operação da Horizzon Work, separada dos clientes da Zatti." },
+  { id: "verato", nome: "Núcleo Verato", empresa: "verato", tipo: "nucleo", grupo: "verato", resumo: "Relatório semanal e efetivo das obras da Verato Construtora, separado da Zatti." },
 ];
 
 const vaga = (id: string, cargo: string, salaId: string, reportaA: string): Posicao => ({
@@ -64,4 +65,7 @@ export const POSICOES: Posicao[] = [
   vaga("hzz-relatorios", "Relatórios e desempenho", "horizzon", "hzz-coordenacao"),
   vaga("hzz-comercial", "Comercial e crescimento da Horizzon", "horizzon", "hzz-coordenacao"),
   vaga("hzz-entregas", "Controle de entregas do time", "horizzon", "hzz-coordenacao"),
+
+  { id: "vrt-socio", cargo: "Sócio e responsável final", salaId: "verato", ocupanteId: "vinicius", arquetipoId: null, reportaA: null, lider: true },
+  { id: "vrt-relatorios", cargo: "Relatório semanal de obra", salaId: "verato", ocupanteId: "vini", arquetipoId: null, reportaA: "vrt-socio" },
 ];

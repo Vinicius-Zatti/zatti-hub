@@ -31,9 +31,11 @@ describe("estrutura do Time de IA", () => {
     }
   });
 
-  it("Horizzon não responde a nenhuma posição da Zatti", () => {
-    for (const p of POSICOES.filter((x) => salaDe(x.id)?.empresa === "horizzon")) {
-      if (p.reportaA) expect(salaDe(p.reportaA)?.empresa, p.id).toBe("horizzon");
+  it.each(["horizzon", "verato"] as const)("%s não responde a posição de outra empresa", (empresa) => {
+    const posicoes = POSICOES.filter((x) => salaDe(x.id)?.empresa === empresa);
+    expect(posicoes.length).toBeGreaterThan(0);
+    for (const p of posicoes) {
+      if (p.reportaA) expect(salaDe(p.reportaA)?.empresa, p.id).toBe(empresa);
     }
   });
 

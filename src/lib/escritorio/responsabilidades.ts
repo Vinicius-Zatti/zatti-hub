@@ -154,4 +154,13 @@ export const RESPONSABILIDADES: Record<string, Responsabilidade> = {
     ["Acompanhar tarefas do time", "Sinalizar atrasos"],
     ["entregas do time", "atraso", "time horizzon", "horizzon hub"],
     ["Entregas no prazo", "Atrasos sinalizados cedo"]),
+
+  "vrt-socio": r("Decidir sobre obra, cliente e dinheiro da Verato Construtora.",
+    ["Decisões de obra, cliente e dinheiro da Verato", "Aprovar o relatório semanal antes do envio ao grupo Fotos"],
+    ["verato", "construtora", "obra da verato", "sócio verato"],
+    ["Relatório semanal aprovado", "Decisões da Verato registradas"]),
+  "vrt-relatorios": r("Levar o relatório semanal de obra da Verato do pedido ao envio, sem misturar com a Zatti.",
+    ["Pedir e recobrar o Kaíque (terça e quarta, 9h)", "Conferir fotos e texto por obra", "Gerar o HTML do relatório", "Pedir aprovação de Vinícius e só então enviar ao grupo Fotos", "Cobrar o efetivo diário das obras", "O responsável técnico que assina o relatório é o Eng. Kaíque Pereira (pessoa, não agente)"],
+    ["relatório de obra", "obra", "verato", "efetivo", "kaique", "kaíque", "fotos da obra"],
+    ["Relatório semanal enviado com aprovação", "Efetivo diário cobrado"]),
 };

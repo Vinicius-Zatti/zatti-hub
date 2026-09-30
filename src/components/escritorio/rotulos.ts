@@ -1,4 +1,11 @@
-import type { Nivel, Situacao } from "@/lib/escritorio/tipos";
+import type { Empresa, Nivel, Situacao } from "@/lib/escritorio/tipos";
+
+/** Selo das empresas separadas da Zatti. `null` = sala da própria Zatti, sem selo. */
+export const SELO_EMPRESA: Record<Empresa, string | null> = {
+  zatti: null,
+  horizzon: "Horizzon Work",
+  verato: "Verato Construtora",
+};
 
 export const ROTULO_NIVEL: Record<Nivel, string> = {
   definido: "Apenas definido",

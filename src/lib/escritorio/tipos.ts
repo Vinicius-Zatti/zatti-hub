@@ -7,13 +7,13 @@
  * - `responsabilidades.ts`: missão, responsabilidades, assuntos e resultados.
  * - `estado.ts`: nível, situação, entregas e alertas (atualizado à mão). */
 
-/** Separação obrigatória: nada da Horizzon se mistura com a Zatti. */
-export type Empresa = "zatti" | "horizzon";
+/** Separação obrigatória: nada da Horizzon nem da Verato se mistura com a Zatti. */
+export type Empresa = "zatti" | "horizzon" | "verato";
 
 export type TipoSala = "ceo" | "recepcao" | "diretoria" | "nucleo";
 
-/** Três times que não se misturam: a empresa Zatti, os clientes da Zatti e a Horizzon. */
-export type GrupoSala = "topo" | "empresa" | "clientes" | "horizzon";
+/** Quatro times que não se misturam: a empresa Zatti, os clientes da Zatti, a Horizzon e a Verato. */
+export type GrupoSala = "topo" | "empresa" | "clientes" | "horizzon" | "verato";
 
 export type Sala = {
   id: string;
@@ -34,7 +34,7 @@ export type Posicao = {
   salaId: string;
   ocupanteId: OcupanteId | null;
   arquetipoId: string | null;
-  /** Id da posição a quem responde. `null` só no topo (CEO e responsável final da Horizzon). */
+  /** Id da posição a quem responde. `null` só no topo (CEO e responsáveis finais da Horizzon e da Verato). */
   reportaA: string | null;
   lider?: boolean;
 };

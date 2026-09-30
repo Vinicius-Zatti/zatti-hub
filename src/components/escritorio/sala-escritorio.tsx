@@ -1,7 +1,7 @@
 "use client";
 
 import type { PosicaoMontada, SalaMontada } from "@/lib/escritorio/escritorio";
-import { SITUACAO } from "./rotulos";
+import { SELO_EMPRESA, SITUACAO } from "./rotulos";
 
 /** Avatar genérico e próprio. Nunca foto ou imagem de pessoa real. */
 export function Avatar({ posicao }: { posicao: PosicaoMontada }) {
@@ -79,17 +79,17 @@ function Barra({ rotulo, valor, detalhe }: { rotulo: string; valor: number | nul
 
 export function SalaEscritorio({ sala, aoAbrir }: { sala: SalaMontada; aoAbrir: (p: PosicaoMontada) => void }) {
   const { indicadores: ind } = sala;
-  const horizzon = sala.empresa === "horizzon";
+  const selo = SELO_EMPRESA[sala.empresa];
   const compacta = sala.tipo === "ceo" || sala.tipo === "recepcao";
   return (
     <section
       aria-label={sala.nome}
-      className={`flex flex-col gap-3 rounded-xl bg-azul-noite p-4 text-branco ${horizzon ? "border-2 border-ambar" : "border border-white/10"}`}
+      className={`flex flex-col gap-3 rounded-xl bg-azul-noite p-4 text-branco ${selo ? "border-2 border-ambar" : "border border-white/10"}`}
     >
       <header>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-display text-lg font-bold">{sala.nome}</h2>
-          {horizzon && <span className="rounded bg-ambar px-1.5 py-0.5 text-[10px] font-bold uppercase text-azul-noite">Horizzon Work</span>}
+          {selo && <span className="rounded bg-ambar px-1.5 py-0.5 text-[10px] font-bold uppercase text-azul-noite">{selo}</span>}
         </div>
         <p className="text-xs text-branco/70">{sala.resumo}</p>
       </header>
