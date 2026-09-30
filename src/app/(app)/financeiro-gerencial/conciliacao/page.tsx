@@ -53,7 +53,7 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
       filtros={filtros}
       planoDeContas={Object.fromEntries(motor.categorias.map((c) => [c.id, c.caminho]))}
       iaDocumentos={flags.iaDocumentos}
-      ehMaster={acesso.role === "master"}
+      ehMaster={acesso.titularFinanceiro}
     />
   );
 }

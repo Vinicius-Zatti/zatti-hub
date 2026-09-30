@@ -1,4 +1,4 @@
-import { requireMaster } from "@/lib/acesso";
+import { requireTitularFinanceiro } from "@/lib/acesso";
 import { listarUsoIa } from "@/lib/banco/conciliacao";
 import { agruparPorSemana, segundaDaSemana } from "@/lib/conciliacao/uso-ia";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 
 const SEMANAS = 8;
 
-/** Custo da IA da Conciliação, por semana, para Vinícius (só master). */
+/** Custo da IA da Conciliação, por semana, só para Vinícius (titular do Financeiro). */
 export default async function UsoIaPage() {
-  await requireMaster();
+  await requireTitularFinanceiro();
   const hoje = hojeIsoBrasil();
   const inicio = segundaDaSemana(hoje);
   const [a, m, d] = inicio.split("-").map(Number);

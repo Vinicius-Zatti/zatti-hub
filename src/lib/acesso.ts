@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { ehTitularFinanceiro } from "@/lib/acesso-financeiro";
 
 export type Role = "gestao" | "operacional" | "master";
 export type FonteDadosEstoque = "planilha" | "banco";
@@ -37,8 +38,12 @@ export type AcessoAtual = {
    * /financeiro-gerencial) pra essa unidade - não confundir com o módulo
    * "Financeiro" antigo (Consolidado de Vendas, `consolidadoVendasHabilitado`,
    * renomeado pra "Desempenho" no menu). Mesma convenção de flag por
-   * unidade, editada direto no Supabase. */
+   * unidade, editada direto no Supabase. Desde 29/09/2026 também exige
+   * `titularFinanceiro` (Financeiro só para Vinícius, até segunda ordem). */
   financeiroGerencialHabilitado: boolean;
+  /** Vinícius (master com segundo fator, e-mail em `TITULARES_FINANCEIRO`).
+   * Única pessoa com Financeiro Gerencial, Conciliação e Uso de IA. */
+  titularFinanceiro: boolean;
   role: Role;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
@@ -192,9 +197,12 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     redirect("/planilha-pendente");
   }
 
+  const usuarioEmail = typeof claims.claims.email === "string" ? claims.claims.email : "";
+  const titularFinanceiro = ehTitularFinanceiro({ ehMaster, aal: claims.claims.aal, email: usuarioEmail });
+
   return {
     userId,
-    usuarioEmail: typeof claims.claims.email === "string" ? claims.claims.email : "",
+    usuarioEmail,
     usuarioNome: (perfil as { nome: string | null } | null)?.nome ?? null,
     organizacaoId,
     organizacaoNome:
@@ -205,7 +213,8 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
     fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
-    financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado,
+    financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado && titularFinanceiro,
+    titularFinanceiro,
     role,
     organizacoesDisponiveis,
   };
@@ -275,6 +284,14 @@ export async function requireFinanceiroGerencial(): Promise<AcessoAtual> {
 export async function requireGestaoFinanceiroGerencial(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.financeiroGerencialHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Uso de IA da Conciliação (custo agregado de todas as unidades): só o
+ * titular do Financeiro. Mesma regra de `usuario_e_titular_financeiro()`. */
+export async function requireTitularFinanceiro(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.titularFinanceiro) redirect("/estoque/pedidos");
   return acesso;
 }
 

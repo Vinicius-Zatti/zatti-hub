@@ -8,6 +8,10 @@ create extension if not exists pgtap with schema extensions;
 select plan(42);
 
 -- ── Fixture ────────────────────────────────────────────────────────────────
+-- Esta suíte testa a matriz por papel (Gestão/Operacional/master). A restrição
+-- "Financeiro só para Vinícius" (20260930092000) fica desligada aqui e tem a
+-- sua própria suíte em `financeiro_acesso_exclusivo.sql`.
+update fin_acesso_exclusivo set ativo = false where id;
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-00000000c0a1', 'gestor.a@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000c0b1', 'oper.b@teste.local', 'x', now(), 'authenticated', 'authenticated'),
