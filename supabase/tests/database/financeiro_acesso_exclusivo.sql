@@ -6,7 +6,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(27);
 
 -- ── Fixture ────────────────────────────────────────────────────────────────
 update fin_acesso_exclusivo set ativo = true where id;
@@ -65,6 +65,7 @@ select ok(public.usuario_pode_usar_financeiro_gerencial('uni-fe', null), 'titula
 select ok(public.usuario_pode_usar_conciliacao('uni-fe', array['gestao']), 'titular com aal2 acessa a Conciliação');
 select is((select count(*)::int from fin_lancamentos), 1, 'titular vê os lançamentos');
 select is((select count(*)::int from fin_parcelas), 1, 'titular vê as parcelas');
+select is(public.periodo_financeiro_fechado('uni-fe', '2026-09-15'), false, 'titular consulta o fechamento do mês');
 
 select pg_temp.como('00000000-0000-0000-0000-0000000fe001', 'aal1');
 select ok(not public.usuario_pode_usar_financeiro_gerencial('uni-fe', null), 'titular sem segundo fator não acessa');
@@ -85,6 +86,8 @@ select throws_ok($$insert into fin_contas_financeiras (unidade_id, nome, tipo) v
   '42501', null, 'Gestão não cria conta financeira');
 select is((select count(*)::int from public.listar_auditoria_financeiro_gerencial('uni-fe', 10)), 0,
   'Gestão não lê a auditoria do Financeiro');
+select throws_ok($$select public.periodo_financeiro_fechado('uni-fe', '2026-09-15')$$, '42501', null,
+  'Gestão não consulta o fechamento do mês');
 select ok(public.usuario_tem_acesso_unidade('uni-fe', array['gestao']), 'Gestão mantém a unidade nos outros módulos');
 
 -- ── Operacional ────────────────────────────────────────────────────────────

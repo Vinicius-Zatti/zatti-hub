@@ -97,4 +97,33 @@ $$;
 revoke all on function public.usuario_pode_usar_financeiro_gerencial(text, text[]) from public, anon;
 grant execute on function public.usuario_pode_usar_financeiro_gerencial(text, text[]) to authenticated;
 
+-- `periodo_financeiro_fechado` (20260922100000) respondia para qualquer
+-- unidade sem conferir acesso. Continua executável por `authenticated`
+-- (o gatilho invoker de período fechado depende dela), mas agora recusa quem
+-- não pode usar o Financeiro da unidade. SQL administrativo (sem usuário)
+-- segue com a resposta real.
+create or replace function public.periodo_financeiro_fechado(p_unidade_id text, p_data date)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is not null
+     and not public.usuario_pode_usar_financeiro_gerencial(p_unidade_id, null) then
+    raise exception 'Sem acesso ao Financeiro desta unidade' using errcode = '42501';
+  end if;
+  return exists (
+    select 1 from public.fin_fechamentos f
+    where f.unidade_id = p_unidade_id
+      and f.competencia = date_trunc('month', p_data)::date
+      and f.fechado
+  );
+end;
+$$;
+
+revoke all on function public.periodo_financeiro_fechado(text, date) from public, anon;
+grant execute on function public.periodo_financeiro_fechado(text, date) to authenticated;
+
 commit;
