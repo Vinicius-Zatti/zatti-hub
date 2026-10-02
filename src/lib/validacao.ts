@@ -866,6 +866,21 @@ export const excluirRegistroClienteSchema = z
   .object({ acompanhamentoId: idClienteSchema, id: idClienteSchema })
   .strict();
 
+// --- Comercial (Escritório > Comercial) --------------------------------------
+// O id do lead chega da tela, mas nunca decide acesso: RLS (só master) e a RPC
+// `zh_leads_atualizar` conferem. Organização do "Virou cliente" é conferida no banco.
+const etapaComercialSchema = z.enum([
+  "abordado", "respondeu", "link_enviado", "preencheu_formulario", "comprou_livro", "comprou_app",
+  "em_acompanhamento", "reuniao_diagnostico", "consultoria_fechada",
+]);
+export const acaoLeadSchema = z.discriminatedUnion("acao", [
+  z.object({ acao: z.literal("etapa"), leadId: idUuidSchema, paraEtapa: etapaComercialSchema }).strict(),
+  z.object({ acao: z.literal("perdido"), leadId: idUuidSchema, motivo: texto(300, 3) }).strict(),
+  z.object({ acao: z.literal("proxima_acao"), leadId: idUuidSchema, texto: texto(300), data: dataIsoSchema.nullable() }).strict(),
+  z.object({ acao: z.literal("nota"), leadId: idUuidSchema, texto: textoObrigatorio(1000) }).strict(),
+  z.object({ acao: z.literal("virou_cliente"), leadId: idUuidSchema, organizacaoId: identificador }).strict(),
+]);
+
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);
   if (resultado.success) return resultado.data;

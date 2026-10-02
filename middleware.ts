@@ -1,9 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// A rota do relatório semanal de IA se autentica por token próprio (conferido
-// no banco), não por sessão: é chamada pelo Vini, fora do navegador.
-const ROTAS_PUBLICAS = ["/login", "/auth/callback", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal"];
+// As rotas do relatório semanal de IA e dos eventos de leads se autenticam por token próprio (conferido
+// no banco), não por sessão: são chamadas pelo Vini, fora do navegador.
+const ROTAS_PUBLICAS = ["/login", "/auth/callback", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos"];
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
  * antes de qualquer página renderizar - primeira camada, não a única (cada
