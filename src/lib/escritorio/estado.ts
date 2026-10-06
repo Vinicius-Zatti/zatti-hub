@@ -4,7 +4,7 @@ import type { EstadoPosicao } from "./tipos";
  * integração. Quem atualiza (Vini ou sessão autorizada) muda este arquivo e a
  * data abaixo. Regra: nível só sobe com evidência escrita (skill, serviço ou
  * arquivo que existe), e situação "aguardando"/"com problema" exige motivo. */
-export const ESTADO_ATUALIZADO_EM = "2026-09-30";
+export const ESTADO_ATUALIZADO_EM = "2026-10-05";
 
 const definido = (): EstadoPosicao => ({ nivel: "definido", situacao: "disponivel", entregas: [], alertas: [] });
 const pessoa = (): EstadoPosicao => ({ nivel: null, situacao: "disponivel", entregas: [], alertas: [] });
@@ -19,9 +19,10 @@ export const ESTADO: Record<string, EstadoPosicao> = {
   },
 
   "dir-vendas": definido(),
-  marketing: {
+  marketing: definido(),
+  conteudo: {
     nivel: "processo", situacao: "disponivel",
-    evidencia: "Motor de conteúdo pessoal: vini-estrategista, vini-redator, vini-diretor-criativo e vini-editor.",
+    evidencia: "Comando /afonso: vini-estrategista, vini-diretor-criativo, vini-redator e vini-editor, com o Método Afonso.",
     entregas: [], alertas: [],
   },
   comercial: {

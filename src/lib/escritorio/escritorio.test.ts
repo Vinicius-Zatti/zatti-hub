@@ -50,6 +50,13 @@ describe("estrutura do Time de IA", () => {
     }
   });
 
+  it("conteúdo do Instagram fica com o Afonso, abaixo do Marketing", () => {
+    const { salas } = montarEscritorio();
+    expect(buscarPorAssunto(salas, "conteudo").map((p) => p.id)).toContain("conteudo");
+    expect(porId.get("conteudo")?.ocupanteId).toBe("afonso");
+    expect(porId.get("conteudo")?.reportaA).toBe("marketing");
+  });
+
   it("busca por assunto ignora acento e caixa", () => {
     const { salas } = montarEscritorio();
     expect(buscarPorAssunto(salas, "CONCILIACAO").map((p) => p.id)).toContain("bpo-financeiro");

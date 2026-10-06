@@ -22,6 +22,11 @@ export const OCUPANTES: Record<OcupanteId, Ocupante> = {
     tipo: "ia",
     descricao: "Agente /antonio. Dono da Operação Zatti com o Grupo Silva e, como o Grupo Silva estrutura o comercial da Zatti, também do Comercial.",
   },
+  afonso: {
+    nome: "Afonso",
+    tipo: "ia",
+    descricao: "Agente /afonso. Responsável pela criação de conteúdo do Instagram @viniciusczanetti, pelo Método Afonso.",
+  },
   agente: {
     nome: "Agente de IA",
     tipo: "ia",

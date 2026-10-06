@@ -30,6 +30,7 @@ export const POSICOES: Posicao[] = [
 
   { id: "dir-vendas", cargo: "Direção de Vendas", salaId: "vendas", ocupanteId: "agente", arquetipoId: "flavio-augusto", reportaA: "chefe-operacoes", lider: true },
   { id: "marketing", cargo: "Marketing", salaId: "vendas", ocupanteId: "agente", arquetipoId: "alfredo-soares", reportaA: "dir-vendas" },
+  { id: "conteudo", cargo: "Conteúdo", salaId: "vendas", ocupanteId: "afonso", arquetipoId: null, reportaA: "marketing" },
   { id: "comercial", cargo: "Comercial", salaId: "vendas", ocupanteId: "antonio", arquetipoId: null, reportaA: "dir-vendas" },
 
   { id: "dir-produto", cargo: "Direção de Produto e Tecnologia", salaId: "produto", ocupanteId: "agente", arquetipoId: "marcos-eduardo", reportaA: "chefe-operacoes", lider: true },

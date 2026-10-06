@@ -26,7 +26,7 @@ export type Sala = {
 };
 
 /** `null` = posição vaga. `agente` = agente de IA identificado pelo próprio cargo. */
-export type OcupanteId = "vinicius" | "vini" | "bia" | "antonio" | "agente";
+export type OcupanteId = "vinicius" | "vini" | "bia" | "antonio" | "afonso" | "agente";
 
 export type Posicao = {
   id: string;
