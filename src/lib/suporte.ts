@@ -23,6 +23,38 @@ export function identificadorDoErro(erro: Error & { digest?: string }): string |
   return erro instanceof ErroPublico ? erro.message : null;
 }
 
+const ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** Código curto para erro que nasceu no navegador (sem digest do servidor):
+ * `NAV-` + 6 caracteres sem letras ambíguas (0/O, 1/I). O mesmo código vai na
+ * mensagem de suporte e no log do servidor, para achar o registro depois.
+ * `aleatorio` é injetável só para teste. */
+export function gerarCodigoErroNavegador(aleatorio: () => number = Math.random): string {
+  let codigo = "";
+  for (let i = 0; i < 6; i++) {
+    const indice = Math.min(ALFABETO_CODIGO.length - 1, Math.floor(aleatorio() * ALFABETO_CODIGO.length));
+    codigo += ALFABETO_CODIGO[indice];
+  }
+  return `NAV-${codigo}`;
+}
+
+export const FORMATO_CODIGO_ERRO_NAVEGADOR = /^NAV-[A-HJ-NP-Z2-9]{6}$/;
+
+/** Texto de erro do navegador pronto para o log do servidor: uma linha,
+ * curto, e sem o que pode ser dado pessoal ou segredo (e-mail, sequência
+ * longa de números como CPF/telefone/cartão, token ou id longo, URL com
+ * parâmetros). O log serve para achar o tipo do erro, não o dado. */
+export function sanitizarTextoErroParaLog(valor: unknown, limite = 200): string {
+  return String(valor ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[email]")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/[A-Za-z0-9_-]{24,}/g, "[token]")
+    .replace(/\d[\d.\-/ ]{4,}\d/g, "[numero]")
+    .trim()
+    .slice(0, limite);
+}
+
 /** DD/MM/AAAA HH:MM no horário de Brasília, independente do fuso do aparelho. */
 export function formatarDataHoraSuporte(momento: Date): string {
   const partes = Object.fromEntries(

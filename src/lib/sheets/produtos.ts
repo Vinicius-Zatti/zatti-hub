@@ -2,7 +2,7 @@ import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
-import { listarProdutosBanco, salvarProdutosBanco, excluirProdutoBanco } from "@/lib/banco/estoque";
+import { listarProdutosBanco, salvarProdutosBanco, excluirProdutoBanco, inserirProdutoBanco } from "@/lib/banco/estoque";
 import { paraCelulaSegura } from "./seguranca";
 import { ErroPublico } from "@/lib/erros";
 
@@ -89,6 +89,31 @@ export async function upsertProduto(
   spreadsheetId: string | null
 ): Promise<void> {
   await upsertProdutosBatch([produto], spreadsheetId);
+}
+
+/** Cria um produto sem nunca sobrescrever um SKU existente (fluxos de
+ * criação: novo produto e pendência da contagem). No banco a recusa é
+ * atômica (unicidade). Na planilha legada não existe trava atômica, então a
+ * criação só ACRESCENTA linha (append), nunca reescreve a linha de um SKU:
+ * no pior caso (duas criações simultâneas do mesmo SKU) ficam duas linhas
+ * visíveis no cadastro, e nenhum dado é perdido. */
+export async function inserirProduto(produto: Produto, spreadsheetId: string | null): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await inserirProdutoBanco(produto, fonte.unidadeId);
+    return;
+  }
+  const existentes = await listProdutos(spreadsheetId);
+  if (existentes.some((p) => p.sku === produto.sku)) {
+    throw new ErroPublico(`Já existe um produto com o SKU ${produto.sku}. Escolha outro SKU.`);
+  }
+  await getSheetsClient().spreadsheets.values.append({
+    spreadsheetId: fonte.spreadsheetId!,
+    range: RANGE,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: [produtoToRow(produto)] },
+  });
 }
 
 /** Salva vários produtos de uma vez - uma única leitura da coluna de SKU

@@ -793,6 +793,8 @@ function FormularioEditarRecorrencia({
       }
       setCarregado({ ocorrencias: resultado.ocorrencias });
       setEstado(estadoInicialEdicaoRecorrencia(resultado.recorrencia, resultado.ocorrencias));
+    }).catch(() => {
+      if (ativo) setErro("Não foi possível falar com o servidor. Confira a conexão e tente de novo.");
     });
     return () => {
       ativo = false;
@@ -1459,6 +1461,8 @@ function HistoricoBaixas({
       if (!ativo) return;
       if (resultado.ok) setBaixas(resultado.baixas);
       else setErro(resultado.mensagem);
+    }).catch(() => {
+      if (ativo) setErro("Não foi possível falar com o servidor. Confira a conexão e tente de novo.");
     });
     return () => {
       ativo = false;

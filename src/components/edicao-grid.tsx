@@ -2,7 +2,12 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Fornecedor, ItemPendente, Produto } from "@/lib/types";
-import { salvarProdutoAction, salvarProdutosAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
+import {
+  criarProdutoPendenciaAction,
+  salvarProdutoAction,
+  salvarProdutosAction,
+  sugerirSkuAction,
+} from "@/app/(app)/estoque/produtos/actions";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
 import { arredondarPreco } from "@/lib/sheets/numero";
@@ -17,6 +22,13 @@ import { CampoNumero } from "@/components/campo-numero";
 import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
 import { ExcluirProdutoBotao } from "@/components/excluir-produto-botao";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
+import { criarFilaSerial, incorporarNovosPorSku } from "@/lib/fila-serial";
+
+// Mensagem quando a chamada nem chega a responder (rede, servidor fora do ar).
+const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexão e tente de novo.";
+
+// Uma sugestão de IA por vez na tela inteira, mesmo com vários cliques seguidos.
+const filaSugestoes = criarFilaSerial();
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -118,6 +130,17 @@ function CadastroSection({
   const [estado, setEstado] = useState<Record<string, Produto>>(() =>
     Object.fromEntries(produtos.map((p) => [p.sku, comNomeCompraPadrao(p)]))
   );
+  // Recarregamento da página (pendência salva, produto criado em outra aba ou
+  // por outra pessoa) traz SKU que a grade ainda não conhecia. Sem isso a
+  // linha nova chegava sem estado e derrubava a tela inteira.
+  // Ajuste durante a renderização (padrão do React para estado derivado de
+  // prop), sem efeito: a linha nova já nasce com estado no mesmo ciclo.
+  const [produtosIncorporados, setProdutosIncorporados] = useState(produtos);
+  if (produtosIncorporados !== produtos) {
+    setProdutosIncorporados(produtos);
+    setBaseline((b) => incorporarNovosPorSku(b, produtos, comNomeCompraPadrao));
+    setEstado((e) => incorporarNovosPorSku(e, produtos, comNomeCompraPadrao));
+  }
   const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
 
@@ -213,7 +236,12 @@ function CadastroSection({
   const salvarUm = useCallback(
     async (sku: string) => {
       setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "salvando" } }));
-      const r = await salvarProdutoAction(estado[sku]);
+      let r: Awaited<ReturnType<typeof salvarProdutoAction>>;
+      try {
+        r = await salvarProdutoAction(estado[sku]);
+      } catch {
+        r = { erro: ERRO_CONEXAO };
+      }
       if ("erro" in r) {
         setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "erro", msg: r.erro } }));
         return false;
@@ -234,7 +262,12 @@ function CadastroSection({
       for (const sku of skus) novo[sku] = { tipo: "salvando" };
       return novo;
     });
-    const r = await salvarProdutosAction(skus.map((sku) => estado[sku]));
+    let r: Awaited<ReturnType<typeof salvarProdutosAction>>;
+    try {
+      r = await salvarProdutosAction(skus.map((sku) => estado[sku]));
+    } catch {
+      r = { erro: ERRO_CONEXAO };
+    }
     setSalvandoTodos(false);
     if ("erro" in r) {
       setStatusPorSku((s) => {
@@ -463,8 +496,11 @@ function CadastroSection({
               <LinhaProduto
                 key={p.sku}
                 sku={p.sku}
-                editado={estado[p.sku]}
-                mudou={JSON.stringify(estado[p.sku]) !== JSON.stringify(baseline[p.sku])}
+                editado={estado[p.sku] ?? comNomeCompraPadrao(p)}
+                mudou={
+                  estado[p.sku] !== undefined &&
+                  JSON.stringify(estado[p.sku]) !== JSON.stringify(baseline[p.sku])
+                }
                 status={statusPorSku[p.sku]}
                 fornecedorOpcoes={fornecedorOpcoes}
                 onChange={campo}
@@ -578,16 +614,18 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
   function sugerir() {
     setErro(null);
     setPending(true);
-    sugerirSkuAction(pendente.nome).then((r) => {
-      setPending(false);
-      if ("erro" in r) {
-        setErro(r.erro);
-        return;
-      }
-      setSku(r.sku);
-      setGrupo(r.grupo);
-      setMotivo(r.motivo);
-    });
+    filaSugestoes(() => sugerirSkuAction(pendente.nome))
+      .catch(() => ({ erro: ERRO_CONEXAO }))
+      .then((r) => {
+        setPending(false);
+        if ("erro" in r) {
+          setErro(r.erro);
+          return;
+        }
+        setSku(r.sku);
+        setGrupo(r.grupo);
+        setMotivo(r.motivo);
+      });
   }
 
   function salvar() {
@@ -597,7 +635,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
     }
     setErro(null);
     setPending(true);
-    salvarProdutoAction({
+    criarProdutoPendenciaAction({
       sku: sku.toUpperCase().trim(),
       posicao: posicao ? Number(posicao) : null,
       grupo,
@@ -617,14 +655,16 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
       observacoes: "",
       ativo: true,
       revenda: false,
-    }).then((r) => {
-      setPending(false);
-      if ("erro" in r) {
-        setErro(r.erro);
-        return;
-      }
-      setSalvo(true);
-    });
+    })
+      .catch(() => ({ erro: ERRO_CONEXAO }))
+      .then((r) => {
+        setPending(false);
+        if ("erro" in r) {
+          setErro(r.erro);
+          return;
+        }
+        setSalvo(true);
+      });
   }
 
   if (salvo) {

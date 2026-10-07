@@ -19,8 +19,8 @@ export const GRUPO_NOMES: Record<string, string> = {
   // O SKU dele não segue a forma dos outros: é `PRE` + 3 letras + 3 letras, sem
   // número de referência, e o nome termina em "da casa". Regra completa no
   // Cérebro do Gestor, em `_conhecimento/negocios/padrao-sku-zatti.md`. O
-  // sugeridor de SKU (`lib/skus/sugerir.ts`) não conhece essa forma: ele só
-  // classifica insumo comprado, então em item produzido o SKU se escreve na mão.
+  // sugeridor de SKU (`lib/skus/sugerir.ts`) sugere PRE só quando o nome
+  // termina em "da casa" (montagem em `lib/skus/montar.ts`).
   PRE: "Pré-preparos",
 };
 

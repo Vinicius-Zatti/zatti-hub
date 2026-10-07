@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { listProdutos } from "@/lib/sheets/produtos";
+import { GRUPOS_INSUMO, ehProduzidoNaCasa, montarSkuSugerido } from "@/lib/skus/montar";
 
 const REGRAS = `Você gera SKUs de insumos para restaurantes seguindo o padrão da Zatti Consultoria.
 
@@ -46,11 +47,29 @@ Peito Bovino Congelado (com Peito Bovino=PBO já cadastrado) -> PRO + PBC (expan
 
 Referência normalmente é "001", só sobe se colidir.
 
+## Pré-preparo (PRE) - item produzido na casa
+
+Nome terminado em "da casa" é pré-preparo: receita feita na cozinha que vira ingrediente de outro item (molho, massa, blend, recheio). Nunca é comprado. Nesse caso:
+- grupo é PRE;
+- letras_produto tem 6 letras: 3 da primeira palavra + 3 da segunda palavra significativa (ignore "de", "da", "do", "com");
+- nome de uma palavra só (antes do "da casa") com 6 letras ou mais: as 6 primeiras letras dessa palavra (chimichurri da casa -> CHIMIC);
+- "da casa" não entra nas letras. Única exceção: nome de uma palavra só com menos de 6 letras, que não fecha o código - aí são as 3 primeiras letras + "CAS" (pesto da casa -> PES + CAS, ancho da casa -> ANC + CAS);
+- referencia fica vazia: PRE não tem número.
+
+Exemplos:
+barbecue de goiabada da casa -> PRE + BARGOI
+cebola caramelizada da casa -> PRE + CEBCAR
+maionese verde da casa -> PRE + MAIVER
+chimichurri da casa -> PRE + CHIMIC (chimichurri sem "da casa" é comprado: MER + CHI)
+
+Nome sem "da casa" nunca é PRE, mesmo que pareça preparado.
+
+Os nomes chegam em caixa baixa (padrão do cadastro). Isso não muda nada na escolha: as letras do SKU são sempre maiúsculas e sem acento.
+
 Responda só com a ferramenta sugerir_sku.`;
 
 type SugestaoSku = { sku: string; grupo: string; motivo: string };
 
-const GRUPOS_VALIDOS = ["PRO", "HOR", "LAT", "MER", "CON", "BEB", "BAL", "EMB", "DES", "LIM", "OPE"];
 
 export async function sugerirSku(nome: string, spreadsheetId: string | null): Promise<SugestaoSku> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -64,6 +83,7 @@ export async function sugerirSku(nome: string, spreadsheetId: string | null): Pr
   const produtos = await listProdutos(spreadsheetId);
   const skusExistentes = new Set(produtos.map((p) => p.sku));
 
+  const produzidoNaCasa = ehProduzidoNaCasa(nome);
   const client = new Anthropic({ apiKey });
 
   const resp = await client.messages.create({
@@ -87,20 +107,23 @@ export async function sugerirSku(nome: string, spreadsheetId: string | null): Pr
           properties: {
             grupo: {
               type: "string",
-              enum: GRUPOS_VALIDOS,
-              description: "Um dos 11 códigos de grupo.",
+              // PRE só é opção quando o nome tem o marcador "da casa".
+              enum: produzidoNaCasa ? ["PRE"] : GRUPOS_INSUMO,
+              description: produzidoNaCasa ? "PRE (item produzido na casa)." : "Um dos 11 códigos de grupo.",
             },
             letras_produto: {
               type: "string",
-              description: "As 3 letras do Produto (maiúsculas, sem acento).",
+              description: produzidoNaCasa
+                ? "As 6 letras do pré-preparo (maiúsculas, sem acento)."
+                : "As 3 letras do Produto (maiúsculas, sem acento).",
             },
             referencia: {
               type: "string",
-              description: "3 caracteres de referência, normalmente 001.",
+              description: "3 caracteres de referência, normalmente 001. Vazio para PRE.",
             },
             motivo: {
               type: "string",
-              description: "Explicação curta (1-2 frases) do grupo escolhido e das 3 letras.",
+              description: "Explicação curta (1-2 frases) do grupo escolhido e das letras.",
             },
           },
           required: ["grupo", "letras_produto", "referencia", "motivo"],
@@ -121,17 +144,14 @@ export async function sugerirSku(nome: string, spreadsheetId: string | null): Pr
     motivo: string;
   };
 
-  const grupo = GRUPOS_VALIDOS.includes(input.grupo) ? input.grupo : "MER";
-  const letras = input.letras_produto.toUpperCase().replace(/[^A-Z]/g, "").padEnd(3, "X").slice(0, 3);
-  let ref = input.referencia.replace(/[^A-Z0-9]/gi, "").padStart(3, "0").slice(0, 3);
+  const { sku, grupo, avisoColisao } = montarSkuSugerido({
+    nome,
+    grupoIa: String(input.grupo ?? ""),
+    letrasIa: String(input.letras_produto ?? ""),
+    referenciaIa: String(input.referencia ?? ""),
+    skusExistentes,
+  });
+  const motivo = [String(input.motivo ?? ""), avisoColisao].filter(Boolean).join(" ");
 
-  let sku = `${grupo}${letras}${ref}`;
-  let tentativa = Number(ref) || 1;
-  while (skusExistentes.has(sku) && tentativa < 999) {
-    tentativa += 1;
-    ref = String(tentativa).padStart(3, "0");
-    sku = `${grupo}${letras}${ref}`;
-  }
-
-  return { sku, grupo, motivo: input.motivo };
+  return { sku, grupo, motivo };
 }

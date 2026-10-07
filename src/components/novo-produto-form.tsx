@@ -6,6 +6,10 @@ import { criarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produt
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import type { Produto } from "@/lib/types";
 
+// Chamada que nem chega a responder (rede, servidor fora do ar). Sem o catch,
+// a falha dentro da transição derrubava a tela inteira no cartão de erro.
+const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexão e tente de novo.";
+
 export function NovoProdutoForm({
   nomeInicial,
   unidadeInicial,
@@ -33,7 +37,12 @@ export function NovoProdutoForm({
     setErroSugestao(null);
     setMotivo(null);
     startTransitionSugestao(async () => {
-      const r = await sugerirSkuAction(nome);
+      let r: Awaited<ReturnType<typeof sugerirSkuAction>>;
+      try {
+        r = await sugerirSkuAction(nome);
+      } catch {
+        r = { erro: ERRO_CONEXAO };
+      }
       if ("erro" in r) {
         setErroSugestao(r.erro);
         return;
@@ -49,7 +58,12 @@ export function NovoProdutoForm({
     setErro(null);
     const dados = new FormData(e.currentTarget);
     startTransitionSalvar(async () => {
-      const resultado = await criarProdutoAction(dados);
+      let resultado: Awaited<ReturnType<typeof criarProdutoAction>>;
+      try {
+        resultado = await criarProdutoAction(dados);
+      } catch {
+        resultado = { ok: false, mensagem: ERRO_CONEXAO };
+      }
       if (!resultado.ok) {
         setErro(resultado.mensagem);
         return;

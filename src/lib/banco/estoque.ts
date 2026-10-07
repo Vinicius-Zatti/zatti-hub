@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { Fornecedor, ItemInventario, Produto } from "@/lib/types";
+import { ErroPublico } from "@/lib/erros";
 
 export type NovaContagemBanco = {
   sku: string;
@@ -112,6 +113,32 @@ export async function listarProdutosBanco(unidadeId: string): Promise<Produto[]>
   return linhas.map(produtoDaLinha);
 }
 
+function linhaProdutoBanco(produto: Produto, unidadeId: string) {
+  return {
+    unidade_id: unidadeId,
+    sku: produto.sku,
+    posicao: produto.posicao,
+    grupo: produto.grupo,
+    nome: produto.nome,
+    unidade_base: produto.unidadeBase,
+    preco_unitario: produto.precoUnitario,
+    estoque_necessario_semana: produto.estoqueNecessarioSemana,
+    estoque_minimo: produto.estoqueMinimo,
+    nome_compra: produto.nomeCompra,
+    unidade_embalagem_fornecedor: produto.unidadeEmbalagemFornecedor,
+    qtd_unidade_base_por_embalagem: produto.qtdUnidadeBasePorEmbalagem,
+    preco_fornecedor: produto.precoFornecedor,
+    fornecedor_1: produto.fornecedor1,
+    fornecedor_2: produto.fornecedor2,
+    fornecedor_3: produto.fornecedor3,
+    fornecedor_4: produto.fornecedor4,
+    observacoes: produto.observacoes,
+    ativo: produto.ativo,
+    revenda: produto.revenda,
+    atualizado_em: new Date().toISOString(),
+  };
+}
+
 export async function salvarProdutosBanco(
   produtos: Produto[],
   unidadeId: string,
@@ -119,32 +146,22 @@ export async function salvarProdutosBanco(
   if (produtos.length === 0) return;
   const supabase = await createClient();
   const { error } = await supabase.from("produtos").upsert(
-    produtos.map((produto) => ({
-      unidade_id: unidadeId,
-      sku: produto.sku,
-      posicao: produto.posicao,
-      grupo: produto.grupo,
-      nome: produto.nome,
-      unidade_base: produto.unidadeBase,
-      preco_unitario: produto.precoUnitario,
-      estoque_necessario_semana: produto.estoqueNecessarioSemana,
-      estoque_minimo: produto.estoqueMinimo,
-      nome_compra: produto.nomeCompra,
-      unidade_embalagem_fornecedor: produto.unidadeEmbalagemFornecedor,
-      qtd_unidade_base_por_embalagem: produto.qtdUnidadeBasePorEmbalagem,
-      preco_fornecedor: produto.precoFornecedor,
-      fornecedor_1: produto.fornecedor1,
-      fornecedor_2: produto.fornecedor2,
-      fornecedor_3: produto.fornecedor3,
-      fornecedor_4: produto.fornecedor4,
-      observacoes: produto.observacoes,
-      ativo: produto.ativo,
-      revenda: produto.revenda,
-      atualizado_em: new Date().toISOString(),
-    })),
+    produtos.map((produto) => linhaProdutoBanco(produto, unidadeId)),
     { onConflict: "unidade_id,sku" },
   );
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
+}
+
+/** Só cria: SKU que já existe na unidade é recusado pela unicidade
+ * (unidade_id, sku) do banco, nunca sobrescrito - vale mesmo com duas
+ * criações chegando ao mesmo tempo. */
+export async function inserirProdutoBanco(produto: Produto, unidadeId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("produtos").insert(linhaProdutoBanco(produto, unidadeId));
+  if (error?.code === "23505") {
+    throw new ErroPublico(`Já existe um produto com o SKU ${produto.sku}. Escolha outro SKU.`);
+  }
+  if (error) throw new Error(`Não foi possível criar o produto: ${error.message}`);
 }
 
 /** Exclui o produto e, na mesma transação, remove a conversão de unidade
@@ -323,7 +340,7 @@ export async function listarInventarioBanco(unidadeId: string): Promise<ItemInve
       setorId: item.setor_id,
       // Linha legada (anterior à contagem por setor) fica sem nome mesmo.
       setorNome: item.setor_id ? (nomePorSetor.get(item.setor_id) ?? "") : null,
-    };
+  };
   });
 }
 
@@ -515,7 +532,7 @@ export async function substituirContagemSetorBanco(
       preco_unitario: precoUnitario,
       total,
       alerta: calcularAlerta(quantidade, precoUnitario, produto),
-    };
+  };
   });
 
   const { data, error } = await supabase.rpc("substituir_contagem_setor", {

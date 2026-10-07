@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { ErroCarregamento } from "@/components/erro-carregamento";
-import { identificadorDoErro } from "@/lib/suporte";
+import { gerarCodigoErroNavegador, identificadorDoErro } from "@/lib/suporte";
+import { registrarErroNavegadorAction } from "@/app/(app)/suporte-actions";
 
 // Corpo único dos `error.tsx` do app (Financeiro, Estoque, Painel...): qualquer
 // leitura que falhe - inclusive no meio da paginação - cai aqui. A tela não
@@ -15,12 +17,25 @@ export default function LimiteErroCarregamento({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
+  const tela = usePathname() ?? "/";
+  // Só o digest do Next ou uma mensagem pública: nunca a mensagem crua. Erro
+  // que nasceu no navegador não tem nenhum dos dois - ganha um código NAV-
+  // que vai para o log do servidor e para a mensagem de suporte.
+  const identificadorServidor = identificadorDoErro(error);
+  const [codigoNavegador] = useState(() => (identificadorServidor ? null : gerarCodigoErroNavegador()));
+  const identificador = identificadorServidor ?? codigoNavegador;
+
   useEffect(() => {
     console.error(error);
-  }, [error]);
-
-  // Só o digest do Next ou uma mensagem pública: nunca a mensagem crua.
-  const identificador = identificadorDoErro(error);
+    if (codigoNavegador) {
+      registrarErroNavegadorAction({
+        codigo: codigoNavegador,
+        tela,
+        nome: error.name,
+        mensagem: error.message,
+      }).catch(() => {});
+    }
+  }, [error, codigoNavegador, tela]);
 
   return (
     <ErroCarregamento identificador={identificador}>

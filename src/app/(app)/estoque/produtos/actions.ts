@@ -1,6 +1,6 @@
 "use server";
 
-import { excluirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
+import { excluirProduto, inserirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import type { Produto } from "@/lib/types";
@@ -84,7 +84,8 @@ export async function criarProdutoAction(
       revenda: false,
     });
 
-    await upsertProduto(produto, acesso.spreadsheetId);
+    // Criação nunca sobrescreve SKU existente (o upsert apagaria o cadastro).
+    await inserirProduto(produto, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "criar",
@@ -96,6 +97,31 @@ export async function criarProdutoAction(
     return { ok: true, produto };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar o produto.") };
+  }
+}
+
+/** Transforma uma pendência da contagem (item avulso) em produto. Só cria:
+ * SKU já cadastrado é recusado, nunca sobrescrito. */
+export async function criarProdutoPendenciaAction(
+  produto: Produto
+): Promise<{ ok: true } | { erro: string }> {
+  const acesso = await requireGestao();
+  try {
+    await exigirLimiteRequisicao("salvar_produtos");
+    const entrada = validarEntrada(produtoSchema, produto);
+    await inserirProduto(entrada, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "criar",
+      entidade: "produto",
+      entidadeId: entrada.sku,
+      dadosNovos: entrada,
+    });
+    revalidarTudo();
+    await sincronizarRevendaMelhorEsforco(acesso, [entrada]);
+    return { ok: true };
+  } catch (err) {
+    return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
   }
 }
 

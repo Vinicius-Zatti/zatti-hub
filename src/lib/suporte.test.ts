@@ -81,3 +81,38 @@ describe("mensagem de suporte do cartão de erro", () => {
     expect(identificadorDoErro(new Error("relation fin_baixas: permission denied"))).toBeNull();
   });
 });
+
+describe("código de erro do navegador", () => {
+  it("tem o formato NAV- + 6 caracteres sem letras ambíguas", async () => {
+    const { gerarCodigoErroNavegador, FORMATO_CODIGO_ERRO_NAVEGADOR } = await import("./suporte");
+    for (let i = 0; i < 50; i++) {
+      expect(gerarCodigoErroNavegador()).toMatch(FORMATO_CODIGO_ERRO_NAVEGADOR);
+    }
+    expect(gerarCodigoErroNavegador(() => 0)).toBe("NAV-AAAAAA");
+    expect(gerarCodigoErroNavegador(() => 0.9999999)).toBe("NAV-999999");
+  });
+
+  it("vai na mensagem de suporte no lugar do 'não informado'", async () => {
+    const { montarMensagemSuporte } = await import("./suporte");
+    const texto = montarMensagemSuporte({ unidade: "x", tela: "/estoque/produtos/edicao", momento: MOMENTO, identificador: "NAV-ABC234" });
+    expect(texto).toContain("Identificador do erro: NAV-ABC234");
+  });
+});
+
+describe("texto de erro do navegador para o log", () => {
+  it("tira e-mail, URL, token e número longo, e corta", async () => {
+    const { sanitizarTextoErroParaLog } = await import("./suporte");
+    const texto = sanitizarTextoErroParaLog(
+      "Falha para ana@exemplo.com em https://x.com/a?b=1 token eyJhbGciOiJIUzI1NiIsInR5cCI6 cpf 123.456.789-00\nlinha 2",
+    );
+    expect(texto).toBe("Falha para [email] em [url] token [token] cpf [numero] linha 2");
+    expect(sanitizarTextoErroParaLog("ab ".repeat(200), 10)).toHaveLength(10);
+  });
+
+  it("mantém a mensagem técnica comum legível", async () => {
+    const { sanitizarTextoErroParaLog } = await import("./suporte");
+    expect(sanitizarTextoErroParaLog("Cannot read properties of undefined (reading 'nome')")).toBe(
+      "Cannot read properties of undefined (reading 'nome')",
+    );
+  });
+});
