@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
-import type { Etapa, EventoLead, Lead, Origem, TipoEvento } from "@/lib/comercial/funil";
+import type { Etapa, EventoLead, Lead, Origem, TipoEvento, VendeDelivery } from "@/lib/comercial/funil";
 
 /** Acesso ao banco do Comercial (CRM de leads). O RLS (`usuario_e_master()`)
  * é a barreira real; toda escrita passa pela RPC `zh_leads_atualizar`, que
@@ -10,6 +10,7 @@ import type { Etapa, EventoLead, Lead, Origem, TipoEvento } from "@/lib/comercia
 type Linha = Record<string, unknown>;
 const s = (v: unknown) => (typeof v === "string" ? v : "");
 const sn = (v: unknown) => (typeof v === "string" ? v : null);
+const nn = (v: unknown) => (v == null || v === "" ? null : Number(v));
 
 function falhou(error: unknown, contexto: string): never {
   console.error(`comercial: ${contexto}`, error);
@@ -19,6 +20,13 @@ function falhou(error: unknown, contexto: string): never {
 const mapLead = (r: Linha): Lead => ({
   id: s(r.id),
   whatsapp: s(r.whatsapp),
+  instagram: s(r.instagram),
+  cidadeBairro: s(r.cidade_bairro),
+  seguidores: nn(r.seguidores),
+  ultimoPostEm: sn(r.ultimo_post_em),
+  notaGoogle: nn(r.nota_google),
+  avaliacoesGoogle: nn(r.avaliacoes_google),
+  vendeDelivery: (s(r.vende_delivery) as VendeDelivery) || "",
   nome: s(r.nome),
   negocio: s(r.negocio),
   origem: r.origem as Origem,
@@ -88,6 +96,41 @@ export async function atualizarLead(leadId: string, acao: string, dados: Record<
     if (error.code === "P0002") throw new ErroPublico("Lead não encontrado.");
     if (error.code === "22023") throw new ErroPublico(error.message.includes("Motivo") ? "Informe o motivo da perda." : "Dados inválidos.");
     falhou(error, "atualizar lead");
+  }
+  return data as string;
+}
+
+export type NovoLeadBanco = {
+  nome: string;
+  negocio: string;
+  instagram: string;
+  whatsapp: string;
+  origem: Origem;
+  cidade_bairro: string;
+  seguidores: number | null;
+  ultimo_post_em: string | null;
+  nota_google: number | null;
+  avaliacoes_google: number | null;
+  vende_delivery: VendeDelivery;
+};
+
+/** Cadastro manual (Novo lead). A RPC `zh_leads_criar` confere master,
+ * normaliza WhatsApp e @, exige um dos dois e grava o evento `criado`. */
+export async function criarLead(dados: NovoLeadBanco): Promise<string> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("zh_leads_criar", {
+    p_dados: { ...dados, etapa: "mandar_primeira_mensagem" },
+  });
+  if (error) {
+    if (error.code === "23505") throw new ErroPublico("Já existe um lead com esse Instagram ou WhatsApp.");
+    if (error.code === "22023") {
+      const m = error.message;
+      if (m.includes("Informe")) throw new ErroPublico("Informe o Instagram ou o WhatsApp.");
+      if (m.includes("Instagram")) throw new ErroPublico("Instagram inválido. Use só o @ do perfil.");
+      if (m.includes("WhatsApp")) throw new ErroPublico("WhatsApp inválido. Use DDD + número.");
+      throw new ErroPublico("Dados inválidos.");
+    }
+    falhou(error, "criar lead");
   }
   return data as string;
 }

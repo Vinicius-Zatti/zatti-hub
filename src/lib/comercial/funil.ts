@@ -4,6 +4,7 @@
  * um lead. Decisões de Vinícius em 02/10/2026 (crm-leads-v1-desenho.md). */
 
 export const ETAPAS = [
+  "mandar_primeira_mensagem",
   "abordado",
   "respondeu",
   "link_enviado",
@@ -18,6 +19,7 @@ export const ETAPAS = [
 export type Etapa = (typeof ETAPAS)[number];
 
 export const ROTULO_ETAPA: Record<Etapa, string> = {
+  mandar_primeira_mensagem: "Mandar primeira mensagem",
   abordado: "Abordado",
   respondeu: "Respondeu",
   link_enviado: "Link enviado",
@@ -36,6 +38,7 @@ export function ordemEtapa(etapa: Etapa): number {
 
 /** Próximo passo sugerido para quem está em cada etapa. */
 export const SUGESTAO_ETAPA: Record<Etapa, string> = {
+  mandar_primeira_mensagem: "Mandar a primeira mensagem pelo Direct do Instagram",
   abordado: "Esperar resposta; retomar no 2º dia",
   respondeu: "Mandar o link da página com a origem do canal",
   link_enviado: "Ver se abriu o link; retomar em 2 dias",
@@ -61,6 +64,7 @@ export const ROTULO_ORIGEM: Record<Origem, string> = {
 };
 
 export type TipoEvento =
+  | "criado"
   | "formulario"
   | "nova_tentativa"
   | "pagamento"
@@ -83,9 +87,27 @@ export type EventoLead = {
   autor: "site" | "vini" | "sdr" | "vinicius";
 };
 
+export const VENDE_DELIVERY = ["", "ifood", "proprio", "nao"] as const;
+export type VendeDelivery = (typeof VENDE_DELIVERY)[number];
+export const ROTULO_DELIVERY: Record<VendeDelivery, string> = {
+  "": "Não informado",
+  ifood: "iFood",
+  proprio: "Delivery próprio",
+  nao: "Não vende",
+};
+
 export type Lead = {
   id: string;
+  /** Só dígitos, sem o 55; "" quando o lead veio só pelo Instagram. */
   whatsapp: string;
+  /** @ normalizado (minúsculo, sem @ e sem URL); "" quando não tem. */
+  instagram: string;
+  cidadeBairro: string;
+  seguidores: number | null;
+  ultimoPostEm: string | null;
+  notaGoogle: number | null;
+  avaliacoesGoogle: number | null;
+  vendeDelivery: VendeDelivery;
   nome: string;
   negocio: string;
   origem: Origem;
@@ -128,6 +150,12 @@ export function descreverEventos(eventos: EventoLead[]): { evento: EventoLead; t
     const naoFinalizou = pago && !pagouDepois ? " - não finalizou a compra" : "";
     const valor = ev.valor != null ? ` (${formatarReais(ev.valor)})` : "";
     switch (ev.tipo) {
+      case "criado":
+        return {
+          evento: ev,
+          titulo: `Lead cadastrado${ev.paraEtapa ? ` em ${ROTULO_ETAPA[ev.paraEtapa]}` : ""}`,
+          detalhe: ev.texto,
+        };
       case "formulario":
         return { evento: ev, titulo: `Preencheu o formulário: ${ev.produto || "site"}${naoFinalizou}`, detalhe: ev.texto };
       case "nova_tentativa":
@@ -200,6 +228,26 @@ export function filtrarLeads(leads: Lead[], f: FiltroComercial): Lead[] {
 /** Link do WhatsApp do lead (com 55 do Brasil). */
 export function linkWhatsapp(whatsapp: string): string {
   return `https://wa.me/55${whatsapp.replace(/\D/g, "")}`;
+}
+
+/** @ do Instagram normalizado: minúsculo, sem @, sem URL ("@Fulano",
+ * "https://www.instagram.com/fulano/?hl=pt" -> "fulano"). A mesma regra de
+ * `zh_leads_normalizar_instagram` no banco. Devolve "" se vazio. */
+export function normalizarInstagram(entrada: string): string {
+  return entrada
+    .trim()
+    .toLowerCase()
+    .replace(/^(https?:\/\/)?(www\.|m\.)?instagram\.com\//, "")
+    .replace(/^@+|[/?#].*$/g, "");
+}
+
+export function instagramValido(handle: string): boolean {
+  return /^[a-z0-9._]{1,30}$/.test(handle);
+}
+
+/** Link do perfil, derivado do @ (não é guardado no banco). */
+export function linkInstagram(handle: string): string {
+  return `https://www.instagram.com/${handle}/`;
 }
 
 /** Data e hora de um timestamp no horário de Brasília (DD/MM/AAAA HH:MM). */

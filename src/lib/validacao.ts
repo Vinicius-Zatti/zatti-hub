@@ -879,7 +879,7 @@ export const excluirRegistroClienteSchema = z
 // O id do lead chega da tela, mas nunca decide acesso: RLS (só master) e a RPC
 // `zh_leads_atualizar` conferem. Organização do "Virou cliente" é conferida no banco.
 const etapaComercialSchema = z.enum([
-  "abordado", "respondeu", "link_enviado", "preencheu_formulario", "comprou_livro", "comprou_app",
+  "mandar_primeira_mensagem", "abordado", "respondeu", "link_enviado", "preencheu_formulario", "comprou_livro", "comprou_app",
   "em_acompanhamento", "reuniao_diagnostico", "consultoria_fechada",
 ]);
 export const acaoLeadSchema = z.discriminatedUnion("acao", [
@@ -889,6 +889,26 @@ export const acaoLeadSchema = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("nota"), leadId: idUuidSchema, texto: textoObrigatorio(1000) }).strict(),
   z.object({ acao: z.literal("virou_cliente"), leadId: idUuidSchema, organizacaoId: identificador }).strict(),
 ]);
+
+// Novo lead (prospecção pelo Instagram): basta o @ ou o WhatsApp. A RPC
+// `zh_leads_criar` normaliza os dois, confere formato e não deixa duplicar.
+const inteiroOuNull = z.number().int().min(0).max(LIMITE_QUANTIDADE).nullable();
+export const novoLeadSchema = z
+  .object({
+    nome: texto(80),
+    negocio: texto(80),
+    instagram: texto(200),
+    whatsapp: texto(30),
+    origem: z.enum(["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "outra"]),
+    cidadeBairro: texto(120),
+    seguidores: inteiroOuNull,
+    ultimoPostEm: dataIsoSchema.nullable(),
+    notaGoogle: z.number().finite().min(0).max(5).nullable(),
+    avaliacoesGoogle: inteiroOuNull,
+    vendeDelivery: z.enum(["", "ifood", "proprio", "nao"]),
+  })
+  .strict()
+  .refine((v) => v.instagram !== "" || v.whatsapp !== "", { message: "Informe o Instagram ou o WhatsApp." });
 
 export function validarEntrada<T>(schema: z.ZodType<T>, entrada: unknown): T {
   const resultado = schema.safeParse(entrada);

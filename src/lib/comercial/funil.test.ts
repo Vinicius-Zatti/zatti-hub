@@ -7,7 +7,10 @@ import {
   diasDesde,
   filtrarLeads,
   formatarMomentoBr,
+  instagramValido,
+  linkInstagram,
   linkWhatsapp,
+  normalizarInstagram,
   ordemEtapa,
   type EventoLead,
   type Lead,
@@ -18,7 +21,8 @@ const ev = (p: Partial<EventoLead> & Pick<EventoLead, "tipo" | "em">): EventoLea
 });
 
 const lead = (p: Partial<Lead>): Lead => ({
-  id: "1", whatsapp: "31999990000", nome: "Ana", negocio: "", origem: "site", produtoInteresse: "Zatti Hub - plano anual",
+  id: "1", whatsapp: "31999990000", instagram: "", cidadeBairro: "", seguidores: null, ultimoPostEm: null,
+  notaGoogle: null, avaliacoesGoogle: null, vendeDelivery: "", nome: "Ana", negocio: "", origem: "site", produtoInteresse: "Zatti Hub - plano anual",
   etapa: "preencheu_formulario", motivoPerda: "", faturamentoAtual: "", faturamentoDesejado: "", dificuldade: "",
   proximaAcao: "", proximaAcaoEm: null, organizacaoId: null, criadoEm: "2026-10-02T10:00:00Z",
   etapaDesde: "2026-10-02T10:00:00Z", ultimoEventoEm: "2026-10-02T10:00:00Z", ...p,
@@ -90,5 +94,28 @@ describe("funil comercial", () => {
   it("dias na etapa e link do WhatsApp com 55", () => {
     expect(diasDesde("2026-09-28T23:00:00Z", "2026-10-02")).toBe(4);
     expect(linkWhatsapp("31996555532")).toBe("https://wa.me/5531996555532");
+  });
+
+  it("prospecção: Mandar primeira mensagem vem antes de Abordado", () => {
+    expect(ordemEtapa("mandar_primeira_mensagem")).toBe(1);
+    expect(ordemEtapa("abordado")).toBeGreaterThan(ordemEtapa("mandar_primeira_mensagem"));
+    expect(ordemEtapa("respondeu")).toBeGreaterThan(ordemEtapa("abordado"));
+  });
+
+  it("@ do Instagram normalizado e link do perfil derivado", () => {
+    expect(normalizarInstagram(" @Hamburgueria.Do_Ze ")).toBe("hamburgueria.do_ze");
+    expect(normalizarInstagram("https://www.instagram.com/PizzariaX/?hl=pt-br")).toBe("pizzariax");
+    expect(normalizarInstagram("instagram.com/burger_y")).toBe("burger_y");
+    expect(normalizarInstagram("")).toBe("");
+    expect(instagramValido("pizzariax")).toBe(true);
+    expect(instagramValido("pizza ria")).toBe(false);
+    expect(linkInstagram("pizzariax")).toBe("https://www.instagram.com/pizzariax/");
+  });
+
+  it("evento criado aparece na linha do tempo com a etapa de entrada", () => {
+    const [l] = descreverEventos([
+      ev({ tipo: "criado", em: "2026-10-07T10:00:00Z", paraEtapa: "mandar_primeira_mensagem", autor: "vinicius" }),
+    ]);
+    expect(l.titulo).toBe("Lead cadastrado em Mandar primeira mensagem");
   });
 });

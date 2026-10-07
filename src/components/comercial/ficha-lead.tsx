@@ -7,18 +7,23 @@ import { Campo, ModalFormulario, Secao, Selo, Vazio, classeBotao, classeBotaoLev
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import {
   ETAPAS,
+  ROTULO_DELIVERY,
   ROTULO_ETAPA,
   ROTULO_ORIGEM,
   SUGESTAO_ETAPA,
   descreverEventos,
   formatarMomentoBr,
   formatarWhatsapp,
+  linkInstagram,
   linkWhatsapp,
   type Etapa,
   type EventoLead,
   type Lead,
 } from "@/lib/comercial/funil";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
+
+const numeroBr = (v: number | null, decimais = 0) =>
+  v == null ? "-" : v.toLocaleString("pt-BR", { minimumFractionDigits: decimais, maximumFractionDigits: decimais });
 
 const ROTULO_AUTOR: Record<EventoLead["autor"], string> = { site: "Site", vini: "Vini", sdr: "SDR", vinicius: "Vinícius" };
 
@@ -71,9 +76,16 @@ export function FichaLead({
       {erro && !modal && <p className="rounded-md bg-vermelho/10 px-3 py-2 text-sm text-vermelho">{erro}</p>}
 
       <div className="flex flex-wrap gap-2">
-        <a href={linkWhatsapp(lead.whatsapp)} target="_blank" rel="noopener" className={classeBotao}>
-          Abrir WhatsApp
-        </a>
+        {lead.instagram && (
+          <a href={linkInstagram(lead.instagram)} target="_blank" rel="noopener noreferrer" className={classeBotao}>
+            Abrir Instagram
+          </a>
+        )}
+        {lead.whatsapp && (
+          <a href={linkWhatsapp(lead.whatsapp)} target="_blank" rel="noopener" className={classeBotao}>
+            Abrir WhatsApp
+          </a>
+        )}
         <button type="button" className={classeBotaoLeve} onClick={() => abrir("etapa")}>Mudar etapa</button>
         <button type="button" className={classeBotaoLeve} onClick={() => abrir("proxima")}>Próxima ação</button>
         <button type="button" className={classeBotaoLeve} onClick={() => abrir("nota")}>Nota</button>
@@ -86,10 +98,33 @@ export function FichaLead({
       <div className="grid gap-4 md:grid-cols-2">
         <Secao titulo="Dados">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-cinza-medio">Instagram</dt>
+            <dd>
+              {lead.instagram ? (
+                <a href={linkInstagram(lead.instagram)} target="_blank" rel="noopener noreferrer"
+                  className="font-semibold text-azul-petroleo hover:underline">
+                  @{lead.instagram}
+                </a>
+              ) : "-"}
+            </dd>
             <dt className="text-cinza-medio">WhatsApp</dt>
-            <dd>{formatarWhatsapp(lead.whatsapp)}</dd>
+            <dd>{lead.whatsapp ? formatarWhatsapp(lead.whatsapp) : "-"}</dd>
             <dt className="text-cinza-medio">Negócio</dt>
             <dd>{lead.negocio || "-"}</dd>
+            <dt className="text-cinza-medio">Cidade / bairro</dt>
+            <dd>{lead.cidadeBairro || "-"}</dd>
+            <dt className="text-cinza-medio">Seguidores</dt>
+            <dd>{numeroBr(lead.seguidores)}</dd>
+            <dt className="text-cinza-medio">Último post</dt>
+            <dd>{lead.ultimoPostEm ? formatarDataBr(lead.ultimoPostEm) : "-"}</dd>
+            <dt className="text-cinza-medio">Google</dt>
+            <dd>
+              {lead.notaGoogle == null && lead.avaliacoesGoogle == null
+                ? "-"
+                : `${numeroBr(lead.notaGoogle, 1)} (${numeroBr(lead.avaliacoesGoogle)} avaliações)`}
+            </dd>
+            <dt className="text-cinza-medio">Delivery</dt>
+            <dd>{lead.vendeDelivery ? ROTULO_DELIVERY[lead.vendeDelivery] : "-"}</dd>
             <dt className="text-cinza-medio">Interesse</dt>
             <dd>{lead.produtoInteresse || "-"}</dd>
             <dt className="text-cinza-medio">Fatura hoje</dt>

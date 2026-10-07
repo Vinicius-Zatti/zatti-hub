@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Selo, classeCampo } from "@/components/clientes/ui";
+import { NovoLead } from "@/components/comercial/novo-lead";
 import { DicaCalculo } from "@/components/dica-calculo";
 import {
   ETAPAS,
@@ -12,6 +13,9 @@ import {
   calcularIndicadores,
   diasDesde,
   filtrarLeads,
+  formatarWhatsapp,
+  linkInstagram,
+  linkWhatsapp,
   type FiltroComercial,
   type Lead,
 } from "@/lib/comercial/funil";
@@ -27,11 +31,14 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
 
   return (
     <div className="flex flex-col gap-4 pb-10">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-azul-noite">Comercial</h1>
-        <p className="text-sm text-cinza">
-          Leads do site, do WhatsApp e do Instagram. Cada formulário, compra e mudança fica na linha do tempo do lead.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-azul-noite">Comercial</h1>
+          <p className="text-sm text-cinza">
+            Leads do site, do WhatsApp e do Instagram. Cada formulário, compra e mudança fica na linha do tempo do lead.
+          </p>
+        </div>
+        <NovoLead />
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-cinza-claro bg-branco p-3">
@@ -146,13 +153,31 @@ function Indicador({ rotulo, valor, dica, pequeno }: { rotulo: string; valor: st
 function CartaoLead({ lead, hoje }: { lead: Lead; hoje: string }) {
   const dias = diasDesde(lead.etapaDesde, hoje);
   const atrasada = lead.proximaAcaoEm != null && lead.proximaAcaoEm < hoje;
+  // Cartão em <div>: os links do Instagram e do WhatsApp não podem ficar dentro
+  // do link da ficha. O link do nome cobre o cartão todo (after:inset-0) e os
+  // dois links de contato ficam por cima (relative z-10).
   return (
-    <Link
-      href={`/escritorio/comercial/${lead.id}`}
-      className="flex flex-col gap-1 rounded-lg border border-cinza-claro bg-branco p-3 text-sm hover:border-ambar"
-    >
-      <span className="truncate font-semibold text-azul-noite" title={lead.nome}>{lead.nome}</span>
+    <div className="relative flex flex-col gap-1 rounded-lg border border-cinza-claro bg-branco p-3 text-sm hover:border-ambar">
+      <Link href={`/escritorio/comercial/${lead.id}`} className="truncate font-semibold text-azul-noite after:absolute after:inset-0 after:content-['']" title={lead.nome}>
+        {lead.nome}
+      </Link>
       {lead.negocio && <span className="truncate text-xs text-cinza" title={lead.negocio}>{lead.negocio}</span>}
+      {(lead.instagram || lead.whatsapp) && (
+        <span className="flex flex-wrap gap-x-2 text-xs">
+          {lead.instagram && (
+            <a href={linkInstagram(lead.instagram)} target="_blank" rel="noopener noreferrer"
+              className="relative z-10 truncate font-semibold text-azul-petroleo hover:underline" title={`Abrir o perfil @${lead.instagram}`}>
+              @{lead.instagram}
+            </a>
+          )}
+          {lead.whatsapp && (
+            <a href={linkWhatsapp(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
+              className="relative z-10 text-azul-petroleo hover:underline" title="Abrir o WhatsApp">
+              {formatarWhatsapp(lead.whatsapp)}
+            </a>
+          )}
+        </span>
+      )}
       <span className="flex flex-wrap gap-1">
         <Selo>{ROTULO_ORIGEM[lead.origem]}</Selo>
         {lead.produtoInteresse && <Selo tom="atencao">{lead.produtoInteresse}</Selo>}
@@ -166,6 +191,6 @@ function CartaoLead({ lead, hoje }: { lead: Lead; hoje: string }) {
           {lead.proximaAcao}
         </span>
       )}
-    </Link>
+    </div>
   );
 }
