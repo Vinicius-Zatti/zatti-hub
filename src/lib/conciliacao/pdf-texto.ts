@@ -21,6 +21,13 @@ const TEMPO_MAXIMO_MS = 20_000;
  * é destruída e o arquivo vai para quarentena por tempo. */
 export async function extrairTextoPdf(bytes: Uint8Array, prazo?: Prazo): Promise<TextoPdf> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // No Node o pdfjs carrega o worker por import dinâmico de "./pdf.worker.mjs",
+  // que o rastreio de arquivos da Vercel não enxerga: em produção o import
+  // falhava e todo PDF virava "inválido". Importado aqui, o arquivo entra no
+  // pacote e o pdfjs usa este handler na mesma thread.
+  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  const global = globalThis as { pdfjsWorker?: unknown };
+  global.pdfjsWorker ??= worker;
   const tarefa = pdfjs.getDocument({
     data: bytes.slice(),
     enableXfa: false,
@@ -50,6 +57,9 @@ export async function extrairTextoPdf(bytes: Uint8Array, prazo?: Prazo): Promise
   } catch (erro) {
     const nome = erro instanceof Error ? erro.name : "";
     if (nome === "PasswordException") return { ok: false, motivo: "pdf_protegido" };
+    // Só o tipo do erro, sem conteúdo do arquivo: falha de ambiente não pode
+    // mais se passar por PDF corrompido sem deixar rastro no log.
+    console.error("Leitura de PDF falhou:", nome || "erro desconhecido");
     return { ok: false, motivo: "pdf_invalido" };
   } finally {
     // Cancela o que ainda estiver rodando (inclusive depois de estourar o tempo).
