@@ -9,6 +9,8 @@ export function Th({
   fixo = false,
   estreito = false,
   larguraFixa,
+  esquerda,
+  soTelaLarga = false,
 }: {
   children?: React.ReactNode;
   align?: "left" | "right" | "center";
@@ -26,13 +28,24 @@ export function Th({
    * Ex: `larguraFixa="96px"` numa coluna "Data de Competência" cujo
    * conteúdo é sempre "DD/MM/AAAA". */
   larguraFixa?: string;
+  /** Com `fixo`, distância da borda esquerda: congela uma segunda coluna
+   * logo depois da primeira (ex: Data 96px + Descrição em `esquerda="96px"`).
+   * A célula do corpo precisa do mesmo `sticky` e `left`. */
+  esquerda?: string;
+  /** Com `fixo`, congela na horizontal só a partir de telas médias (no
+   * celular duas colunas congeladas cobririam a área visível). */
+  soTelaLarga?: boolean;
 }) {
   const alinhamento = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
   const largura = larguraFixa ? "whitespace-normal" : estreito ? "max-w-[72px] whitespace-normal break-words" : "whitespace-nowrap";
   return (
     <th
-      style={larguraFixa ? { width: larguraFixa, minWidth: larguraFixa } : undefined}
-      className={`sticky top-0 ${fixo ? "left-0 z-30" : "z-20"} ${largura} bg-azul-petroleo px-3 py-2 font-semibold ${alinhamento}`}
+      style={{
+        ...(larguraFixa ? { width: larguraFixa, minWidth: larguraFixa } : {}),
+        ...(fixo && esquerda && !soTelaLarga ? { left: esquerda } : {}),
+        ...(fixo && soTelaLarga ? ({ "--th-esquerda": esquerda ?? "0px" } as React.CSSProperties) : {}),
+      }}
+      className={`sticky top-0 ${fixo ? (soTelaLarga ? "z-30 md:left-[var(--th-esquerda)]" : "left-0 z-30") : "z-20"} ${largura} bg-azul-petroleo px-3 py-2 font-semibold ${alinhamento}`}
     >
       {children}
     </th>

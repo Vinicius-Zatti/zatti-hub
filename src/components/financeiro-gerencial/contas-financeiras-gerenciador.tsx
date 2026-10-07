@@ -117,6 +117,9 @@ function FormularioConta({
   const [saldoInicial, setSaldoInicial] = useState<number | null>(conta?.saldoInicial ?? 0);
   const [dataSaldoInicial, setDataSaldoInicial] = useState(conta?.dataSaldoInicial ?? hoje());
   const [ativo, setAtivo] = useState(conta?.ativo ?? true);
+  const [bancoCodigo, setBancoCodigo] = useState(conta?.bancoCodigo ?? "");
+  const [agencia, setAgencia] = useState(conta?.agencia ?? "");
+  const [numeroConta, setNumeroConta] = useState(conta?.numeroConta ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -124,7 +127,7 @@ function FormularioConta({
     e.preventDefault();
     setErro(null);
     startTransition(async () => {
-      const dados = { nome, tipo, saldoInicial: saldoInicial ?? 0, dataSaldoInicial };
+      const dados = { nome, tipo, saldoInicial: saldoInicial ?? 0, dataSaldoInicial, bancoCodigo, agencia, numeroConta };
       const resultado = conta
         ? await editarContaFinanceiraAction({ id: conta.id, ...dados, ativo })
         : await criarContaFinanceiraAction(dados);
@@ -180,6 +183,45 @@ function FormularioConta({
           />
         </label>
       </div>
+      {tipo !== "caixa" && (
+        <div className="flex flex-col gap-1">
+          <div className="flex gap-3">
+            <label className="flex w-24 flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Banco
+              <input
+                value={bancoCodigo}
+                onChange={(e) => setBancoCodigo(e.target.value)}
+                inputMode="numeric"
+                maxLength={3}
+                placeholder="Ex: 290"
+                className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+              />
+            </label>
+            <label className="flex w-28 flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Agência
+              <input
+                value={agencia}
+                onChange={(e) => setAgencia(e.target.value)}
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Ex: 0001"
+                className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+              />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Número da conta
+              <input
+                value={numeroConta}
+                onChange={(e) => setNumeroConta(e.target.value)}
+                maxLength={22}
+                placeholder="Ex: 51881143-5"
+                className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+              />
+            </label>
+          </div>
+          <p className="text-xs text-cinza-medio">Opcional. Com eles a Conciliação avisa quando um extrato é enviado na conta errada.</p>
+        </div>
+      )}
       {conta && (
         <label className="flex items-center gap-2 text-xs text-cinza-medio">
           <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />

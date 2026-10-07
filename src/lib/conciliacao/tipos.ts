@@ -42,7 +42,15 @@ export type LeituraOk = {
   versaoParser: string;
   fonte: FonteExtracao;
   conferencia: ConferenciaAritmetica;
+  /** Identificação bancária do cabeçalho, quando o layout traz. */
+  contaDetectada?: ContaDetectada | null;
 };
+
+/** Banco, agência e conta lidos do documento (nunca nome ou CPF). O banco
+ * compara com a conta financeira escolhida no envio. */
+export type ContaDetectada = { banco: string | null; agencia: string | null; conta: string | null };
+
+export type ConferenciaConta = "confere" | "divergente" | "nao_verificavel";
 
 /** Falha global: nenhum movimento é persistido. `quarentena` indica arquivo
  * estruturalmente suspeito (senha, conteúdo ativo, limites). */
@@ -93,6 +101,7 @@ export type SituacaoImportacao =
   | "falhou"
   | "quarentena"
   | "duplicada"
-  | "expirada";
+  | "expirada"
+  | "descartada";
 
 export type EstadoMovimento = "pendente" | "revisar" | "conciliado" | "ignorado" | "transferencia" | "mesclado";

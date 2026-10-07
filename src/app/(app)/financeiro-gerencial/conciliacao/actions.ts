@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireConciliacao } from "@/lib/conciliacao/acesso";
 import { importarDocumento, reprocessarImportacao, type ResultadoImportacao } from "@/lib/conciliacao/processar";
-import { listarCandidatos, obterImportacao } from "@/lib/banco/conciliacao";
+import { confirmarConta, descartarImportacao, listarCandidatos, obterImportacao } from "@/lib/banco/conciliacao";
 import { pontuarCandidato, type CandidatoParcela, type Pontuacao } from "@/lib/conciliacao/candidatos";
 import { TAMANHO_MAXIMO_BYTES } from "@/lib/conciliacao/arquivo";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -65,6 +65,48 @@ export async function reprocessarImportacaoAction(importacaoId: string): Promise
     return { ok: true, resultado };
   } catch (erro) {
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível ler a importação de novo.") };
+  }
+}
+
+export type RespostaSimples = { ok: true; mensagem: string } | { ok: false; mensagem: string };
+
+const entradaDescarte = z.object({
+  importacaoId: z.string().uuid(),
+  motivo: z.enum(["conta_errada", "arquivo_errado", "outro"]),
+});
+
+/** Tira do Hub os movimentos que a importação criou e a marca como
+ * descartada. O original fica guardado; o mesmo arquivo pode ir de novo.
+ * Usa o limite de "ler de novo": ação rara, sem chave própria. */
+export async function descartarImportacaoAction(input: unknown): Promise<RespostaSimples> {
+  const ctx = await requireConciliacao();
+  try {
+    await exigirLimiteRequisicao("fin_conciliacao_reprocessar");
+    const e = entradaDescarte.parse(input);
+    const imp = await obterImportacao(ctx.acesso.unidadeId, e.importacaoId);
+    if (!imp) throw new ErroPublico("Importação não encontrada nesta unidade.");
+    const r = await descartarImportacao(ctx.acesso.userId, { importacao: imp.id, motivo: e.motivo });
+    revalidatePath("/financeiro-gerencial/conciliacao");
+    const n = r.movimentos_removidos;
+    return { ok: true, mensagem: n > 0 ? `Importação descartada. ${n} movimentos saíram da fila.` : "Importação descartada." };
+  } catch (erro) {
+    return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível descartar a importação.") };
+  }
+}
+
+/** Vinícius confirma que o extrato é mesmo da conta escolhida, apesar do alerta. */
+export async function confirmarContaAction(importacaoId: string): Promise<RespostaSimples> {
+  const ctx = await requireConciliacao();
+  try {
+    await exigirLimiteRequisicao("fin_conciliacao_reprocessar");
+    const id = z.string().uuid().parse(importacaoId);
+    const imp = await obterImportacao(ctx.acesso.unidadeId, id);
+    if (!imp) throw new ErroPublico("Importação não encontrada nesta unidade.");
+    await confirmarConta(ctx.acesso.userId, imp.id);
+    revalidatePath("/financeiro-gerencial/conciliacao");
+    return { ok: true, mensagem: "Conta confirmada." };
+  } catch (erro) {
+    return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível confirmar a conta.") };
   }
 }
 

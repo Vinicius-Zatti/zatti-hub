@@ -9,6 +9,8 @@ import type { CategoriaMotor, RegraMotor } from "@/lib/conciliacao/classificacao
 import type { CandidatoParcela } from "@/lib/conciliacao/candidatos";
 import type {
   ConferenciaAritmetica,
+  ConferenciaConta,
+  ContaDetectada,
   Direcao,
   EstadoMovimento,
   FonteExtracao,
@@ -31,6 +33,11 @@ const MENSAGENS_PUBLICAS: Record<string, string> = {
   "Sem acesso a Conciliacao desta unidade": "Você não tem acesso à Conciliação desta unidade.",
   "Conta financeira invalida": "Escolha uma conta financeira ativa desta unidade.",
   "IA desligada para esta unidade": "A leitura por IA não está ligada para esta unidade.",
+  "Importacao ja descartada": "Esta importação já foi descartada.",
+  "Importacao ainda sendo lida": "Esta importação ainda está sendo lida. Espere terminar para descartar.",
+  "Importacao com movimento ja tratado": "Esta importação tem movimento já tratado e não pode ser descartada.",
+  "Outra importacao usa movimentos desta": "Outro arquivo enviado depois usa movimentos desta importação. Descarte primeiro o mais recente.",
+  "Importacao sem divergencia de conta para confirmar": "Esta importação não tem divergência de conta pendente.",
 };
 
 function erroDaRpc(error: { code?: string; message: string }): Error {
@@ -111,6 +118,33 @@ export function iniciarProcessamento(usuarioId: string, importacao: string, sha2
 
 export function quarentenar(usuarioId: string, dados: { importacao: string; tentativa: number; nonce: string; motivo: string }) {
   return rpcAssinada("fin_conciliacao_quarentenar", "quarentenar", usuarioId, dados);
+}
+
+export type ResultadoConferenciaConta = {
+  conferencia: ConferenciaConta;
+  motivo: string;
+  detectada: { banco?: string; agencia?: string; conta?: string } | null;
+  sugerida: string | null;
+};
+
+export function conferirConta(
+  usuarioId: string,
+  dados: { importacao: string; tentativa: number; nonce: string; detectada: ContaDetectada | null },
+): Promise<ResultadoConferenciaConta> {
+  return rpcAssinada("fin_conciliacao_conferir_conta", "conferir_conta", usuarioId, dados);
+}
+
+export function confirmarConta(usuarioId: string, importacao: string): Promise<{ confirmada: boolean }> {
+  return rpcAssinada("fin_conciliacao_confirmar_conta", "confirmar_conta", usuarioId, { importacao });
+}
+
+export type MotivoDescarte = "conta_errada" | "arquivo_errado" | "outro";
+
+export function descartarImportacao(
+  usuarioId: string,
+  dados: { importacao: string; motivo: MotivoDescarte },
+): Promise<{ descartada: boolean; movimentos_removidos: number }> {
+  return rpcAssinada("fin_conciliacao_descartar_importacao", "descartar_importacao", usuarioId, dados);
 }
 
 export type ResultadoRegistro = {
@@ -275,10 +309,17 @@ export type ImportacaoResumo = {
   caminhoArquivo: string | null;
   arquivoGuardado: boolean;
   criadoEm: string;
+  contaConferencia: ConferenciaConta | null;
+  contaConferenciaMotivo: string | null;
+  contaDetectada: ContaDetectada | null;
+  contaSugeridaId: string | null;
+  contaConfirmadaEm: string | null;
+  descartadaEm: string | null;
+  descarteMotivo: MotivoDescarte | null;
 };
 
 const COLUNAS_IMPORTACAO =
-  "id, conta_financeira_id, tipo_documento, formato, situacao, motivo_codigo, nome_original, fonte_extracao, conferencia_aritmetica, periodo_inicio, periodo_fim, linhas_lidas, movimentos_novos, mesmo_identificador, possiveis_duplicidades, conflitos_identificador, linhas_saldo, linhas_com_erro, movimentos_sem_conferencia, erros, duplicada_de_id, sha256, caminho_arquivo, arquivo_guardado, criado_em";
+  "id, conta_financeira_id, tipo_documento, formato, situacao, motivo_codigo, nome_original, fonte_extracao, conferencia_aritmetica, periodo_inicio, periodo_fim, linhas_lidas, movimentos_novos, mesmo_identificador, possiveis_duplicidades, conflitos_identificador, linhas_saldo, linhas_com_erro, movimentos_sem_conferencia, erros, duplicada_de_id, sha256, caminho_arquivo, arquivo_guardado, criado_em, conta_conferencia, conta_conferencia_motivo, conta_detectada, conta_sugerida_id, conta_confirmada_em, descartada_em, descarte_motivo";
 
 type ImportacaoRow = {
   id: string;
@@ -306,6 +347,13 @@ type ImportacaoRow = {
   caminho_arquivo: string | null;
   arquivo_guardado: boolean;
   criado_em: string;
+  conta_conferencia: ConferenciaConta | null;
+  conta_conferencia_motivo: string | null;
+  conta_detectada: { banco?: string; agencia?: string; conta?: string } | null;
+  conta_sugerida_id: string | null;
+  conta_confirmada_em: string | null;
+  descartada_em: string | null;
+  descarte_motivo: MotivoDescarte | null;
 };
 
 function importacaoDaLinha(r: ImportacaoRow): ImportacaoResumo {
@@ -335,6 +383,15 @@ function importacaoDaLinha(r: ImportacaoRow): ImportacaoResumo {
     caminhoArquivo: r.caminho_arquivo,
     arquivoGuardado: r.arquivo_guardado,
     criadoEm: r.criado_em,
+    contaConferencia: r.conta_conferencia,
+    contaConferenciaMotivo: r.conta_conferencia_motivo,
+    contaDetectada: r.conta_detectada
+      ? { banco: r.conta_detectada.banco ?? null, agencia: r.conta_detectada.agencia ?? null, conta: r.conta_detectada.conta ?? null }
+      : null,
+    contaSugeridaId: r.conta_sugerida_id,
+    contaConfirmadaEm: r.conta_confirmada_em,
+    descartadaEm: r.descartada_em,
+    descarteMotivo: r.descarte_motivo,
   };
 }
 

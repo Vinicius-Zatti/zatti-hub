@@ -23,6 +23,7 @@ import type { ResultadoLeitura, TipoDocumento } from "./tipos";
 import {
   baixarArquivo,
   carregarContextoMotor,
+  conferirConta,
   criarImportacao,
   enviarArquivo,
   iniciarProcessamento,
@@ -30,6 +31,7 @@ import {
   registrarResultado,
   registroUsoIa,
   type FlagsConciliacao,
+  type ResultadoConferenciaConta,
   type ResultadoRegistro,
 } from "@/lib/banco/conciliacao";
 import type { AcessoAtual } from "@/lib/acesso";
@@ -40,9 +42,9 @@ import type { AcessoAtual } from "@/lib/acesso";
 // -> registrar tudo numa transação atestada. Nenhum efeito financeiro.
 
 export type ResultadoImportacao =
-  | { tipo: "quarentena"; motivo: string }
+  | { tipo: "quarentena"; motivo: string; conta?: ResultadoConferenciaConta | null }
   | { tipo: "duplicada"; canonica: string }
-  | { tipo: "registrada"; importacaoId: string; resultado: ResultadoRegistro };
+  | { tipo: "registrada"; importacaoId: string; resultado: ResultadoRegistro; conta: ResultadoConferenciaConta | null };
 
 type Contexto = { acesso: AcessoAtual; flags: FlagsConciliacao };
 
@@ -103,9 +105,15 @@ async function processarImportacao(
   }
 
   const leitura = await lerConteudo(ctx, p.importacaoId, deteccao, p.bytes, p.tipoDocumento, prazo);
+  const conta = await conferirContaSemTravar(ctx, {
+    importacao: p.importacaoId,
+    tentativa,
+    nonce,
+    detectada: leitura.ok ? leitura.contaDetectada ?? null : null,
+  });
   if (!leitura.ok && leitura.quarentena) {
     await quarentenar(ctx.acesso.userId, { importacao: p.importacaoId, tentativa, nonce, motivo: leitura.codigo });
-    return { tipo: "quarentena", motivo: leitura.codigo };
+    return { tipo: "quarentena", motivo: leitura.codigo, conta };
   }
   if (!leitura.ok) {
     const resultado = await registrarResultado(ctx.acesso.userId, {
@@ -118,7 +126,7 @@ async function processarImportacao(
       erro_global: leitura.codigo,
       linhas: [],
     });
-    return { tipo: "registrada", importacaoId: p.importacaoId, resultado };
+    return { tipo: "registrada", importacaoId: p.importacaoId, resultado, conta };
   }
 
   const { categorias, regras } = await carregarContextoMotor(ctx.acesso.unidadeId, ctx.acesso.organizacaoId);
@@ -130,7 +138,21 @@ async function processarImportacao(
     ctx.acesso.userId,
     montarConteudoRegistro({ importacao: p.importacaoId, tentativa, nonce, leitura, movimentos }),
   );
-  return { tipo: "registrada", importacaoId: p.importacaoId, resultado };
+  return { tipo: "registrada", importacaoId: p.importacaoId, resultado, conta };
+}
+
+/** A conferência da conta é um alerta, não uma trava da leitura: se falhar,
+ * a importação segue e a tela mostra "conta não conferida". */
+async function conferirContaSemTravar(
+  ctx: Contexto,
+  dados: Parameters<typeof conferirConta>[1],
+): Promise<ResultadoConferenciaConta | null> {
+  try {
+    return await conferirConta(ctx.acesso.userId, dados);
+  } catch {
+    console.error("conciliacao_conferencia_conta_falhou");
+    return null;
+  }
 }
 
 async function lerConteudo(

@@ -1,7 +1,7 @@
 import { centavosDeTextoBR } from "./dinheiro";
 import { conferirSaldos } from "./conferencia";
 import { LINHAS_MAXIMAS } from "./arquivo";
-import type { LinhaExtraida, ResultadoLeitura } from "./tipos";
+import type { ContaDetectada, LinhaExtraida, ResultadoLeitura } from "./tipos";
 
 // Leitura determinística do "Extrato da conta" do PagSeguro/PagBank (4 das
 // contas da Dom Quixote). Entrada: os trechos de texto do PDF na ordem do
@@ -30,6 +30,16 @@ function isoDeBr(texto: string): string | null {
 export function reconhecerPagSeguro(trechos: TrechoPdf[]): boolean {
   const inicio = trechos.slice(0, 60).map((t) => t.texto).join(" ");
   return /Extrato da conta/.test(inicio) && /Per[ií]odo:\s*\d{2}\/\d{2}\/\d{4} a \d{2}\/\d{2}\/\d{4}/.test(inicio) && /PagSeguro|PagBank/i.test(inicio);
+}
+
+/** Cabeçalho do PagBank: "290 - PagSeguro Internet S/A", "Agência 0001",
+ * "Conta 51881143-5". Só números; titular e CPF ficam de fora. */
+export function identificarContaPagSeguro(trechos: TrechoPdf[]): ContaDetectada | null {
+  const inicio = trechos.slice(0, 60).map((t) => t.texto).join(" ");
+  const banco = /\b(\d{3})\s*-\s*Pag(?:Seguro|Bank)/i.exec(inicio)?.[1] ?? null;
+  const agencia = /Ag[eê]ncia:?\s*(\d{1,6})\b/i.exec(inicio)?.[1] ?? null;
+  const conta = /\bConta:?\s*(\d{1,20}(?:-[0-9Xx])?)\b/.exec(inicio)?.[1] ?? null;
+  return banco || agencia || conta ? { banco, agencia, conta } : null;
 }
 
 export function lerPagSeguro(trechos: TrechoPdf[]): ResultadoLeitura | null {
@@ -118,5 +128,6 @@ export function lerPagSeguro(trechos: TrechoPdf[]): ResultadoLeitura | null {
     versaoParser: VERSAO_PARSER_PAGSEGURO,
     fonte: "deterministica",
     conferencia: conferida.conferencia,
+    contaDetectada: identificarContaPagSeguro(trechos),
   };
 }

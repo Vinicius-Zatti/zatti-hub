@@ -416,6 +416,15 @@ export const contaFinanceiraEntradaSchema = z
     tipo: tipoContaFinanceiraSchema,
     saldoInicial: z.number().finite().min(-LIMITE_DINHEIRO).max(LIMITE_DINHEIRO),
     dataSaldoInicial: dataIsoSchema,
+    // Opcionais: vazio limpa (null); ausente não mexe no que está cadastrado.
+    bancoCodigo: z.string().trim().regex(/^(\d{3})?$/, "Código do banco tem 3 números").optional().transform((v) => (v === undefined ? undefined : v || null)),
+    agencia: z.string().trim().regex(/^(\d{1,6})?$/, "Agência só com números").optional().transform((v) => (v === undefined ? undefined : v || null)),
+    numeroConta: z
+      .string()
+      .trim()
+      .regex(/^(\d{1,20}(-[0-9Xx])?)?$/, "Conta só com números e dígito (ex: 51881143-5)")
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v || null)),
   })
   .strict();
 

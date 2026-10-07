@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
+  confirmarContaAction,
+  descartarImportacaoAction,
   importarDocumentoAction,
   listarCandidatosAction,
   reprocessarImportacaoAction,
@@ -18,8 +20,12 @@ import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-b
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { EXPLICACAO_PONTUACAO } from "@/lib/conciliacao/candidatos";
 import {
+  descreverContaDetectada,
+  textoAlertaConta,
   textoMotivo,
   TEXTO_CONFERENCIA,
+  TEXTO_CONTA_NAO_VERIFICAVEL,
+  TEXTO_DESCARTE,
   TEXTO_FONTE_SUGESTAO,
   TEXTO_MOTIVO_SUGESTAO,
   TEXTO_NATUREZA,
@@ -63,6 +69,8 @@ export function ConciliacaoPiloto(props: {
   const [importando, setImportando] = useState(false);
   const [errosDe, setErrosDe] = useState<ImportacaoResumo | null>(null);
   const [candidatosDe, setCandidatosDe] = useState<ItemFila | null>(null);
+  const [descartarDe, setDescartarDe] = useState<ImportacaoResumo | null>(null);
+  const [alertaDe, setAlertaDe] = useState<ImportacaoResumo | null>(null);
   const nomeConta = new Map(props.contas.map((c) => [c.id, c.nome]));
 
   function href(parcial: Partial<{ pagina: number; estado: string; direcao: string; importacao: string | null; pimp: number }>) {
@@ -104,7 +112,9 @@ export function ConciliacaoPiloto(props: {
       </div>
 
       <p role="note" className="rounded-lg border border-ambar bg-ambar/10 p-3 text-sm text-azul-noite">
-        Piloto: importação e revisão. Nada desta tela é gravado em Receitas, Despesas, baixas ou DRE nesta etapa.
+        Piloto: importação e revisão. Esta tela mostra o que o Hub leu de cada extrato e o Plano de Contas que ele sugere.
+        Escolher o Plano de Contas, revisar datas e consolidar no financeiro é a próxima etapa: nada daqui vai para Receitas,
+        Despesas, baixas ou DRE ainda.
       </p>
 
       <section className="flex flex-col gap-2">
@@ -134,13 +144,23 @@ export function ConciliacaoPiloto(props: {
               </thead>
               <tbody>
                 {props.importacoes.map((i) => (
-                  <tr key={i.id} className="border-t border-cinza-claro align-top">
+                  <tr key={i.id} className={`border-t border-cinza-claro align-top ${i.situacao === "descartada" ? "text-cinza-medio" : ""}`}>
                     <td className="px-3 py-2 whitespace-nowrap">{dataHoraBr(i.criadoEm)}</td>
                     <td className="max-w-[220px] truncate px-3 py-2" title={i.nomeOriginal}>{i.nomeOriginal}</td>
-                    <td className="px-3 py-2">{nomeConta.get(i.contaFinanceiraId) ?? "-"}</td>
+                    <td className="px-3 py-2">
+                      {nomeConta.get(i.contaFinanceiraId) ?? "-"}
+                      {i.situacao !== "descartada" && <SeloConta importacao={i} onAbrirAlerta={() => setAlertaDe(i)} />}
+                    </td>
                     <td className="px-3 py-2">
                       <span className="font-semibold">{TEXTO_SITUACAO[i.situacao] ?? i.situacao}</span>
-                      {i.motivoCodigo && <div className="text-xs text-cinza-medio">{textoMotivo(i.motivoCodigo)}</div>}
+                      {i.situacao === "descartada" ? (
+                        <div className="text-xs">
+                          {TEXTO_DESCARTE[i.descarteMotivo ?? ""] ?? ""}
+                          {i.descartadaEm && ` em ${dataHoraBr(i.descartadaEm)}`}
+                        </div>
+                      ) : (
+                        i.motivoCodigo && <div className="text-xs text-cinza-medio">{textoMotivo(i.motivoCodigo)}</div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">{i.linhasLidas}</td>
                     <td className="px-3 py-2 text-right">{i.movimentosNovos}</td>
@@ -164,10 +184,17 @@ export function ConciliacaoPiloto(props: {
                       )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-xs">
-                      {(i.situacao === "concluida" || i.situacao === "parcial") && (
-                        <Link href={href({ importacao: i.id })} className="font-semibold text-azul-petroleo underline">Ver na fila</Link>
-                      )}
-                      {i.situacao === "processando" && <BotaoReprocessar importacaoId={i.id} />}
+                      <div className="flex flex-col items-start gap-1">
+                        {(i.situacao === "concluida" || i.situacao === "parcial") && (
+                          <Link href={href({ importacao: i.id })} className="font-semibold text-azul-petroleo underline">Ver movimentos</Link>
+                        )}
+                        {i.situacao === "processando" && <BotaoReprocessar importacaoId={i.id} />}
+                        {i.situacao !== "descartada" && i.situacao !== "processando" && (
+                          <button type="button" onClick={() => setDescartarDe(i)} className="font-semibold text-vermelho underline">
+                            Descartar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -203,12 +230,12 @@ export function ConciliacaoPiloto(props: {
         {props.fila.length === 0 ? (
           <p className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">Nada na fila com estes filtros.</p>
         ) : (
-          <TabelaRolavel ariaLabel="Fila de revisão">
+          <TabelaRolavel className="max-h-[75vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Fila de revisão">
             <table className="w-full min-w-[1200px] text-sm">
               <thead>
                 <tr className="bg-azul-petroleo text-branco">
-                  <Th larguraFixa="96px">Data</Th>
-                  <Th fixo>Descrição</Th>
+                  <Th fixo soTelaLarga larguraFixa="104px">Data</Th>
+                  <Th fixo soTelaLarga esquerda="104px">Descrição</Th>
                   <Th align="right">Valor</Th>
                   <Th>Natureza</Th>
                   <Th>Situação</Th>
@@ -221,24 +248,34 @@ export function ConciliacaoPiloto(props: {
               </thead>
               <tbody>
                 {props.fila.map((m) => (
-                  <tr key={m.id} className="border-t border-cinza-claro align-top">
-                    <td className="px-3 py-2 whitespace-nowrap">{formatarDataBr(m.data)}</td>
-                    <td className="max-w-[280px] truncate px-3 py-2" title={m.descricaoOriginal}>{m.descricaoOriginal}</td>
+                  <tr key={m.id} className="border-t border-cinza-claro whitespace-nowrap">
+                    <td className="z-10 w-[104px] min-w-[104px] bg-branco px-3 py-2 md:sticky md:left-0">{formatarDataBr(m.data)}</td>
+                    <td
+                      className="z-10 max-w-[220px] min-w-[220px] truncate bg-branco px-3 py-2 md:sticky md:left-[104px] md:max-w-[300px] md:min-w-[300px] md:border-r md:border-cinza-claro"
+                      title={m.descricaoOriginal}
+                    >
+                      {m.descricaoOriginal}
+                    </td>
                     <td className={`px-3 py-2 text-right whitespace-nowrap font-semibold ${m.direcao === "saida" ? "text-vermelho" : "text-verde"}`}>
                       {m.direcao === "saida" ? "-" : "+"} {brl(m.valor)}
                     </td>
                     <td className="px-3 py-2">{TEXTO_NATUREZA[m.natureza] ?? m.natureza}</td>
-                    <td className="px-3 py-2">
+                    <td className="max-w-[200px] truncate px-3 py-2" title={m.motivoRevisao ? textoMotivo(m.motivoRevisao) : undefined}>
                       {m.estado === "revisar" ? <span className="font-semibold text-azul-noite underline decoration-ambar decoration-2">Revisar</span> : "Pendente"}
-                      {m.motivoRevisao && <div className="text-xs text-cinza-medio">{textoMotivo(m.motivoRevisao)}</div>}
+                      {m.motivoRevisao && <span className="text-xs text-cinza-medio"> · {textoMotivo(m.motivoRevisao)}</span>}
                     </td>
-                    <td className="max-w-[240px] truncate px-3 py-2" title={m.sugestao?.categoriaId ? props.planoDeContas[m.sugestao.categoriaId] : ""}>
-                      {m.sugestao?.categoriaId ? props.planoDeContas[m.sugestao.categoriaId] ?? "-" : "-"}
+                    <td
+                      className="max-w-[240px] truncate px-3 py-2"
+                      title={m.sugestao?.categoriaId ? props.planoDeContas[m.sugestao.categoriaId] : "O Hub ainda não tem regra nem histórico para sugerir"}
+                    >
+                      {m.sugestao?.categoriaId ? props.planoDeContas[m.sugestao.categoriaId] ?? "-" : <span className="text-cinza-medio">Sem sugestão</span>}
                     </td>
                     <td className="px-3 py-2">{rotuloConfianca(m.sugestao?.confianca)}</td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="max-w-[280px] truncate px-3 py-2 text-xs" title={m.sugestao ? TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo] : undefined}>
                       {m.sugestao ? TEXTO_FONTE_SUGESTAO[m.sugestao.fonte] ?? m.sugestao.fonte : "-"}
-                      {m.sugestao && <div className="text-cinza-medio">{TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo] ?? ""}</div>}
+                      {m.sugestao && TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo] && (
+                        <span className="text-cinza-medio"> · {TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo]}</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs">{m.fonteExtracao === "ia" ? "IA" : "Local"}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-xs">
@@ -256,7 +293,35 @@ export function ConciliacaoPiloto(props: {
       </section>
 
       <ModalFlutuante aberto={importando} onFechar={() => setImportando(false)}>
-        <FormularioImportacao contas={props.contas.filter((c) => c.ativo)} iaDocumentos={props.iaDocumentos} onFechar={() => setImportando(false)} />
+        <FormularioImportacao
+          contas={props.contas.filter((c) => c.ativo)}
+          nomeConta={nomeConta}
+          iaDocumentos={props.iaDocumentos}
+          onFechar={() => setImportando(false)}
+        />
+      </ModalFlutuante>
+      <ModalFlutuante aberto={descartarDe !== null} onFechar={() => setDescartarDe(null)}>
+        {descartarDe && (
+          <Descartar importacao={descartarDe} nomeConta={nomeConta.get(descartarDe.contaFinanceiraId) ?? ""} onFechar={() => setDescartarDe(null)} />
+        )}
+      </ModalFlutuante>
+      <ModalFlutuante aberto={alertaDe !== null} onFechar={() => setAlertaDe(null)}>
+        {alertaDe && (
+          <AlertaConta
+            importacaoId={alertaDe.id}
+            texto={textoAlertaConta({
+              escolhida: nomeConta.get(alertaDe.contaFinanceiraId) ?? "",
+              motivo: alertaDe.contaConferenciaMotivo,
+              detectada: alertaDe.contaDetectada,
+              sugerida: alertaDe.contaSugeridaId ? nomeConta.get(alertaDe.contaSugeridaId) ?? null : null,
+            })}
+            onDescartar={() => {
+              setDescartarDe(alertaDe);
+              setAlertaDe(null);
+            }}
+            onFechar={() => setAlertaDe(null)}
+          />
+        )}
       </ModalFlutuante>
       <ModalFlutuante aberto={errosDe !== null} onFechar={() => setErrosDe(null)}>
         {errosDe && <ErrosImportacao importacao={errosDe} onFechar={() => setErrosDe(null)} />}
@@ -316,6 +381,120 @@ function BotaoReprocessar({ importacaoId }: { importacaoId: string }) {
   );
 }
 
+function SeloConta({ importacao: i, onAbrirAlerta }: { importacao: ImportacaoResumo; onAbrirAlerta: () => void }) {
+  if (i.contaConferencia === "divergente" && !i.contaConfirmadaEm) {
+    return (
+      <button type="button" onClick={onAbrirAlerta} className="mt-0.5 block text-left text-xs font-bold text-vermelho underline">
+        A conta não bate com o extrato
+      </button>
+    );
+  }
+  if (i.contaConferencia === "divergente") return <div className="text-xs text-cinza-medio">Conta confirmada por você apesar do alerta</div>;
+  if (i.contaConferencia === "confere") {
+    return <div className="text-xs text-verde">Conta conferida ({descreverContaDetectada(i.contaDetectada)})</div>;
+  }
+  if (i.contaConferencia === "nao_verificavel") {
+    return <div className="text-xs text-cinza-medio">{TEXTO_CONTA_NAO_VERIFICAVEL[i.contaConferenciaMotivo ?? ""] ?? "Conta não conferida"}</div>;
+  }
+  return null;
+}
+
+function AlertaConta({ importacaoId, texto, onDescartar, onFechar }: {
+  importacaoId: string;
+  texto: string;
+  onDescartar: () => void;
+  onFechar: () => void;
+}) {
+  const router = useRouter();
+  const [pendente, iniciar] = useTransition();
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-vermelho">A conta não bate com o extrato</h2>
+      <p className="text-sm">{texto}</p>
+      <p className="text-sm font-semibold">Tem certeza de que este extrato é da conta que você escolheu?</p>
+      <p className="text-xs text-cinza-medio">Enquanto não houver resposta, esta importação não pode ser consolidada no financeiro.</p>
+      {mensagem && <p role="status" className="text-sm text-vermelho">{mensagem}</p>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={onFechar} className="rounded-md px-3 py-1.5 text-sm text-cinza-medio">Decidir depois</button>
+        <button type="button" onClick={onDescartar} className="rounded-md border border-vermelho px-3 py-1.5 text-sm font-semibold text-vermelho">
+          Não, descartar importação
+        </button>
+        <button
+          type="button"
+          disabled={pendente}
+          onClick={() =>
+            iniciar(async () => {
+              const r = await confirmarContaAction(importacaoId);
+              if (!r.ok) {
+                setMensagem(r.mensagem);
+                return;
+              }
+              router.refresh();
+              onFechar();
+            })
+          }
+          className="rounded-md bg-ambar px-3 py-1.5 text-sm font-bold text-azul-noite disabled:opacity-50"
+        >
+          {pendente ? "Confirmando..." : "Sim, é desta conta"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Descartar({ importacao, nomeConta, onFechar }: { importacao: ImportacaoResumo; nomeConta: string; onFechar: () => void }) {
+  const router = useRouter();
+  const [motivo, setMotivo] = useState(importacao.contaConferencia === "divergente" ? "conta_errada" : "");
+  const [pendente, iniciar] = useTransition();
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const [feito, setFeito] = useState(false);
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Descartar importação</h2>
+      <p className="text-sm">
+        {importacao.nomeOriginal} · {nomeConta}
+        {importacao.movimentosNovos > 0 && ` · ${importacao.movimentosNovos} movimentos saem da fila`}
+      </p>
+      <p className="text-xs text-cinza-medio">
+        A importação continua na lista como descartada, para histórico. Você pode enviar o mesmo arquivo de novo na conta certa.
+      </p>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-semibold">Motivo</span>
+        <select value={motivo} onChange={(e) => setMotivo(e.target.value)} disabled={feito} className="rounded-md border border-cinza-claro bg-branco px-3 py-2">
+          <option value="" disabled>Escolha o motivo</option>
+          <option value="conta_errada">Enviei na conta errada</option>
+          <option value="arquivo_errado">Enviei o arquivo errado</option>
+          <option value="outro">Outro motivo</option>
+        </select>
+      </label>
+      {mensagem && <p role="status" className={`text-sm ${feito ? "text-verde" : "text-vermelho"}`}>{mensagem}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onFechar} className="rounded-md px-3 py-1.5 text-sm text-cinza-medio">{feito ? "Fechar" : "Cancelar"}</button>
+        {!feito && (
+          <button
+            type="button"
+            disabled={pendente || !motivo}
+            onClick={() =>
+              iniciar(async () => {
+                const r = await descartarImportacaoAction({ importacaoId: importacao.id, motivo });
+                setMensagem(r.mensagem);
+                if (r.ok) {
+                  setFeito(true);
+                  router.refresh();
+                }
+              })
+            }
+            className="rounded-md bg-vermelho px-3 py-1.5 text-sm font-bold text-branco disabled:opacity-50"
+          >
+            {pendente ? "Descartando..." : "Descartar"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function descreverResultado(r: RespostaImportacao): string {
   if (!r.ok) return r.mensagem;
   const x = r.resultado;
@@ -326,19 +505,39 @@ function descreverResultado(r: RespostaImportacao): string {
   return `${s.situacao === "parcial" ? "Importação parcial" : "Importação concluída"}: ${s.movimentos_novos ?? 0} novos, ${s.possiveis_duplicidades ?? 0} possíveis duplicidades, ${s.linhas_com_erro ?? 0} linhas com erro.`;
 }
 
-function FormularioImportacao({ contas, iaDocumentos, onFechar }: { contas: Conta[]; iaDocumentos: boolean; onFechar: () => void }) {
+function FormularioImportacao({ contas, nomeConta, iaDocumentos, onFechar }: {
+  contas: Conta[];
+  nomeConta: Map<string, string>;
+  iaDocumentos: boolean;
+  onFechar: () => void;
+}) {
   const router = useRouter();
   const [conta, setConta] = useState("");
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [alerta, setAlerta] = useState<{ importacaoId: string; texto: string } | null>(null);
+  const [confirmando, iniciarConfirmacao] = useTransition();
 
   function enviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const dados = new FormData(e.currentTarget);
     dados.set("contaFinanceiraId", conta);
+    setAlerta(null);
     iniciar(async () => {
       const r = await importarDocumentoAction(dados);
       setMensagem(descreverResultado(r));
+      if (r.ok && r.resultado.tipo === "registrada" && r.resultado.conta?.conferencia === "divergente") {
+        const c = r.resultado.conta;
+        setAlerta({
+          importacaoId: r.resultado.importacaoId,
+          texto: textoAlertaConta({
+            escolhida: nomeConta.get(conta) ?? "",
+            motivo: c.motivo,
+            detectada: c.detectada,
+            sugerida: c.sugerida ? nomeConta.get(c.sugerida) ?? null : null,
+          }),
+        });
+      }
       router.refresh();
     });
   }
@@ -367,6 +566,31 @@ function FormularioImportacao({ contas, iaDocumentos, onFechar }: { contas: Cont
           : "A leitura por IA está desligada para esta unidade: PDF sem leitura local e imagem não são lidos."}
       </p>
       {mensagem && <p role="status" className="rounded-md bg-cinza-claro/40 p-2 text-sm">{mensagem}</p>}
+      {alerta && (
+        <div role="alert" className="flex flex-col gap-2 rounded-md border-2 border-vermelho bg-vermelho/5 p-3 text-sm">
+          <p className="font-bold text-vermelho">A conta não bate com o extrato</p>
+          <p>{alerta.texto}</p>
+          <p className="font-semibold">Tem certeza de que este extrato é da conta que você escolheu?</p>
+          <p className="text-xs text-cinza-medio">Se não for, feche e use &quot;Descartar&quot; na lista de importações. Depois envie de novo na conta certa.</p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={confirmando}
+              onClick={() =>
+                iniciarConfirmacao(async () => {
+                  const r = await confirmarContaAction(alerta.importacaoId);
+                  setMensagem(r.mensagem);
+                  if (r.ok) setAlerta(null);
+                  router.refresh();
+                })
+              }
+              className="rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite disabled:opacity-50"
+            >
+              {confirmando ? "Confirmando..." : "Sim, é desta conta"}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onFechar} className="rounded-md px-3 py-1.5 text-sm text-cinza-medio">Fechar</button>
         <button type="submit" disabled={pendente || !conta} className="rounded-md bg-ambar px-3 py-1.5 text-sm font-bold text-azul-noite disabled:opacity-50">

@@ -69,6 +69,37 @@ export const TEXTO_SITUACAO: Record<string, string> = {
   quarentena: "Quarentena",
   duplicada: "Arquivo repetido",
   expirada: "Expirada",
+  descartada: "Descartada",
+};
+
+export const TEXTO_DESCARTE: Record<string, string> = {
+  conta_errada: "Enviado na conta errada",
+  arquivo_errado: "Arquivo errado",
+  outro: "Outro motivo",
+};
+
+type Detectada = { banco?: string | null; agencia?: string | null; conta?: string | null } | null;
+
+/** "banco 290, agência 0001, conta 51881143-5" */
+export function descreverContaDetectada(d: Detectada): string {
+  if (!d) return "";
+  return [d.banco && `banco ${d.banco}`, d.agencia && `agência ${d.agencia}`, d.conta && `conta ${d.conta}`].filter(Boolean).join(", ");
+}
+
+/** Alerta de conta: o que foi escolhido x o que a leitura encontrou. */
+export function textoAlertaConta(p: { escolhida: string; motivo: string | null; detectada: Detectada; sugerida: string | null }): string {
+  const lida = descreverContaDetectada(p.detectada);
+  const noHub = p.sugerida ? `, que no Hub é "${p.sugerida}"` : ", que não está cadastrada nesta unidade";
+  if (p.motivo === "arquivo_em_outra_conta") {
+    return `Você escolheu "${p.escolhida}", mas este mesmo arquivo já foi enviado na conta "${p.sugerida ?? "outra conta"}".`;
+  }
+  if (p.motivo === "banco_diferente") return `Você escolheu "${p.escolhida}", mas o extrato é do ${lida}.`;
+  return `Você escolheu "${p.escolhida}", mas pela leitura do cabeçalho o extrato é da ${lida}${noHub}.`;
+}
+
+export const TEXTO_CONTA_NAO_VERIFICAVEL: Record<string, string> = {
+  documento_sem_conta: "Conta não conferida: o documento não traz o número da conta",
+  conta_sem_numero_cadastrado: "Conta não conferida: cadastre banco, agência e número desta conta",
 };
 
 export const TEXTO_NATUREZA: Record<string, string> = {

@@ -7,6 +7,10 @@ export type ContaFinanceira = {
   saldoInicial: number;
   dataSaldoInicial: string;
   ativo: boolean;
+  /** Identificação bancária opcional: a Conciliação confere o extrato por ela. */
+  bancoCodigo?: string | null;
+  agencia?: string | null;
+  numeroConta?: string | null;
 };
 
 /** Só pro cartão de Conta Financeira (`listarContasFinanceirasComSaldos`) -

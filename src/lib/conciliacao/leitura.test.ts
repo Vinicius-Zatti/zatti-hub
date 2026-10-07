@@ -127,6 +127,20 @@ describe("PDF PagSeguro (leitura local antes de qualquer IA)", () => {
     );
     expect(r && r.ok && r.conferencia).toBe("divergente");
   });
+  it("tira banco, agência e conta do cabeçalho, sem nome nem CPF", () => {
+    const r = lerPagSeguro(
+      trechos(
+        "Extrato da conta|Emitido em: 01/10/2026 às 09:17|Periodo: 01/09/2026 a 30/09/2026|Fulana de Tal|CPF: 000.000.000-00|" +
+          "290 - PagSeguro Internet S/A|Agência 0001|Conta 51881143-5|Descrição|Data| |Valor|01/09/2026| |Pix| |R$ 10,00",
+      ),
+    );
+    if (!r || !r.ok) throw new Error("falhou");
+    expect(r.contaDetectada).toEqual({ banco: "290", agencia: "0001", conta: "51881143-5" });
+  });
+  it("cabeçalho sem agência e conta não inventa número", () => {
+    const r = lerPagSeguro(trechos(`${cabecalho}|01/08/2026| |Pix| |R$ 10,00`));
+    expect(r && r.ok && r.contaDetectada).toEqual({ banco: "290", agencia: null, conta: null });
+  });
   it("layout desconhecido devolve null (não inventa leitura)", () => {
     expect(lerPagSeguro(trechos("Extrato por Período|31 de Agosto de 2026|Deb Pix Qr Cod|-R$ 70,38|31AGO"))).toBeNull();
   });

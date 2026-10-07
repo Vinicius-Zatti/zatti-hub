@@ -64,6 +64,8 @@ export async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]
 
 // ── Contas financeiras ──────────────────────────────────────────────────
 
+const COLUNAS_CONTA_FINANCEIRA = "id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo, banco_codigo, agencia, numero_conta";
+
 type ContaFinanceiraRow = {
   id: string;
   nome: string;
@@ -71,6 +73,9 @@ type ContaFinanceiraRow = {
   saldo_inicial: number;
   data_saldo_inicial: string;
   ativo: boolean;
+  banco_codigo: string | null;
+  agencia: string | null;
+  numero_conta: string | null;
 };
 
 function contaFinanceiraDaLinha(row: ContaFinanceiraRow): ContaFinanceira {
@@ -81,6 +86,9 @@ function contaFinanceiraDaLinha(row: ContaFinanceiraRow): ContaFinanceira {
     saldoInicial: Number(row.saldo_inicial),
     dataSaldoInicial: row.data_saldo_inicial,
     ativo: row.ativo,
+    bancoCodigo: row.banco_codigo ?? null,
+    agencia: row.agencia ?? null,
+    numeroConta: row.numero_conta ?? null,
   };
 }
 
@@ -88,7 +96,7 @@ export async function listarContasFinanceiras(unidadeId: string, somenteAtivas =
   const supabase = await createClient();
   let query = supabase
     .from("fin_contas_financeiras")
-    .select("id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo")
+    .select(COLUNAS_CONTA_FINANCEIRA)
     .eq("unidade_id", unidadeId)
     .order("nome");
   if (somenteAtivas) query = query.eq("ativo", true);
@@ -105,6 +113,9 @@ export async function criarContaFinanceira(params: {
   tipo: TipoContaFinanceira;
   saldoInicial: number;
   dataSaldoInicial: string;
+  bancoCodigo?: string | null;
+  agencia?: string | null;
+  numeroConta?: string | null;
   criadoPor: string;
 }): Promise<ContaFinanceira> {
   const supabase = await createClient();
@@ -116,9 +127,12 @@ export async function criarContaFinanceira(params: {
       tipo: params.tipo,
       saldo_inicial: params.saldoInicial,
       data_saldo_inicial: params.dataSaldoInicial,
+      banco_codigo: params.bancoCodigo ?? null,
+      agencia: params.agencia ?? null,
+      numero_conta: params.numeroConta ?? null,
       criado_por: params.criadoPor,
     })
-    .select("id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo")
+    .select(COLUNAS_CONTA_FINANCEIRA)
     .single();
 
   if (error || !data) throw new Error(error?.message ?? "Falha ao criar conta financeira");
@@ -217,6 +231,9 @@ export async function editarContaFinanceira(params: {
   tipo: TipoContaFinanceira;
   saldoInicial: number;
   dataSaldoInicial: string;
+  bancoCodigo?: string | null;
+  agencia?: string | null;
+  numeroConta?: string | null;
   ativo: boolean;
 }): Promise<ContaFinanceira> {
   const supabase = await createClient();
@@ -227,11 +244,15 @@ export async function editarContaFinanceira(params: {
       tipo: params.tipo,
       saldo_inicial: params.saldoInicial,
       data_saldo_inicial: params.dataSaldoInicial,
+      // Ausente (undefined) não entra no update: preserva o cadastrado.
+      ...(params.bancoCodigo !== undefined ? { banco_codigo: params.bancoCodigo } : {}),
+      ...(params.agencia !== undefined ? { agencia: params.agencia } : {}),
+      ...(params.numeroConta !== undefined ? { numero_conta: params.numeroConta } : {}),
       ativo: params.ativo,
     })
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id)
-    .select("id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo")
+    .select(COLUNAS_CONTA_FINANCEIRA)
     .single();
 
   if (error || !data) throw new Error(error?.message ?? "Falha ao editar conta financeira");
