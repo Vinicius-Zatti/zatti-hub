@@ -12,6 +12,8 @@ import {
   linkWhatsapp,
   normalizarInstagram,
   ordemEtapa,
+  ROTULO_ETAPA,
+  SUGESTAO_ETAPA,
   type EventoLead,
   type Lead,
 } from "./funil";
@@ -96,8 +98,14 @@ describe("funil comercial", () => {
     expect(linkWhatsapp("31996555532")).toBe("https://wa.me/5531996555532");
   });
 
-  it("prospecção: Mandar primeira mensagem vem antes de Abordado", () => {
-    expect(ordemEtapa("mandar_primeira_mensagem")).toBe(1);
+  it("prospecção: Começar a seguir, depois Mandar primeira mensagem, depois Abordado", () => {
+    expect(ordemEtapa("comecar_a_seguir")).toBe(1);
+    expect(ordemEtapa("mandar_primeira_mensagem")).toBe(2);
+    expect(ordemEtapa("abordado")).toBe(3);
+    expect(ordemEtapa("perdido")).toBe(0);
+    expect(ROTULO_ETAPA.comecar_a_seguir).toBe("Começar a seguir");
+    expect(SUGESTAO_ETAPA.comecar_a_seguir).toBe("Seguir o perfil no Instagram e passar para Mandar primeira mensagem");
+    expect(SUGESTAO_ETAPA.mandar_primeira_mensagem).toBe("Mandar a primeira mensagem curta pelo Direct, sem link");
     expect(ordemEtapa("abordado")).toBeGreaterThan(ordemEtapa("mandar_primeira_mensagem"));
     expect(ordemEtapa("respondeu")).toBeGreaterThan(ordemEtapa("abordado"));
   });
@@ -114,8 +122,8 @@ describe("funil comercial", () => {
 
   it("evento criado aparece na linha do tempo com a etapa de entrada", () => {
     const [l] = descreverEventos([
-      ev({ tipo: "criado", em: "2026-10-07T10:00:00Z", paraEtapa: "mandar_primeira_mensagem", autor: "vinicius" }),
+      ev({ tipo: "criado", em: "2026-10-07T10:00:00Z", paraEtapa: "comecar_a_seguir", autor: "vinicius" }),
     ]);
-    expect(l.titulo).toBe("Lead cadastrado em Mandar primeira mensagem");
+    expect(l.titulo).toBe("Lead cadastrado em Começar a seguir");
   });
 });

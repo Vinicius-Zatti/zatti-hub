@@ -28,7 +28,7 @@ const VAZIO = {
 };
 
 /** Botão + modal do Novo lead (prospecção ativa). Basta o @ do Instagram ou o
- * WhatsApp; o lead entra em "Mandar primeira mensagem". */
+ * WhatsApp; o lead entra em "Começar a seguir". */
 export function NovoLead() {
   const { pendente, erro, setErro, executar } = useAcao();
   const [aberto, setAberto] = useState(false);

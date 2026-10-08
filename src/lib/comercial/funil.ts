@@ -4,6 +4,7 @@
  * um lead. Decisões de Vinícius em 02/10/2026 (crm-leads-v1-desenho.md). */
 
 export const ETAPAS = [
+  "comecar_a_seguir",
   "mandar_primeira_mensagem",
   "abordado",
   "respondeu",
@@ -19,6 +20,7 @@ export const ETAPAS = [
 export type Etapa = (typeof ETAPAS)[number];
 
 export const ROTULO_ETAPA: Record<Etapa, string> = {
+  comecar_a_seguir: "Começar a seguir",
   mandar_primeira_mensagem: "Mandar primeira mensagem",
   abordado: "Abordado",
   respondeu: "Respondeu",
@@ -38,7 +40,8 @@ export function ordemEtapa(etapa: Etapa): number {
 
 /** Próximo passo sugerido para quem está em cada etapa. */
 export const SUGESTAO_ETAPA: Record<Etapa, string> = {
-  mandar_primeira_mensagem: "Mandar a primeira mensagem pelo Direct do Instagram",
+  comecar_a_seguir: "Seguir o perfil no Instagram e passar para Mandar primeira mensagem",
+  mandar_primeira_mensagem: "Mandar a primeira mensagem curta pelo Direct, sem link",
   abordado: "Esperar resposta; retomar no 2º dia",
   respondeu: "Mandar o link da página com a origem do canal",
   link_enviado: "Ver se abriu o link; retomar em 2 dias",

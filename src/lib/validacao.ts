@@ -879,7 +879,7 @@ export const excluirRegistroClienteSchema = z
 // O id do lead chega da tela, mas nunca decide acesso: RLS (só master) e a RPC
 // `zh_leads_atualizar` conferem. Organização do "Virou cliente" é conferida no banco.
 const etapaComercialSchema = z.enum([
-  "mandar_primeira_mensagem", "abordado", "respondeu", "link_enviado", "preencheu_formulario", "comprou_livro", "comprou_app",
+  "comecar_a_seguir", "mandar_primeira_mensagem", "abordado", "respondeu", "link_enviado", "preencheu_formulario", "comprou_livro", "comprou_app",
   "em_acompanhamento", "reuniao_diagnostico", "consultoria_fechada",
 ]);
 export const acaoLeadSchema = z.discriminatedUnion("acao", [

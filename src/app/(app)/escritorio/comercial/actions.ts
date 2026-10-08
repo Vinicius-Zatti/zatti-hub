@@ -61,7 +61,7 @@ export async function acaoLeadAction(input: unknown): Promise<ResultadoComercial
 }
 
 /** Novo lead (prospecção ativa): basta o @ do Instagram ou o WhatsApp. Entra
- * em "Mandar primeira mensagem" com o evento `criado` na linha do tempo. */
+ * em "Começar a seguir" com o evento `criado` na linha do tempo. */
 export async function criarLeadAction(input: unknown): Promise<ResultadoComercial> {
   const acesso = await requireEscritorio();
   try {

@@ -119,7 +119,7 @@ export type NovoLeadBanco = {
 export async function criarLead(dados: NovoLeadBanco): Promise<string> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("zh_leads_criar", {
-    p_dados: { ...dados, etapa: "mandar_primeira_mensagem" },
+    p_dados: { ...dados, etapa: "comecar_a_seguir" },
   });
   if (error) {
     if (error.code === "23505") throw new ErroPublico("Já existe um lead com esse Instagram ou WhatsApp.");

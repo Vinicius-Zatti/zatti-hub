@@ -1,7 +1,7 @@
 /** Importa em lote os leads da prospecção ativa pelo Instagram para o
  * Comercial (Escritório > Comercial) do Zatti Hub.
  *
- * Cada lead entra com origem `instagram`, etapa "Mandar primeira mensagem" e
+ * Cada lead entra com origem `instagram`, etapa "Começar a seguir" e
  * o evento `criado` na linha do tempo, pela RPC `zh_leads_importar` (só
  * service_role). Lead que já existe (mesmo @ ou mesmo WhatsApp) não é
  * duplicado nem sobrescrito: aparece na lista de repetidos. Item inválido
