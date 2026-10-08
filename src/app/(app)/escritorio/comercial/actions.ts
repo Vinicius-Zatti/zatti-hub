@@ -6,10 +6,32 @@ import * as banco from "@/lib/banco/comercial";
 import { pareceCredencial } from "@/lib/clientes/jornada";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
-import { instagramValido, normalizarInstagram } from "@/lib/comercial/funil";
-import { acaoLeadSchema, novoLeadSchema, validarEntrada } from "@/lib/validacao";
+import { instagramValido, normalizarInstagram, type EventoLead, type Lead } from "@/lib/comercial/funil";
+import { acaoLeadSchema, idUuidSchema, novoLeadSchema, validarEntrada } from "@/lib/validacao";
 
 export type ResultadoComercial = { ok: true } | { ok: false; mensagem: string };
+
+export type FichaLeadDados = {
+  lead: Lead;
+  eventos: EventoLead[];
+  organizacoes: { id: string; nome: string }[];
+};
+
+/** Leitura da ficha para o modal do funil (clique no cartão abre a ficha por
+ * cima do kanban, sem trocar de página). Mesma barreira da página da ficha. */
+export async function carregarFichaLeadAction(
+  leadId: unknown,
+): Promise<{ ok: true; dados: FichaLeadDados } | { ok: false; mensagem: string }> {
+  await requireEscritorio();
+  try {
+    const id = validarEntrada(idUuidSchema, leadId);
+    const [dados, organizacoes] = await Promise.all([banco.carregarLead(id), banco.listarOrganizacoesAtivas()]);
+    if (!dados) throw new ErroPublico("Lead não encontrado.");
+    return { ok: true, dados: { ...dados, organizacoes } };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível abrir a ficha do lead.") };
+  }
+}
 
 /** Uma ação só para a ficha do lead: mover etapa, perdido com motivo, próxima
  * ação, nota e "Virou cliente". Barreira de master, limite, RPC (grava a

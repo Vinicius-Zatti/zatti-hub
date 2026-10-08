@@ -30,15 +30,21 @@ const ROTULO_AUTOR: Record<EventoLead["autor"], string> = { site: "Site", vini: 
 type Modal = "etapa" | "perdido" | "proxima" | "nota" | "cliente" | null;
 
 /** Ficha do lead: dados, próxima ação, linha do tempo e ações de Vinícius.
- * Criar e editar sempre em modal (regra do AGENTS.md). */
+ * Criar e editar sempre em modal (regra do AGENTS.md). Com `aoFechar`, a
+ * ficha está aberta em modal por cima do funil: troca o "← Comercial" por
+ * "Fechar" e avisa `aoAlterar` depois de cada ação salva para recarregar. */
 export function FichaLead({
   lead,
   eventos,
   organizacoes,
+  aoFechar,
+  aoAlterar,
 }: {
   lead: Lead;
   eventos: EventoLead[];
   organizacoes: { id: string; nome: string }[];
+  aoFechar?: () => void;
+  aoAlterar?: () => void;
 }) {
   const { pendente, erro, setErro, executar } = useAcao();
   const [modal, setModal] = useState<Modal>(null);
@@ -55,18 +61,30 @@ export function FichaLead({
   };
   const fechar = () => setModal(null);
   const salvar = (entrada: Record<string, unknown>) =>
-    executar(() => acaoLeadAction({ leadId: lead.id, ...entrada }), () => setModal(null));
+    executar(() => acaoLeadAction({ leadId: lead.id, ...entrada }), () => {
+      setModal(null);
+      aoAlterar?.();
+    });
 
   const linhas = descreverEventos(eventos).reverse();
   const orgNome = organizacoes.find((o) => o.id === lead.organizacaoId)?.nome;
 
   return (
-    <div className="flex flex-col gap-4 pb-10">
+    <div className={`flex flex-col gap-4 ${aoFechar ? "" : "pb-10"}`}>
       <div className="flex flex-col gap-1">
-        <Link href="/escritorio/comercial" className="text-sm font-semibold text-azul-petroleo hover:underline">
-          ← Comercial
-        </Link>
-        <h1 className="font-display text-2xl font-bold text-azul-noite">{lead.nome}</h1>
+        {aoFechar ? (
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="font-display text-2xl font-bold text-azul-noite">{lead.nome}</h2>
+            <button type="button" onClick={aoFechar} className={classeBotaoLeve}>Fechar</button>
+          </div>
+        ) : (
+          <>
+            <Link href="/escritorio/comercial" className="text-sm font-semibold text-azul-petroleo hover:underline">
+              ← Comercial
+            </Link>
+            <h1 className="font-display text-2xl font-bold text-azul-noite">{lead.nome}</h1>
+          </>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Selo tom={lead.etapa === "perdido" ? "critico" : "atencao"}>{ROTULO_ETAPA[lead.etapa]}</Selo>
           <Selo>{ROTULO_ORIGEM[lead.origem]}</Selo>
