@@ -10,14 +10,17 @@ import {
   carregarDadosNovaFichaTecnica,
   carregarFichaTecnicaParaExibir,
   criarCategoriaFicha,
+  definirFotoFichaTecnica,
   editarCategoriaFicha,
   excluirCategoriaFicha,
   excluirFichaTecnica,
   getFichaTecnicaCompleta,
+  removerFotoFichaTecnica,
   salvarConfiguracaoFinanceira,
   salvarConversaoProduto,
   salvarConversoesProduto,
   salvarFichaTecnica,
+  urlFotoFichaTecnica,
   type DadosNovaFichaTecnica,
   type EntradaFichaTecnica,
   type FichaTecnicaParaExibir,
@@ -35,7 +38,8 @@ import {
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
-import { mensagemErroPublica } from "@/lib/erros";
+import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
+import { TAMANHO_MAXIMO_FOTO_FICHA } from "@/lib/foto-ficha";
 import type { CategoriaFicha, ConfiguracaoFinanceira } from "@/lib/types";
 
 export type ResultadoSalvarFicha = { ok: true; id: string; sku: string } | { ok: false; mensagem: string };
@@ -59,9 +63,16 @@ export async function salvarFichaTecnicaAction(
   try {
     await exigirLimiteRequisicao("ficha_salvar");
     const idValidado = fichaId === null ? null : validarEntrada(idUuidSchema, fichaId);
-    const entrada = validarEntrada(fichaTecnicaEntradaSchema, input);
+    const entradaValidada = validarEntrada(fichaTecnicaEntradaSchema, input);
 
     const antes = idValidado ? await getFichaTecnicaCompleta(acesso.unidadeId, idValidado) : null;
+    // A foto muda pelas ações próprias dela (enviar/remover). Aqui vale o que
+    // está no banco, nunca o que o formulário trouxe - senão um formulário
+    // aberto antes do envio da foto apagaria a foto ao salvar. Resta uma
+    // janela de milissegundos (salvar e trocar a foto ao mesmo tempo) em que
+    // o caminho antigo volta: fechar exige mudar a RPC salvar_ficha_tecnica.
+    // Risco aceito em 09/10/2026 (perder a foto é aceitável, anexa de novo).
+    const entrada = { ...entradaValidada, fotoPath: antes?.fotoPath ?? null };
     const salva = await salvarFichaTecnica({ unidadeId: acesso.unidadeId, fichaId: idValidado, entrada });
 
     await registrarAuditoria({
@@ -192,6 +203,69 @@ export async function excluirFichaTecnicaAction(id: string): Promise<ResultadoAc
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível excluir a ficha técnica.") };
+  }
+}
+
+export type ResultadoFotoFicha = { ok: true; fotoUrl: string | null } | { ok: false; mensagem: string };
+
+/** Foto da ficha - chega já reduzida pelo navegador (ver
+ * `FotoFichaTecnica`); o limite de 300 KB e o tipo real do arquivo são
+ * conferidos de novo em `definirFotoFichaTecnica`. Usa o mesmo limite de
+ * tentativas de salvar a ficha. */
+export async function enviarFotoFichaAction(formData: FormData): Promise<ResultadoFotoFicha> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_salvar");
+    const idValidado = validarEntrada(idUuidSchema, formData.get("id"));
+    const arquivo = formData.get("foto");
+    if (!(arquivo instanceof File)) throw new ErroPublico("Nenhuma foto recebida.");
+    if (arquivo.size > TAMANHO_MAXIMO_FOTO_FICHA) {
+      throw new ErroPublico("A foto passou de 300 KB. Recarregue a página e tente de novo.");
+    }
+    const bytes = new Uint8Array(await arquivo.arrayBuffer());
+    const { fotoPath, anterior } = await definirFotoFichaTecnica({
+      unidadeId: acesso.unidadeId,
+      fichaId: idValidado,
+      bytes,
+    });
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "ficha_tecnica_foto",
+      entidadeId: idValidado,
+      dadosAntigos: { fotoPath: anterior },
+      dadosNovos: { fotoPath, tamanho: bytes.length },
+    });
+
+    revalidatePath(`/fichas-tecnicas/${idValidado}`);
+    return { ok: true, fotoUrl: await urlFotoFichaTecnica(acesso.unidadeId, idValidado, fotoPath) };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a foto.") };
+  }
+}
+
+export async function removerFotoFichaAction(id: string): Promise<ResultadoFotoFicha> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_salvar");
+    const idValidado = validarEntrada(idUuidSchema, id);
+    const anterior = await removerFotoFichaTecnica(acesso.unidadeId, idValidado);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "excluir",
+      entidade: "ficha_tecnica_foto",
+      entidadeId: idValidado,
+      dadosAntigos: { fotoPath: anterior },
+    });
+
+    revalidatePath(`/fichas-tecnicas/${idValidado}`);
+    return { ok: true, fotoUrl: null };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível remover a foto.") };
   }
 }
 

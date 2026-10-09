@@ -3,6 +3,13 @@ import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import { ErroPublico } from "@/lib/erros";
 import { listarProdutosBanco } from "@/lib/banco/estoque";
 import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
+import {
+  BUCKET_FOTOS_FICHA,
+  caminhoFotoFicha,
+  caminhoPertenceAFicha,
+  detectarTipoFoto,
+  TAMANHO_MAXIMO_FOTO_FICHA,
+} from "@/lib/foto-ficha";
 import type {
   CamadaFicha,
   CategoriaFicha,
@@ -818,13 +825,142 @@ export async function sincronizarFichasRevenda(
  * pra mensagem pública abaixo. */
 export async function excluirFichaTecnica(unidadeId: string, id: string): Promise<void> {
   const supabase = await createClient();
-  const { error } = await supabase.from("fichas_tecnicas").delete().eq("unidade_id", unidadeId).eq("id", id);
+  // A foto só sai do bucket se a linha saiu de verdade (RLS pode filtrar o
+  // delete sem erro) - e o caminho vem da própria linha excluída.
+  const { data, error } = await supabase
+    .from("fichas_tecnicas")
+    .delete()
+    .eq("unidade_id", unidadeId)
+    .eq("id", id)
+    .select("foto_path");
   if (error) {
     if (error.code === "23503") {
       throw new ErroPublico("Essa ficha está sendo usada como componente de outra ficha - remova essa dependência antes de excluir.");
     }
     throw new Error(error.message);
   }
+  const excluida = (data ?? [])[0] as { foto_path: string | null } | undefined;
+  if (!excluida) throw new ErroPublico("Ficha técnica não encontrada.");
+  await apagarArquivoFoto(supabase, excluida.foto_path, unidadeId, id);
+}
+
+async function lerFotoPathFicha(supabase: SupabaseClient, unidadeId: string, fichaId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("fichas_tecnicas")
+    .select("foto_path")
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new ErroPublico("Ficha técnica não encontrada.");
+  return (data as { foto_path: string | null }).foto_path;
+}
+
+/** Melhor esforço: se o arquivo antigo não sair do bucket, a ficha já
+ * aponta pro novo (ou já foi excluída) e o resto continua funcionando -
+ * sobra só um arquivo órfão de no máximo 300 KB. */
+async function apagarArquivoFoto(
+  supabase: SupabaseClient,
+  caminho: string | null,
+  unidadeId: string,
+  fichaId: string,
+): Promise<void> {
+  if (!caminho || !caminhoPertenceAFicha(caminho, unidadeId, fichaId)) return;
+  const { error } = await supabase.storage.from(BUCKET_FOTOS_FICHA).remove([caminho]);
+  if (error) console.error("foto_ficha_remover_falhou", { fichaId, erro: error.message });
+}
+
+/** Troca o `foto_path` só se ele ainda for o que foi lido antes - se outra
+ * troca/remoção entrou no meio, nada é gravado e quem chamou desfaz o que
+ * subiu. Evita apontar pra arquivo já apagado ou deixar foto órfã. */
+async function trocarFotoPathSeIgual(
+  supabase: SupabaseClient,
+  unidadeId: string,
+  fichaId: string,
+  esperado: string | null,
+  novo: string | null,
+): Promise<void> {
+  let consulta = supabase
+    .from("fichas_tecnicas")
+    .update({ foto_path: novo })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId);
+  consulta = esperado === null ? consulta.is("foto_path", null) : consulta.eq("foto_path", esperado);
+  const { data, error } = await consulta.select("id").maybeSingle();
+  if (error) {
+    if (error.code === CODIGO_ERRO_VALIDACAO_SQL) throw new ErroPublico(error.message);
+    throw new Error(error.message);
+  }
+  if (!data) throw new ErroPublico("A foto desta ficha mudou enquanto você enviava. Recarregue a página e tente de novo.");
+}
+
+async function desfazerUpload(supabase: SupabaseClient, caminho: string, fichaId: string): Promise<void> {
+  const { error } = await supabase.storage.from(BUCKET_FOTOS_FICHA).remove([caminho]);
+  if (error) console.error("foto_ficha_desfazer_upload_falhou", { fichaId, erro: error.message });
+}
+
+/** Grava a foto (já reduzida no navegador) e troca o `foto_path` da ficha.
+ * Confere de novo no servidor o tamanho e o tipo real do arquivo - o limite
+ * do navegador é só conforto, este é o que vale. Usa o client com a sessão
+ * do usuário: as políticas do Storage e o RLS de `fichas_tecnicas` (Gestão
+ * ou master com MFA) continuam sendo a barreira. */
+export async function definirFotoFichaTecnica(params: {
+  unidadeId: string;
+  fichaId: string;
+  bytes: Uint8Array;
+}): Promise<{ fotoPath: string; anterior: string | null }> {
+  const { unidadeId, fichaId, bytes } = params;
+  if (bytes.length === 0) throw new ErroPublico("A foto chegou vazia. Tente de novo.");
+  if (bytes.length > TAMANHO_MAXIMO_FOTO_FICHA) {
+    throw new ErroPublico("A foto passou de 300 KB. Recarregue a página e tente de novo.");
+  }
+  const tipo = detectarTipoFoto(bytes);
+  if (!tipo) throw new ErroPublico("Formato de foto não aceito. Use uma foto JPG, PNG ou WebP.");
+
+  const supabase = await createClient();
+  const anterior = await lerFotoPathFicha(supabase, unidadeId, fichaId);
+  const caminho = caminhoFotoFicha(unidadeId, fichaId, crypto.randomUUID(), tipo);
+
+  const { error: erroUpload } = await supabase.storage
+    .from(BUCKET_FOTOS_FICHA)
+    .upload(caminho, bytes, { contentType: tipo, upsert: false });
+  if (erroUpload) throw new Error(erroUpload.message);
+
+  try {
+    await trocarFotoPathSeIgual(supabase, unidadeId, fichaId, anterior, caminho);
+  } catch (erro) {
+    await desfazerUpload(supabase, caminho, fichaId);
+    throw erro;
+  }
+
+  await apagarArquivoFoto(supabase, anterior, unidadeId, fichaId);
+  return { fotoPath: caminho, anterior };
+}
+
+export async function removerFotoFichaTecnica(unidadeId: string, fichaId: string): Promise<string | null> {
+  const supabase = await createClient();
+  const anterior = await lerFotoPathFicha(supabase, unidadeId, fichaId);
+  if (!anterior) return null;
+  await trocarFotoPathSeIgual(supabase, unidadeId, fichaId, anterior, null);
+  await apagarArquivoFoto(supabase, anterior, unidadeId, fichaId);
+  return anterior;
+}
+
+/** Link temporário (1h) pra exibir a foto - o bucket é privado. Falha ao
+ * assinar não derruba a tela: a ficha abre sem a foto. */
+export async function urlFotoFichaTecnica(
+  unidadeId: string,
+  fichaId: string,
+  fotoPath: string | null,
+): Promise<string | null> {
+  if (!fotoPath || !caminhoPertenceAFicha(fotoPath, unidadeId, fichaId)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage.from(BUCKET_FOTOS_FICHA).createSignedUrl(fotoPath, 3600);
+  if (error) {
+    console.error("foto_ficha_link_falhou", { fichaId, erro: error.message });
+    return null;
+  }
+  return data.signedUrl;
 }
 
 export type OpcaoProdutoFicha = {
@@ -963,6 +1099,8 @@ export type FichaTecnicaParaExibir = {
   categorias: CategoriaFicha[];
   produtos: OpcaoProdutoFicha[];
   fichasDisponiveis: { id: string; nome: string; sku: string; rendimentoUnidade: UnidadeRendimentoFicha; custoPorUnidade: number | null }[];
+  /** Link temporário da foto anexada, `null` sem foto. */
+  fotoUrl: string | null;
 };
 
 /** Tudo que a tela de detalhe (rota `/fichas-tecnicas/[id]` ou a janela
@@ -981,8 +1119,10 @@ export async function carregarFichaTecnicaParaExibir(
     podeGerir ? listarFichasTecnicas(unidadeId) : Promise.resolve([]),
   ]);
   if (!ficha) return null;
+  const fotoUrl = await urlFotoFichaTecnica(unidadeId, ficha.id, ficha.fotoPath);
   return {
     ficha,
+    fotoUrl,
     categorias,
     produtos,
     fichasDisponiveis: fichas.map((f) => ({

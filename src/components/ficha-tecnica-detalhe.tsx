@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CAMADA_LABEL, formatarQuantidade } from "@/lib/fichas-tecnicas";
 import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
+import { FotoFichaTecnica } from "@/components/foto-ficha-tecnica";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
 import { PrecosCanalFicha } from "@/components/precos-canal-ficha";
 import type { CategoriaFicha, FichaTecnica } from "@/lib/types";
@@ -23,6 +24,7 @@ const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" 
  * decide o que fazer é o componente pai. */
 export function FichaTecnicaDetalhe({
   ficha,
+  fotoUrl,
   podeGerir,
   categorias,
   produtos,
@@ -36,6 +38,8 @@ export function FichaTecnicaDetalhe({
   aoSalvar,
 }: {
   ficha: FichaTecnica;
+  /** Link temporário da foto anexada (ver `carregarFichaTecnicaParaExibir`). */
+  fotoUrl: string | null;
   podeGerir: boolean;
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
@@ -118,6 +122,14 @@ export function FichaTecnicaDetalhe({
           </div>
         </div>
       </div>
+
+      <FotoFichaTecnica
+        key={`${ficha.id}:${fotoUrl ?? ""}`}
+        fichaId={ficha.id}
+        nomeFicha={ficha.nome}
+        fotoUrlInicial={fotoUrl}
+        podeGerir={podeGerir}
+      />
 
       {podeGerir && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
