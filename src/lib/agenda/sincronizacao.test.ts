@@ -154,3 +154,90 @@ describe("parearCalendario - sobreposição", () => {
     expect(resultado.sobreposicoes).toEqual([]);
   });
 });
+
+describe("parearCalendario - ajuste do dia (etapa 2)", () => {
+  /** Quarta 30/09/2026 como estava no Calendar: natação movida de 11h45 para 8h15. */
+  const QUARTA = [
+    rotina("r-horizzon", "Horizzon (fixo)", "bloco", "09:00", "10:00"),
+    rotina("r-natacao", "Natação", "pessoal", "11:45", "12:45"),
+  ];
+  const natacaoMovida: CompromissoCalendario = {
+    ...evento("e-nat", "Natação", "08:15", "09:15", true),
+    horaOriginal: "11:45",
+  };
+
+  it("ocorrência movida vira ajuste da faixa e sai da seção Agenda", () => {
+    const resultado = parearCalendario(QUARTA, [natacaoMovida]);
+
+    expect(resultado.compromissos).toEqual([]);
+    expect(resultado.ajustePorRotina.get("r-natacao")).toEqual({ horaInicio: "08:15", horaFim: "09:15" });
+  });
+
+  it("faixa movida para cima de outra gera aviso com o horário do dia", () => {
+    const resultado = parearCalendario(QUARTA, [natacaoMovida]);
+    expect(resultado.sobreposicoes).toEqual(["Natação foi para 08:15-09:15 hoje e se sobrepõe a Horizzon (fixo)."]);
+  });
+
+  it("bloco encolhido só no fim também é ajuste do dia", () => {
+    const encolhido = { ...evento("e-hzz", "Horizzon", "09:00", "09:30", true), horaOriginal: "09:00" };
+    const resultado = parearCalendario(QUARTA, [encolhido]);
+    expect(resultado.ajustePorRotina.get("r-horizzon")).toEqual({ horaInicio: "09:00", horaFim: "09:30" });
+    expect(resultado.compromissos).toEqual([]);
+  });
+
+  it("série de outra atividade que veio do horário da faixa continua compromisso", () => {
+    const reuniao = { ...evento("e-r", "Reunião Adega do Alemão", "15:00", "16:00", true), horaOriginal: "11:45" };
+    const resultado = parearCalendario(QUARTA, [reuniao]);
+    expect(resultado.compromissos.map((c) => c.titulo)).toEqual(["Reunião Adega do Alemão"]);
+    expect(resultado.ajustePorRotina.size).toBe(0);
+  });
+
+  it("série que já nasce em horário diferente da grade não vira ajuste", () => {
+    // Divergência permanente entre série e grade fica para o painel de
+    // sincronização. Sem isso, toda ocorrência viraria "mudou hoje".
+    const outraSerie = { ...evento("e-nat2", "Natação", "07:00", "08:00", true), horaOriginal: "07:00" };
+    const resultado = parearCalendario(QUARTA, [outraSerie]);
+    expect(resultado.compromissos).toHaveLength(1);
+    expect(resultado.ajustePorRotina.size).toBe(0);
+  });
+
+  it("ocorrência virada em dia inteiro continua compromisso visível", () => {
+    const diaInteiro: CompromissoCalendario = {
+      ...evento("e-di", "Natação", null, null, true),
+      diaInteiro: true,
+      horaOriginal: "11:45",
+    };
+    const resultado = parearCalendario(QUARTA, [diaInteiro]);
+    expect(resultado.compromissos).toHaveLength(1);
+    expect(resultado.ajustePorRotina.size).toBe(0);
+  });
+
+  it("ocorrência trazida de outro dia nunca é escondida, nem no horário exato da faixa", () => {
+    const deOntem = { ...evento("e-on", "Natação", "11:45", "12:45", true), deOutroDia: true };
+    const resultado = parearCalendario(QUARTA, [deOntem]);
+    expect(resultado.compromissos).toHaveLength(1);
+    expect(resultado.espelhoPorRotina.size).toBe(0);
+  });
+
+  it("com duas faixas da mesma atividade, a movida fica com a faixa de origem", () => {
+    const duas = [
+      rotina("r-n1", "Natação", "pessoal", "08:15", "09:15"),
+      rotina("r-n2", "Natação", "pessoal", "11:45", "12:45"),
+    ];
+    const resultado = parearCalendario(duas, [natacaoMovida]);
+    expect(resultado.ajustePorRotina.get("r-n2")).toEqual({ horaInicio: "08:15", horaFim: "09:15" });
+    expect(resultado.espelhoPorRotina.has("r-n1")).toBe(false);
+  });
+
+  it("ocorrência no horário de sempre não gera ajuste", () => {
+    const normal = { ...evento("e-n", "Natação", "11:45", "12:45", true), horaOriginal: "11:45" };
+    const resultado = parearCalendario(QUARTA, [normal]);
+    expect(resultado.espelhoPorRotina.has("r-natacao")).toBe(true);
+    expect(resultado.ajustePorRotina.size).toBe(0);
+  });
+
+  it("avulso nunca vira ajuste, mesmo com o nome da faixa", () => {
+    const avulso = evento("e-av", "Natação", "08:15", "09:15", false);
+    expect(parearCalendario(QUARTA, [avulso]).compromissos).toHaveLength(1);
+  });
+});

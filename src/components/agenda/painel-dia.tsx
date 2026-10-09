@@ -13,7 +13,7 @@ import { ModalFlutuante } from "@/components/modal-flutuante";
 import { blocosDisponiveis, type DiaMontado } from "@/lib/agenda/dia";
 import { diaDaSemanaIso, horaCurta, nomeDiaSemana } from "@/lib/agenda/grade";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
-import type { RotinaAgenda, SituacaoItem, TarefaAgenda } from "@/lib/agenda/tipos";
+import type { AjusteDoDia, RotinaAgenda, SituacaoItem, TarefaAgenda } from "@/lib/agenda/tipos";
 import { TETO_PRIORIDADES } from "@/lib/agenda/tipos";
 
 /** As quatro seções saem na ordem da Agenda v2 do Cérebro do Gestor: Agenda,
@@ -38,6 +38,16 @@ function faixaDeHorario(rotina: RotinaAgenda): string {
   if (!rotina.horaInicio && !rotina.horaFim) return rotina.horarioTexto;
   if (!rotina.horaInicio) return rotina.horarioTexto;
   return rotina.horaFim ? `${horaCurta(rotina.horaInicio)}-${horaCurta(rotina.horaFim)}` : horaCurta(rotina.horaInicio);
+}
+
+/** Horário que vale no dia: o do Calendar quando a ocorrência foi movida. */
+function horarioDoDia(rotina: RotinaAgenda, ajuste: AjusteDoDia | null): string {
+  return ajuste ? faixaDeHorario({ ...rotina, ...ajuste }) : faixaDeHorario(rotina);
+}
+
+function AvisoAjuste({ rotina, ajuste }: { rotina: RotinaAgenda; ajuste: AjusteDoDia | null }) {
+  if (!ajuste) return null;
+  return <span className="ml-1 text-xs font-semibold text-ambar">(mudou hoje no Calendar; na grade: {faixaDeHorario(rotina)})</span>;
 }
 
 /** Soma dias a uma data ISO sem passar por fuso (mesma precaução de
@@ -246,12 +256,14 @@ export function PainelDia({
                   bloco.disponivel ? "" : "opacity-60"
                 }`}
               >
-                <span className="w-24 shrink-0 font-mono text-xs text-cinza-medio">{faixaDeHorario(bloco.rotina)}</span>
+                <span className="w-24 shrink-0 font-mono text-xs text-cinza-medio">{horarioDoDia(bloco.rotina, bloco.ajusteDoDia)}</span>
                 <div className="flex-1">
                   <p className="text-sm text-azul-noite">
                     {bloco.rotina.rotulo}
-                    {bloco.espelhadoNoCalendar && (
-                      <span className="ml-1 text-xs text-cinza-medio">(também no Calendar)</span>
+                    {bloco.ajusteDoDia ? (
+                      <AvisoAjuste rotina={bloco.rotina} ajuste={bloco.ajusteDoDia} />
+                    ) : (
+                      bloco.espelhadoNoCalendar && <span className="ml-1 text-xs text-cinza-medio">(também no Calendar)</span>
                     )}
                   </p>
                   {bloco.tarefas.map((tarefa) => (
@@ -281,10 +293,13 @@ export function PainelDia({
           <Vazio>Nenhuma rotina para esse dia da semana.</Vazio>
         ) : (
           <ul className="flex flex-col gap-2">
-            {dia.rotinas.map(({ rotina, situacao }) => (
+            {dia.rotinas.map(({ rotina, situacao, ajusteDoDia }) => (
               <li key={rotina.id} className="flex flex-wrap items-center gap-2 border-b border-cinza-claro pb-2 last:border-0">
-                <span className="w-24 shrink-0 font-mono text-xs text-cinza-medio">{faixaDeHorario(rotina)}</span>
-                <span className="flex-1 text-sm text-azul-noite">{rotina.rotulo}</span>
+                <span className="w-24 shrink-0 font-mono text-xs text-cinza-medio">{horarioDoDia(rotina, ajusteDoDia)}</span>
+                <span className="flex-1 text-sm text-azul-noite">
+                  {rotina.rotulo}
+                  <AvisoAjuste rotina={rotina} ajuste={ajusteDoDia} />
+                </span>
                 <select
                   value={situacao}
                   disabled={isPending}

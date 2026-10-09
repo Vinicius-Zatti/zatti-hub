@@ -174,3 +174,26 @@ describe("blocosDisponiveis", () => {
     expect(blocosDisponiveis(ROTINAS).map((r) => r.rotulo)).toEqual(["Horizzon (fixo)", "Protegido"]);
   });
 });
+
+describe("montarDia - ajuste do dia", () => {
+  it("bloco movido no Calendar vai para a posição do horário real, sem mudar a grade", () => {
+    const quarta: RotinaAgenda[] = [
+      { ...rotina("q1", "Horizzon (fixo)", "bloco", 0), horaInicio: "09:00", horaFim: "10:00" },
+      { ...rotina("q2", "Protegido", "bloco", 1), horaInicio: "10:00", horaFim: "11:45" },
+      { ...rotina("q3", "Natação", "pessoal", 2), horaInicio: "11:45", horaFim: "12:45" },
+    ];
+    const dia = montarDia({
+      rotinas: quarta,
+      tarefas: [],
+      execucoes: [],
+      compromissos: [
+        { id: "e", titulo: "Natação", horaInicio: "08:15", horaFim: "09:15", diaInteiro: false, recorrente: true, horaOriginal: "11:45" },
+      ],
+    });
+
+    expect(dia.linhaDoDia.map((b) => b.rotina.rotulo)).toEqual(["Natação", "Horizzon (fixo)", "Protegido"]);
+    expect(dia.linhaDoDia[0].ajusteDoDia).toEqual({ horaInicio: "08:15", horaFim: "09:15" });
+    expect(dia.linhaDoDia[0].rotina.horaInicio).toBe("11:45");
+    expect(dia.compromissos).toEqual([]);
+  });
+});

@@ -67,7 +67,19 @@ export type CompromissoCalendario = {
    * espelho da rotina da grade de um compromisso - ver `parearCalendario` em
    * `sincronizacao.ts`. */
   recorrente: boolean;
+  /** Horário de início que a série previa para esta ocorrência
+   * (`originalStartTime` do Calendar). Diferente de `horaInicio` quando a
+   * ocorrência foi movida só naquele dia. null em evento avulso e em
+   * ocorrência que a série previa para outra data. */
+  horaOriginal?: string | null;
+  /** Ocorrência que a série previa para outra data e foi trazida para hoje.
+   * Nunca é espelho nem ajuste de faixa: aparece sempre como compromisso. */
+  deOutroDia?: boolean;
 };
+
+/** Horário do dia de uma faixa da grade, quando o Calendar diz que naquele
+ * dia ela acontece em outro horário. Nunca altera a grade. */
+export type AjusteDoDia = { horaInicio: string | null; horaFim: string | null };
 
 /** Resultado da leitura do Calendar: ou os eventos, ou o motivo de não ter
  * conseguido ler. A tela nunca some com a seção Agenda em silêncio. */

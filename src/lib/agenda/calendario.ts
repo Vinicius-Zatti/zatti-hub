@@ -64,6 +64,15 @@ export async function lerCompromissosDoDia(dataIso: string): Promise<LeituraCale
         horaFim: horaDoDateTime(evento.end?.dateTime),
         diaInteiro: Boolean(evento.start?.date),
         recorrente: Boolean(evento.recurringEventId),
+        // Só vale como ajuste do dia se a série previa a ocorrência para esta
+        // mesma data. Vinda de outro dia, segue como compromisso visível.
+        horaOriginal: evento.originalStartTime?.dateTime?.startsWith(dataIso)
+          ? horaDoDateTime(evento.originalStartTime.dateTime)
+          : null,
+        deOutroDia: Boolean(
+          evento.originalStartTime &&
+            !(evento.originalStartTime.dateTime ?? evento.originalStartTime.date ?? "").startsWith(dataIso)
+        ),
       }));
 
     return { ok: true, eventos };

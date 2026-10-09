@@ -1,4 +1,5 @@
 import type {
+  AjusteDoDia,
   CompromissoCalendario,
   ExecucaoRotina,
   RotinaAgenda,
@@ -22,13 +23,31 @@ export type BlocoDoDia = {
   disponivel: boolean;
   /** Evento recorrente do Calendar reconhecido como espelho desta faixa. */
   espelhadoNoCalendar: boolean;
+  /** Horário do dia quando a ocorrência foi movida ou encolhida no Calendar. */
+  ajusteDoDia: AjusteDoDia | null;
 };
 
 export type RotinaDoDia = {
   rotina: RotinaAgenda;
   situacao: SituacaoItem;
   observacao: string;
+  ajusteDoDia: AjusteDoDia | null;
 };
+
+/** Reposiciona os blocos ajustados pelo horário do dia, sem mexer na ordem da
+ * grade dos demais. Faixa sem hora ("até 8h") nunca serve de referência. */
+function ordenarPeloDia(blocos: BlocoDoDia[]): BlocoDoDia[] {
+  const fixos = blocos.filter((bloco) => !bloco.ajusteDoDia?.horaInicio);
+  for (const bloco of blocos.filter((b) => b.ajusteDoDia?.horaInicio)) {
+    const inicio = bloco.ajusteDoDia!.horaInicio!;
+    const posicao = fixos.findIndex((outro) => {
+      const deOutro = outro.ajusteDoDia?.horaInicio ?? outro.rotina.horaInicio;
+      return deOutro !== null && deOutro > inicio;
+    });
+    fixos.splice(posicao === -1 ? fixos.length : posicao, 0, bloco);
+  }
+  return fixos;
+}
 
 export type DiaMontado = {
   compromissos: CompromissoCalendario[];
@@ -67,12 +86,17 @@ export function montarDia({ rotinas, tarefas, execucoes, compromissos }: Entrada
 
   const situacaoPorRotina = new Map(execucoes.map((e) => [e.rotinaId, e]));
 
-  const linhaDoDia: BlocoDoDia[] = rotinas.map((rotina) => ({
-    rotina,
-    tarefas: porRotina.get(rotina.id) ?? [],
-    disponivel: rotina.tipo === "bloco",
-    espelhadoNoCalendar: pareamento?.espelhoPorRotina.has(rotina.id) ?? false,
-  }));
+  const ajusteDe = (rotina: RotinaAgenda) => pareamento?.ajustePorRotina.get(rotina.id) ?? null;
+
+  const linhaDoDia: BlocoDoDia[] = ordenarPeloDia(
+    rotinas.map((rotina) => ({
+      rotina,
+      tarefas: porRotina.get(rotina.id) ?? [],
+      disponivel: rotina.tipo === "bloco",
+      espelhadoNoCalendar: pareamento?.espelhoPorRotina.has(rotina.id) ?? false,
+      ajusteDoDia: ajusteDe(rotina),
+    }))
+  );
 
   const prioridades = tarefas.filter((t) => t.prioridade);
   const tarefasSoltas = tarefas.filter((t) => !t.prioridade);
@@ -119,6 +143,7 @@ export function montarDia({ rotinas, tarefas, execucoes, compromissos }: Entrada
           rotina,
           situacao: execucao?.situacao ?? ("pendente" as SituacaoItem),
           observacao: execucao?.observacao ?? "",
+          ajusteDoDia: ajusteDe(rotina),
         };
       }),
     alertas,
