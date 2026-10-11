@@ -32,7 +32,7 @@ export function prepararMovimentos(leitura: LeituraOk, categorias: CategoriaMoto
     const descricaoNormalizada = normalizarDescricao(descricaoOriginal).slice(0, 300) || "sem descricao";
     const favorecido = descricaoParaBusca(descricaoNormalizada);
     const { natureza } = identificarNatureza(descricaoNormalizada, l.direcao);
-    const sugestao = sugerirDeterministico({ direcao: l.direcao, natureza, descricaoNormalizada }, regras, categorias, VERSAO_NORMALIZACAO);
+    const sugestao = sugerirDeterministico({ direcao: l.direcao, natureza, descricaoNormalizada, valor: l.valorCentavos / 100 }, regras, categorias, VERSAO_NORMALIZACAO);
     preparados.push({
       posicao: l.posicao,
       data: l.data,

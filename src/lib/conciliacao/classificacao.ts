@@ -28,9 +28,39 @@ export type RegraMotor = {
   codigoSistemaAlvo: string | null;
   situacao: "ativa" | "suspensa" | "conflitante";
   versao: number;
+  // Financeiro V2 (11/10/2026): condições editáveis. Ausentes = regra antiga (padrão exato).
+  nome?: string | null;
+  condicao?: "igual" | "contem" | "comeca_com";
+  valorMin?: number | null;
+  valorMax?: number | null;
+  prioridade?: number;
 };
 
-export type MovimentoMotor = { direcao: Direcao; natureza: Natureza; descricaoNormalizada: string };
+export type MovimentoMotor = { direcao: Direcao; natureza: Natureza; descricaoNormalizada: string; valor?: number };
+
+const ESPECIFICIDADE = { igual: 0, comeca_com: 1, contem: 2 } as const;
+
+/** A regra vale para o movimento? Padrão comparado com a descrição sem o prefixo bancário. */
+export function regraCasa(regra: RegraMotor, padraoMovimento: string, valor: number | undefined): boolean {
+  const condicao = regra.condicao ?? "igual";
+  const casaTexto =
+    condicao === "igual"
+      ? padraoMovimento === regra.padraoNormalizado
+      : condicao === "comeca_com"
+        ? padraoMovimento.startsWith(regra.padraoNormalizado)
+        : padraoMovimento.includes(regra.padraoNormalizado);
+  if (!casaTexto) return false;
+  if (valor !== undefined) {
+    if (regra.valorMin != null && valor < regra.valorMin) return false;
+    if (regra.valorMax != null && valor > regra.valorMax) return false;
+  }
+  return true;
+}
+
+/** Ordem: prioridade (menor primeiro), depois a condição mais específica. */
+function ordenarRegras(a: RegraMotor, b: RegraMotor): number {
+  return (a.prioridade ?? 100) - (b.prioridade ?? 100) || ESPECIFICIDADE[a.condicao ?? "igual"] - ESPECIFICIDADE[b.condicao ?? "igual"];
+}
 
 const PAPEIS_SOMENTE_PROVISAO = new Set(["cmo_ferias", "cmo_decimo_terceiro", "cmo_multa_fgts"]);
 
@@ -59,23 +89,28 @@ export function sugerirDeterministico(
   const porCodigo = new Map(categorias.filter((c) => c.codigoSistema).map((c) => [c.codigoSistema as string, c]));
   const padrao = descricaoParaBusca(movimento.descricaoNormalizada);
   const daMesmaVersao = regras.filter(
-    (r) => r.versaoNormalizacao === versaoNormalizacao && r.direcao === movimento.direcao && r.padraoNormalizado === padrao,
+    (r) => r.versaoNormalizacao === versaoNormalizacao && r.direcao === movimento.direcao && regraCasa(r, padrao, movimento.valor),
   );
 
-  // 1. Regra da unidade. Conflitante bloqueia a sugestão até a Gestão resolver.
+  // 1. Regra da unidade. Conflitante bloqueia a sugestão até a Gestão resolver; empate entre
+  // regras de mesma prioridade e mesma condição com Plano de Contas diferente também.
   const locais = daMesmaVersao.filter((r) => r.escopo === "unidade");
   if (locais.some((r) => r.situacao === "conflitante")) {
     return { ...SEM_SUGESTAO, motivoCodigo: "regra_conflitante" };
   }
-  const local = locais.find((r) => r.situacao === "ativa");
+  const ativas = locais.filter((r) => r.situacao === "ativa").sort(ordenarRegras);
+  if (ativas.length > 1 && ordenarRegras(ativas[0], ativas[1]) === 0 && ativas[0].categoriaId !== ativas[1].categoriaId) {
+    return { ...SEM_SUGESTAO, motivoCodigo: "regras_empatadas" };
+  }
+  const local = ativas[0];
   if (local && local.categoriaId && categoriaCompativel(porId.get(local.categoriaId), movimento.direcao)) {
     return {
       ...SEM_SUGESTAO,
       categoriaId: local.categoriaId,
       confianca: "alta",
       fonte: "regra_unidade",
-      motivoCodigo: "regra_unidade_exata",
-      evidencias: { regra_id: local.id },
+      motivoCodigo: (local.condicao ?? "igual") === "igual" ? "regra_unidade_exata" : "regra_unidade_condicao",
+      evidencias: { regra_id: local.id, ...(local.nome ? { regra_nome: local.nome } : {}) },
       regraId: local.id,
       regraVersao: local.versao,
     };

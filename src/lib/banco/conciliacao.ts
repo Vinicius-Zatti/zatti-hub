@@ -246,8 +246,14 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
     codigo_sistema_alvo: string | null;
     situacao: RegraMotor["situacao"];
     versao: number;
+    nome: string | null;
+    condicao: "igual" | "contem" | "comeca_com";
+    valor_min: number | string | null;
+    valor_max: number | string | null;
+    prioridade: number;
   };
-  const colunas = "id, escopo, padrao_normalizado, versao_normalizacao, direcao, categoria_id, codigo_sistema_alvo, situacao, versao";
+  const colunas =
+    "id, escopo, padrao_normalizado, versao_normalizacao, direcao, categoria_id, codigo_sistema_alvo, situacao, versao, nome, condicao, valor_min, valor_max, prioridade";
   const [locais, organizacionais] = await Promise.all([
     buscarTudo<RegraRow>((de, ate) =>
       supabase.from("fin_regras_classificacao").select(colunas).eq("escopo", "unidade").eq("unidade_id", unidadeId)
@@ -277,6 +283,11 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
       codigoSistemaAlvo: r.codigo_sistema_alvo,
       situacao: r.situacao,
       versao: r.versao,
+      nome: r.nome,
+      condicao: r.condicao,
+      valorMin: r.valor_min == null ? null : Number(r.valor_min),
+      valorMax: r.valor_max == null ? null : Number(r.valor_max),
+      prioridade: r.prioridade,
     })),
   };
 }
