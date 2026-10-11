@@ -18,6 +18,7 @@ import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
+import { DocumentoModal } from "@/components/financeiro-gerencial/documento-modal";
 import { calcularSaldoAberto, somarValores } from "@/lib/financeiro-gerencial/parcelas";
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
@@ -150,6 +151,7 @@ export function LancamentosGerenciador({
 }) {
   const titulo = tipo === "receita" ? "Receitas" : "Despesas";
   const [criando, setCriando] = useState(false);
+  const [criandoDocumento, setCriandoDocumento] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const rotuloData = rotuloDataParcela(tipo);
 
@@ -233,13 +235,22 @@ export function LancamentosGerenciador({
     <div className="flex flex-col gap-5 pb-10">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold text-azul-noite">{titulo}</h1>
-        <button
-          type="button"
-          onClick={() => setCriando(true)}
-          className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
-        >
-          + {tipo === "receita" ? "Nova receita" : "Nova despesa"}
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setCriandoDocumento(true)}
+            className="shrink-0 rounded-md border border-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:bg-ambar/10"
+          >
+            + Nota com vários Plano de Contas
+          </button>
+          <button
+            type="button"
+            onClick={() => setCriando(true)}
+            className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
+          >
+            + {tipo === "receita" ? "Nova receita" : "Nova despesa"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro bg-branco p-3">
@@ -407,6 +418,15 @@ export function LancamentosGerenciador({
       <ModalFlutuante aberto={criando} onFechar={() => setCriando(false)}>
         <FormularioLancamento tipo={tipo} categorias={categorias} contas={contas} onSalvo={() => setCriando(false)} onCancelar={() => setCriando(false)} />
       </ModalFlutuante>
+
+      <DocumentoModal
+        aberto={criandoDocumento}
+        onFechar={() => setCriandoDocumento(false)}
+        categorias={categorias}
+        contas={contas}
+        valoresIniciais={{ tipo }}
+        tipoFixo
+      />
 
       <ModalFlutuante aberto={editando !== null} onFechar={() => setEditando(null)}>
         {editando && <EdicaoLancamento lancamento={editando} categorias={categorias} contas={contas} onFechar={() => setEditando(null)} />}
