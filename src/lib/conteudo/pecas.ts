@@ -161,7 +161,7 @@ export function validarCorpoAtualizar(corpo: unknown): Validacao<CorpoAtualizar>
   if (!o) return { ok: false, erro: "corpo inválido" };
   const { id, versao, ...resto } = o;
   if (typeof id !== "string" || !UUID.test(id)) return { ok: false, erro: "campo inválido: id" };
-  if (typeof versao !== "number" || !Number.isInteger(versao) || versao < 1) return { ok: false, erro: "campo inválido: versao" };
+  if (typeof versao !== "number" || !Number.isInteger(versao) || versao < 1 || versao > 2147483647) return { ok: false, erro: "campo inválido: versao" };
   const r = validarCamposPeca(resto, true);
   if (!r.ok) return r;
   return { ok: true, valor: { id, versao, campos: r.valor } };

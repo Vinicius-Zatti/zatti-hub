@@ -275,14 +275,6 @@ begin
       end if;
     end if;
 
-    -- Reimportação: devolve a peça como está, sem sobrescrever o que foi editado no Hub.
-    if v_notion is not null then
-      select * into v_atual from public.conteudo_pecas c where c.origem_notion_id = v_notion;
-      if found then
-        return jsonb_build_object('peca', public.conteudo_peca_json(v_atual), 'existente', true);
-      end if;
-    end if;
-
     if not (v_campos ? 'titulo') then
       raise exception 'Campo invalido: titulo' using errcode = '22023';
     end if;
@@ -297,6 +289,15 @@ begin
     v_atual.link_arquivos := '';
     v_atual.observacao := '';
     v_nova := public.conteudo_aplicar_campos(v_atual, v_campos);
+
+    -- Reimportação: o payload já foi validado acima; devolve a peça como está, sem sobrescrever
+    -- o que foi editado no Hub.
+    if v_notion is not null then
+      select * into v_atual from public.conteudo_pecas c where c.origem_notion_id = v_notion;
+      if found then
+        return jsonb_build_object('peca', public.conteudo_peca_json(v_atual), 'existente', true);
+      end if;
+    end if;
     v_nova.origem_notion_id := v_notion;
     v_nova.versao := 1;
     v_nova.criado_em := now();

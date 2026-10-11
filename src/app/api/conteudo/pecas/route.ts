@@ -40,8 +40,27 @@ function traduzirErroRpc(e: { code?: string; message?: string }) {
 async function lerCorpo(request: NextRequest): Promise<{ ok: true; corpo: unknown } | { ok: false; resposta: NextResponse }> {
   const declarado = Number(request.headers.get("content-length") ?? "0");
   if (declarado > LIMITE_CORPO_BYTES) return { ok: false, resposta: erro(413, "corpo grande demais") };
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > LIMITE_CORPO_BYTES) return { ok: false, resposta: erro(413, "corpo grande demais") };
+  // Lê o stream aos pedaços e para no teto, mesmo sem Content-Length.
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  try {
+    const leitor = request.body?.getReader();
+    while (leitor) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > LIMITE_CORPO_BYTES) {
+        await leitor.cancel().catch(() => {});
+        return { ok: false, resposta: erro(413, "corpo grande demais") };
+      }
+      partes.push(value);
+    }
+  } catch {
+    return { ok: false, resposta: erro(400, "corpo ilegível") };
+  }
+  const bytes = new Uint8Array(total);
+  let pos = 0;
+  for (const p of partes) { bytes.set(p, pos); pos += p.byteLength; }
   try {
     return { ok: true, corpo: JSON.parse(new TextDecoder().decode(bytes)) };
   } catch {

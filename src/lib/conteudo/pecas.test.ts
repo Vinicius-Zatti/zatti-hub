@@ -92,6 +92,7 @@ describe("corpos da rota", () => {
     });
     expect(validarCorpoAtualizar({ id: "x", versao: 1, status: "Gravado" })).toEqual({ ok: false, erro: "campo inválido: id" });
     expect(validarCorpoAtualizar({ id: ID, versao: "1", status: "Gravado" })).toEqual({ ok: false, erro: "campo inválido: versao" });
+    expect(validarCorpoAtualizar({ id: ID, versao: 2147483648, status: "Gravado" })).toEqual({ ok: false, erro: "campo inválido: versao" });
     expect(validarCorpoAtualizar({ id: ID, versao: 1, origem_notion_id: "abc" })).toMatchObject({ ok: false });
   });
 
