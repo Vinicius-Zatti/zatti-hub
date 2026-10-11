@@ -23,6 +23,7 @@ const SUB_ITEMS = [
   { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
   // Financeiro V2 (11/10/2026): novos no fim, como manda a ordem aprovada.
   { label: "Contas a pagar e receber", href: "/financeiro-gerencial/contas-pagar-receber" },
+  { label: "Cartões", href: "/financeiro-gerencial/cartoes" },
   { label: "Caixa de Entrada", href: "/financeiro-gerencial/caixa-entrada" },
 ];
 

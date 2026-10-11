@@ -4,7 +4,10 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { criarContaFinanceiraAction, editarContaFinanceiraAction } from "@/app/(app)/financeiro-gerencial/contas/actions";
 import { CampoNumero } from "@/components/campo-numero";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
+import { EXPLICACAO_FATURA_CARTAO, contasQuePagam } from "@/lib/financeiro-gerencial/cartao";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import type { ContaFinanceiraComSaldos, TipoContaFinanceira } from "@/lib/financeiro-gerencial/tipos";
 
@@ -12,6 +15,7 @@ const TIPO_LABEL: Record<TipoContaFinanceira, string> = {
   banco: "Conta bancária",
   caixa: "Caixa físico",
   carteira_digital: "Carteira digital",
+  cartao_credito: "Cartão de crédito",
 };
 
 function hoje(): string {
@@ -34,7 +38,7 @@ export function ContasFinanceirasGerenciador({ contas }: { contas: ContaFinancei
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">Contas financeiras</h1>
           <p className="text-sm text-cinza-medio">
-            Conta bancária, caixa físico ou carteira digital - base do Fluxo de Caixa Realizado.
+            Conta bancária, caixa físico, carteira digital ou cartão de crédito - base do Fluxo de Caixa Realizado.
           </p>
         </div>
         <button
@@ -59,12 +63,12 @@ export function ContasFinanceirasGerenciador({ contas }: { contas: ContaFinancei
       )}
 
       <ModalFlutuante aberto={criando} onFechar={() => setCriando(false)}>
-        <FormularioConta onSalvo={() => setCriando(false)} onCancelar={() => setCriando(false)} />
+        <FormularioConta contas={contas} onSalvo={() => setCriando(false)} onCancelar={() => setCriando(false)} />
       </ModalFlutuante>
 
       <ModalFlutuante aberto={editando !== null} onFechar={() => setEditando(null)}>
         {editando && (
-          <FormularioConta conta={editando} onSalvo={() => setEditando(null)} onCancelar={() => setEditando(null)} />
+          <FormularioConta conta={editando} contas={contas} onSalvo={() => setEditando(null)} onCancelar={() => setEditando(null)} />
         )}
       </ModalFlutuante>
     </div>
@@ -83,6 +87,28 @@ function CartaoConta({ conta, onEditar }: { conta: ContaFinanceiraComSaldos; onE
           Editar
         </button>
       </div>
+      {conta.tipo === "cartao_credito" ? (
+        <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">Fechamento</div>
+            <div className="text-cinza">Dia {conta.diaFechamento}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">Vencimento</div>
+            <div className="text-cinza">Dia {conta.diaVencimento}</div>
+          </div>
+          <div>
+            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">
+              Compras em aberto
+              <DicaCalculo
+                rotulo="Compras em aberto"
+                texto="Soma do que ainda não foi pago das compras lançadas neste cartão, em todas as faturas. O pagamento da fatura sai da conta bancária."
+              />
+            </div>
+            <div className="font-mono font-semibold text-azul-noite">{brl(Math.max(0, conta.saldoAtual - conta.saldoProjetado))}</div>
+          </div>
+        </div>
+      ) : (
       <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">Saldo inicial</div>
@@ -98,16 +124,19 @@ function CartaoConta({ conta, onEditar }: { conta: ContaFinanceiraComSaldos; onE
           <div className="font-mono text-cinza">{brl(conta.saldoProjetado)}</div>
         </div>
       </div>
+      )}
     </div>
   );
 }
 
 function FormularioConta({
   conta,
+  contas,
   onSalvo,
   onCancelar,
 }: {
   conta?: ContaFinanceiraComSaldos;
+  contas: ContaFinanceiraComSaldos[];
   onSalvo: () => void;
   onCancelar: () => void;
 }) {
@@ -120,14 +149,34 @@ function FormularioConta({
   const [bancoCodigo, setBancoCodigo] = useState(conta?.bancoCodigo ?? "");
   const [agencia, setAgencia] = useState(conta?.agencia ?? "");
   const [numeroConta, setNumeroConta] = useState(conta?.numeroConta ?? "");
+  const [diaFechamento, setDiaFechamento] = useState<number | null>(conta?.diaFechamento ?? null);
+  const [diaVencimento, setDiaVencimento] = useState<number | null>(conta?.diaVencimento ?? null);
+  const [contaPagadoraId, setContaPagadoraId] = useState(conta?.contaPagadoraId ?? "");
+  const ehCartao = tipo === "cartao_credito";
+  // Conta já com movimento não vira cartão (nem o contrário): o tipo cartão fica travado na edição.
+  const tiposPermitidos = (Object.keys(TIPO_LABEL) as TipoContaFinanceira[]).filter((t) =>
+    !conta ? true : conta.tipo === "cartao_credito" ? t === "cartao_credito" : t !== "cartao_credito",
+  );
+  const opcoesPagadora = contasQuePagam(contas)
+    .filter((c) => c.ativo || c.id === contaPagadoraId)
+    .map((c) => ({ id: c.id, label: c.nome }));
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setErro(null);
+    if (ehCartao) {
+      const diaValido = (d: number | null) => d !== null && Number.isInteger(d) && d >= 1 && d <= 31;
+      if (!diaValido(diaFechamento) || !diaValido(diaVencimento)) {
+        setErro("Informe os dias de fechamento e de vencimento do cartão (1 a 31).");
+        return;
+      }
+    }
     startTransition(async () => {
-      const dados = { nome, tipo, saldoInicial: saldoInicial ?? 0, dataSaldoInicial, bancoCodigo, agencia, numeroConta };
+      const dados = ehCartao
+        ? { nome, tipo, saldoInicial: 0, dataSaldoInicial, diaFechamento, diaVencimento, contaPagadoraId: contaPagadoraId || null }
+        : { nome, tipo, saldoInicial: saldoInicial ?? 0, dataSaldoInicial, bancoCodigo, agencia, numeroConta };
       const resultado = conta
         ? await editarContaFinanceiraAction({ id: conta.id, ...dados, ativo })
         : await criarContaFinanceiraAction(dados);
@@ -161,13 +210,45 @@ function FormularioConta({
           onChange={(e) => setTipo(e.target.value as TipoContaFinanceira)}
           className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
         >
-          {(Object.keys(TIPO_LABEL) as TipoContaFinanceira[]).map((t) => (
+          {tiposPermitidos.map((t) => (
             <option key={t} value={t}>
               {TIPO_LABEL[t]}
             </option>
           ))}
         </select>
       </label>
+      {ehCartao && (
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Dia de fechamento
+              <CampoNumero value={diaFechamento} onChange={setDiaFechamento} decimais={0} className="w-full" />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Dia de vencimento
+              <CampoNumero value={diaVencimento} onChange={setDiaVencimento} decimais={0} className="w-full" />
+            </label>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-cinza-medio">
+            <span>Como a fatura de cada compra é escolhida</span>
+            <DicaCalculo rotulo="Como a fatura é escolhida" texto={EXPLICACAO_FATURA_CARTAO} />
+          </div>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+            Conta que paga a fatura (opcional)
+            <SeletorComBusca
+              value={contaPagadoraId}
+              opcoes={opcoesPagadora}
+              onChange={setContaPagadoraId}
+              vazioLabel="Nenhuma (escolher no pagamento)"
+              placeholder="Selecionar conta..."
+            />
+          </label>
+          <p className="text-xs text-cinza-medio">
+            Cartão não tem saldo próprio: a compra entra na DRE pela data da compra e o dinheiro sai do banco no pagamento da fatura.
+          </p>
+        </div>
+      )}
+      {!ehCartao && (
       <div className="flex gap-3">
         <label className="flex flex-1 flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Saldo inicial
@@ -183,7 +264,8 @@ function FormularioConta({
           />
         </label>
       </div>
-      {tipo !== "caixa" && (
+      )}
+      {tipo !== "caixa" && !ehCartao && (
         <div className="flex flex-col gap-1">
           <div className="flex gap-3">
             <label className="flex w-24 flex-col gap-1 text-sm font-semibold text-cinza-medio">

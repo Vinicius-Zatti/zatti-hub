@@ -53,7 +53,9 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
 
   return (
     <ConciliacaoPiloto
-      contas={contas.map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo }))}
+      // Cartão de crédito não tem extrato bancário para importar nem recebe transferência:
+      // a fatura é paga pela tela Cartões.
+      contas={contas.filter((c) => c.tipo !== "cartao_credito").map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo }))}
       importacoes={importacoes.itens}
       totalImportacoes={importacoes.total}
       paginaImportacoes={paginaImportacoes}

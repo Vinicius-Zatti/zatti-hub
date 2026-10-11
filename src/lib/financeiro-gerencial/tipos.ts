@@ -1,4 +1,4 @@
-export type TipoContaFinanceira = "banco" | "caixa" | "carteira_digital";
+export type TipoContaFinanceira = "banco" | "caixa" | "carteira_digital" | "cartao_credito";
 
 export type ContaFinanceira = {
   id: string;
@@ -11,6 +11,11 @@ export type ContaFinanceira = {
   bancoCodigo?: string | null;
   agencia?: string | null;
   numeroConta?: string | null;
+  /** Só no cartão de crédito: dia do mês em que a fatura fecha e em que vence. */
+  diaFechamento?: number | null;
+  diaVencimento?: number | null;
+  /** Só no cartão de crédito: conta que costuma pagar a fatura (padrão do pagamento). */
+  contaPagadoraId?: string | null;
 };
 
 /** Só pro cartão de Conta Financeira (`listarContasFinanceirasComSaldos`) -

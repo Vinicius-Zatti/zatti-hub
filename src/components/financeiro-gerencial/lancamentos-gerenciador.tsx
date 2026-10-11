@@ -22,6 +22,7 @@ import { DocumentoModal } from "@/components/financeiro-gerencial/documento-moda
 import { calcularSaldoAberto, somarValores } from "@/lib/financeiro-gerencial/parcelas";
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
+import { contasQuePagam } from "@/lib/financeiro-gerencial/cartao";
 import { planejarEdicaoRecorrencia, type OcorrenciaRecorrencia } from "@/lib/financeiro-gerencial/recorrencia";
 import {
   entradaEditarLancamento,
@@ -1367,8 +1368,12 @@ function FormularioBaixa({
   onCancelar: () => void;
 }) {
   const router = useRouter();
-  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
-  const [contaFinanceiraId, setContaFinanceiraId] = useState(parcela.contaFinanceiraId ?? contas[0]?.id ?? "");
+  // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
+  const pagadoras = useMemo(() => contasQuePagam(contas), [contas]);
+  const opcoesConta = useMemo(() => pagadoras.map((c) => ({ id: c.id, label: c.nome })), [pagadoras]);
+  const [contaFinanceiraId, setContaFinanceiraId] = useState(() =>
+    parcela.contaFinanceiraId && pagadoras.some((c) => c.id === parcela.contaFinanceiraId) ? parcela.contaFinanceiraId : (pagadoras[0]?.id ?? ""),
+  );
   const [valor, setValor] = useState<number | null>(saldoAberto);
   const [data, setData] = useState(hoje());
   const [observacao, setObservacao] = useState("");
