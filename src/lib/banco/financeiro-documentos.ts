@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
-import { buscarTudo } from "@/lib/banco/paginacao";
+import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import { erroDeNegocio } from "@/lib/banco/financeiro-gerencial";
 import { ratearDocumento } from "@/lib/financeiro-gerencial/rateio";
 import type { TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
@@ -174,4 +174,109 @@ export async function baixarVencimentoDocumento(params: {
   });
   if (error) throw erroDeNegocio(error);
   return data as number;
+}
+
+// ── Títulos (contas a pagar e a receber) ─────────────────────────────────
+
+export type Titulo = {
+  parcelaId: string;
+  lancamentoId: string;
+  tipo: TipoLancamento;
+  descricao: string;
+  categoriaId: string;
+  categoriaNome: string;
+  contraparteId: string | null;
+  contraparteNome: string | null;
+  documentoId: string | null;
+  documentoNumero: string | null;
+  documentoDescricao: string | null;
+  vencimentoDocumento: number | null;
+  numero: number;
+  totalParcelas: number;
+  dataPrevista: string;
+  dataCompetencia: string;
+  contaFinanceiraId: string | null;
+  valor: number;
+  valorBaixado: number;
+  saldo: number;
+  status: "aberto" | "parcial" | "quitado" | "cancelado";
+};
+
+/** Todas as parcelas de um tipo (sem as canceladas), com saldo e vínculo de documento. */
+export async function listarTitulos(unidadeId: string, tipo: TipoLancamento): Promise<Titulo[]> {
+  const supabase = await createClient();
+  type Row = {
+    id: string;
+    lancamento_id: string;
+    numero: number;
+    total_parcelas: number;
+    valor: number | string;
+    data_prevista: string;
+    conta_financeira_id: string | null;
+    status: Titulo["status"];
+    vencimento_documento: number | null;
+    fin_lancamentos: {
+      tipo: TipoLancamento;
+      descricao: string;
+      categoria_id: string;
+      data_competencia: string;
+      documento_id: string | null;
+      contraparte_id: string | null;
+      fin_categorias: { nome: string } | null;
+      fin_contrapartes: { nome: string } | null;
+      fin_documentos: { numero: string | null; descricao: string } | null;
+    };
+  };
+  const parcelas = await buscarTudo<Row>((de, ate) =>
+    supabase
+      .from("fin_parcelas")
+      .select(
+        "id, lancamento_id, numero, total_parcelas, valor, data_prevista, conta_financeira_id, status, vencimento_documento, " +
+          "fin_lancamentos!inner(tipo, descricao, categoria_id, data_competencia, documento_id, contraparte_id, fin_categorias(nome), fin_contrapartes(nome), fin_documentos(numero, descricao))",
+      )
+      .eq("unidade_id", unidadeId)
+      .eq("fin_lancamentos.tipo", tipo)
+      .neq("status", "cancelado")
+      .order("data_prevista")
+      .order("id")
+      .range(de, ate),
+  );
+  const ids = parcelas.map((p) => p.id);
+  const baixas = ids.length
+    ? await buscarTudoEmLotes<{ parcela_id: string; valor: number | string; tipo: "baixa" | "estorno" }>(ids, (lote, de, ate) =>
+        supabase.from("fin_baixas").select("id, parcela_id, valor, tipo").in("parcela_id", lote).order("id").range(de, ate),
+      )
+    : [];
+  const baixado = new Map<string, number>();
+  for (const b of baixas) {
+    baixado.set(b.parcela_id, (baixado.get(b.parcela_id) ?? 0) + (b.tipo === "estorno" ? -1 : 1) * Number(b.valor));
+  }
+  return parcelas.map((p) => {
+    const l = p.fin_lancamentos;
+    const valor = Number(p.valor);
+    const valorBaixado = Math.round((baixado.get(p.id) ?? 0) * 100) / 100;
+    return {
+      parcelaId: p.id,
+      lancamentoId: p.lancamento_id,
+      tipo: l.tipo,
+      descricao: l.descricao,
+      categoriaId: l.categoria_id,
+      categoriaNome: l.fin_categorias?.nome ?? "",
+      contraparteId: l.contraparte_id,
+      contraparteNome: l.fin_contrapartes?.nome ?? null,
+      documentoId: l.documento_id,
+      documentoNumero: l.fin_documentos?.numero ?? null,
+      documentoDescricao: l.fin_documentos?.descricao ?? null,
+      vencimentoDocumento: p.vencimento_documento,
+      numero: p.numero,
+      totalParcelas: p.total_parcelas,
+      dataPrevista: p.data_prevista,
+      dataCompetencia: l.data_competencia,
+      contaFinanceiraId: p.conta_financeira_id,
+      valor,
+      valorBaixado,
+      saldo: Math.round((valor - valorBaixado) * 100) / 100,
+      status: p.status,
+    };
+  });
 }
