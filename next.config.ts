@@ -1,20 +1,27 @@
 import type { NextConfig } from "next";
 
+// Supabase local (`supabase start`, http://127.0.0.1) só entra na política em
+// desenvolvimento local; em produção a origem é sempre https://*.supabase.co.
+const supabaseLocal = /^http:\/\/(127\.0\.0\.1|localhost):\d+/.exec(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")?.[0] ?? "";
+const extraLocal = supabaseLocal ? ` ${supabaseLocal}` : "";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   // Next.js precisa dos scripts/estilos inline do bootstrap quando a CSP e
   // estatica. As demais diretivas ainda bloqueiam origens inesperadas.
   "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data:",
+  // Fotos privadas (ficha técnica e Checklist Garante) chegam por URL assinada do Storage.
+  `img-src 'self' blob: data: https://*.supabase.co${extraLocal}`,
   "font-src 'self'",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com",
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com${extraLocal}`,
   "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
+  // No teste local o Supabase é http; em produção, sempre https.
+  ...(supabaseLocal ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const nextConfig: NextConfig = {
@@ -40,7 +47,7 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            value: "camera=(self), microphone=(), geolocation=(), payment=(), usb=()", // câmera só do próprio app (Checklist Garante)
           },
           {
             key: "Strict-Transport-Security",

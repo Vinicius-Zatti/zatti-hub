@@ -46,6 +46,9 @@ export type AcessoAtual = {
    * Única pessoa com Financeiro Gerencial, Conciliação e Uso de IA. */
   titularFinanceiro: boolean;
   role: Role;
+  /** Liga o Checklist Garante (rotinas com foto e nota, etapa Garante do
+   * M.E.G.A.) nessa unidade - `unidades.garante_habilitado`. */
+  garanteHabilitado: boolean;
   /** Unidade a que o vínculo efetivo está preso (`null` = organização
    * inteira, ou master). Limita o que o gestor administra em Equipe. */
   unidadeFixa: string | null;
@@ -79,6 +82,7 @@ type UnidadeRow = {
   consolidado_vendas_habilitado: boolean;
   fichas_tecnicas_habilitado: boolean;
   financeiro_gerencial_habilitado: boolean;
+  garante_habilitado: boolean;
 };
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
@@ -208,13 +212,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, garante_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, garante_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -245,6 +249,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
     financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado && titularFinanceiro,
     titularFinanceiro,
+    garanteHabilitado: unidade.garante_habilitado,
     role,
     unidadeFixa,
     equipeHabilitado,
@@ -332,6 +337,22 @@ export async function requireTitularFinanceiro(): Promise<AcessoAtual> {
 export async function requireEquipe(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (!podeUsarEquipe(acesso)) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Barreira do Checklist Garante: módulo ligado na unidade. Cumprir é de
+ * todos os papéis; a regra de quem cumpre o quê está no banco
+ * (`usuario_pode_cumprir_garante`). */
+export async function requireGarante(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.garanteHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Montar modelo, publicar e ver o quadro do dia: Garante ligado + gestão. */
+export async function requireGestaoGarante(): Promise<AcessoAtual> {
+  const acesso = await requireGestao();
+  if (!acesso.garanteHabilitado) redirect("/estoque/contagem");
   return acesso;
 }
 

@@ -219,7 +219,29 @@ export default async function AppLayout({
           },
         ]
       : []),
-    { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
+    // Checklist Garante: etapa Garante do M.E.G.A. (rotina com dono, prazo e foto).
+    // Ocupa o lugar de "Tarefas". Cumprir é de todos; montar e o quadro, só gestão.
+    {
+      label: "Checklist Garante",
+      href: "/garante",
+      icone: "tarefas",
+      activePrefix: "/garante",
+      disabled: !acesso.garanteHabilitado,
+      sections: [
+        { label: "Cumprir", items: [{ label: "Hoje", href: "/garante" }] },
+        ...(podeGerir
+          ? [
+              {
+                label: "Gestão",
+                items: [
+                  { label: "Quadro do dia", href: "/garante/quadro" },
+                  { label: "Modelos e publicação", href: "/garante/modelos" },
+                ],
+              },
+            ]
+          : []),
+      ],
+    },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
     // Esconder os itens abaixo pra quem não é master é só UX - a barreira de
     // verdade é `requireMaster()`/`requireMeuTempo()` no layout de cada
