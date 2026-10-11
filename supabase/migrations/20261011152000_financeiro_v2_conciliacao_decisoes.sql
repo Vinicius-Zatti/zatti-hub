@@ -419,7 +419,7 @@ begin
     end if;
     perform public.fin_documento_baixar(jsonb_build_object('unidade', p_unidade, 'documento_id', v_doc,
       'vencimento', 1, 'conta_financeira_id', v_mov.conta_financeira_id, 'data', v_mov.data,
-      'valor', v_mov_cent, 'observacao', 'Conciliação'));
+      'valor', v_mov_cent, 'observacao', 'Conciliação', 'chave', 'conc-' || v_dec::text));
     insert into public.fin_conciliacao_decisao_vinculos (unidade_id, decisao_id, papel, baixa_id, parcela_id)
     select p_unidade, v_dec, 'principal', b.id, b.parcela_id
       from public.fin_baixas b

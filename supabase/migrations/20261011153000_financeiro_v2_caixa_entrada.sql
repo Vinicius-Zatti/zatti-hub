@@ -91,7 +91,7 @@ create table if not exists public.fin_caixa_entrada (
   atualizado_em timestamptz not null default now(),
   unique (unidade_id, id),
   foreign key (unidade_id, documento_id) references public.fin_documentos(unidade_id, id),
-  foreign key (unidade_id, lancamento_id) references public.fin_lancamentos(unidade_id, id) on delete set null,
+  foreign key (unidade_id, lancamento_id) references public.fin_lancamentos(unidade_id, id) on delete restrict,
   check ((situacao = 'lancado') = (documento_id is not null)),
   check (situacao <> 'anexado' or lancamento_id is not null),
   check ((situacao = 'descartado') = (descarte_motivo is not null))

@@ -2,7 +2,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(17);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000f3001', 'gestao.cartao@teste.local', 'x', now(), 'authenticated', 'authenticated');
@@ -67,6 +67,16 @@ select throws_ok($$ with l as (
   select 'uni-cartao', l.id, 1, 1, 10, '2026-10-05', '00000000-0000-0000-0000-0000000f3a02' from l $$,
   '23514', null, 'cartão de crédito não recebe receita');
 
+-- Nota rateada no cartão: linha que só tem valor no 2º vencimento cai na 2ª fatura (achado do Codex).
+create temp table drat as select public.fin_documento_criar(jsonb_build_object('unidade', 'uni-cartao', 'chave', 'doc-cartao-01',
+  'tipo', 'despesa', 'descricao', 'Nota no cartão', 'data_competencia', '2026-10-05',
+  'conta_financeira_id', '00000000-0000-0000-0000-0000000f3a03', 'vencimentos', jsonb_build_array('2026-11-05', '2026-12-05'),
+  'linhas', jsonb_build_array(
+    jsonb_build_object('categoria_id', (select merc from cat), 'valor', 2000, 'celulas', jsonb_build_array(1000, 1000)),
+    jsonb_build_object('categoria_id', (select merc from cat), 'valor', 500, 'celulas', jsonb_build_array(0, 500))))) as id;
+select is((select pa.data_prevista::text from fin_parcelas pa join fin_lancamentos l on l.id = pa.lancamento_id
+  where l.documento_id = (select id from drat) and pa.valor = 5), '2026-12-05', 'célula zero não puxa a parcela para a fatura errada');
+
 -- Pagamento de fatura (outubro do Cartão A: 100 + 100 + 50 = 250,00).
 create temp table fat as select id from fin_faturas_cartao where conta_cartao_id = '00000000-0000-0000-0000-0000000f3a02' and referencia = '2026-10-01';
 select throws_ok($$ select public.fin_fatura_pagar(jsonb_build_object('unidade', 'uni-cartao', 'fatura_id', (select id from fat),
@@ -83,6 +93,12 @@ select is((select count(*)::int from fin_baixas b join fin_parcelas pa on pa.id 
 select is(public.fin_fatura_pagar(jsonb_build_object('unidade', 'uni-cartao', 'fatura_id', (select id from fat),
   'conta_financeira_id', '00000000-0000-0000-0000-0000000f3a01', 'data', '2026-10-20', 'valor', 12000, 'chave', 'pag-fatura-1')),
   (select id from fin_fatura_pagamentos where chave = 'pag-fatura-1'), 'reenvio do mesmo pagamento não paga duas vezes');
+select throws_ok($$ select public.fin_fatura_pagar(jsonb_build_object('unidade', 'uni-cartao', 'fatura_id', (select id from fat),
+  'conta_financeira_id', '00000000-0000-0000-0000-0000000f3a01', 'data', '2026-10-20', 'valor', 100, 'chave', 'pag-fatura-1')) $$,
+  '23505', null, 'mesma chave com outro valor é recusada');
+select throws_ok($$ insert into fin_fatura_pagamentos (unidade_id, fatura_id, conta_financeira_id, valor, data, chave, criado_por)
+  values ('uni-cartao', (select id from fat), '00000000-0000-0000-0000-0000000f3a01', 1, '2026-10-20', 'pag-forjado-1', '00000000-0000-0000-0000-0000000f3001') $$,
+  '42501', null, 'pagamento não se registra por insert direto');
 select throws_ok($$ select public.fin_fatura_pagar(jsonb_build_object('unidade', 'uni-cartao', 'fatura_id', (select id from fat),
   'conta_financeira_id', '00000000-0000-0000-0000-0000000f3a01', 'data', '2026-10-21', 'valor', 13001, 'chave', 'pag-fatura-2')) $$,
   '23514', null, 'pagamento acima do saldo da fatura é recusado');

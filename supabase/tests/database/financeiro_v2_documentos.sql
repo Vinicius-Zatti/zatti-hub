@@ -3,7 +3,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(26);
 
 update fin_acesso_exclusivo set ativo = true where id;
 
@@ -80,8 +80,13 @@ select is((select sum(pa.valor) from fin_parcelas pa join fin_lancamentos l on l
   'vencimento 1 fecha em centavos');
 select is((select total from fin_documentos where id = (select id from d1)), 400.01::numeric, 'total gravado no documento');
 select is(public.fin_documento_criar(pg_temp.doc('chave-doc-0001', repeat('a', 64),
-  jsonb_build_array(jsonb_build_object('categoria_id', (select merc from cat), 'valor', 30000, 'celulas', jsonb_build_array(15000, 15000))))),
-  (select id from d1), 'mesma chave e mesmo conteúdo devolvem o mesmo documento');
+  jsonb_build_array(
+    jsonb_build_object('categoria_id', (select merc from cat), 'valor', 30000, 'celulas', jsonb_build_array(15000, 15000)),
+    jsonb_build_object('categoria_id', (select emb from cat), 'valor', 10001, 'celulas', jsonb_build_array(5001, 5000))
+  ))), (select id from d1), 'mesma chave e mesmo conteúdo devolvem o mesmo documento');
+select throws_ok($$ select public.fin_documento_criar(pg_temp.doc('chave-doc-0001', repeat('a', 64),
+  jsonb_build_array(jsonb_build_object('categoria_id', (select merc from cat), 'valor', 30000, 'celulas', jsonb_build_array(15000, 15000))))) $$,
+  '23505', null, 'mesmo digest informado com conteúdo diferente é recusado (digest é calculado no banco)');
 select throws_ok($$ select public.fin_documento_criar(pg_temp.doc('chave-doc-0001', repeat('b', 64),
   jsonb_build_array(jsonb_build_object('categoria_id', (select merc from cat), 'valor', 100, 'celulas', jsonb_build_array(50, 50))))) $$,
   '23505', null, 'mesma chave com outro conteúdo é recusada');
@@ -103,13 +108,16 @@ select is((select count(*)::int from fin_parcelas pa join fin_lancamentos l on l
 
 -- Baixa parcial do vencimento 1 (200,01 em aberto): paga 100,00 distribuído pelo saldo.
 select is(public.fin_documento_baixar(jsonb_build_object('unidade', 'uni-v2', 'documento_id', (select id from d1),
-  'vencimento', 1, 'conta_financeira_id', '00000000-0000-0000-0000-0000000f2c01', 'data', '2026-10-20', 'valor', 10000)),
+  'vencimento', 1, 'conta_financeira_id', '00000000-0000-0000-0000-0000000f2c01', 'data', '2026-10-20', 'valor', 10000, 'chave', 'baixa-doc-01')),
   2, 'baixa parcial gera uma baixa por linha');
+select is(public.fin_documento_baixar(jsonb_build_object('unidade', 'uni-v2', 'documento_id', (select id from d1),
+  'vencimento', 1, 'conta_financeira_id', '00000000-0000-0000-0000-0000000f2c01', 'data', '2026-10-20', 'valor', 10000, 'chave', 'baixa-doc-01')),
+  2, 'reenvio da mesma baixa não baixa de novo');
 select is((select sum(b.valor) from fin_baixas b join fin_parcelas pa on pa.id = b.parcela_id
             join fin_lancamentos l on l.id = pa.lancamento_id where l.documento_id = (select id from d1)), 100.00::numeric,
   'baixas somam exatamente o valor pago');
 select throws_ok($$ select public.fin_documento_baixar(jsonb_build_object('unidade', 'uni-v2', 'documento_id', (select id from d1),
-  'vencimento', 1, 'conta_financeira_id', '00000000-0000-0000-0000-0000000f2c01', 'data', '2026-10-20', 'valor', 10002)) $$,
+  'vencimento', 1, 'conta_financeira_id', '00000000-0000-0000-0000-0000000f2c01', 'data', '2026-10-20', 'valor', 10002, 'chave', 'baixa-doc-02')) $$,
   '23514', null, 'baixa acima do saldo restante é recusada');
 
 -- Contraparte do lançamento não pode divergir do documento.

@@ -407,10 +407,10 @@ export const precosTodosCanaisFichaEntradaSchema = z
 // ── Financeiro gerencial ──────────────────────────────────────────────────
 
 const dinheiroPositivo = z.number().finite().min(0.01).max(LIMITE_DINHEIRO);
-export const tipoContaFinanceiraSchema = z.enum(["banco", "caixa", "carteira_digital"]);
+export const tipoContaFinanceiraSchema = z.enum(["banco", "caixa", "carteira_digital", "cartao_credito"]);
 export const tipoLancamentoFinanceiroSchema = z.enum(["receita", "despesa"]);
 
-export const contaFinanceiraEntradaSchema = z
+const contaFinanceiraEntradaBaseSchema = z
   .object({
     nome: textoObrigatorio(120),
     tipo: tipoContaFinanceiraSchema,
@@ -425,13 +425,51 @@ export const contaFinanceiraEntradaSchema = z
       .regex(/^(\d{1,20}(-[0-9Xx])?)?$/, "Conta só com números e dígito (ex: 51881143-5)")
       .optional()
       .transform((v) => (v === undefined ? undefined : v || null)),
+    // Cartão de crédito: dias de fechamento e vencimento (obrigatórios nesse tipo) e conta pagadora.
+    diaFechamento: z.number().int().min(1, "Dia entre 1 e 31").max(31, "Dia entre 1 e 31").nullable().optional(),
+    diaVencimento: z.number().int().min(1, "Dia entre 1 e 31").max(31, "Dia entre 1 e 31").nullable().optional(),
+    contaPagadoraId: idUuidSchema.nullable().optional(),
   })
   .strict();
 
-export const editarContaFinanceiraEntradaSchema = contaFinanceiraEntradaSchema.extend({
-  id: idUuidSchema,
-  ativo: z.boolean(),
-});
+/** Cartão exige os dois dias; nos outros tipos os campos de cartão viram null. */
+function ajustarCamposCartao<T extends { tipo: string; diaFechamento?: number | null; diaVencimento?: number | null; contaPagadoraId?: string | null; saldoInicial: number }>(
+  v: T,
+  ctx: z.RefinementCtx,
+): T {
+  if (v.tipo !== "cartao_credito") return { ...v, diaFechamento: null, diaVencimento: null, contaPagadoraId: null };
+  if (v.diaFechamento == null) ctx.addIssue({ code: "custom", path: ["diaFechamento"], message: "Informe o dia de fechamento do cartão" });
+  if (v.diaVencimento == null) ctx.addIssue({ code: "custom", path: ["diaVencimento"], message: "Informe o dia de vencimento do cartão" });
+  // Cartão não tem saldo próprio nem dados bancários: o dinheiro sai do banco no pagamento da fatura.
+  return { ...v, saldoInicial: 0, bancoCodigo: null, agencia: null, numeroConta: null };
+}
+
+export const contaFinanceiraEntradaSchema = contaFinanceiraEntradaBaseSchema.transform(ajustarCamposCartao);
+
+export const editarContaFinanceiraEntradaSchema = contaFinanceiraEntradaBaseSchema
+  .extend({
+    id: idUuidSchema,
+    ativo: z.boolean(),
+  })
+  .transform(ajustarCamposCartao);
+
+// Cartão de crédito (F3): pagamento de fatura pela conta bancária e correção de vencimento.
+export const pagarFaturaEntradaSchema = z
+  .object({
+    faturaId: idUuidSchema,
+    contaFinanceiraId: idUuidSchema,
+    data: dataIsoSchema,
+    valor: dinheiroPositivo,
+    chave: z.string().regex(/^[A-Za-z0-9_-]{8,120}$/),
+  })
+  .strict();
+
+export const alterarVencimentoFaturaEntradaSchema = z
+  .object({
+    faturaId: idUuidSchema,
+    vencimento: dataIsoSchema,
+  })
+  .strict();
 
 export const categoriaFinanceiraEntradaSchema = z
   .object({
@@ -590,6 +628,7 @@ export const baixarVencimentoDocumentoEntradaSchema = z
     data: dataIsoSchema,
     valorCentavos: centavosPositivos,
     observacao: texto(2_000),
+    chave: z.string().regex(/^[A-Za-z0-9_-]{8,120}$/),
   })
   .strict();
 

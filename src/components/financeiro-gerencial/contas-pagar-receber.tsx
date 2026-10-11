@@ -29,6 +29,7 @@ import {
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { paraCentavos } from "@/lib/financeiro-gerencial/rateio";
 import type { Titulo } from "@/lib/banco/financeiro-documentos";
+import { contasQuePagam } from "@/lib/financeiro-gerencial/cartao";
 import type { CategoriaFinanceira, ContaFinanceira, TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
 
 function formatarMoeda(v: number): string {
@@ -62,7 +63,7 @@ type ResultadoBaixaGrupo = { ok: true } | { ok: false; mensagem: string };
  * documento (centavos), que distribui o valor pelas linhas no banco. */
 async function baixarGrupo(
   grupo: GrupoTitulo,
-  dados: { contaFinanceiraId: string; data: string; valor: number; observacao: string },
+  dados: { contaFinanceiraId: string; data: string; valor: number; observacao: string; chave: string },
 ): Promise<ResultadoBaixaGrupo> {
   if (grupo.documentoId && grupo.vencimentoDocumento !== null) {
     return baixarVencimentoDocumentoAction({
@@ -72,6 +73,8 @@ async function baixarGrupo(
       data: dados.data,
       valorCentavos: paraCentavos(dados.valor),
       observacao: dados.observacao,
+      // Mesma chave no reenvio = o banco não baixa duas vezes (idempotência pedida pelo Codex).
+      chave: `${dados.chave}-${grupo.documentoId.slice(0, 8)}-${grupo.vencimentoDocumento}`,
     });
   }
   const r = await registrarBaixaAction({
@@ -572,8 +575,9 @@ export function ContasPagarReceber({
 
 function contaPadrao(grupos: GrupoTitulo[], contas: ContaFinanceira[]): string {
   const sugerida = grupos[0]?.titulos.find((t) => t.contaFinanceiraId)?.contaFinanceiraId;
-  if (sugerida && contas.some((c) => c.id === sugerida)) return sugerida;
-  return contas[0]?.id ?? "";
+  const pagadoras = contasQuePagam(contas);
+  if (sugerida && pagadoras.some((c) => c.id === sugerida)) return sugerida;
+  return pagadoras[0]?.id ?? "";
 }
 
 function BaixaEmLote({
@@ -592,9 +596,11 @@ function BaixaEmLote({
   onFechar: () => void;
 }) {
   const router = useRouter();
-  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+  // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
+  const opcoesConta = useMemo(() => contasQuePagam(contas).map((c) => ({ id: c.id, label: c.nome })), [contas]);
   // Congela a lista ao abrir: o refresh da página no meio do lote não muda o que está sendo baixado.
   const [lista] = useState(grupos);
+  const [chave] = useState(() => crypto.randomUUID().replace(/-/g, ""));
   const [contaFinanceiraId, setContaFinanceiraId] = useState(() => contaPadrao(grupos, contas));
   const [data, setData] = useState(hoje);
   const [progresso, setProgresso] = useState<{ feitos: number; erros: { descricao: string; mensagem: string }[] } | null>(null);
@@ -609,7 +615,7 @@ function BaixaEmLote({
       const erros: { descricao: string; mensagem: string }[] = [];
       let feitos = 0;
       for (const g of lista) {
-        const r = await baixarGrupo(g, { contaFinanceiraId, data, valor: g.saldo, observacao: "" });
+        const r = await baixarGrupo(g, { contaFinanceiraId, data, valor: g.saldo, observacao: "", chave });
         if (r.ok) feitos++;
         else erros.push({ descricao: `${formatarDataBr(g.dataPrevista)} - ${g.descricao}`, mensagem: r.mensagem });
         setProgresso({ feitos, erros: [...erros] });
@@ -711,11 +717,13 @@ function BaixaIndividual({
   onFechar: () => void;
 }) {
   const router = useRouter();
-  const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+  // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
+  const opcoesConta = useMemo(() => contasQuePagam(contas).map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const [contaFinanceiraId, setContaFinanceiraId] = useState(() => contaPadrao([grupo], contas));
   const [valor, setValor] = useState<number | null>(grupo.saldo);
   const [data, setData] = useState(hoje);
   const [observacao, setObservacao] = useState("");
+  const [chave] = useState(() => crypto.randomUUID().replace(/-/g, ""));
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const valorC = paraCentavos(valor ?? 0);
@@ -727,7 +735,7 @@ function BaixaIndividual({
     if (valorInvalido) return;
     setErro(null);
     startTransition(async () => {
-      const r = await baixarGrupo(grupo, { contaFinanceiraId, data, valor: valorC / 100, observacao });
+      const r = await baixarGrupo(grupo, { contaFinanceiraId, data, valor: valorC / 100, observacao, chave });
       if (!r.ok) {
         setErro(r.mensagem);
         return;

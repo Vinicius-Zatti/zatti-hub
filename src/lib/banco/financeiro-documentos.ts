@@ -159,6 +159,7 @@ export async function baixarVencimentoDocumento(params: {
   data: string;
   valorCentavos: number;
   observacao: string;
+  chave: string;
 }): Promise<number> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("fin_documento_baixar", {
@@ -170,9 +171,13 @@ export async function baixarVencimentoDocumento(params: {
       data: params.data,
       valor: params.valorCentavos,
       observacao: params.observacao,
+      chave: params.chave,
     },
   });
-  if (error) throw erroDeNegocio(error);
+  if (error) {
+    if (error.code === "23505") throw new ErroPublico("Este pagamento já foi enviado com outro valor. Atualize a página.");
+    throw erroDeNegocio(error);
+  }
   return data as number;
 }
 

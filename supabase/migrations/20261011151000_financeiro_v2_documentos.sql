@@ -198,7 +198,8 @@ as $$
 declare
   v_unidade text := p->>'unidade';
   v_chave text := p->>'chave';
-  v_digest text := p->>'digest';
+  -- Digest calculado aqui (achado do Codex): o que o cliente manda não vale como prova de conteúdo.
+  v_digest text := encode(extensions.digest(convert_to((p - 'digest')::text, 'UTF8'), 'sha256'), 'hex');
   v_tipo text := p->>'tipo';
   v_existente record;
   v_doc uuid;
@@ -320,22 +321,48 @@ $$;
 revoke all on function public.fin_documento_criar(jsonb) from public, anon;
 grant execute on function public.fin_documento_criar(jsonb) to authenticated;
 
+-- ── Requisições idempotentes (baixa de documento e pagamento de fatura) ────
+create table if not exists public.fin_requisicoes (
+  unidade_id text not null references public.unidades(id),
+  operacao text not null check (operacao in ('documento_baixar', 'fatura_pagar')),
+  chave text not null check (char_length(chave) between 8 and 160),
+  digest text not null,
+  resultado jsonb not null,
+  criado_por uuid not null references auth.users(id),
+  criado_em timestamptz not null default now(),
+  primary key (unidade_id, operacao, chave)
+);
+alter table public.fin_requisicoes enable row level security;
+revoke all on table public.fin_requisicoes from public, anon, authenticated;
+
 -- ── Baixa de um vencimento do documento sobre o saldo restante ────────────
--- { unidade, documento_id, vencimento, conta_financeira_id, data, valor (centavos), observacao }
+-- { unidade, documento_id, vencimento, conta_financeira_id, data, valor (centavos), observacao, chave }
 -- Distribui o valor pelas parcelas daquele vencimento na proporção do saldo em aberto de cada uma
--- (maior resto, desempate pela ordem do lançamento). Valor maior que o saldo é erro.
+-- (maior resto, desempate pela ordem do lançamento), sob lock. Valor maior que o saldo é erro.
+-- SECURITY DEFINER com checagem explícita de acesso; sem tabela temporária (achado do Codex). Os
+-- gatilhos de baixa e período fechado continuam valendo pelo auth.uid() de quem chamou.
 create or replace function public.fin_documento_baixar(p jsonb)
 returns int
 language plpgsql
-security invoker
+volatile
+security definer
 set search_path = ''
 as $$
 declare
   v_unidade text := p->>'unidade';
+  v_chave text := p->>'chave';
   v_valor bigint := (p->>'valor')::bigint;
-  v_saldo_total bigint := 0;
+  v_digest text := encode(extensions.digest(convert_to(p::text, 'UTF8'), 'sha256'), 'hex');
+  v_req public.fin_requisicoes;
+  v_ids uuid[];
+  v_saldos numeric[];
+  v_bases bigint[];
+  v_fracoes numeric[];
+  v_total numeric := 0;
   v_resto bigint;
-  v_parc record;
+  v_n int;
+  v_k int;
+  v_ordem int[];
   v_qtd int := 0;
 begin
   if auth.uid() is null or not public.usuario_pode_usar_financeiro_gerencial(v_unidade, null) then
@@ -344,57 +371,70 @@ begin
   if v_valor is null or v_valor <= 0 then
     raise exception 'Valor da baixa invalido' using errcode = '23514';
   end if;
+  if v_chave is null or char_length(v_chave) < 8 then
+    raise exception 'Chave da baixa obrigatoria' using errcode = '23514';
+  end if;
 
-  create temp table if not exists pg_temp.fin_rateio_baixa (
-    parcela_id uuid, saldo bigint, base bigint, fracao numeric, ordem int
-  ) on commit drop;
-  delete from pg_temp.fin_rateio_baixa;
+  perform pg_advisory_xact_lock(hashtextextended('fin_req:documento_baixar:' || v_unidade || ':' || v_chave, 0));
+  select * into v_req from public.fin_requisicoes
+    where unidade_id = v_unidade and operacao = 'documento_baixar' and chave = v_chave;
+  if found then
+    if v_req.digest <> v_digest then
+      raise exception 'Chave da baixa reutilizada com outro conteudo' using errcode = '23505';
+    end if;
+    return (v_req.resultado->>'baixas')::int;
+  end if;
 
-  -- Trava as parcelas do vencimento antes de ler os saldos (ordem estável).
-  perform 1
-    from public.fin_parcelas pa
-    join public.fin_lancamentos l on l.unidade_id = pa.unidade_id and l.id = pa.lancamento_id
-   where pa.unidade_id = v_unidade
-     and l.documento_id = (p->>'documento_id')::uuid
-     and pa.vencimento_documento = (p->>'vencimento')::int
-   order by pa.id
-   for update of pa;
+  -- Trava as parcelas do vencimento (ordem estável) e só então lê os saldos.
+  select array_agg(id order by ordem_l, id), array_agg(saldo order by ordem_l, id)
+    into v_ids, v_saldos
+    from (
+      select pa.id, l.criado_em as ordem_l,
+             (pa.valor - public.saldo_baixado_parcela(pa.id)) * 100 as saldo
+        from public.fin_parcelas pa
+        join public.fin_lancamentos l on l.unidade_id = pa.unidade_id and l.id = pa.lancamento_id
+       where pa.unidade_id = v_unidade
+         and l.documento_id = (p->>'documento_id')::uuid
+         and pa.vencimento_documento = (p->>'vencimento')::int
+         and pa.status in ('aberto', 'parcial')
+       order by l.criado_em, pa.id
+       for update of pa
+    ) t
+   where t.saldo > 0;
 
-  insert into pg_temp.fin_rateio_baixa (parcela_id, saldo, ordem)
-  select pa.id,
-         round((pa.valor - public.saldo_baixado_parcela(pa.id)) * 100)::bigint,
-         row_number() over (order by l.criado_em, l.id)
-    from public.fin_parcelas pa
-    join public.fin_lancamentos l on l.unidade_id = pa.unidade_id and l.id = pa.lancamento_id
-   where pa.unidade_id = v_unidade
-     and l.documento_id = (p->>'documento_id')::uuid
-     and pa.vencimento_documento = (p->>'vencimento')::int
-     and pa.status in ('aberto', 'parcial');
-
-  delete from pg_temp.fin_rateio_baixa where saldo <= 0;
-  select coalesce(sum(saldo), 0) into v_saldo_total from pg_temp.fin_rateio_baixa;
-  if v_saldo_total = 0 then
+  v_n := coalesce(array_length(v_ids, 1), 0);
+  if v_n = 0 then
     raise exception 'Vencimento sem saldo em aberto' using errcode = '23514';
   end if;
-  if v_valor > v_saldo_total then
+  for v_k in 1 .. v_n loop v_total := v_total + v_saldos[v_k]; end loop;
+  if v_valor > v_total then
     raise exception 'Valor maior que o saldo em aberto do vencimento' using errcode = '23514';
   end if;
 
-  update pg_temp.fin_rateio_baixa
-     set base = (saldo * v_valor) / v_saldo_total,
-         fracao = ((saldo * v_valor) % v_saldo_total)::numeric / v_saldo_total;
-  select v_valor - sum(base) into v_resto from pg_temp.fin_rateio_baixa;
-  update pg_temp.fin_rateio_baixa r set base = base + 1
-   where r.parcela_id in (
-     select parcela_id from pg_temp.fin_rateio_baixa order by fracao desc, ordem limit v_resto
-   );
+  v_bases := array_fill(0::bigint, array[v_n]);
+  v_fracoes := array_fill(0::numeric, array[v_n]);
+  v_resto := v_valor;
+  for v_k in 1 .. v_n loop
+    v_bases[v_k] := trunc(v_saldos[v_k] * v_valor / v_total)::bigint;
+    v_fracoes[v_k] := mod(v_saldos[v_k] * v_valor, v_total) / v_total;
+    v_resto := v_resto - v_bases[v_k];
+  end loop;
+  -- Centavos que sobram vão para os maiores restos (desempate pela ordem).
+  select array_agg(i order by v_fracoes[i] desc, i) into v_ordem from generate_series(1, v_n) i;
+  for v_k in 1 .. v_resto loop
+    v_bases[v_ordem[v_k]] := v_bases[v_ordem[v_k]] + 1;
+  end loop;
 
-  for v_parc in select parcela_id, base from pg_temp.fin_rateio_baixa where base > 0 order by ordem loop
+  for v_k in 1 .. v_n loop
+    continue when v_bases[v_k] <= 0;
     insert into public.fin_baixas (unidade_id, parcela_id, tipo, conta_financeira_id, valor, data, observacao, criado_por)
-    values (v_unidade, v_parc.parcela_id, 'baixa', (p->>'conta_financeira_id')::uuid, v_parc.base / 100.0,
+    values (v_unidade, v_ids[v_k], 'baixa', (p->>'conta_financeira_id')::uuid, v_bases[v_k] / 100.0,
             (p->>'data')::date, coalesce(p->>'observacao', ''), auth.uid());
     v_qtd := v_qtd + 1;
   end loop;
+
+  insert into public.fin_requisicoes (unidade_id, operacao, chave, digest, resultado, criado_por)
+  values (v_unidade, 'documento_baixar', v_chave, v_digest, jsonb_build_object('baixas', v_qtd), auth.uid());
   return v_qtd;
 end;
 $$;
