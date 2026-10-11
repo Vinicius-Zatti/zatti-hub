@@ -16,6 +16,7 @@ import type {
   TipoBaixa,
   TipoLancamento,
   TipoProvisao,
+  TransferenciaBase,
 } from "@/lib/financeiro-gerencial/tipos";
 
 // Financeiro Gerencial V1 completa (22/09) - Fluxo de Caixa, DFC, Provisões,
@@ -111,6 +112,22 @@ export async function carregarBaseFinanceira(unidadeId: string): Promise<{ lanca
   }));
 
   return { lancamentos, baixas };
+}
+
+/** Financeiro V2 (11/10/2026): transferências entre contas próprias, sem as canceladas. */
+export async function carregarTransferencias(unidadeId: string): Promise<TransferenciaBase[]> {
+  const supabase = await createClient();
+  type Row = { id: string; conta_origem_id: string; conta_destino_id: string; valor: number | string; data: string };
+  const linhas = await buscarTudo<Row>((de, ate) =>
+    supabase
+      .from("fin_transferencias")
+      .select("id, conta_origem_id, conta_destino_id, valor, data")
+      .eq("unidade_id", unidadeId)
+      .is("cancelada_em", null)
+      .order("id")
+      .range(de, ate),
+  );
+  return linhas.map((t) => ({ id: t.id, contaOrigemId: t.conta_origem_id, contaDestinoId: t.conta_destino_id, valor: Number(t.valor), data: t.data }));
 }
 
 // ── Recorrências ────────────────────────────────────────────────────────────

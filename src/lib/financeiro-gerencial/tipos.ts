@@ -253,4 +253,8 @@ export type LancamentoBase = Pick<Lancamento, "id" | "tipo" | "categoriaId" | "d
 
 export type BaixaBase = Pick<Baixa, "id" | "parcelaId" | "tipo" | "contaFinanceiraId" | "valor" | "data">;
 
+/** Financeiro V2 (11/10/2026): transferência entre contas próprias (não cancelada). Fica fora da
+ * DRE e da DFC; no caixa só aparece quando se olha uma conta específica (no total se anula). */
+export type TransferenciaBase = { id: string; contaOrigemId: string; contaDestinoId: string; valor: number; data: string };
+
 export type RecorrenciaResumo = Recorrencia & { ocorrencias: number; ocorrenciasEmAberto: number };

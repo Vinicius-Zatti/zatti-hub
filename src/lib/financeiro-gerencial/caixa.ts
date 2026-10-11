@@ -1,5 +1,5 @@
 import { somarValores } from "./parcelas";
-import type { BaixaBase, ContaFinanceira, LancamentoBase, TipoLancamento } from "./tipos";
+import type { BaixaBase, ContaFinanceira, LancamentoBase, TipoLancamento, TransferenciaBase } from "./tipos";
 
 /** Projetado e Realizado nunca se misturam: cada visão monta a própria lista
  * de movimentos e todo saldo/relatório (Fluxo de Caixa, DFC, Visão geral) é
@@ -18,6 +18,9 @@ export type MovimentoCaixa = {
   lancamentoId: string;
 };
 
+/** `categoriaId` dos movimentos de transferência entre contas próprias (não é Plano de Contas). */
+export const CATEGORIA_TRANSFERENCIA = "transferencia";
+
 function sinal(tipo: TipoLancamento): 1 | -1 {
   return tipo === "receita" ? 1 : -1;
 }
@@ -31,8 +34,9 @@ export function montarMovimentosCaixa(params: {
   baixas: BaixaBase[];
   contas: ContaFinanceira[];
   contaFinanceiraId?: string | null;
+  transferencias?: TransferenciaBase[];
 }): MovimentoCaixa[] {
-  const { visao, lancamentos, baixas, contas, contaFinanceiraId } = params;
+  const { visao, lancamentos, baixas, contas, contaFinanceiraId, transferencias = [] } = params;
   const movimentos: MovimentoCaixa[] = [];
 
   if (visao === "projetado") {
@@ -73,7 +77,23 @@ export function montarMovimentosCaixa(params: {
     return !inicio || m.data >= inicio;
   });
   if (!contaFinanceiraId) return validos;
-  return validos.filter((m) => m.contaFinanceiraId === contaFinanceiraId);
+  const daConta = validos.filter((m) => m.contaFinanceiraId === contaFinanceiraId);
+  // Transferência é dinheiro real nas duas visões; entra como saída na origem e entrada no destino.
+  const inicioConta = dataInicialPorConta.get(contaFinanceiraId);
+  for (const t of transferencias) {
+    if (inicioConta && t.data < inicioConta) continue;
+    const ehOrigem = t.contaOrigemId === contaFinanceiraId;
+    if (!ehOrigem && t.contaDestinoId !== contaFinanceiraId) continue;
+    daConta.push({
+      data: t.data,
+      valor: ehOrigem ? -t.valor : t.valor,
+      tipo: ehOrigem ? "despesa" : "receita",
+      categoriaId: CATEGORIA_TRANSFERENCIA,
+      contaFinanceiraId,
+      lancamentoId: t.id,
+    });
+  }
+  return daConta;
 }
 
 /** Saldo inicial cadastrado de uma conta, valendo a partir do começo do dia

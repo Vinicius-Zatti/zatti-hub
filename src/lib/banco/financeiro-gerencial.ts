@@ -195,6 +195,21 @@ export async function listarContasFinanceirasComSaldos(unidadeId: string): Promi
     saldoAtualPorConta.set(b.conta_financeira_id, atual + sinalTipo * sinalEstorno * Number(b.valor));
   }
 
+  // Financeiro V2: transferência entre contas próprias mexe no saldo das duas pontas.
+  const transferencias = await buscarTudo<{ conta_origem_id: string; conta_destino_id: string; valor: number }>((de, ate) =>
+    supabase
+      .from("fin_transferencias")
+      .select("id, conta_origem_id, conta_destino_id, valor")
+      .eq("unidade_id", unidadeId)
+      .is("cancelada_em", null)
+      .order("id")
+      .range(de, ate),
+  );
+  for (const t of transferencias) {
+    saldoAtualPorConta.set(t.conta_origem_id, (saldoAtualPorConta.get(t.conta_origem_id) ?? 0) - Number(t.valor));
+    saldoAtualPorConta.set(t.conta_destino_id, (saldoAtualPorConta.get(t.conta_destino_id) ?? 0) + Number(t.valor));
+  }
+
   const idsParcelasAbertas = parcelasAbertasData.map((p) => p.id);
   // `.in()` em lotes de ids, cada lote paginado (poucas parcelas podem ter
   // muitas baixas).
