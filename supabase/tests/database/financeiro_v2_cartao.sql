@@ -2,7 +2,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(18);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000f3001', 'gestao.cartao@teste.local', 'x', now(), 'authenticated', 'authenticated');
@@ -103,5 +103,9 @@ select throws_ok($$ select public.fin_fatura_pagar(jsonb_build_object('unidade',
   'conta_financeira_id', '00000000-0000-0000-0000-0000000f3a01', 'data', '2026-10-21', 'valor', 13001, 'chave', 'pag-fatura-2')) $$,
   '23514', null, 'pagamento acima do saldo da fatura é recusado');
 
+select throws_ok($$ insert into fin_baixas (unidade_id, parcela_id, tipo, conta_financeira_id, valor, data, criado_por)
+  select 'uni-cartao', pa.id, 'baixa', '00000000-0000-0000-0000-0000000f3a02', 1, '2026-10-20', '00000000-0000-0000-0000-0000000f3001'
+    from fin_parcelas pa where pa.fatura_id = (select id from fat) and pa.status <> 'quitado' limit 1 $$,
+  '23514', null, 'baixa nunca sai da conta do cartão');
 select * from finish();
 rollback;

@@ -3,7 +3,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(18);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000e4001', 'gestao.cx@teste.local', 'x', now(), 'authenticated', 'authenticated'),
@@ -41,8 +41,13 @@ create temp table e1 as select public.fin_caixa_entrada_registrar('uni-cx', 'wha
 select is((public.fin_caixa_entrada_registrar('uni-cx', 'drive', 'Pasta', 'nota-copia.pdf', 'application/pdf', 1000, repeat('a', 64), null))->>'id',
   (select r->>'id' from e1), 'mesmo arquivo por outro canal reaproveita a entrada');
 update fin_caixa_entrada set arquivo_gravado = true where id = (select (r->>'id')::uuid from e1);
-select ok(public.fin_caixa_entrada_travar_leitura((select (r->>'id')::uuid from e1)), 'trava a leitura');
+select ok(public.fin_caixa_entrada_travar_leitura((select (r->>'id')::uuid from e1)) is not null, 'trava a leitura');
 select ok(public.fin_caixa_entrada_travar_leitura((select (r->>'id')::uuid from e1)) is null, 'segunda leitura simultânea não trava');
+create temp table e2 as select public.fin_caixa_entrada_registrar('uni-cx', 'upload', 'Ana', 'outra.pdf',
+  'application/pdf', 900, repeat('b', 64), null) as r;
+update fin_caixa_entrada set arquivo_gravado = true where id = (select (r->>'id')::uuid from e2);
+select public.fin_caixa_entrada_travar_leitura((select (r->>'id')::uuid from e2));
+grant select on e2 to authenticated;
 update fin_caixa_entrada set situacao = 'lido' where id = (select (r->>'id')::uuid from e1);
 grant select on e1 to authenticated;
 
@@ -50,12 +55,14 @@ set local role authenticated;
 
 -- Lançar: documento + vínculo numa transação.
 select pg_temp.como('00000000-0000-0000-0000-0000000e4002');
-select is((select count(*)::int from fin_caixa_entrada), 1, 'Operacional da unidade vê a entrada');
+select is((select count(*)::int from fin_caixa_entrada), 2, 'Operacional da unidade vê as entradas');
+select throws_ok($$ select public.fin_caixa_entrada_tratar((select (r->>'id')::uuid from e2), 'descartar', null, 'teste') $$,
+  'P0001', null, 'entrada sendo lida não é tratada');
 create temp table d as select public.fin_caixa_entrada_lancar((select (r->>'id')::uuid from e1), jsonb_build_object(
   'chave', 'cx-doc-00001', 'digest', repeat('c', 64), 'tipo', 'despesa', 'descricao', 'NF Atacadão', 'data_competencia', '2026-10-05',
   'vencimentos', jsonb_build_array('2026-10-20'),
   'linhas', jsonb_build_array(jsonb_build_object('categoria_id', (select merc from cat), 'valor', 1000, 'celulas', jsonb_build_array(1000))))) as id;
-select is((select situacao from fin_caixa_entrada), 'lancado', 'entrada fica lançada');
+select is((select situacao from fin_caixa_entrada where id = (select (r->>'id')::uuid from e1)), 'lancado', 'entrada fica lançada');
 select is((select origem from fin_documentos where id = (select id from d)), 'caixa_entrada', 'documento nasce com origem Caixa de Entrada');
 select throws_ok($$ select public.fin_caixa_entrada_tratar((select (r->>'id')::uuid from e1), 'descartar', null, 'duplicada') $$,
   'P0001', null, 'entrada já lançada não é tratada de novo');

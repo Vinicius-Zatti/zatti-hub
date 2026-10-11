@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(32);
+select plan(34);
 
 update fin_acesso_exclusivo set ativo = true where id;
 
@@ -195,6 +195,13 @@ select ok(not exists (select 1 from fin_parcelas pa join fin_conciliacao_decisao
 select is((select count(*)::int from fin_baixas b join fin_conciliacao_decisao_vinculos v on v.baixa_id = b.estorno_de_baixa_id
   where v.decisao_id = (select id from dec2)), 2, 'cada baixa da decisão ganha um estorno');
 select is((select situacao from fin_conciliacao_decisoes where id = (select id from dec2)), 'desfeita', 'decisão fica no histórico como desfeita');
+
+-- 9b. Desfazer nota criada pela conciliação cancela a despesa (achado da revisão).
+create temp table dec4 as select id from fin_conciliacao_decisoes where movimento_id = pg_temp.mov(4);
+select lives_ok($$ select pg_temp.desfazer('00000000-0000-0000-0000-0000000c2001', (select id from dec4)) $$, 'Gestão desfaz a nota criada');
+select is((select string_agg(distinct pa.status, ',') from fin_parcelas pa join fin_lancamentos l on l.id = pa.lancamento_id
+  join fin_documentos d on d.id = l.documento_id where d.chave_idempotencia like 'doc-conc-000004%'), 'cancelado',
+  'parcelas da nota desfeita ficam canceladas (saem da DRE e do contas a pagar)');
 
 -- 10. Outra organização não enxerga as decisões.
 select pg_temp.como('00000000-0000-0000-0000-0000000c2003');

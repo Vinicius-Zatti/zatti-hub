@@ -54,6 +54,8 @@ export async function receberArquivo(params: {
   }
   const mime = detectarMime(params.bytes);
   if (!mime) throw new ErroPublico("Formato não aceito. Envie PDF, foto (JPG, PNG ou WEBP) ou o XML da nota.");
+  // XML de NF-e real tem poucas centenas de KB; acima de 1 MB a leitura por texto fica cara demais.
+  if (mime === "application/xml" && params.bytes.length > 1024 * 1024) throw new ErroPublico("XML maior que 1 MB não parece uma NF-e.");
   const sha256 = createHash("sha256").update(params.bytes).digest("hex");
   const admin = createAdminClient();
   const nome = params.nomeArquivo.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 160) || "documento";
@@ -67,6 +69,9 @@ export async function receberArquivo(params: {
     p_sha256: sha256,
     p_criado_por: params.criadoPor,
   });
+  if (error?.message?.includes("Limite diario")) {
+    throw new ErroPublico("Esta unidade já recebeu 80 documentos nas últimas 24 horas. Tente de novo amanhã ou fale com a Zatti.");
+  }
   if (error || !data) {
     console.error("caixa_entrada_registro_falhou", { codigo: error?.code ?? null });
     throw new Error("caixa_entrada_registro_falhou");
@@ -148,15 +153,40 @@ export async function lerEntrada(entradaId: string, criadoPor: string | null): P
   const admin = createAdminClient();
   const { data: travou } = await admin.rpc("fin_caixa_entrada_travar_leitura", { p_id: entradaId });
   if (!travou) return "ocupado";
+  // Toda gravação da leitura só vale se a entrada continua nesta mesma trava (achado da revisão:
+  // sem isso, a leitura desfazia um Anexar feito enquanto lia).
+  const lendoDesde = travou as string;
+  try {
+    return await lerTravada(entradaId, criadoPor, lendoDesde);
+  } catch (erro) {
+    console.error("caixa_entrada_leitura_falhou", { mensagem: erro instanceof Error ? erro.message.slice(0, 80) : "desconhecido" });
+    await admin
+      .from("fin_caixa_entrada")
+      .update({ situacao: "falhou", erro_codigo: "erro_interno", atualizado_em: new Date().toISOString() })
+      .eq("id", entradaId)
+      .eq("situacao", "lendo")
+      .eq("lendo_desde", lendoDesde);
+    return "falhou";
+  }
+}
+
+async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesde: string): Promise<"lido" | "falhou"> {
+  const admin = createAdminClient();
   const { data: ent } = await admin
     .from("fin_caixa_entrada")
     .select("id, unidade_id, mime, caminho_arquivo")
     .eq("id", entradaId)
     .single();
+  if (!ent) throw new Error("entrada_sumiu");
   const entrada = ent as { id: string; unidade_id: string; mime: MimeCaixa | "text/xml"; caminho_arquivo: string };
 
   const falhar = async (codigo: string) => {
-    await admin.from("fin_caixa_entrada").update({ situacao: "falhou", erro_codigo: codigo, atualizado_em: new Date().toISOString() }).eq("id", entradaId);
+    await admin
+      .from("fin_caixa_entrada")
+      .update({ situacao: "falhou", erro_codigo: codigo, atualizado_em: new Date().toISOString() })
+      .eq("id", entradaId)
+      .eq("situacao", "lendo")
+      .eq("lendo_desde", lendoDesde);
     return "falhou" as const;
   };
 
@@ -230,6 +260,8 @@ export async function lerEntrada(entradaId: string, criadoPor: string | null): P
       extracao: { ...extracao, sugestao, contraparteId },
       atualizado_em: new Date().toISOString(),
     })
-    .eq("id", entradaId);
+    .eq("id", entradaId)
+    .eq("situacao", "lendo")
+    .eq("lendo_desde", lendoDesde);
   return "lido";
 }

@@ -90,7 +90,9 @@ const SaidaItens = z.object({ codigos: z.array(z.string().max(20).nullable()).ma
 export function centavosDeReais(texto: string): number | null {
   const limpo = texto.replace(/R\$|\s/g, "");
   if (!/^-?\d{1,3}(\.\d{3})*(,\d{1,2})?$|^-?\d+(,\d{1,2})?$|^-?\d+(\.\d{1,2})$/.test(limpo)) return null;
-  const normal = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+  // "1.500" é milhar (R$ 1.500,00); ponto só é decimal com 1 ou 2 dígitos depois ("12.90").
+  const soMilhar = !limpo.includes(",") && /^-?\d{1,3}(\.\d{3})+$/.test(limpo);
+  const normal = limpo.includes(",") || soMilhar ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
   const n = Number(normal);
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }

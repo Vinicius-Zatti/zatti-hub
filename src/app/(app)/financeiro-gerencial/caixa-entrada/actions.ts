@@ -35,10 +35,9 @@ export async function enviarArquivosAction(formData: FormData): Promise<Resposta
         bytes: new Uint8Array(await arquivo.arrayBuffer()),
         criadoPor: acesso.userId,
       });
-      if (r.novo) {
-        novos++;
-        after(() => lerEntrada(r.id, acesso.userId).catch(() => undefined));
-      } else repetidos++;
+      if (r.novo) novos++;
+      else repetidos++;
+      if (r.novo || r.situacao === "recebido") after(() => lerEntrada(r.id, acesso.userId).catch(() => undefined));
     }
     revalidatePath(CAMINHO);
     const partes = [`${novos} documento${novos === 1 ? "" : "s"} recebido${novos === 1 ? "" : "s"}, lendo agora`];

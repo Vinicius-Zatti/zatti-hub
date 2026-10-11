@@ -163,6 +163,11 @@ begin
   end if;
 
   if new.tipo = 'baixa' then
+    -- Cartão de crédito não paga nada: a compra no cartão se paga pelo Pagamento de fatura (banco).
+    if exists (select 1 from public.fin_contas_financeiras c
+               where c.unidade_id = new.unidade_id and c.id = new.conta_financeira_id and c.tipo = 'cartao_credito') then
+      raise exception 'Baixa nao pode sair do cartao de credito: use a conta que pagou' using errcode = '23514';
+    end if;
     if new.valor + public.saldo_baixado_parcela(new.parcela_id) > v_parcela.valor then
       raise exception 'Valor maior que o saldo em aberto da parcela' using errcode = '23514';
     end if;

@@ -79,6 +79,8 @@ describe("saída da IA", () => {
     expect(centavosDeReais("R$ 1.234,56")).toBe(123456);
     expect(centavosDeReais("-5,00")).toBe(-500);
     expect(centavosDeReais("12.90")).toBe(1290);
+    expect(centavosDeReais("1.500")).toBe(150000);
+    expect(centavosDeReais("1.234.567")).toBe(123456700);
     expect(centavosDeReais("abc")).toBeNull();
   });
 });

@@ -448,7 +448,8 @@ begin
     else
       v_outra_conta := (p_item->>'conta_contraparte_id')::uuid;
       if not exists (select 1 from public.fin_contas_financeiras c
-                     where c.unidade_id = p_unidade and c.id = v_outra_conta and c.id <> v_mov.conta_financeira_id) then
+                     where c.unidade_id = p_unidade and c.id = v_outra_conta and c.id <> v_mov.conta_financeira_id
+                       and c.tipo <> 'cartao_credito') then
         raise exception 'Conta da outra ponta invalida' using errcode = '23514';
       end if;
       insert into public.fin_transferencias (unidade_id, conta_origem_id, conta_destino_id, valor, data, descricao,
@@ -626,6 +627,20 @@ begin
     end if;
     update public.fin_conciliacao_decisao_vinculos set ativo = false where id = v_v.id;
   end loop;
+
+  -- Nota criada por esta conciliação: sem outra baixa ativa, as parcelas são canceladas (o documento
+  -- fica no histórico; não sai da DRE apagando, sai cancelando, como no ajuste).
+  if v_dec.acao = 'criar_documento' and v_dec.documento_id is not null and not exists (
+    select 1 from public.fin_baixas b
+      join public.fin_parcelas pa on pa.id = b.parcela_id
+      join public.fin_lancamentos l on l.unidade_id = pa.unidade_id and l.id = pa.lancamento_id
+     where l.documento_id = v_dec.documento_id and b.tipo = 'baixa'
+       and not exists (select 1 from public.fin_baixas e where e.estorno_de_baixa_id = b.id)
+  ) then
+    update public.fin_parcelas set status = 'cancelado'
+     where lancamento_id in (select id from public.fin_lancamentos where unidade_id = v_unidade and documento_id = v_dec.documento_id)
+       and status <> 'cancelado';
+  end if;
 
   if v_dec.transferencia_id is not null then
     update public.fin_transferencias set

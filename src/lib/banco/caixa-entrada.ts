@@ -93,7 +93,13 @@ export async function lancarEntrada(entradaId: string, documento: DocumentoEntra
   void _unidade;
   const { data, error } = await supabase.rpc("fin_caixa_entrada_lancar", { p_entrada: entradaId, p_documento: semUnidade });
   if (error) {
-    if (error.code === "P0001") throw new ErroPublico("Este documento já foi tratado por outra pessoa. Atualize a página.");
+    if (error.code === "P0001") {
+      throw new ErroPublico(
+        error.message.includes("sendo lida")
+          ? "Este documento ainda está sendo lido. Espere terminar (até 2 minutos)."
+          : "Este documento já foi tratado por outra pessoa. Atualize a página.",
+      );
+    }
     if (error.code === "23505") throw new ErroPublico("Este documento já foi salvo com outro conteúdo. Atualize a página.");
     throw erroDeNegocio(error);
   }
@@ -109,7 +115,13 @@ export async function tratarEntrada(entradaId: string, acao: "anexar" | "descart
     p_motivo: motivo,
   });
   if (error) {
-    if (error.code === "P0001") throw new ErroPublico("Este documento já foi tratado por outra pessoa. Atualize a página.");
+    if (error.code === "P0001") {
+      throw new ErroPublico(
+        error.message.includes("sendo lida")
+          ? "Este documento ainda está sendo lido. Espere terminar (até 2 minutos)."
+          : "Este documento já foi tratado por outra pessoa. Atualize a página.",
+      );
+    }
     throw erroDeNegocio(error);
   }
 }

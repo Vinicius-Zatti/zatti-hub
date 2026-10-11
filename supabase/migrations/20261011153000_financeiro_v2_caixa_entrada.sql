@@ -109,7 +109,7 @@ grant select on table public.fin_caixa_entrada, public.fin_caixa_entrada_remeten
 create policy "fin_caixa_entrada_select" on public.fin_caixa_entrada
   for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, null));
 create policy "fin_caixa_entrada_remetentes_select" on public.fin_caixa_entrada_remetentes
-  for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, null));
+  for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, array['gestao']));
 create policy "fin_caixa_entrada_pastas_select" on public.fin_caixa_entrada_pastas
   for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, null));
 
@@ -155,6 +155,11 @@ begin
     return jsonb_build_object('id', v_existente.id, 'novo', false, 'caminho', v_existente.caminho_arquivo,
       'arquivo_gravado', v_existente.arquivo_gravado, 'situacao', v_existente.situacao);
   end if;
+  -- Teto de 80 documentos novos por unidade em 24 h (custo de IA e abuso do canal externo).
+  if (select count(*) from public.fin_caixa_entrada
+       where unidade_id = p_unidade and recebido_em > now() - interval '24 hours') >= 80 then
+    raise exception 'Limite diario da Caixa de Entrada atingido' using errcode = 'P0001';
+  end if;
   v_ext := case p_mime when 'application/pdf' then 'pdf' when 'image/jpeg' then 'jpg' when 'image/png' then 'png'
     when 'image/webp' then 'webp' else 'xml' end;
   insert into public.fin_caixa_entrada (id, unidade_id, canal, remetente, nome_arquivo, mime, tamanho_bytes, sha256,
@@ -170,7 +175,7 @@ revoke all on function public.fin_caixa_entrada_registrar(text, text, text, text
 
 -- Trava para leitura (10 minutos), recuperável.
 create or replace function public.fin_caixa_entrada_travar_leitura(p_id uuid)
-returns boolean
+returns timestamptz
 language sql
 volatile
 security definer
@@ -181,7 +186,7 @@ as $$
    where id = p_id and arquivo_gravado
      and (situacao in ('recebido', 'falhou', 'lido') or (situacao = 'lendo' and lendo_desde < now() - interval '10 minutes'))
      and tentativas < 5
-  returning true;
+  returning lendo_desde;
 $$;
 revoke all on function public.fin_caixa_entrada_travar_leitura(uuid) from public, anon, authenticated;
 
@@ -203,6 +208,9 @@ begin
   end if;
   if v_ent.situacao in ('lancado', 'anexado', 'descartado') then
     raise exception 'Entrada ja tratada' using errcode = 'P0001';
+  end if;
+  if v_ent.situacao = 'lendo' and v_ent.lendo_desde > now() - interval '10 minutes' then
+    raise exception 'Entrada ainda sendo lida' using errcode = 'P0001';
   end if;
   v_doc := public.fin_documento_criar(p_documento || jsonb_build_object('unidade', v_ent.unidade_id, 'origem', 'caixa_entrada'));
   update public.fin_caixa_entrada
@@ -231,6 +239,9 @@ begin
   end if;
   if v_ent.situacao in ('lancado', 'anexado', 'descartado') then
     raise exception 'Entrada ja tratada' using errcode = 'P0001';
+  end if;
+  if v_ent.situacao = 'lendo' and v_ent.lendo_desde > now() - interval '10 minutes' then
+    raise exception 'Entrada ainda sendo lida' using errcode = 'P0001';
   end if;
   if p_acao = 'anexar' then
     if not exists (select 1 from public.fin_lancamentos l where l.unidade_id = v_ent.unidade_id and l.id = p_lancamento) then
@@ -321,7 +332,7 @@ alter table public.fin_alertas_enviados enable row level security;
 revoke all on table public.fin_alerta_destinatarios, public.fin_alertas_enviados from public, anon, authenticated;
 grant select on table public.fin_alerta_destinatarios to authenticated;
 create policy "fin_alerta_destinatarios_select" on public.fin_alerta_destinatarios
-  for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, null));
+  for select to authenticated using (public.usuario_pode_usar_financeiro_gerencial(unidade_id, array['gestao']));
 
 -- Configuração ganha destinatários do alerta (mesma barreira de Gestão).
 create or replace function public.fin_alerta_configurar(p_unidade text, p_config jsonb)

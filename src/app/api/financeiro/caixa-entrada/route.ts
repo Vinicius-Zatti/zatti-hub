@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   const bytes = new Uint8Array(Buffer.from(corpo.base64, "base64"));
   try {
     const r = await receberArquivo({ unidadeId, canal: corpo.canal, remetente, nomeArquivo: corpo.nomeArquivo, bytes, criadoPor: null });
-    if (r.novo) after(() => lerEntrada(r.id, null).catch(() => undefined));
+    if (r.novo || r.situacao === "recebido") after(() => lerEntrada(r.id, null).catch(() => undefined));
     return NextResponse.json(
       { ok: true, novo: r.novo, unidadeNome: (un as { nome: string } | null)?.nome ?? "" },
       { headers: { "Cache-Control": "no-store" } },
