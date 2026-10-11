@@ -55,6 +55,7 @@ export type ChaveLimiteRequisicao =
   | "fin_conciliacao_importar"
   | "fin_conciliacao_reprocessar"
   | "comercial_salvar"
+  | "conteudo_salvar"
   | "erro_navegador_registrar";
 
 /** Consome um limite persistente no Supabase. Falha fechada: se a funcao do

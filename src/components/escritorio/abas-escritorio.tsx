@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/** Abas do módulo Escritório (Time de IA | Clientes | Comercial | Agenda | Meu Tempo). Fica
+/** Abas do módulo Escritório (Time de IA | Clientes | Comercial | Conteúdo | Agenda | Meu Tempo). Fica
  * acima das `SubTabs` de cada seção. Não usa `SubTabs` porque a aba precisa
  * ficar ativa em qualquer subpágina da seção (/agenda/semana marca "Agenda").
  * "/escritorio" é prefixo de "/escritorio/clientes": vale o prefixo mais longo. */
@@ -11,6 +11,7 @@ const ABAS = [
   { label: "Time de IA", href: "/escritorio", prefixo: "/escritorio" },
   { label: "Clientes", href: "/escritorio/clientes", prefixo: "/escritorio/clientes" },
   { label: "Comercial", href: "/escritorio/comercial", prefixo: "/escritorio/comercial" },
+  { label: "Conteúdo", href: "/escritorio/conteudo", prefixo: "/escritorio/conteudo" },
   { label: "Agenda", href: "/agenda/dia", prefixo: "/agenda" },
   { label: "Meu Tempo", href: "/meu-tempo/hoje", prefixo: "/meu-tempo" },
 ];
