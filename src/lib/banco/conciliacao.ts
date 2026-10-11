@@ -448,6 +448,8 @@ export type ItemFila = {
     fonte: string;
     motivoCodigo: string;
     modeloIa: string | null;
+    /** Nome da regra que gerou a sugestão (evidências do motor), quando houver. */
+    regraNome: string | null;
   } | null;
 };
 
@@ -488,13 +490,21 @@ export async function listarFila(unidadeId: string, filtros: FiltrosFila, pagina
     fonte_extracao: FonteExtracao;
   };
   const linhas = (data as MovRow[] | null) ?? [];
-  type SugRow = { movimento_id: string; categoria_sugerida_id: string | null; confianca: string; fonte: string; motivo_codigo: string; modelo_ia: string | null };
+  type SugRow = {
+    movimento_id: string;
+    categoria_sugerida_id: string | null;
+    confianca: string;
+    fonte: string;
+    motivo_codigo: string;
+    modelo_ia: string | null;
+    evidencias: Record<string, unknown> | null;
+  };
   const sugestoes = await buscarTudoEmLotes<SugRow>(
     linhas.map((l) => l.id),
     (lote, a, b) =>
       supabase
         .from("fin_classificacoes")
-        .select("movimento_id, categoria_sugerida_id, confianca, fonte, motivo_codigo, modelo_ia")
+        .select("movimento_id, categoria_sugerida_id, confianca, fonte, motivo_codigo, modelo_ia, evidencias")
         .eq("situacao", "vigente")
         .in("movimento_id", lote)
         .order("id")
@@ -519,7 +529,14 @@ export async function listarFila(unidadeId: string, filtros: FiltrosFila, pagina
         duplicidadeCandidataId: l.duplicidade_candidata_id,
         fonteExtracao: l.fonte_extracao,
         sugestao: s
-          ? { categoriaId: s.categoria_sugerida_id, confianca: s.confianca, fonte: s.fonte, motivoCodigo: s.motivo_codigo, modeloIa: s.modelo_ia }
+          ? {
+              categoriaId: s.categoria_sugerida_id,
+              confianca: s.confianca,
+              fonte: s.fonte,
+              motivoCodigo: s.motivo_codigo,
+              modeloIa: s.modelo_ia,
+              regraNome: typeof s.evidencias?.regra_nome === "string" ? s.evidencias.regra_nome : null,
+            }
           : null,
       };
     }),

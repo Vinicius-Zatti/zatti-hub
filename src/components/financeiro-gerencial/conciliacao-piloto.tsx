@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   confirmarContaAction,
   descartarImportacaoAction,
   importarDocumentoAction,
-  listarCandidatosAction,
   reprocessarImportacaoAction,
-  type RespostaCandidatos,
   type RespostaImportacao,
 } from "@/app/(app)/financeiro-gerencial/conciliacao/actions";
 import { Th } from "@/components/tabela";
@@ -18,7 +16,6 @@ import { ModalFlutuante } from "@/components/modal-flutuante";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
-import { EXPLICACAO_PONTUACAO } from "@/lib/conciliacao/candidatos";
 import {
   descreverContaDetectada,
   textoAlertaConta,
@@ -32,6 +29,12 @@ import {
   TEXTO_SITUACAO,
 } from "@/lib/conciliacao/textos";
 import type { FiltrosFila, ImportacaoResumo, ItemFila } from "@/lib/banco/conciliacao";
+import type { DecisaoResumo } from "@/lib/banco/conciliacao-decisoes";
+import type { OpcaoBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
+import { ConciliarMovimento } from "@/components/financeiro-gerencial/conciliacao/modal-conciliar";
+import { FilaLote } from "@/components/financeiro-gerencial/conciliacao/fila-lote";
+import { Conciliados } from "@/components/financeiro-gerencial/conciliacao/conciliados";
+import type { Aviso, ContextoDecisao } from "@/components/financeiro-gerencial/conciliacao/comum";
 
 // Preflight de interface (AGENTS.md): tabela com Th + TabelaRolavel,
 // criar/editar em ModalFlutuante, conta financeira no SeletorComBusca, data
@@ -65,10 +68,27 @@ export function ConciliacaoPiloto(props: {
   planoDeContas: Record<string, string>;
   iaDocumentos: boolean;
   ehMaster: boolean;
+  planoReceita: OpcaoBusca[];
+  planoDespesa: OpcaoBusca[];
+  /** Gestão ou master (acesso.role). */
+  podeGestao: boolean;
+  decisoes: DecisaoResumo[];
 }) {
   const [importando, setImportando] = useState(false);
   const [errosDe, setErrosDe] = useState<ImportacaoResumo | null>(null);
-  const [candidatosDe, setCandidatosDe] = useState<ItemFila | null>(null);
+  const [conciliarDe, setConciliarDe] = useState<ItemFila | null>(null);
+  const [visao, setVisao] = useState<"lista" | "lote" | "conciliados">("lista");
+  const [aviso, setAviso] = useState<Aviso | null>(null);
+  const contexto: ContextoDecisao = {
+    contas: props.contas,
+    planoReceita: props.planoReceita,
+    planoDespesa: props.planoDespesa,
+    podeGestao: props.podeGestao,
+  };
+  function concluir(texto: string) {
+    setConciliarDe(null);
+    setAviso({ tipo: "ok", texto });
+  }
   const [descartarDe, setDescartarDe] = useState<ImportacaoResumo | null>(null);
   const [alertaDe, setAlertaDe] = useState<ImportacaoResumo | null>(null);
   const nomeConta = new Map(props.contas.map((c) => [c.id, c.nome]));
@@ -112,9 +132,8 @@ export function ConciliacaoPiloto(props: {
       </div>
 
       <p role="note" className="rounded-lg border border-ambar bg-ambar/10 p-3 text-sm text-azul-noite">
-        Piloto: importação e revisão. Esta tela mostra o que o Hub leu de cada extrato e o Plano de Contas que ele sugere.
-        Escolher o Plano de Contas, revisar datas e consolidar no financeiro é a próxima etapa: nada daqui vai para Receitas,
-        Despesas, baixas ou DRE ainda.
+        Cada movimento só vai para Receitas, Despesas, baixas e DRE quando você clica em &quot;Conciliar&quot; e confirma. A regra e
+        a IA apenas sugerem o Plano de Contas: nada é confirmado sozinho.
       </p>
 
       <section className="flex flex-col gap-2">
@@ -207,8 +226,30 @@ export function ConciliacaoPiloto(props: {
 
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-azul-noite">Fila de revisão ({props.totalFila})</h2>
-          <div className="flex flex-wrap gap-1 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-semibold text-azul-noite">Fila de revisão ({props.totalFila})</h2>
+            <div role="tablist" className="flex gap-1 text-xs">
+              {(
+                [
+                  ["lista", "Um a um"],
+                  ["lote", "Em lote"],
+                  ["conciliados", `Conciliados (${props.decisoes.length})`],
+                ] as const
+              ).map(([valor, rotulo]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={visao === valor}
+                  onClick={() => setVisao(valor)}
+                  className={`rounded-md border px-2.5 py-1 font-semibold ${visao === valor ? "border-ambar bg-ambar text-azul-noite" : "border-cinza-claro text-azul-noite"}`}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`flex flex-wrap gap-1 text-xs ${visao === "conciliados" ? "hidden" : ""}`}>
             {[
               ["todos", "Todos"],
               ["pendente", "Pendentes"],
@@ -227,8 +268,18 @@ export function ConciliacaoPiloto(props: {
             {props.filtros.importacaoId && <Filtro ativo href={href({ importacao: null })}>Só esta importação ✕</Filtro>}
           </div>
         </div>
-        {props.fila.length === 0 ? (
+        {aviso && (
+          <div role="status" className={`flex items-start justify-between gap-2 rounded-md border p-2 text-sm ${aviso.tipo === "ok" ? "border-verde bg-verde/10 text-verde" : "border-vermelho bg-vermelho/5 text-vermelho"}`}>
+            <span>{aviso.texto}</span>
+            <button type="button" onClick={() => setAviso(null)} className="text-xs underline">Fechar</button>
+          </div>
+        )}
+        {visao === "conciliados" ? (
+          <Conciliados decisoes={props.decisoes} podeGestao={props.podeGestao} aoConcluir={(texto) => setAviso({ tipo: "ok", texto })} />
+        ) : props.fila.length === 0 ? (
           <p className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">Nada na fila com estes filtros.</p>
+        ) : visao === "lote" ? (
+          <FilaLote fila={props.fila} contexto={contexto} aoConcluir={(texto) => setAviso({ tipo: "ok", texto })} />
         ) : (
           <TabelaRolavel className="max-h-[75vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Fila de revisão">
             <table className="w-full min-w-[1200px] text-sm">
@@ -270,7 +321,10 @@ export function ConciliacaoPiloto(props: {
                     >
                       {m.sugestao?.categoriaId ? props.planoDeContas[m.sugestao.categoriaId] ?? "-" : <span className="text-cinza-medio">Sem sugestão</span>}
                     </td>
-                    <td className="px-3 py-2">{rotuloConfianca(m.sugestao?.confianca)}</td>
+                    <td className="px-3 py-2">
+                      {rotuloConfianca(m.sugestao?.confianca)}
+                      <SeloSugestao sugestao={m.sugestao} />
+                    </td>
                     <td className="max-w-[280px] truncate px-3 py-2 text-xs" title={m.sugestao ? TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo] : undefined}>
                       {m.sugestao ? TEXTO_FONTE_SUGESTAO[m.sugestao.fonte] ?? m.sugestao.fonte : "-"}
                       {m.sugestao && TEXTO_MOTIVO_SUGESTAO[m.sugestao.motivoCodigo] && (
@@ -279,8 +333,8 @@ export function ConciliacaoPiloto(props: {
                     </td>
                     <td className="px-3 py-2 text-xs">{m.fonteExtracao === "ia" ? "IA" : "Local"}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-xs">
-                      <button type="button" onClick={() => setCandidatosDe(m)} className="font-semibold text-azul-petroleo underline">
-                        Contas correspondentes
+                      <button type="button" onClick={() => setConciliarDe(m)} className="rounded-md bg-ambar px-2.5 py-1 font-bold text-azul-noite hover:brightness-95">
+                        Conciliar
                       </button>
                     </td>
                   </tr>
@@ -289,7 +343,7 @@ export function ConciliacaoPiloto(props: {
             </table>
           </TabelaRolavel>
         )}
-        <Paginacao atual={props.pagina} total={totalPaginas} link={(n) => href({ pagina: n })} />
+        {visao !== "conciliados" && <Paginacao atual={props.pagina} total={totalPaginas} link={(n) => href({ pagina: n })} />}
       </section>
 
       <ModalFlutuante aberto={importando} onFechar={() => setImportando(false)}>
@@ -326,11 +380,29 @@ export function ConciliacaoPiloto(props: {
       <ModalFlutuante aberto={errosDe !== null} onFechar={() => setErrosDe(null)}>
         {errosDe && <ErrosImportacao importacao={errosDe} onFechar={() => setErrosDe(null)} />}
       </ModalFlutuante>
-      <ModalFlutuante aberto={candidatosDe !== null} onFechar={() => setCandidatosDe(null)}>
-        {candidatosDe && <Candidatos movimento={candidatosDe} onFechar={() => setCandidatosDe(null)} />}
+      <ModalFlutuante aberto={conciliarDe !== null} onFechar={() => setConciliarDe(null)} larga>
+        {conciliarDe && (
+          <ConciliarMovimento key={conciliarDe.id} movimento={conciliarDe} contexto={contexto} aoConcluir={concluir} onFechar={() => setConciliarDe(null)} />
+        )}
       </ModalFlutuante>
     </div>
   );
+}
+
+/** Selo da origem da sugestão: regra confirmada da unidade (com o nome, se houver) ou IA. */
+function SeloSugestao({ sugestao }: { sugestao: ItemFila["sugestao"] }) {
+  if (!sugestao?.categoriaId) return null;
+  if (sugestao.fonte === "regra_unidade") {
+    return (
+      <span className="ml-1 rounded-full bg-azul-petroleo/10 px-2 py-0.5 text-xs font-semibold text-azul-petroleo" title={sugestao.regraNome ?? "Regra confirmada da unidade"}>
+        por regra{sugestao.regraNome ? `: ${sugestao.regraNome}` : ""}
+      </span>
+    );
+  }
+  if (sugestao.fonte === "ia") {
+    return <span className="ml-1 rounded-full bg-ambar/20 px-2 py-0.5 text-xs font-semibold text-azul-noite" title="Sugestão da IA: confira antes de confirmar">IA</span>;
+  }
+  return null;
 }
 
 function rotuloConfianca(c: string | undefined): string {
@@ -617,88 +689,6 @@ function ErrosImportacao({ importacao, onFechar }: { importacao: ImportacaoResum
         <p className="text-xs text-cinza-medio">Mostrando as primeiras {importacao.erros.length} de {importacao.linhasComErro}.</p>
       )}
       <div className="flex justify-end">
-        <button type="button" onClick={onFechar} className="rounded-md px-3 py-1.5 text-sm text-cinza-medio">Fechar</button>
-      </div>
-    </div>
-  );
-}
-
-function Candidatos({ movimento, onFechar }: { movimento: ItemFila; onFechar: () => void }) {
-  const [resposta, setResposta] = useState<RespostaCandidatos | null>(null);
-  const [foraDaJanela, setForaDaJanela] = useState(false);
-  const [pagina, setPagina] = useState(1);
-  const [pendente, iniciar] = useTransition();
-
-  function buscar(fora: boolean, p: number) {
-    setForaDaJanela(fora);
-    setPagina(p);
-    iniciar(async () => {
-      setResposta(
-        await listarCandidatosAction({
-          movimentoId: movimento.id,
-          data: movimento.data,
-          valorCentavos: Math.round(movimento.valor * 100),
-          contaFinanceiraId: movimento.contaFinanceiraId,
-          foraDaJanela: fora,
-          pagina: p,
-        }),
-      );
-    });
-  }
-
-  // Primeira busca ao abrir (janela de 5 dias).
-  useEffect(() => {
-    iniciar(async () => {
-      setResposta(
-        await listarCandidatosAction({
-          movimentoId: movimento.id,
-          data: movimento.data,
-          valorCentavos: Math.round(movimento.valor * 100),
-          contaFinanceiraId: movimento.contaFinanceiraId,
-          foraDaJanela: false,
-          pagina: 1,
-        }),
-      );
-    });
-  }, [movimento]);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <h2 className="font-display text-lg font-bold text-azul-noite">Contas correspondentes</h2>
-      <p className="text-sm">
-        {formatarDataBr(movimento.data)} · {movimento.direcao === "saida" ? "Saída" : "Entrada"} de {brl(movimento.valor)}
-        <span className="block truncate text-cinza-medio" title={movimento.descricaoOriginal}>{movimento.descricaoOriginal}</span>
-      </p>
-      <p className="flex items-center gap-1 text-xs text-cinza-medio">
-        {foraDaJanela ? "Todas as datas" : "Data prevista até 5 dias antes ou depois"}. Só consulta: nada é conciliado nesta etapa.
-        <DicaCalculo texto={EXPLICACAO_PONTUACAO} rotulo="Pontos" />
-      </p>
-      {pendente && <p className="text-sm text-cinza-medio">Buscando...</p>}
-      {resposta && !resposta.ok && <p className="text-sm text-vermelho">{resposta.mensagem}</p>}
-      {resposta?.ok && resposta.itens.length === 0 && <p className="text-sm text-cinza-medio">Nenhuma conta em aberto correspondente.</p>}
-      {resposta?.ok && resposta.itens.length > 0 && (
-        <ul className="flex max-h-[45vh] flex-col gap-2 overflow-auto">
-          {resposta.itens.map((c) => (
-            <li key={c.parcelaId} className={`rounded-md border p-2 text-sm ${c.grupo === "quitada" ? "border-ambar bg-ambar/10" : "border-cinza-claro"}`}>
-              <div className="flex justify-between gap-2">
-                <span className="truncate font-semibold" title={c.descricao}>{c.descricao}</span>
-                <span className="whitespace-nowrap">{c.pontuacao.pontos} pontos</span>
-              </div>
-              <div className="text-xs text-cinza-medio">
-                {c.categoriaNome} · parcela {c.numero}/{c.totalParcelas} · previsto {formatarDataBr(c.dataPrevista)} · valor {brl(c.valor)} · em aberto {brl(c.saldoAberto)}
-                {c.pontuacao.diferencaCentavos !== 0 && ` · diferença ${brl(c.pontuacao.diferencaCentavos / 100)}`}
-              </div>
-              <div className="text-xs">{c.pontuacao.motivos.join(" · ")}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex flex-wrap justify-between gap-2 text-xs">
-        <div className="flex gap-2">
-          {!foraDaJanela && <button type="button" onClick={() => buscar(true, 1)} className="underline">Buscar em todas as datas</button>}
-          {pagina > 1 && <button type="button" onClick={() => buscar(foraDaJanela, pagina - 1)} className="underline">Anteriores</button>}
-          {resposta?.ok && resposta.temMais && <button type="button" onClick={() => buscar(foraDaJanela, pagina + 1)} className="underline">Mais resultados</button>}
-        </div>
         <button type="button" onClick={onFechar} className="rounded-md px-3 py-1.5 text-sm text-cinza-medio">Fechar</button>
       </div>
     </div>

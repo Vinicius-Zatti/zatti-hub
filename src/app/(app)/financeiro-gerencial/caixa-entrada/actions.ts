@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
-import { configurarCaixa, lancarEntrada, linkDoOriginal, tratarEntrada } from "@/lib/banco/caixa-entrada";
+import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, tratarEntrada } from "@/lib/banco/caixa-entrada";
 import { lerEntrada, receberArquivo, TAMANHO_MAXIMO_CAIXA } from "@/lib/caixa-entrada/processar";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -136,5 +136,24 @@ export async function configurarCaixaAction(input: unknown): Promise<Resposta> {
     return { ok: true, mensagem: mensagens[config.acao] };
   } catch (erro) {
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível salvar a configuração.") };
+  }
+}
+
+const alertaSchema = z.discriminatedUnion("acao", [
+  z.object({ acao: z.literal("adicionar"), telefone: z.string().regex(/^[\d\s()+-]{10,20}$/), nome: z.string().trim().min(1).max(80) }).strict(),
+  z.object({ acao: z.literal("remover"), id: uuid }).strict(),
+]);
+
+/** Quem recebe o alerta diário de contas a pagar no WhatsApp (Gestão/master). */
+export async function configurarAlertaAction(input: unknown): Promise<Resposta> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_conta_financeira_salvar");
+    const config = alertaSchema.parse(input);
+    await configurarAlerta(acesso.unidadeId, config);
+    revalidatePath(CAMINHO);
+    return { ok: true, mensagem: config.acao === "adicionar" ? "Pronto. O alerta das 8h vai para este número." : "Número removido do alerta." };
+  } catch (erro) {
+    return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível salvar o alerta.") };
   }
 }

@@ -140,3 +140,25 @@ export async function configurarCaixa(unidadeId: string, config: Record<string, 
     throw erroDeNegocio(error);
   }
 }
+
+export type DestinatarioAlerta = { id: string; telefone: string; nome: string };
+
+export async function listarDestinatariosAlerta(unidadeId: string): Promise<DestinatarioAlerta[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("fin_alerta_destinatarios")
+    .select("id, telefone, nome")
+    .eq("unidade_id", unidadeId)
+    .eq("ativo", true)
+    .order("nome");
+  return (data as DestinatarioAlerta[] | null) ?? [];
+}
+
+export async function configurarAlerta(unidadeId: string, config: Record<string, unknown>): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("fin_alerta_configurar", { p_unidade: unidadeId, p_config: config });
+  if (error) {
+    if (error.code === "23505") throw new ErroPublico("Este número já recebe o alerta desta unidade.");
+    throw erroDeNegocio(error);
+  }
+}
