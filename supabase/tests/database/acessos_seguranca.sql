@@ -50,7 +50,7 @@ as $$
   select set_config('role', 'authenticated', true);
   select set_config(
     'request.jwt.claims',
-    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated', 'aal', 'aal2')::text, -- master exige segundo fator desde 11/08
     true
   );
 $$;

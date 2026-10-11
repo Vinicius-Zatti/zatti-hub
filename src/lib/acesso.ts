@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ehTitularFinanceiro } from "@/lib/acesso-financeiro";
+import { ordenarVinculos, podeUsarEquipe } from "@/lib/equipe/regras";
 
 export type Role = "gestao" | "operacional" | "master";
 export type FonteDadosEstoque = "planilha" | "banco";
@@ -45,6 +46,12 @@ export type AcessoAtual = {
    * Única pessoa com Financeiro Gerencial, Conciliação e Uso de IA. */
   titularFinanceiro: boolean;
   role: Role;
+  /** Unidade a que o vínculo efetivo está preso (`null` = organização
+   * inteira, ou master). Limita o que o gestor administra em Equipe. */
+  unidadeFixa: string | null;
+  /** Liga a tela Equipe (cadastro da equipe pelo próprio cliente) nessa
+   * organização - `organizacoes.equipe_habilitado`, editado no Supabase. */
+  equipeHabilitado: boolean;
   /** Todas as organizações que essa pessoa pode ver - mais de uma linha
    * aqui é o sinal pra mostrar o seletor no cabeçalho. Pra role "master"
    * são todas as organizações ativas da plataforma; pra role normal, só as
@@ -53,13 +60,16 @@ export type AcessoAtual = {
 };
 
 type VinculoRow = {
+  id: string;
   organizacao_id: string;
   unidade_id: string | null;
   role: Role;
-  organizacoes: { nome: string } | null;
+  status: "ativo" | "convidado";
+  created_at: string;
+  organizacoes: { nome: string; equipe_habilitado: boolean } | null;
 };
 
-type OrganizacaoRow = { id: string; nome: string };
+type OrganizacaoRow = { id: string; nome: string; equipe_habilitado?: boolean };
 
 type UnidadeRow = {
   id: string;
@@ -86,9 +96,9 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const [{ data: vinculosData, error: erroVinculos }, { data: perfil }] = await Promise.all([
     supabase
       .from("vinculos")
-      .select("organizacao_id, unidade_id, role, organizacoes(nome)")
+      .select("id, organizacao_id, unidade_id, role, status, created_at, organizacoes(nome, equipe_habilitado)")
       .eq("user_id", userId)
-      .eq("status", "ativo"),
+      .in("status", ["ativo", "convidado"]),
     supabase.from("perfis").select("nome").eq("id", userId).maybeSingle(),
   ]);
 
@@ -101,8 +111,22 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     throw new Error("Não foi possível validar o acesso do usuário.");
   }
 
-  const vinculos = (vinculosData as unknown as VinculoRow[] | null) ?? [];
-  if (vinculos.length === 0) redirect("/sem-acesso");
+  // Sessão aberta antes da troca de senha do primeiro acesso: o banco já não
+  // devolve dado nenhum para ela; aqui a recusa é explícita e manda entrar de novo.
+  const { data: sessaoVigente, error: erroSessao } = await supabase.rpc("sessao_vigente");
+  if (erroSessao) throw new Error("Não foi possível validar a sessão do usuário.");
+  if (sessaoVigente === false) redirect("/login");
+
+  const todosVinculos = (vinculosData as unknown as VinculoRow[] | null) ?? [];
+  // Ordem fixa (gestão antes de operacional, organização inteira antes de
+  // unidade, mais antigo, id) - antes dependia da ordem que o banco devolvia.
+  const vinculos = ordenarVinculos(todosVinculos.filter((v) => v.status === "ativo"));
+  if (vinculos.length === 0) {
+    // Conta criada pela Equipe que ainda não trocou a senha temporária: o
+    // vínculo fica 'convidado' (RLS não libera nada) até /primeiro-acesso.
+    if (todosVinculos.some((v) => v.status === "convidado")) redirect("/primeiro-acesso");
+    redirect("/sem-acesso");
+  }
 
   const ehMaster = vinculos.some((v) => v.role === "master");
   // Sessao administrativa precisa de segundo fator. A mesma exigencia esta
@@ -114,6 +138,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   let organizacoesDisponiveis: { id: string; nome: string }[];
   let organizacaoId: string;
   let role: Role;
+  let equipeHabilitado = false;
 
   if (ehMaster) {
     // Master enxerga toda organização ativa da plataforma, sem precisar de
@@ -121,7 +146,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     // acesso pra quem tem qualquer vínculo com role "master".
     const { data: todasOrgs } = await supabase
       .from("organizacoes")
-      .select("id, nome")
+      .select("id, nome, equipe_habilitado")
       .eq("ativo", true)
       .order("nome");
     organizacoesDisponiveis = (todasOrgs as unknown as OrganizacaoRow[] | null) ?? [];
@@ -157,15 +182,20 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
         organizacoesDisponiveis[0].id;
     }
     role = "master";
+    equipeHabilitado = Boolean(
+      ((todasOrgs as unknown as OrganizacaoRow[] | null) ?? []).find((o) => o.id === organizacaoId)
+        ?.equipe_habilitado,
+    );
   } else {
-    organizacoesDisponiveis = vinculos.map((v) => ({
-      id: v.organizacao_id,
-      nome: v.organizacoes?.nome ?? "",
-    }));
+    // Uma linha por organização (pode haver mais de um vínculo na mesma).
+    organizacoesDisponiveis = [
+      ...new Map(vinculos.map((v) => [v.organizacao_id, { id: v.organizacao_id, nome: v.organizacoes?.nome ?? "" }])).values(),
+    ];
     const vinculo =
       vinculos.find((v) => v.organizacao_id === orgEscolhida) ?? vinculos[0];
     organizacaoId = vinculo.organizacao_id;
     role = vinculo.role;
+    equipeHabilitado = Boolean(vinculo.organizacoes?.equipe_habilitado);
   }
 
   // unidade_id do vínculo específico só existe fora do caso master (que já
@@ -216,6 +246,8 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado && titularFinanceiro,
     titularFinanceiro,
     role,
+    unidadeFixa,
+    equipeHabilitado,
     organizacoesDisponiveis,
   };
 });
@@ -292,6 +324,14 @@ export async function requireGestaoFinanceiroGerencial(): Promise<AcessoAtual> {
 export async function requireTitularFinanceiro(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (!acesso.titularFinanceiro) redirect("/estoque/pedidos");
+  return acesso;
+}
+
+/** Barreira da tela Equipe: papel de gestão (master incluso) e flag ligada
+ * na organização da sessão. Chamada no layout e em cada Server Action. */
+export async function requireEquipe(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!podeUsarEquipe(acesso)) redirect("/estoque/contagem");
   return acesso;
 }
 

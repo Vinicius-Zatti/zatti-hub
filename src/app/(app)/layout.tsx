@@ -206,6 +206,19 @@ export default async function AppLayout({
       disabled: !acesso.fichasTecnicasHabilitado,
       sections: secoesFichasTecnicas,
     },
+    // Equipe: gestão cadastra a própria equipe (flag por organização). A
+    // barreira de verdade é `requireEquipe()` na página e em cada action.
+    ...(podeGerir && acesso.equipeHabilitado
+      ? [
+          {
+            label: "Equipe",
+            href: "/equipe",
+            icone: "acessos" as const,
+            activePrefix: "/equipe",
+            disabled: false,
+          },
+        ]
+      : []),
     { label: "Tarefas", href: "#", icone: "tarefas", disabled: true },
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
     // Esconder os itens abaixo pra quem não é master é só UX - a barreira de
