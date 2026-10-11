@@ -549,6 +549,50 @@ export const baixaFinanceiraEntradaSchema = z
   })
   .strict();
 
+// Financeiro V2 (11/10/2026): documento com rateio em vários Plano de Contas. Valores em centavos.
+const centavosPositivos = z.number().int().min(1).max(Math.round(LIMITE_DINHEIRO * 100));
+
+export const contraparteEntradaSchema = z
+  .object({
+    nome: textoObrigatorio(160),
+    documento: texto(18),
+    tipo: z.enum(["fornecedor", "cliente", "ambos"]),
+  })
+  .strict();
+
+export const documentoFinanceiroEntradaSchema = z
+  .object({
+    chave: z.string().min(8).max(120).regex(/^[A-Za-z0-9_-]+$/),
+    tipo: tipoLancamentoFinanceiroSchema,
+    contraparteId: idUuidSchema.nullable(),
+    numero: texto(60),
+    descricao: textoObrigatorio(200),
+    dataEmissao: dataIsoSchema.nullable(),
+    dataCompetencia: dataIsoSchema,
+    contaFinanceiraId: idUuidSchema.nullable(),
+    observacao: texto(2_000),
+    linhas: z
+      .array(z.object({ categoriaId: idUuidSchema, descricao: texto(200), valorCentavos: centavosPositivos }).strict())
+      .min(1)
+      .max(50),
+    vencimentos: z
+      .array(z.object({ dataPrevista: dataIsoSchema, valorCentavos: centavosPositivos }).strict())
+      .min(1)
+      .max(360),
+  })
+  .strict();
+
+export const baixarVencimentoDocumentoEntradaSchema = z
+  .object({
+    documentoId: idUuidSchema,
+    vencimento: z.number().int().min(1).max(360),
+    contaFinanceiraId: idUuidSchema,
+    data: dataIsoSchema,
+    valorCentavos: centavosPositivos,
+    observacao: texto(2_000),
+  })
+  .strict();
+
 export const estornarBaixaEntradaSchema = z
   .object({
     baixaId: idUuidSchema,
