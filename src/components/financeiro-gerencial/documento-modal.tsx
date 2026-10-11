@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   criarContraparteAction,
@@ -29,7 +29,26 @@ export type ValoresIniciaisDocumento = {
   observacao?: string;
   linhas?: { categoriaId: string; descricao: string; valor: number | null }[];
   vencimentos?: { dataPrevista: string; valor: number | null }[];
+  /** Sem `contraparteId`: abre o bloco de novo fornecedor/cliente já preenchido (ex.: lido da nota). */
+  novaContraparte?: { nome: string; documento: string };
 };
+
+/** O que o formulário envia (formato de `documentoFinanceiroEntradaSchema`). */
+export type DocumentoParaSalvar = {
+  chave: string;
+  tipo: TipoLancamento;
+  contraparteId: string | null;
+  numero: string;
+  descricao: string;
+  dataEmissao: string | null;
+  dataCompetencia: string;
+  contaFinanceiraId: string | null;
+  observacao: string;
+  linhas: { categoriaId: string; descricao: string; valorCentavos: number }[];
+  vencimentos: { dataPrevista: string; valorCentavos: number }[];
+};
+
+export type ResultadoSalvarDocumento = { ok: true; documentoId: string } | { ok: false; mensagem: string };
 
 type LinhaForm = { categoriaId: string; descricao: string; valor: number | null };
 type VencimentoForm = { dataPrevista: string; valor: number | null };
@@ -72,6 +91,9 @@ export function DocumentoModal({
   contas,
   valoresIniciais,
   tipoFixo = false,
+  aoSalvar,
+  cabecalho,
+  titulo,
 }: {
   aberto: boolean;
   onFechar: () => void;
@@ -81,6 +103,11 @@ export function DocumentoModal({
   valoresIniciais?: ValoresIniciaisDocumento;
   /** Esconde a troca de tipo (ex.: aberto da tela de Despesas). */
   tipoFixo?: boolean;
+  /** Troca o salvar padrão (`criarDocumentoAction`), ex.: lançar pela Caixa de Entrada. */
+  aoSalvar?: (documento: DocumentoParaSalvar) => Promise<ResultadoSalvarDocumento>;
+  /** Conteúdo mostrado acima do formulário (avisos, itens lidos). */
+  cabecalho?: ReactNode;
+  titulo?: string;
 }) {
   return (
     <ModalFlutuante aberto={aberto} onFechar={onFechar} larga>
@@ -90,6 +117,9 @@ export function DocumentoModal({
           contas={contas}
           valoresIniciais={valoresIniciais}
           tipoFixo={tipoFixo}
+          aoSalvar={aoSalvar}
+          cabecalho={cabecalho}
+          titulo={titulo}
           onCancelar={onFechar}
           onSalvo={(id) => {
             onSalvo?.(id);
@@ -109,6 +139,9 @@ function FormularioDocumento({
   contas,
   valoresIniciais: vi = {},
   tipoFixo,
+  aoSalvar,
+  cabecalho,
+  titulo = "Nota com vários Plano de Contas",
   onCancelar,
   onSalvo,
 }: {
@@ -116,6 +149,9 @@ function FormularioDocumento({
   contas: ContaFinanceira[];
   valoresIniciais?: ValoresIniciaisDocumento;
   tipoFixo: boolean;
+  aoSalvar?: (documento: DocumentoParaSalvar) => Promise<ResultadoSalvarDocumento>;
+  cabecalho?: ReactNode;
+  titulo?: string;
   onCancelar: () => void;
   onSalvo: (documentoId: string) => void;
 }) {
@@ -141,9 +177,9 @@ function FormularioDocumento({
     vi.vencimentos && vi.vencimentos.length > 0 ? vi.vencimentos : null,
   );
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
-  const [criandoContraparte, setCriandoContraparte] = useState(false);
-  const [novoNome, setNovoNome] = useState("");
-  const [novoDocumento, setNovoDocumento] = useState("");
+  const [criandoContraparte, setCriandoContraparte] = useState(Boolean(vi.novaContraparte && !vi.contraparteId));
+  const [novoNome, setNovoNome] = useState(vi.novaContraparte?.nome ?? "");
+  const [novoDocumento, setNovoDocumento] = useState(vi.novaContraparte?.documento ?? "");
   const [erroContraparte, setErroContraparte] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -224,7 +260,7 @@ function FormularioDocumento({
     if (!podeSalvar) return;
     setErro(null);
     startTransition(async () => {
-      const r = await criarDocumentoAction({
+      const documento: DocumentoParaSalvar = {
         chave,
         tipo,
         contraparteId: contraparteId || null,
@@ -236,7 +272,8 @@ function FormularioDocumento({
         observacao,
         linhas: linhas.map((l) => ({ categoriaId: l.categoriaId, descricao: l.descricao, valorCentavos: paraCentavos(l.valor ?? 0) })),
         vencimentos: vencimentos.map((v) => ({ dataPrevista: v.dataPrevista, valorCentavos: paraCentavos(v.valor ?? 0) })),
-      });
+      };
+      const r = aoSalvar ? await aoSalvar(documento) : await criarDocumentoAction(documento);
       if (!r.ok) {
         setErro(r.mensagem);
         return;
@@ -250,7 +287,8 @@ function FormularioDocumento({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <h2 className="font-display text-lg font-bold text-azul-noite">Nota com vários Plano de Contas</h2>
+      <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
+      {cabecalho}
 
       {!tipoFixo && (
         <div className="flex gap-2" role="group" aria-label="Tipo">
