@@ -21,12 +21,20 @@ export type AndamentoSetor = {
   situacao: SituacaoSetor;
   enviadoEm: string | null;
   enviadoPor: string | null;
+  /** Trava otimista do envio do setor: quem reenvia ou corrige manda a
+   * versão que viu, e o banco recusa se outra pessoa enviou antes. */
+  versao?: number;
 };
 
 export type EscopoSetor = {
   setorId: string;
   setorNome: string;
   sku: string;
+  /** Metadados congelados na abertura. A lista da tela vem daqui, não do
+   * cadastro atual: produto desativado depois continua na lista da data. */
+  nome?: string;
+  grupo?: string;
+  unidadeBase?: string;
 };
 
 export type QuantidadeDeSetor = {
@@ -75,7 +83,11 @@ function somar(valores: (number | null)[]): number | null {
 
 /** Junta as linhas de uma data num item por SKU, somando os setores e
  * guardando a abertura. `escopo` é o snapshot da data: é ele que diz quais
- * setores DEVIAM ter contado cada item, e não a designação de hoje. */
+ * setores DEVIAM ter contado cada item, e não a designação de hoje.
+ *
+ * Consolida a UNIÃO snapshot + itens: SKU do snapshot que ninguém contou
+ * aparece como pendente (total nulo), e quantidade nula nunca vale como
+ * "contado" - a soma conhecida é preservada e o item fica marcado parcial. */
 export function consolidarPorSku(
   itens: ItemInventario[],
   escopo: EscopoSetor[] = [],
@@ -94,27 +106,42 @@ export function consolidarPorSku(
     else esperadosPorSku.set(linha.sku, [linha]);
   }
 
+  const skus = [...porSku.keys(), ...[...esperadosPorSku.keys()].filter((sku) => !porSku.has(sku))];
+
   const consolidados: ItemConsolidado[] = [];
-  for (const [sku, linhas] of porSku) {
-    const primeiro = linhas[0];
+  for (const sku of skus) {
+    const linhas = porSku.get(sku) ?? [];
+    const esperados = esperadosPorSku.get(sku) ?? [];
+    const referencia = linhas[0];
     const porSetor: QuantidadeDeSetor[] = linhas.map((linha) => ({
       setorId: linha.setorId ?? null,
       setorNome: linha.setorNome ?? "",
       quantidade: linha.quantidade,
     }));
 
+    // Só conta como "contou" quem informou quantidade de verdade.
     const contaram = new Set(
-      linhas.map((linha) => linha.setorId).filter((id): id is string => Boolean(id)),
+      linhas
+        .filter((linha) => linha.quantidade !== null)
+        .map((linha) => linha.setorId)
+        .filter((id): id is string => Boolean(id)),
     );
-    const setoresQueNaoContaram = (esperadosPorSku.get(sku) ?? [])
-      .filter((esperado) => !contaram.has(esperado.setorId))
-      .map((esperado) => esperado.setorNome);
+    const faltaram = new Set<string>();
+    for (const esperado of esperados) {
+      if (!contaram.has(esperado.setorId)) faltaram.add(esperado.setorNome);
+    }
+    for (const linha of linhas) {
+      if (linha.quantidade === null && !(linha.setorId && contaram.has(linha.setorId))) {
+        faltaram.add(linha.setorNome || "sem setor");
+      }
+    }
+    const setoresQueNaoContaram = [...faltaram];
 
     consolidados.push({
       sku,
-      nome: primeiro.nome,
-      grupo: primeiro.grupo,
-      unidadeBase: primeiro.unidadeBase,
+      nome: referencia?.nome ?? esperados[0]?.nome ?? sku,
+      grupo: referencia?.grupo ?? esperados[0]?.grupo ?? "",
+      unidadeBase: referencia?.unidadeBase ?? esperados[0]?.unidadeBase ?? "",
       total: somar(linhas.map((linha) => linha.quantidade)),
       valorTotal: somar(linhas.map((linha) => linha.total)),
       porSetor,

@@ -75,6 +75,74 @@ describe("soma entre setores", () => {
     const itens = [item("HORLTA001", null, BAR), item("HORLTA001", 4, COZINHA)];
     expect(consolidarPorSku(itens)[0].total).toBe(4);
   });
+
+  it("quantidade nula e pendente, nunca contado: soma conhecida fica marcada parcial", () => {
+    const itens = [item("HORLTA001", null, BAR), item("HORLTA001", 4, COZINHA)];
+    const escopo: EscopoSetor[] = [
+      { sku: "HORLTA001", setorId: BAR.id, setorNome: BAR.nome },
+      { sku: "HORLTA001", setorId: COZINHA.id, setorNome: COZINHA.nome },
+    ];
+    const [limao] = consolidarPorSku(itens, escopo);
+
+    expect(limao.total).toBe(4);
+    expect(limao.parcial).toBe(true);
+    expect(limao.setoresQueNaoContaram).toEqual(["Bar"]);
+  });
+
+  it("linha nula sem escopo tambem marca parcial", () => {
+    const [limao] = consolidarPorSku([item("HORLTA001", null, BAR)]);
+    expect(limao.total).toBeNull();
+    expect(limao.parcial).toBe(true);
+  });
+});
+
+describe("uniao snapshot + itens", () => {
+  it("SKU do snapshot que ninguem contou aparece como pendente, com o nome do snapshot", () => {
+    const escopo: EscopoSetor[] = [
+      { sku: "HORLTA001", setorId: BAR.id, setorNome: BAR.nome },
+      {
+        sku: "MERARR001",
+        setorId: COZINHA.id,
+        setorNome: COZINHA.nome,
+        nome: "arroz branco",
+        grupo: "MER",
+        unidadeBase: "KG",
+      },
+    ];
+    const consolidados = consolidarPorSku([item("HORLTA001", 2, BAR)], escopo);
+    const arroz = consolidados.find((c) => c.sku === "MERARR001");
+
+    expect(consolidados).toHaveLength(2);
+    expect(arroz).toMatchObject({
+      nome: "arroz branco",
+      grupo: "MER",
+      unidadeBase: "KG",
+      total: null,
+      valorTotal: null,
+      porSetor: [],
+      setoresQueNaoContaram: ["Cozinha"],
+      parcial: true,
+    });
+  });
+
+  it("skusIncompletos inclui o produto que nenhum setor contou", () => {
+    const escopo: EscopoSetor[] = [
+      { sku: "HORLTA001", setorId: BAR.id, setorNome: BAR.nome },
+      { sku: "MERARR001", setorId: COZINHA.id, setorNome: COZINHA.nome },
+    ];
+    const mapa = skusIncompletos([item("HORLTA001", 2, BAR)], escopo);
+    expect(mapa.get("MERARR001")).toEqual(["Cozinha"]);
+    expect(mapa.has("HORLTA001")).toBe(false);
+  });
+
+  it("avulso (fora do snapshot) entra na lista mas nao deixa nada parcial", () => {
+    const escopo: EscopoSetor[] = [{ sku: "HORLTA001", setorId: BAR.id, setorNome: BAR.nome }];
+    const avulso = item("PENDENTE-gelo-1", 3, BAR, { precoUnitario: null, total: null });
+    const consolidados = consolidarPorSku([item("HORLTA001", 2, BAR), avulso], escopo);
+
+    expect(consolidados.map((c) => c.sku)).toEqual(["HORLTA001", "PENDENTE-gelo-1"]);
+    expect(consolidados.every((c) => !c.parcial)).toBe(true);
+  });
 });
 
 describe("contagem parcial", () => {
