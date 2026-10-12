@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(44);
+select plan(59);
 
 grant select, insert, update on organizacoes, unidades, vinculos, perfis, setores to authenticated;
 
@@ -77,14 +77,14 @@ insert into vinculos (id, user_id, organizacao_id, unidade_id, role, status, wha
   ('00000000-0000-0000-0000-00000000aa05', '00000000-0000-0000-0000-0000000e0004', 'org-eq-a', 'org-eq-a-loja', 'gestao', 'ativo', null),
   ('00000000-0000-0000-0000-00000000aa08', '00000000-0000-0000-0000-0000000e0005', 'org-eq-b', null, 'master', 'ativo', null);
 
-insert into senhas_temporarias (user_id, vinculo_id, hash, expira_em, versao, enviada_em) values
-  ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01', 'hash-vigente',
-   now() + interval '7 days', 3, now() - interval '10 minutes');
-
 -- Sessão antiga (antes da troca) e sessão nova (depois), como o Auth grava.
 insert into auth.sessions (id, user_id, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000005e1', '00000000-0000-0000-0000-0000000e0001', now() - interval '1 hour', now()),
   ('00000000-0000-0000-0000-0000000005e2', '00000000-0000-0000-0000-0000000e0001', now() + interval '1 second', now());
+
+insert into senhas_temporarias (user_id, vinculo_id, hash, expira_em, versao, enviada_em) values
+  ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01', 'hash-vigente',
+   now() + interval '7 days', 3, now() - interval '10 minutes');
 
 create or replace function pg_temp.autenticar_como(p_user_id uuid, p_sessao uuid default null, p_aal text default 'aal1')
 returns void language sql as $$
@@ -108,12 +108,12 @@ select is((select count(*)::int from setores where unidade_id = 'org-eq-a-loja')
 select is((select count(*)::int from storage.objects where bucket_id = 'fichas-tecnicas'), 0, 'pendente não lê foto no Storage');
 select is((select count(*)::int from vinculos), 4, 'pendente lê os próprios vínculos (o app manda para /primeiro-acesso)');
 select throws_ok($$ select * from senhas_temporarias $$, '42501', null, 'segredo ilegível pela Data API');
-select throws_ok($$ select public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-vigente') $$,
-  '42501', null, 'usuário não inicia o primeiro acesso direto pela API');
-select throws_ok($$ select public.concluir_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', gen_random_uuid()) $$,
+select throws_ok($$ select public.equipe_conferir_provisoria('pendente@teste.local', 'x') $$,
+  '42501', null, 'usuário não confere provisória direto pela API');
+select throws_ok($$ select public.concluir_primeiro_acesso('pendente@teste.local', 'x', 'MinhaSenhaNova123') $$,
   '42501', null, 'usuário não conclui o primeiro acesso direto pela API');
-select throws_ok($$ select public.liberar_trava_senha('00000000-0000-0000-0000-0000000e0001', gen_random_uuid()) $$,
-  '42501', null, 'usuário não mexe na trava pela API');
+select hasnt_function('public', 'liberar_trava_senha', array['uuid', 'uuid'],
+  'a trava com prazo (e a liberação dela) não existe mais');
 select throws_ok($$ select public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001',
   '00000000-0000-0000-0000-00000000aa01', 'h', now()) $$, '42501', null, 'usuário não rotaciona a senha pela API');
 select throws_ok($$ select public.revogar_vinculo_equipe('00000000-0000-0000-0000-00000000aa03') $$,
@@ -146,38 +146,69 @@ select throws_ok($$ insert into vinculos (user_id, organizacao_id, unidade_id, r
 select throws_ok($$ update vinculos set whatsapp = '31999998888' where id = '00000000-0000-0000-0000-00000000aa03' $$,
   '23514', null, 'WhatsApp fora do E.164 é recusado');
 
--- ── Reenvio: só pelo vínculo de origem, com limite e trava ──────────────
-select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001',
-  '00000000-0000-0000-0000-00000000aa02', 'invasor', now() + interval '7 days'),
-  null, 'vínculo de outro cliente não redefine a senha da conta');
-create temp table t_tokens (nome text primary key, token uuid);
-insert into t_tokens values ('reenvio', public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001',
-  '00000000-0000-0000-0000-00000000aa01', 'hash-vigente', now() + interval '7 days'));
-select isnt((select token from t_tokens where nome = 'reenvio'), null, 'vínculo de origem reenvia e pega a trava');
-select is(public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-vigente'), null,
-  'troca não começa enquanto o reenvio segura a trava');
-select public.liberar_trava_senha('00000000-0000-0000-0000-0000000e0001', gen_random_uuid());
-select is(public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-vigente'), null,
-  'token errado não libera a trava');
-select public.liberar_trava_senha('00000000-0000-0000-0000-0000000e0001', (select token from t_tokens where nome = 'reenvio'));
-select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001',
-  '00000000-0000-0000-0000-00000000aa01', 'outro', now() + interval '7 days'),
-  null, 'segundo reenvio em menos de 2 minutos é barrado');
+-- ── Conta pendente: sem sessão e sem troca de senha por fora ───────────
+select hasnt_function('public', 'iniciar_primeiro_acesso', array['uuid', 'text'],
+  'a versão com trava que vencia sozinha não existe mais');
+select throws_ok($$ insert into auth.sessions (id, user_id, created_at, updated_at)
+  values (gen_random_uuid(), '00000000-0000-0000-0000-0000000e0001', now(), now()) $$, '42501', 'conta_pendente_sem_sessao',
+  'conta pendente não ganha sessão (login, recuperação, link mágico)');
+select throws_ok($$ update auth.users set encrypted_password = 'escrita-de-fora' where id = '00000000-0000-0000-0000-0000000e0001' $$,
+  '42501', 'senha_pendente_primeiro_acesso', 'com pendência ninguém troca a senha no Auth (nem o próprio Auth)');
 
--- ── Primeiro acesso: prova, trava com token, conclusão ──────────────────
-select is(public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-errado'), null,
-  'sem a senha provisória vigente não inicia');
-insert into t_tokens values ('troca', public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-vigente'));
-select isnt((select token from t_tokens where nome = 'troca'), null, 'com a senha vigente inicia e recebe token');
-select is(public.iniciar_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', 'hash-vigente'), null,
-  'segunda troca simultânea é barrada');
-update senhas_temporarias set enviada_em = now() - interval '10 minutes';
-select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001',
-  '00000000-0000-0000-0000-00000000aa01', 'x', now() + interval '7 days'), null, 'reenvio é barrado durante a troca');
-select is(public.concluir_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', gen_random_uuid()), false,
-  'token de outra operação não conclui');
-select is(public.concluir_primeiro_acesso('00000000-0000-0000-0000-0000000e0001', (select token from t_tokens where nome = 'troca')),
-  true, 'token da troca conclui');
+-- ── Reenvio: só o hash da provisória, pelo vínculo de origem ───────────
+create temp table t_senha (nome text primary key, hash text);
+insert into t_senha select 'inicial', encrypted_password from auth.users where id = '00000000-0000-0000-0000-0000000e0001';
+select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa02',
+  public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Invasor234567'), now() + interval '7 days'), false,
+  'vínculo de outro cliente não redefine a provisória');
+select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01',
+  public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Provisoria234'), now() + interval '7 days'), true, 'vínculo de origem reenvia');
+select is((select encrypted_password from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), (select hash from t_senha where nome = 'inicial'),
+  'reenvio não escreve nada no Auth');
+select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01',
+  public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Outra23456789'), now() + interval '7 days'), false,
+  'segundo reenvio em menos de 2 minutos é barrado');
+
+-- ── Conferir a provisória (tela de login) ───────────────────────────────
+select is(public.equipe_conferir_provisoria('pendente@teste.local', 'Errada0000000'), false, 'provisória errada não confere');
+select is((select tentativas from senhas_temporarias where user_id = '00000000-0000-0000-0000-0000000e0001'), 1, 'e conta uma tentativa');
+select is(public.equipe_conferir_provisoria(' PENDENTE@teste.local ', 'Provisoria234'), true,
+  'provisória certa confere (e-mail sem diferença de maiúscula ou espaço)');
+select is(public.equipe_conferir_provisoria('ninguem@teste.local', 'Provisoria234'), false,
+  'e-mail sem pendência tem a mesma resposta');
+update senhas_temporarias set tentativas = 10 where user_id = '00000000-0000-0000-0000-0000000e0001';
+select is(public.equipe_conferir_provisoria('pendente@teste.local', 'Provisoria234'), false, '10 erros travam a provisória até a gestão reenviar');
+update senhas_temporarias set tentativas = 0 where user_id = '00000000-0000-0000-0000-0000000e0001';
+
+-- ── Primeiro acesso sem sessão, numa transação só ──────────────────────
+select throws_ok($$ select public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', repeat('é', 37)) $$, '22023', 'senha_invalida',
+  'senha acima de 72 bytes (limite do bcrypt) é recusada, mesmo com 37 caracteres');
+select throws_ok($$ select public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'Provisoria234') $$, '22023', 'senha_invalida',
+  'senha nova igual à provisória é recusada');
+select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Errada0000000', 'MinhaSenhaNova123'), 'provisoria_invalida',
+  'provisória errada não conclui');
+update senhas_temporarias set expira_em = now() - interval '1 minute' where user_id = '00000000-0000-0000-0000-0000000e0001';
+select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'MinhaSenhaNova123'), 'provisoria_invalida',
+  'provisória vencida não conclui');
+update senhas_temporarias set expira_em = now() + interval '7 days', tentativas = 0 where user_id = '00000000-0000-0000-0000-0000000e0001';
+update auth.users set recovery_token = 'recuperacao-aberta' where id = '00000000-0000-0000-0000-0000000e0001';
+select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'MinhaSenhaNova123'), 'ok', 'com a provisória vigente conclui');
+select ok((select encrypted_password = extensions.crypt('MinhaSenhaNova123', encrypted_password) from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), 'senha nova gravada no Auth na mesma transação');
+select is((select raw_app_meta_data ->> 'zh_pendente' from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), 'false', 'marca de pendência sai junto');
+select is((select recovery_token from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), '', 'recuperação aberta antes da troca é invalidada');
+select is((select count(*)::int from auth.sessions where user_id = '00000000-0000-0000-0000-0000000e0001'), 0, 'sessões anteriores caem no Auth');
+select is((select count(*)::int from senhas_temporarias where user_id = '00000000-0000-0000-0000-0000000e0001'), 0, 'pendência apagada');
+select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'OutraSenha12345'), 'provisoria_invalida',
+  'repetir o primeiro acesso depois de concluído não muda nada');
+select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01',
+  public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Tarde23456789'), now() + interval '7 days'), false,
+  'reenvio que chega depois da troca não toca na conta');
+-- A pessoa entra com a senha nova (sessão criada depois do corte).
+select lives_ok($$ insert into auth.sessions (id, user_id, created_at, updated_at) values
+  ('00000000-0000-0000-0000-0000000005e2', '00000000-0000-0000-0000-0000000e0001', now() + interval '1 second', now()) $$,
+  'depois do primeiro acesso, o login normal cria sessão');
+select lives_ok($$ update auth.users set encrypted_password = 'troca-legitima' where id = '00000000-0000-0000-0000-0000000e0001' $$,
+  'e a troca normal de senha volta a funcionar');
 select results_eq(
   $$ select id::text || ':' || status from vinculos
      where user_id = '00000000-0000-0000-0000-0000000e0001' order by id $$,

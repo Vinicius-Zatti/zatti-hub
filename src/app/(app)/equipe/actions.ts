@@ -1,9 +1,9 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireEquipe, registrarAuditoria, type AcessoAtual } from "@/lib/acesso";
-import { createAdminClient, createAdminClientComTempoLimite } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
   gerarSenhaTemporaria,
@@ -11,12 +11,7 @@ import {
   podeAdministrarVinculo,
   validarConcessao,
 } from "@/lib/equipe/regras";
-import {
-  buscarUsuarioPorEmail,
-  contaPendente,
-  hashSenhaTemporaria,
-  recusaDefinitivaDoAuth,
-} from "@/lib/equipe/servidor";
+import { buscarUsuarioPorEmail, contaPendente, hashSenhaTemporaria } from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -187,9 +182,12 @@ export async function cadastrarMembroAction(formData: FormData): Promise<
   // Conta nova.
   const senha = gerarSenhaTemporaria();
   const validaAte = expiracaoSenhaTemporaria(new Date());
+  // A senha do Auth é sorteada e ninguém conhece: a conta pendente não
+  // consegue entrar nem ter sessão. A provisória só existe como hash em
+  // senhas_temporarias e vale no primeiro acesso (sem sessão).
   const { data: criado, error: erroCriacao } = await admin.auth.admin.createUser({
     email,
-    password: senha,
+    password: randomBytes(32).toString("base64url"),
     email_confirm: true,
     user_metadata: { nome },
     // Marca de pendência no próprio Auth desde o primeiro instante: outro
@@ -333,35 +331,21 @@ export async function reenviarAcessoMembroAction(
     };
   }
 
-  // Primeiro o banco (sobe a versão, limite de 2 minutos, nunca durante uma
-  // troca em andamento), depois o Auth. Se o Auth falhar, a senha anterior já
-  // não conclui e a gestão reenvia.
+  // Só o hash da provisória muda (nenhuma escrita no Auth): a conta pendente
+  // não tem senha conhecida no Auth. Limite de 2 minutos e vínculo de origem
+  // conferidos no banco; a provisória anterior deixa de valer na hora.
   const senha = gerarSenhaTemporaria();
   const validaAte = expiracaoSenhaTemporaria(new Date());
-  const { data: trava, error: erroRotacao } = await admin.rpc("rotacionar_senha_temporaria", {
+  const { data: trocou, error: erroRotacao } = await admin.rpc("rotacionar_senha_temporaria", {
     p_user_id: alvo.user_id,
     p_vinculo_id: alvo.id,
     p_hash: hashSenhaTemporaria(alvo.user_id, senha),
     p_expira_em: validaAte.toISOString(),
   });
   if (erroRotacao) return { erro: "Não foi possível gerar a senha nova." };
-  if (!trava) {
-    return { erro: `Espere ${MINUTOS_ENTRE_ENVIOS} minutos entre um envio e outro (ou a pessoa está criando a senha agora).` };
+  if (!trocou) {
+    return { erro: `Espere ${MINUTOS_ENTRE_ENVIOS} minutos entre um envio e outro (ou a pessoa acabou de criar a senha dela).` };
   }
-
-  // A trava (token) segura troca e outro reenvio enquanto o Auth muda a
-  // senha. Resultado indeterminado: a trava fica até vencer (15 min).
-  const { error: erroAuth } = await createAdminClientComTempoLimite().auth.admin.updateUserById(alvo.user_id, {
-    password: senha,
-  });
-  if (erroAuth) {
-    if (recusaDefinitivaDoAuth(erroAuth)) {
-      await admin.rpc("liberar_trava_senha", { p_user_id: alvo.user_id, p_token: trava });
-      return { erro: "Não foi possível gerar a senha nova. Tente de novo em 2 minutos." };
-    }
-    return { erro: "Não deu para confirmar a senha nova. Tente reenviar de novo em 15 minutos." };
-  }
-  await admin.rpc("liberar_trava_senha", { p_user_id: alvo.user_id, p_token: trava });
 
   const envio = await enviarAcessoPeloVini({
     tipo: "conta_nova",
