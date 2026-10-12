@@ -4,8 +4,15 @@ import { useMemo, useState } from "react";
 import type { ItemInventario, Pedido } from "@/lib/types";
 import { StatCard } from "@/components/stat-card";
 import { CampoNumero } from "@/components/campo-numero";
-import { calcularCmv, datasDeContagem, datasParciais } from "@/lib/cmv";
+import { DicaCalculo } from "@/components/dica-calculo";
+import { calcularCmv, datasDeContagem, datasParciais, itensSemValor } from "@/lib/cmv";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
+
+const EXPLICACAO_SEM_VALOR =
+  "Valor do estoque da data = soma de quantidade × preço de cada item contado. Item sem preço no " +
+  "cadastro, item avulso (sem cadastro) ou item com quantidade em branco entra como R$ 0 nessa soma. " +
+  "O CMV continua sendo calculado, mas o estoque daquela data pode estar subavaliado: cadastre o " +
+  "preço e corrija a contagem para o número ficar completo.";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -35,10 +42,36 @@ export function CalculadoraCmv({
   const [faturamento, setFaturamento] = useState<number | null>(null);
   const [comprasManual, setComprasManual] = useState<number | null>(null);
 
-  const resultado = useMemo(() => {
-    if (!dataInicial || !dataFinal) return null;
-    return calcularCmv({ itensInventario, pedidos, dataInicial, dataFinal, faturamento, comprasManual });
-  }, [itensInventario, pedidos, dataInicial, dataFinal, faturamento, comprasManual]);
+  // Seleção que deixou de ser elegível (a data ficou parcial, ou sumiu depois
+  // de atualizar a tela) é invalidada: nunca calcula com data fora da lista.
+  const inicialValida = datas.includes(dataInicial) ? dataInicial : "";
+  const finalValida = datas.includes(dataFinal) ? dataFinal : "";
+
+  const calculo = useMemo(() => {
+    if (!inicialValida || !finalValida) return null;
+    try {
+      return {
+        resultado: calcularCmv({
+          itensInventario,
+          pedidos,
+          dataInicial: inicialValida,
+          dataFinal: finalValida,
+          faturamento,
+          comprasManual,
+          andamentoPorData,
+        }),
+        erro: null,
+      };
+    } catch (erro) {
+      return { resultado: null, erro: erro instanceof Error ? erro.message : "Não foi possível calcular." };
+    }
+  }, [itensInventario, pedidos, inicialValida, finalValida, faturamento, comprasManual, andamentoPorData]);
+  const resultado = calculo?.resultado ?? null;
+
+  const semValor = [inicialValida, finalValida]
+    .filter((data, i, lista) => data && lista.indexOf(data) === i)
+    .map((data) => ({ data, quantidade: itensSemValor(itensInventario, data) }))
+    .filter((linha) => linha.quantidade > 0);
 
   if (datas.length < 2) {
     return (
@@ -86,10 +119,15 @@ export function CalculadoraCmv({
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Contagem inicial (início do período)
           <select
-            value={dataInicial}
+            value={inicialValida}
             onChange={(e) => setDataInicial(e.target.value)}
             className="w-full rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none sm:w-auto"
           >
+            {!inicialValida && (
+              <option value="" disabled>
+                Escolha a contagem
+              </option>
+            )}
             {datas.map((d) => (
               <option key={d} value={d}>
                 {d}
@@ -100,10 +138,15 @@ export function CalculadoraCmv({
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Contagem final (fim do período)
           <select
-            value={dataFinal}
+            value={finalValida}
             onChange={(e) => setDataFinal(e.target.value)}
             className="w-full rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none sm:w-auto"
           >
+            {!finalValida && (
+              <option value="" disabled>
+                Escolha a contagem
+              </option>
+            )}
             {datas.map((d) => (
               <option key={d} value={d}>
                 {d}
@@ -120,6 +163,24 @@ export function CalculadoraCmv({
           <CampoNumero value={comprasManual} onChange={setComprasManual} className="w-full sm:w-36" />
         </label>
       </div>
+
+      {calculo?.erro && (
+        <div className="rounded-lg border border-vermelho bg-vermelho/5 p-4 text-sm text-vermelho">
+          {calculo.erro}
+        </div>
+      )}
+
+      {semValor.length > 0 && (
+        <div className="rounded-lg border border-ambar bg-ambar/10 p-4 text-sm text-cinza">
+          {semValor.map((linha) => (
+            <p key={linha.data} className="flex items-center gap-1">
+              {linha.quantidade} {linha.quantidade === 1 ? "item sem valor" : "itens sem valor"} na
+              contagem de {linha.data}
+              <DicaCalculo texto={EXPLICACAO_SEM_VALOR} rotulo="Itens sem valor" />
+            </p>
+          ))}
+        </div>
+      )}
 
       {resultado && (
         <>

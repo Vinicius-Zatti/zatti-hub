@@ -51,6 +51,28 @@ export function valorContagem(itens: ItemInventario[], data: string): number {
   return itens.filter((it) => it.data === data).reduce((soma, it) => soma + (it.total ?? 0), 0);
 }
 
+/** Itens da contagem sem valor (sem preço no cadastro, avulso sem cadastro ou
+ * quantidade em branco). Continuam valendo R$ 0 no cálculo - a fórmula não
+ * muda -, mas a tela avisa quantos são pra ninguém ler o estoque como
+ * completo sem saber. */
+export function itensSemValor(itens: ItemInventario[], data: string): number {
+  return itens.filter((it) => it.data === data && it.total === null).length;
+}
+
+/** Recusa data que não pode ser estoque inicial/final. Vale mesmo para quem
+ * chama `calcularCmv` direto, sem passar pelo seletor da tela. */
+function exigirDataElegivel(
+  data: string,
+  andamentoPorData: Map<string, AndamentoSetor[]>,
+): void {
+  const andamento = andamentoPorData.get(data) ?? [];
+  if (situacaoDaData(andamento) === "parcial") {
+    throw new Error(
+      `A contagem de ${data} está parcial e não pode entrar no CMV. ${avisoDeContagemParcial(andamento)}`,
+    );
+  }
+}
+
 /** Valor das compras marcadas como recebidas dentro do período (inclusive).
  * Usa `atualizadoEm` como data de referência do recebimento - o schema não
  * guarda uma "data de recebimento" própria, e `atualizadoEm` é tocado
@@ -109,7 +131,12 @@ export function calcularCmv(params: {
   dataFinal: string;
   faturamento: number | null;
   comprasManual?: number | null;
+  /** Andamento por setor de cada data. Obrigatório: é com ele que o cálculo
+   * recusa data parcial. Unidade sem setor passa um mapa vazio (legado). */
+  andamentoPorData: Map<string, AndamentoSetor[]>;
 }): ResultadoCmv {
+  exigirDataElegivel(params.dataInicial, params.andamentoPorData);
+  exigirDataElegivel(params.dataFinal, params.andamentoPorData);
   const valorEstoqueInicial = valorContagem(params.itensInventario, params.dataInicial);
   const valorEstoqueFinal = valorContagem(params.itensInventario, params.dataFinal);
   const valorComprasCalculado = valorComprasRecebidas(params.pedidos, params.dataInicial, params.dataFinal);

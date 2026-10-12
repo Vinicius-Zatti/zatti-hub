@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { datasDeContagem, datasParciais, valorContagem } from "./cmv";
+import { calcularCmv, datasDeContagem, datasParciais, itensSemValor, valorContagem } from "./cmv";
 import type { AndamentoSetor } from "./contagem/setor";
 import type { ItemInventario } from "@/lib/types";
 
@@ -69,5 +69,42 @@ describe("valor da contagem", () => {
   it("soma todas as linhas da data, inclusive o mesmo SKU de setores diferentes", () => {
     const itens = [item("17/09/2026", 2, "Bar"), item("17/09/2026", 4, "Cozinha")];
     expect(valorContagem(itens, "17/09/2026")).toBe(60);
+  });
+});
+
+describe("calcularCmv valida a elegibilidade mesmo chamado direto", () => {
+  const base = { pedidos: [], faturamento: 1000, itensInventario: ITENS };
+
+  it("recusa data parcial com erro claro", () => {
+    const andamento = new Map([
+      ["10/09/2026", [setor("Bar", "concluido")]],
+      ["17/09/2026", [setor("Bar", "concluido"), setor("Cozinha", "pendente")]],
+    ]);
+    expect(() =>
+      calcularCmv({ ...base, dataInicial: "10/09/2026", dataFinal: "17/09/2026", andamentoPorData: andamento }),
+    ).toThrow("A contagem de 17/09/2026 está parcial e não pode entrar no CMV. Contagem parcial. Faltam: Cozinha.");
+  });
+
+  it("nao muda a formula: legado continua com os mesmos numeros", () => {
+    const resultado = calcularCmv({
+      ...base,
+      dataInicial: "10/09/2026",
+      dataFinal: "17/09/2026",
+      andamentoPorData: new Map(),
+    });
+    expect(resultado.valorEstoqueInicial).toBe(50);
+    expect(resultado.valorEstoqueFinal).toBe(20);
+    expect(resultado.custoConsumido).toBe(30);
+    expect(resultado.cmvPercentual).toBe(3);
+  });
+});
+
+describe("itens sem valor", () => {
+  it("conta so os itens da data com total nulo, que seguem valendo zero no calculo", () => {
+    const semPreco: ItemInventario = { ...item("17/09/2026", 3, "Bar"), id: "x", precoUnitario: null, total: null };
+    const itens = [...ITENS, semPreco];
+    expect(itensSemValor(itens, "17/09/2026")).toBe(1);
+    expect(itensSemValor(itens, "10/09/2026")).toBe(0);
+    expect(valorContagem(itens, "17/09/2026")).toBe(20);
   });
 });
