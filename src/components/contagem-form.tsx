@@ -106,7 +106,7 @@ export function ContagemForm({
 }: {
   /** Unidade da sessão: separa o rascunho guardado no navegador. */
   unidadeId: string;
-  /** Nome da unidade (com a organização quando difere), usado no arquivo do
+  /** Nome da unidade (com a organização quando difere), usado no título e no arquivo do
    * "Baixar CSV". */
   unidadeNome: string;
   produtos: Produto[];
@@ -698,7 +698,7 @@ export function ContagemForm({
   if (tela === "aviso") {
     return (
       <div className="mx-auto max-w-md pb-10">
-        <h1 className="font-display text-2xl font-bold text-azul-noite">Inventário Dom Quixote</h1>
+        <h1 className="font-display text-2xl font-bold text-azul-noite">Inventário {unidadeNome}</h1>
         <p className="mt-1 text-sm text-cinza-medio capitalize">
           {mesDisplay} · {escopoLabel}
         </p>
@@ -746,7 +746,7 @@ export function ContagemForm({
         <div className="text-[9px] font-bold uppercase tracking-widest text-ambar">
           Zatti Consultoria · M.E.G.A.
         </div>
-        <div className="font-display text-base font-bold text-off-white">Inventário Dom Quixote</div>
+        <div className="font-display text-base font-bold text-off-white">Inventário {unidadeNome}</div>
         <div className="text-[11px] text-cinza-claro capitalize">
           {mesDisplay} · {escopoLabel}
         </div>
