@@ -3,6 +3,7 @@ import {
   avisoDeContagemParcial,
   situacaoDaData,
   type AndamentoSetor,
+  type ModalidadeContagem,
 } from "@/lib/contagem/setor";
 
 function parseDataBR(data: string): number {
@@ -21,13 +22,14 @@ function parseDataBR(data: string): number {
 export function datasDeContagem(
   itens: ItemInventario[],
   andamentoPorData: Map<string, AndamentoSetor[]> = new Map(),
+  modalidadePorData: Map<string, ModalidadeContagem> = new Map(),
 ): string[] {
   const vistas = new Map<string, number>();
   for (const it of itens) {
     if (!vistas.has(it.data)) vistas.set(it.data, parseDataBR(it.data));
   }
   return Array.from(vistas.entries())
-    .filter(([data]) => situacaoDaData(andamentoPorData.get(data) ?? []) !== "parcial")
+    .filter(([data]) => motivoInelegivel(data, itens, andamentoPorData, modalidadePorData) === null)
     .sort((a, b) => b[1] - a[1])
     .map(([data]) => data);
 }
@@ -37,12 +39,13 @@ export function datasDeContagem(
 export function datasParciais(
   itens: ItemInventario[],
   andamentoPorData: Map<string, AndamentoSetor[]> = new Map(),
+  modalidadePorData: Map<string, ModalidadeContagem> = new Map(),
 ): { data: string; aviso: string }[] {
   const vistas = new Set(itens.map((it) => it.data));
   return Array.from(vistas)
-    .filter((data) => situacaoDaData(andamentoPorData.get(data) ?? []) === "parcial")
     .sort((a, b) => parseDataBR(b) - parseDataBR(a))
-    .map((data) => ({ data, aviso: avisoDeContagemParcial(andamentoPorData.get(data) ?? []) }));
+    .map((data) => ({ data, aviso: motivoInelegivel(data, itens, andamentoPorData, modalidadePorData) }))
+    .filter((linha): linha is { data: string; aviso: string } => linha.aviso !== null);
 }
 
 /** Soma do valor (quantidade × preço) de todos os itens de uma contagem
@@ -59,17 +62,41 @@ export function itensSemValor(itens: ItemInventario[], data: string): number {
   return itens.filter((it) => it.data === data && it.total === null).length;
 }
 
+/** Por que a data não pode ser estoque inicial/final, ou null se pode.
+ * - data sem nenhum item contado não existe como contagem;
+ * - unidade no banco (mapa de modalidade preenchido): data sem cabeçalho não
+ *   tem contexto pra provar que está completa;
+ * - contagem por setor só entra com todos os setores concluídos, e snapshot
+ *   vazio nunca vira "legada" por falta de andamento. */
+function motivoInelegivel(
+  data: string,
+  itens: ItemInventario[],
+  andamentoPorData: Map<string, AndamentoSetor[]>,
+  modalidadePorData: Map<string, ModalidadeContagem>,
+): string | null {
+  if (!itens.some((it) => it.data === data)) return `Não existe contagem em ${data}.`;
+  const modalidade = modalidadePorData.get(data);
+  if (modalidadePorData.size > 0 && !modalidade) {
+    return `A contagem de ${data} não foi encontrada no banco.`;
+  }
+  const andamento = andamentoPorData.get(data) ?? [];
+  if (situacaoDaData(andamento, modalidade) === "parcial") {
+    return avisoDeContagemParcial(andamento, modalidade) || "Contagem parcial.";
+  }
+  return null;
+}
+
 /** Recusa data que não pode ser estoque inicial/final. Vale mesmo para quem
  * chama `calcularCmv` direto, sem passar pelo seletor da tela. */
 function exigirDataElegivel(
   data: string,
+  itens: ItemInventario[],
   andamentoPorData: Map<string, AndamentoSetor[]>,
+  modalidadePorData: Map<string, ModalidadeContagem>,
 ): void {
-  const andamento = andamentoPorData.get(data) ?? [];
-  if (situacaoDaData(andamento) === "parcial") {
-    throw new Error(
-      `A contagem de ${data} está parcial e não pode entrar no CMV. ${avisoDeContagemParcial(andamento)}`,
-    );
+  const motivo = motivoInelegivel(data, itens, andamentoPorData, modalidadePorData);
+  if (motivo !== null) {
+    throw new Error(`A contagem de ${data} não pode entrar no CMV. ${motivo}`);
   }
 }
 
@@ -134,9 +161,12 @@ export function calcularCmv(params: {
   /** Andamento por setor de cada data. Obrigatório: é com ele que o cálculo
    * recusa data parcial. Unidade sem setor passa um mapa vazio (legado). */
   andamentoPorData: Map<string, AndamentoSetor[]>;
+  /** Modalidade do cabeçalho de cada data. Vazio só para unidade na planilha. */
+  modalidadePorData?: Map<string, ModalidadeContagem>;
 }): ResultadoCmv {
-  exigirDataElegivel(params.dataInicial, params.andamentoPorData);
-  exigirDataElegivel(params.dataFinal, params.andamentoPorData);
+  const modalidades = params.modalidadePorData ?? new Map<string, ModalidadeContagem>();
+  exigirDataElegivel(params.dataInicial, params.itensInventario, params.andamentoPorData, modalidades);
+  exigirDataElegivel(params.dataFinal, params.itensInventario, params.andamentoPorData, modalidades);
   const valorEstoqueInicial = valorContagem(params.itensInventario, params.dataInicial);
   const valorEstoqueFinal = valorContagem(params.itensInventario, params.dataFinal);
   const valorComprasCalculado = valorComprasRecebidas(params.pedidos, params.dataInicial, params.dataFinal);

@@ -24,7 +24,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(51);
+select plan(55);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 
@@ -301,12 +301,23 @@ select throws_ok(
   'reenvio com a versão de antes do primeiro envio é recusado'
 );
 
-select lives_ok(
+select throws_ok(
   $$select substituir_contagem_setor(
     (select id from contagens where unidade_id = 'uni-ancora-setor-a' and data = '2026-09-17'),
     '00000000-0000-0000-0000-0000000c1001',
     '[{"sku":"HORLTA001","quantidade":3},{"sku":"BALCER001","quantidade":0}]'::jsonb, 1)$$,
-  'reenvio do bar com a versão certa; zero digitado vale'
+  'P0001',
+  'Informe o motivo do reenvio deste setor.',
+  'reenvio sem motivo é recusado'
+);
+
+select lives_ok(
+  $$select substituir_contagem_setor(
+    (select id from contagens where unidade_id = 'uni-ancora-setor-a' and data = '2026-09-17'),
+    '00000000-0000-0000-0000-0000000c1001',
+    '[{"sku":"HORLTA001","quantidade":3},{"sku":"BALCER001","quantidade":0}]'::jsonb, 1,
+    'faltou a geladeira de baixo')$$,
+  'reenvio do bar com a versão certa e motivo; zero digitado vale'
 );
 
 select results_eq(
@@ -322,12 +333,12 @@ select results_eq(
 );
 
 select results_eq(
-  $$select e.versao, jsonb_array_length(e.itens_anteriores), jsonb_array_length(e.itens_novos)
+  $$select e.versao, jsonb_array_length(e.itens_anteriores), jsonb_array_length(e.itens_novos), e.motivo
     from contagem_envios e
     where e.setor_id = '00000000-0000-0000-0000-0000000c1001'
     order by e.versao$$,
-  $$values (1, 0, 3), (2, 3, 2)$$,
-  'cada envio do bar fica no histórico, com o que havia antes e o que entrou'
+  $$values (1, 0, 3, null::text), (2, 3, 2, 'faltou a geladeira de baixo')$$,
+  'cada envio do bar fica no histórico, com o que havia antes, o que entrou e o motivo'
 );
 
 select throws_ok(
@@ -352,6 +363,16 @@ select throws_ok(
   'o mesmo SKU não entra duas vezes pelo mesmo setor na mesma contagem'
 );
 
+-- Quem passa por cima do RLS (importação administrativa) também não mistura.
+select throws_ok(
+  $$insert into contagem_itens (contagem_id, sku, quantidade)
+    select c.id, 'MERSEM001', 9
+    from contagens c where c.unidade_id = 'uni-ancora-setor-a' and c.data = '2026-09-17'$$,
+  'P0001',
+  'Esta data é contagem por setor: item sem setor não entra (MERSEM001).',
+  'nem o administrador grava linha sem setor numa data por setor'
+);
+
 set local role authenticated;
 
 -- ── 8. Escrita direta e mistura legado x setor ───────────────────────────
@@ -360,8 +381,8 @@ select throws_ok(
   $$insert into contagem_itens (contagem_id, sku, quantidade)
     select c.id, 'MERSEM001', 9
     from contagens c where c.unidade_id = 'uni-ancora-setor-a' and c.data = '2026-09-17'$$,
-  '42501',
-  NULL,
+  'P0001',
+  'Esta data é contagem por setor: item sem setor não entra (MERSEM001).',
   'linha legada (sem setor) não entra em data por setor'
 );
 
@@ -437,7 +458,7 @@ select is(
     (select ci.id from contagem_itens ci join contagens c on c.id = ci.contagem_id
      where c.unidade_id = 'uni-ancora-setor-a' and c.data = '2026-09-17'
        and ci.setor_id = '00000000-0000-0000-0000-0000000c1001' and ci.sku = 'HORLTA001'),
-    6, 2),
+    6, 2, 'contei a caixa fechada errado'),
   '{"versao": 3}'::jsonb,
   'correção do limão do bar sobe a versão do bar'
 );
@@ -463,6 +484,24 @@ select throws_ok(
   'correção com versão velha é recusada'
 );
 
+select throws_ok(
+  $$select corrigir_item_contagem(
+    (select ci.id from contagem_itens ci join contagens c on c.id = ci.contagem_id
+     where c.unidade_id = 'uni-ancora-setor-a' and c.data = '2026-09-17'
+       and ci.setor_id = '00000000-0000-0000-0000-0000000c1001' and ci.sku = 'HORLTA001'),
+    7, 3)$$,
+  'P0001',
+  'Informe o motivo da correção.',
+  'correção por setor sem motivo é recusada'
+);
+
+select is(
+  (select e.motivo from contagem_envios e
+   where e.setor_id = '00000000-0000-0000-0000-0000000c1001' and e.tipo = 'correcao'),
+  'contei a caixa fechada errado',
+  'a correção guarda o motivo no histórico'
+);
+
 -- A linha some num reenvio: corrigir pelo id antigo tem que falhar.
 create temporary table id_antigo as
 select ci.id from contagem_itens ci join contagens c on c.id = ci.contagem_id
@@ -473,7 +512,8 @@ select lives_ok(
   $$select substituir_contagem_setor(
     (select id from contagens where unidade_id = 'uni-ancora-setor-a' and data = '2026-09-17'),
     '00000000-0000-0000-0000-0000000c1001',
-    '[{"sku":"HORLTA001","quantidade":6},{"sku":"BALCER001","quantidade":1}]'::jsonb, 3)$$,
+    '[{"sku":"HORLTA001","quantidade":6},{"sku":"BALCER001","quantidade":1}]'::jsonb, 3,
+    'recontagem do bar')$$,
   'reenvio do bar recria as linhas'
 );
 
@@ -496,7 +536,7 @@ select throws_ok(
   $$select substituir_contagem_setor(
     (select id from contagens where unidade_id = 'uni-ancora-setor-a' and data = '2026-09-17'),
     '00000000-0000-0000-0000-0000000c1001',
-    '[{"sku":"HORLTA001","quantidade":6}]'::jsonb, 4)$$,
+    '[{"sku":"HORLTA001","quantidade":6}]'::jsonb, 4, 'recontagem')$$,
   'P0001',
   'Envio incompleto: faltam 1 item do setor Bar.',
   'produto desativado depois da abertura continua na lista da data'

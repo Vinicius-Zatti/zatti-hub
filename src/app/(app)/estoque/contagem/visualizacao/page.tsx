@@ -3,7 +3,11 @@ import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { VisualizacaoContagens } from "@/components/visualizacao-contagens";
 import { getAcessoAtual } from "@/lib/acesso";
-import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
+import {
+  listarAndamentoBanco,
+  listarEscopoBanco,
+  listarModalidadesBanco,
+} from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +26,13 @@ export default async function VisualizacaoContagensPage() {
 
   // Andamento de todas as datas (barato) e snapshot só da última, que é a
   // data que a conferência corrige.
-  const andamentoPorData =
-    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco"
-      ? await listarAndamentoBanco(acesso.unidadeId)
-      : new Map();
+  const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const [andamentoPorData, modalidadePorData] = comSetor
+    ? await Promise.all([
+        listarAndamentoBanco(acesso.unidadeId),
+        listarModalidadesBanco(acesso.unidadeId),
+      ])
+    : [new Map(), new Map()];
 
   const ultimaData = itens.reduce((maior, item) => {
     const ts = (d: string) => {
@@ -44,6 +51,7 @@ export default async function VisualizacaoContagensPage() {
     <VisualizacaoContagens
       itens={itens}
       andamentoPorData={andamentoPorData}
+      modalidadePorData={modalidadePorData}
       escopoUltimaData={escopoUltimaData}
     />
   );

@@ -4,7 +4,7 @@ import { listPedidosFeitos } from "@/lib/pedidos";
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { CalculadoraCmv } from "@/components/calculadora-cmv";
-import { listarAndamentoBanco } from "@/lib/banco/setores";
+import { listarAndamentoBanco, listarModalidadesBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
@@ -24,16 +24,20 @@ export default async function CmvPage() {
 
   const pedidos = await listPedidosFeitos(acesso.unidadeId);
   // Unidade na planilha não tem setor: mapa vazio mantém o comportamento antigo.
-  const andamentoPorData =
-    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco"
-      ? await listarAndamentoBanco(acesso.unidadeId)
-      : new Map();
+  const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const [andamentoPorData, modalidadePorData] = comSetor
+    ? await Promise.all([
+        listarAndamentoBanco(acesso.unidadeId),
+        listarModalidadesBanco(acesso.unidadeId),
+      ])
+    : [new Map(), new Map()];
 
   return (
     <CalculadoraCmv
       itensInventario={itensInventario}
       pedidos={pedidos}
       andamentoPorData={andamentoPorData}
+      modalidadePorData={modalidadePorData}
     />
   );
 }

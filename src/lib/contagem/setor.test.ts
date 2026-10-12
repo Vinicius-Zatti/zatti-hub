@@ -219,6 +219,15 @@ describe("situacao da data", () => {
     expect(avisoDeContagemParcial([])).toBe("");
   });
 
+  it("a modalidade gravada manda: setor sem andamento e parcial, legada e legada", () => {
+    expect(situacaoDaData([], "setor")).toBe("parcial");
+    expect(avisoDeContagemParcial([], "setor")).toBe(
+      "Contagem por setor aberta sem nenhum setor na lista.",
+    );
+    expect(situacaoDaData([], "legada")).toBe("legada");
+    expect(situacaoDaData(andamento({ ...BAR, situacao: "concluido" }), "setor")).toBe("completa");
+  });
+
   it("aviso lista todos os setores que faltam", () => {
     const estado = andamento(
       { ...BAR, situacao: "pendente" },

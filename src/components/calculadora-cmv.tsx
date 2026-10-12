@@ -6,13 +6,14 @@ import { StatCard } from "@/components/stat-card";
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { calcularCmv, datasDeContagem, datasParciais, itensSemValor } from "@/lib/cmv";
-import type { AndamentoSetor } from "@/lib/contagem/setor";
+import type { AndamentoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 
 const EXPLICACAO_SEM_VALOR =
   "Valor do estoque da data = soma de quantidade × preço de cada item contado. Item sem preço no " +
   "cadastro, item avulso (sem cadastro) ou item com quantidade em branco entra como R$ 0 nessa soma. " +
-  "O CMV continua sendo calculado, mas o estoque daquela data pode estar subavaliado: cadastre o " +
-  "preço e corrija a contagem para o número ficar completo.";
+  "O CMV continua sendo calculado, mas o estoque daquela data pode estar subavaliado. Corrigir a " +
+  "quantidade não muda isso: a contagem guarda o preço do dia em que foi enviada. Cadastre o preço " +
+  "no produto para as próximas contagens saírem valorizadas.";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -22,19 +23,22 @@ export function CalculadoraCmv({
   itensInventario,
   pedidos,
   andamentoPorData = new Map(),
+  modalidadePorData = new Map(),
 }: {
   itensInventario: ItemInventario[];
   pedidos: Pedido[];
   /** Andamento por setor de cada data. Data parcial não entra no CMV. */
   andamentoPorData?: Map<string, AndamentoSetor[]>;
+  /** Modalidade do cabeçalho de cada data (vazio = unidade na planilha). */
+  modalidadePorData?: Map<string, ModalidadeContagem>;
 }) {
   const datas = useMemo(
-    () => datasDeContagem(itensInventario, andamentoPorData),
-    [itensInventario, andamentoPorData],
+    () => datasDeContagem(itensInventario, andamentoPorData, modalidadePorData),
+    [itensInventario, andamentoPorData, modalidadePorData],
   );
   const parciais = useMemo(
-    () => datasParciais(itensInventario, andamentoPorData),
-    [itensInventario, andamentoPorData],
+    () => datasParciais(itensInventario, andamentoPorData, modalidadePorData),
+    [itensInventario, andamentoPorData, modalidadePorData],
   );
 
   const [dataInicial, setDataInicial] = useState(datas[1] ?? datas[0] ?? "");
@@ -59,13 +63,14 @@ export function CalculadoraCmv({
           faturamento,
           comprasManual,
           andamentoPorData,
+          modalidadePorData,
         }),
         erro: null,
       };
     } catch (erro) {
       return { resultado: null, erro: erro instanceof Error ? erro.message : "Não foi possível calcular." };
     }
-  }, [itensInventario, pedidos, inicialValida, finalValida, faturamento, comprasManual, andamentoPorData]);
+  }, [itensInventario, pedidos, inicialValida, finalValida, faturamento, comprasManual, andamentoPorData, modalidadePorData]);
   const resultado = calculo?.resultado ?? null;
 
   const semValor = [inicialValida, finalValida]

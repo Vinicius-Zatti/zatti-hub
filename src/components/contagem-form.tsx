@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/estoque/contagem/actions";
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import type { Setor } from "@/lib/types";
+import type { AndamentoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
 import { WHATSAPP_VINICIUS } from "@/lib/suporte";
 
@@ -57,6 +58,11 @@ function brl(n: number): string {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function isoParaBr(iso: string): string {
+  const [a, m, d] = iso.split("-");
+  return a && m && d ? `${d}/${m}/${a}` : "";
+}
+
 function hojeISO(): string {
   const h = new Date();
   return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`;
@@ -65,20 +71,47 @@ function hojeISO(): string {
 export function ContagemForm({
   produtos,
   setores = [],
+  andamentoPorData = new Map(),
+  modalidadePorData = new Map(),
 }: {
   produtos: Produto[];
-  /** Setores ativos da unidade. Vazio = unidade que ainda não usa setor, e
-   * aí vale o fluxo antigo, com escopo por grupo de produto. */
+  /** Todos os setores da unidade, ativos e desativados. Sem nenhum ativo e
+   * sem data por setor = fluxo antigo, com escopo por grupo de produto. */
   setores?: Setor[];
+  /** Setores de cada data já aberta (dd/mm/aaaa): é essa lista, e não o
+   * cadastro de hoje, que diz quem pode contar a data. */
+  andamentoPorData?: Map<string, AndamentoSetor[]>;
+  modalidadePorData?: Map<string, ModalidadeContagem>;
 }) {
-  const usaSetor = setores.length > 0;
   const [tela, setTela] = useState<"data" | "aviso" | "inventario">("data");
   const [dataISO, setDataISO] = useState(hojeISO());
+  const dataBr = isoParaBr(dataISO);
+  const modalidadeDaData = modalidadePorData.get(dataBr);
+  const andamentoDaData = andamentoPorData.get(dataBr) ?? [];
+  // Data já aberta por setor: os setores do snapshot, mesmo os desativados
+  // depois (ainda precisam fechar a data). Data nova: só os ativos.
+  const setoresDaData: Setor[] =
+    andamentoDaData.length > 0
+      ? andamentoDaData.map(
+          (s) =>
+            setores.find((setor) => setor.id === s.setorId) ?? {
+              id: s.setorId,
+              nome: s.setorNome,
+              ordem: 0,
+              ativo: false,
+              produtos: 0,
+            },
+        )
+      : modalidadeDaData === "setor"
+        ? []
+        : setores.filter((setor) => setor.ativo);
+  const usaSetor = modalidadeDaData === "setor" || setores.some((setor) => setor.ativo);
   const [grupos, setGrupos] = useState<string[]>([]);
   const [setorId, setSetorId] = useState("");
   // Lista congelada do setor na data, devolvida pelo "Iniciar contagem".
   const [escopoItens, setEscopoItens] = useState<ItemDoSnapshot[] | null>(null);
   const [jaConcluido, setJaConcluido] = useState(false);
+  const [motivoReenvio, setMotivoReenvio] = useState("");
   // Versão do setor vista na abertura: o banco recusa o envio se outra pessoa
   // enviou o mesmo setor depois disso.
   const [versaoSetor, setVersaoSetor] = useState(0);
@@ -169,7 +202,7 @@ export function ContagemForm({
 
   const [ano, mesNum] = dataISO.split("-");
   const mesDisplay = dataISO ? `${MESES[Number(mesNum) - 1]} ${ano}` : "";
-  const setorEscolhido = setores.find((setor) => setor.id === setorId);
+  const setorEscolhido = setoresDaData.find((setor) => setor.id === setorId);
   const escopoLabel = usaSetor
     ? `Setor ${setorEscolhido?.nome ?? ""}`
     : grupos.length === 0
@@ -369,6 +402,11 @@ export function ContagemForm({
 
     const linhas = [...linhasCadastradas, ...linhasAvulsas];
 
+    if (usaSetor && jaConcluido && motivoReenvio.trim().length < 3) {
+      setErro("Este setor já foi enviado nesta data. Informe o motivo do reenvio.");
+      return;
+    }
+
     if (usaSetor && jaConcluido) {
       const segue = window.confirm(
         `Já existe uma contagem do ${setorEscolhido?.nome ?? "setor"} nesta data. ` +
@@ -380,7 +418,13 @@ export function ContagemForm({
     startTransition(async () => {
       try {
         if (usaSetor) {
-          const resultado = await registrarContagemSetorAction(dataISO, setorId, linhas, versaoSetor);
+          const resultado = await registrarContagemSetorAction(
+            dataISO,
+            setorId,
+            linhas,
+            versaoSetor,
+            jaConcluido ? motivoReenvio.trim() : undefined,
+          );
           if ("erro" in resultado) {
             setErro(resultado.erro);
             return;
@@ -446,7 +490,11 @@ export function ContagemForm({
           <input
             type="date"
             value={dataISO}
-            onChange={(e) => setDataISO(e.target.value)}
+            onChange={(e) => {
+              setDataISO(e.target.value);
+              // Outra data pode ter outra lista de setores.
+              setSetorId("");
+            }}
             className="w-full border-none bg-transparent text-xl font-bold text-cinza outline-none"
           />
         </div>
@@ -456,7 +504,7 @@ export function ContagemForm({
               Qual setor você vai contar?
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {setores.map((setor) => (
+              {setoresDaData.map((setor) => (
                 <button
                   key={setor.id}
                   type="button"
@@ -468,9 +516,17 @@ export function ContagemForm({
                   }`}
                 >
                   {setor.nome}
+                  {!setor.ativo && " (desativado)"}
                 </button>
               ))}
             </div>
+            {setoresDaData.length === 0 && (
+              <p className="mt-2 text-xs text-vermelho">
+                {modalidadeDaData === "setor"
+                  ? "Esta data foi aberta sem nenhum setor na lista. Escolha outra data."
+                  : "Nenhum setor ativo. Cadastre ou reative um setor para contar."}
+              </p>
+            )}
             <p className="mt-2 text-xs text-cinza-medio">
               Você conta só a lista do seu setor. Item que existe em mais de um setor é somado
               depois, na conferência.
@@ -756,6 +812,20 @@ export function ContagemForm({
             >
               Confirmar preenchidos ({pendentesComValor.length})
             </button>
+          )}
+
+          {usaSetor && jaConcluido && tudoConfirmado && !enviado && (
+            <label className="mb-2 block text-left text-[11px] text-cinza-claro">
+              Motivo do reenvio (este setor já foi enviado nesta data)
+              <input
+                type="text"
+                value={motivoReenvio}
+                maxLength={300}
+                onChange={(e) => setMotivoReenvio(e.target.value)}
+                placeholder="Ex.: esqueci a câmara fria"
+                className="mt-1 w-full rounded-md border border-cinza-claro bg-branco px-3 py-2 text-sm text-cinza"
+              />
+            </label>
           )}
 
           {tudoConfirmado && !enviado && (

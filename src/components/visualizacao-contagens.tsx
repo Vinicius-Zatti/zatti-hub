@@ -16,6 +16,7 @@ import {
   situacaoDaData,
   type AndamentoSetor,
   type EscopoSetor,
+  type ModalidadeContagem,
 } from "@/lib/contagem/setor";
 
 const ABREV_MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -53,11 +54,14 @@ function chaveItem(item: ItemInventario): string {
 export function VisualizacaoContagens({
   itens,
   andamentoPorData = new Map(),
+  modalidadePorData = new Map(),
   escopoUltimaData = [],
 }: {
   itens: ItemInventario[];
   /** Andamento por setor de cada data. Vazio = unidade sem setor. */
   andamentoPorData?: Map<string, AndamentoSetor[]>;
+  /** Modalidade do cabeçalho de cada data (vazio = unidade na planilha). */
+  modalidadePorData?: Map<string, ModalidadeContagem>;
   /** Snapshot do escopo só da última data - é nela que a conferência atua.
    * Datas antigas somam normalmente, mas sem a marca de "não contou". */
   escopoUltimaData?: EscopoSetor[];
@@ -140,7 +144,15 @@ export function VisualizacaoContagens({
   }, [filtrados, ultimaData, escopoUltimaData]);
 
   const andamentoUltima = andamentoPorData.get(ultimaData) ?? [];
+  const modalidadeUltima = modalidadePorData.get(ultimaData);
+  const situacaoUltima = situacaoDaData(andamentoUltima, modalidadeUltima);
+  const avisoUltima = avisoDeContagemParcial(andamentoUltima, modalidadeUltima);
   const pendentes = Object.keys(edicoes);
+  // Correção de contagem por setor guarda o porquê no histórico do banco.
+  const [motivo, setMotivo] = useState("");
+  const pendenteComSetor = pendentes.some(
+    (chave) => filtrados.find((it) => chaveItem(it) === chave)?.setorId,
+  );
 
   // Versão de cada setor por data. A correção manda a versão que viu; cada
   // correção salva sobe a versão, então a próxima usa o número devolvido pelo
@@ -165,13 +177,18 @@ export function VisualizacaoContagens({
       return false;
     }
 
+    if (CONTAGEM_POR_SETOR_ATIVA && item.setorId && motivo.trim().length < 3) {
+      setStatusPorItem((s) => ({ ...s, [chave]: { tipo: "erro", msg: "Informe o motivo da correção" } }));
+      return false;
+    }
+
     setStatusPorItem((s) => ({ ...s, [chave]: { tipo: "salvando" } }));
     // Com a contagem por setor ativa, corrige a linha daquele setor pelo id.
     // Enquanto ela não está ativa, segue o caminho de sempre (data + SKU), que
     // é único porque nenhuma linha tem setor.
     const r =
       CONTAGEM_POR_SETOR_ATIVA && item.id
-        ? await corrigirItemContagemAction(item.id, num, versaoDoSetor(item))
+        ? await corrigirItemContagemAction(item.id, num, versaoDoSetor(item), motivo.trim() || undefined)
         : await atualizarQuantidadeContagemAction(item.data, item.sku, num);
     if ("erro" in r) {
       setStatusPorItem((s) => ({ ...s, [chave]: { tipo: "erro", msg: r.erro } }));
@@ -211,17 +228,17 @@ export function VisualizacaoContagens({
         <p className="text-sm text-cinza-medio">Histórico dos inventários já registrados.</p>
       </div>
 
-      {temSetor && andamentoUltima.length > 0 && (
+      {temSetor && (andamentoUltima.length > 0 || modalidadeUltima === "setor") && (
         <div
           className={`rounded-lg border p-4 text-sm ${
-            situacaoDaData(andamentoUltima) === "completa"
+            situacaoUltima === "completa"
               ? "border-verde bg-verde/5"
               : "border-ambar bg-ambar/10"
           }`}
         >
           <p className="font-semibold text-cinza">
             Contagem de {ultimaData}:{" "}
-            {situacaoDaData(andamentoUltima) === "completa" ? "completa" : "parcial"}
+            {situacaoUltima === "completa" ? "completa" : "parcial"}
           </p>
           <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-cinza-medio">
             {andamentoUltima.map((setor) => (
@@ -237,9 +254,9 @@ export function VisualizacaoContagens({
               </li>
             ))}
           </ul>
-          {avisoDeContagemParcial(andamentoUltima) && (
+          {avisoUltima && (
             <p className="mt-1 font-semibold text-ambar">
-              {avisoDeContagemParcial(andamentoUltima)}
+              {avisoUltima}
             </p>
           )}
         </div>
@@ -299,6 +316,20 @@ export function VisualizacaoContagens({
           )}
         </div>
       </div>
+
+      {editavel && pendenteComSetor && (
+        <label className="-mt-2 block text-xs text-cinza-medio">
+          Motivo da correção (fica no histórico do setor)
+          <input
+            type="text"
+            value={motivo}
+            maxLength={300}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Ex.: contei a caixa fechada errado"
+            className="mt-1 w-full rounded-md border border-cinza-claro px-3 py-1.5 text-sm text-cinza"
+          />
+        </label>
+      )}
 
       {editavel && (
         <p className="-mt-2 text-xs text-cinza-medio">

@@ -209,9 +209,13 @@ const blocoFornecedores = fornecedores.length === 0 ? [] : [
   "",
 ];
 
+// A planilha é sempre contagem legada (sem setor). Data que já virou contagem
+// por setor no banco aborta a importação inteira, com a data na mensagem: o
+// script roda com privilégio administrativo e passaria por cima do RLS.
 const blocoContagens = contagens.length === 0 ? [] : [
-  "insert into contagens (unidade_id, data, mes)",
-  `values\n${contagens.map(([data, mes]) => `(${[unidadeId, data, mes].map(sql).join(", ")})`).join(",\n")}`,
+  `do $$ declare v_data date; begin select c.data into v_data from contagens c where c.unidade_id = ${sql(unidadeId)} and c.modalidade = 'setor' and c.data in (${contagens.map(([data]) => `${sql(data)}::date`).join(", ")}) order by c.data limit 1; if v_data is not null then raise exception 'Importação recusada: % já é contagem por setor no banco. Tire essa data da planilha ou importe só as outras.', to_char(v_data, 'DD/MM/YYYY'); end if; end $$;`,
+  "insert into contagens (unidade_id, data, mes, modalidade)",
+  `values\n${contagens.map(([data, mes]) => `(${[unidadeId, data, mes, "legada"].map(sql).join(", ")})`).join(",\n")}`,
   "on conflict (unidade_id, data) do update set mes = excluded.mes;",
   "",
 ];
@@ -223,7 +227,7 @@ const blocoContagemItens = inventario.length === 0 ? [] : [
     item.data, item.linhaPlanilha, item.sku, item.grupo, item.nome, item.unidadeBase,
     item.quantidade, item.precoUnitario, item.total, item.alerta,
   ].map(sql).join(", ")})`).join(",\n")}) as v(data, linha, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total, alerta)`,
-  `join contagens c on c.unidade_id = ${sql(unidadeId)} and c.data = v.data::date`,
+  `join contagens c on c.unidade_id = ${sql(unidadeId)} and c.data = v.data::date and c.modalidade = 'legada'`,
   // ordem = número da linha original na planilha (estritamente crescente na
   // ordem de leitura), em vez de deixar pro identity automático do Postgres -
   // garante por construção que, quando o mesmo SKU repete na mesma data,

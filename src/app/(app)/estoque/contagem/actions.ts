@@ -208,6 +208,7 @@ export async function registrarContagemSetorAction(
   setorId: string,
   linhas: LinhaAvulsaSetor[],
   versaoEsperada: number,
+  motivo?: string,
 ): Promise<{ ok: true; gravados: number; versao: number } | { erro: string }> {
   try {
     if (!CONTAGEM_POR_SETOR_ATIVA) {
@@ -220,6 +221,7 @@ export async function registrarContagemSetorAction(
       setorId,
       linhas,
       versaoEsperada,
+      ...(motivo ? { motivo } : {}),
     });
 
     if (acesso.fonteDadosEstoque !== "banco") {
@@ -235,6 +237,7 @@ export async function registrarContagemSetorAction(
       entrada.setorId,
       entrada.linhas,
       entrada.versaoEsperada,
+      entrada.motivo,
     );
 
     // O histórico completo (antes/depois) já ficou em contagem_envios, na
@@ -244,7 +247,7 @@ export async function registrarContagemSetorAction(
       acao: "registrar",
       entidade: "contagem_setor",
       entidadeId: `${dataBr} / ${entrada.setorId}`,
-      dadosNovos: { itens: gravados, versao },
+      dadosNovos: { itens: gravados, versao, motivo: entrada.motivo ?? null },
     });
 
     revalidatePath("/estoque/contagem");
@@ -263,11 +266,17 @@ export async function corrigirItemContagemAction(
   itemId: string,
   quantidade: number,
   versaoEsperada: number | null,
+  motivo?: string,
 ) {
   try {
     const acesso = await getAcessoAtual();
     await exigirLimiteRequisicao("corrigir_contagem");
-    const entrada = validarEntrada(corrigirItemContagemSchema, { itemId, quantidade, versaoEsperada });
+    const entrada = validarEntrada(corrigirItemContagemSchema, {
+      itemId,
+      quantidade,
+      versaoEsperada,
+      ...(motivo ? { motivo } : {}),
+    });
 
     if (acesso.fonteDadosEstoque !== "banco") {
       throw new ErroPublico("Correção por item só existe com o estoque no banco.");
@@ -278,13 +287,14 @@ export async function corrigirItemContagemAction(
       entrada.quantidade,
       acesso.unidadeId,
       entrada.versaoEsperada,
+      entrada.motivo,
     );
     await registrarAuditoria({
       acesso,
       acao: "corrigir",
       entidade: "contagem_item",
       entidadeId: entrada.itemId,
-      dadosNovos: { quantidade: entrada.quantidade, versao },
+      dadosNovos: { quantidade: entrada.quantidade, versao, motivo: entrada.motivo ?? null },
     });
 
     revalidatePath("/estoque/contagem/visualizacao");

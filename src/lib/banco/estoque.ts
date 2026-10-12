@@ -528,6 +528,7 @@ export async function substituirContagemSetorBanco(
   setorId: string,
   linhas: LinhaContagemSetor[],
   versaoEsperada: number,
+  motivo?: string,
 ): Promise<{ gravados: number; versao: number }> {
   const supabase = await createClient();
   const itens = linhas.map((linha) =>
@@ -547,6 +548,7 @@ export async function substituirContagemSetorBanco(
     p_setor_id: setorId,
     p_itens: itens,
     p_versao_esperada: versaoEsperada,
+    p_motivo: motivo?.trim() || null,
   });
   if (error) throw erroDaFuncao(error, "Não foi possível gravar a contagem do setor");
   const resultado = (data ?? {}) as { gravados?: number; versao?: number };
@@ -563,6 +565,7 @@ export async function corrigirItemContagemBanco(
   quantidade: number,
   unidadeId: string,
   versaoEsperada: number | null,
+  motivo?: string,
 ): Promise<number | null> {
   const supabase = await createClient();
   const { data: item, error: erroItem } = await supabase
@@ -586,6 +589,7 @@ export async function corrigirItemContagemBanco(
     p_item_id: itemId,
     p_quantidade: quantidade,
     p_versao_esperada: versaoEsperada,
+    p_motivo: motivo?.trim() || null,
   });
   if (error) throw erroDaFuncao(error, "Não foi possível corrigir a quantidade");
   const versao = (data as { versao?: number | null } | null)?.versao;

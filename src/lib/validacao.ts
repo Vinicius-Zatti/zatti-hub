@@ -159,6 +159,8 @@ export const registrarContagemSetorSchema = z
       .max(1_000),
     /** Versão do setor que a pessoa viu ao abrir; o banco recusa se mudou. */
     versaoEsperada: z.number().int().min(0),
+    /** Obrigatório no reenvio (o banco confere); vazio no primeiro envio. */
+    motivo: texto(300).optional(),
   })
   .strict();
 
@@ -168,6 +170,8 @@ export const corrigirItemContagemSchema = z
     quantidade: numeroNaoNegativo,
     /** Nula só em contagem legada (sem setor). */
     versaoEsperada: z.number().int().min(0).nullable(),
+    /** Obrigatório na contagem por setor (o banco confere). */
+    motivo: texto(300).optional(),
   })
   .strict();
 

@@ -82,7 +82,37 @@ describe("calcularCmv valida a elegibilidade mesmo chamado direto", () => {
     ]);
     expect(() =>
       calcularCmv({ ...base, dataInicial: "10/09/2026", dataFinal: "17/09/2026", andamentoPorData: andamento }),
-    ).toThrow("A contagem de 17/09/2026 está parcial e não pode entrar no CMV. Contagem parcial. Faltam: Cozinha.");
+    ).toThrow("A contagem de 17/09/2026 não pode entrar no CMV. Contagem parcial. Faltam: Cozinha.");
+  });
+
+  it("recusa data que nao existe", () => {
+    expect(() =>
+      calcularCmv({ ...base, dataInicial: "01/09/2026", dataFinal: "17/09/2026", andamentoPorData: new Map() }),
+    ).toThrow("Não existe contagem em 01/09/2026.");
+  });
+
+  it("unidade no banco: data sem cabecalho nao entra", () => {
+    const modalidades = new Map([["17/09/2026", "legada" as const]]);
+    expect(() =>
+      calcularCmv({
+        ...base,
+        dataInicial: "10/09/2026",
+        dataFinal: "17/09/2026",
+        andamentoPorData: new Map(),
+        modalidadePorData: modalidades,
+      }),
+    ).toThrow("A contagem de 10/09/2026 não foi encontrada no banco.");
+  });
+
+  it("contagem por setor com snapshot vazio nunca vira legada", () => {
+    const modalidades = new Map([
+      ["10/09/2026", "setor" as const],
+      ["17/09/2026", "legada" as const],
+    ]);
+    expect(datasDeContagem(ITENS, new Map(), modalidades)).toEqual(["17/09/2026"]);
+    expect(datasParciais(ITENS, new Map(), modalidades)).toEqual([
+      { data: "10/09/2026", aviso: "Contagem por setor aberta sem nenhum setor na lista." },
+    ]);
   });
 
   it("nao muda a formula: legado continua com os mesmos numeros", () => {

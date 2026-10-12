@@ -15,6 +15,9 @@ export type SituacaoSetor = "pendente" | "concluido";
  * viraria "parcial" da noite pro dia e sumiria do CMV. */
 export type SituacaoData = "completa" | "parcial" | "legada";
 
+/** Modalidade gravada no cabeçalho da contagem (`contagens.modalidade`). */
+export type ModalidadeContagem = "legada" | "setor";
+
 export type AndamentoSetor = {
   setorId: string;
   setorNome: string;
@@ -57,8 +60,15 @@ export type ItemConsolidado = {
   parcial: boolean;
 };
 
-export function situacaoDaData(andamento: AndamentoSetor[]): SituacaoData {
-  if (andamento.length === 0) return "legada";
+/** Sem `modalidade` (unidade na planilha), data sem andamento é legada.
+ * Com a modalidade do cabeçalho, quem manda é ela: contagem por setor aberta
+ * com snapshot vazio não tem como estar completa e nunca vira "legada". */
+export function situacaoDaData(
+  andamento: AndamentoSetor[],
+  modalidade?: ModalidadeContagem,
+): SituacaoData {
+  if (modalidade === "legada") return "legada";
+  if (andamento.length === 0) return modalidade === "setor" ? "parcial" : "legada";
   return andamento.every((s) => s.situacao === "concluido") ? "completa" : "parcial";
 }
 
@@ -69,7 +79,13 @@ export function setoresPendentes(andamento: AndamentoSetor[]): string[] {
 }
 
 /** Texto pronto pro aviso de contagem parcial. Vazio quando não há o que avisar. */
-export function avisoDeContagemParcial(andamento: AndamentoSetor[]): string {
+export function avisoDeContagemParcial(
+  andamento: AndamentoSetor[],
+  modalidade?: ModalidadeContagem,
+): string {
+  if (modalidade === "setor" && andamento.length === 0) {
+    return "Contagem por setor aberta sem nenhum setor na lista.";
+  }
   const pendentes = setoresPendentes(andamento);
   if (pendentes.length === 0) return "";
   return `Contagem parcial. Faltam: ${pendentes.join(" e ")}.`;

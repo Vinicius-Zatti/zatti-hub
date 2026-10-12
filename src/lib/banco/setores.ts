@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { buscarTudo } from "@/lib/banco/paginacao";
 import type { Setor } from "@/lib/types";
-import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
+import type { AndamentoSetor, EscopoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 
 export type DesignacaoProduto = {
   sku: string;
@@ -176,6 +176,33 @@ export async function listarAndamentoBanco(
       versao: Number(linha.versao ?? 0),
     });
     porData.set(dataBr, lista.sort((a, b) => a.setorNome.localeCompare(b.setorNome)));
+  }
+  return porData;
+}
+
+/** Modalidade gravada no cabeçalho de cada data (dd/mm/aaaa). É ela, e não a
+ * ausência de andamento, que diz se a data é legada ou por setor. */
+export async function listarModalidadesBanco(
+  unidadeId: string,
+): Promise<Map<string, ModalidadeContagem>> {
+  const supabase = await createClient();
+  const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
+    supabase
+      .from("contagens")
+      .select("id, data, modalidade")
+      .eq("unidade_id", unidadeId)
+      .order("id")
+      .range(de, ate),
+  ).catch((erro: Error) => {
+    throw new Error(`Não foi possível carregar as contagens: ${erro.message}`);
+  });
+
+  const porData = new Map<string, ModalidadeContagem>();
+  for (const linha of linhas) {
+    porData.set(
+      isoParaBr(linha.data as string),
+      linha.modalidade === "setor" ? "setor" : "legada",
+    );
   }
   return porData;
 }

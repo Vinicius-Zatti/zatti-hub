@@ -63,6 +63,9 @@ alter table public.contagem_escopo add column if not exists grupo text;
 alter table public.contagem_escopo add column if not exists unidade_base text;
 
 -- Backfill: primeiro pelo cadastro (mesma unidade e SKU)...
+-- Só linha ainda não migrada (nome nulo, que nenhuma linha tem depois da
+-- primeira execução): rodar de novo nunca liga um snapshot antigo a um
+-- produto recriado depois com o mesmo SKU.
 update public.contagem_escopo e
 set produto_id = p.id,
     nome = coalesce(e.nome, p.nome),
@@ -72,7 +75,7 @@ from public.contagens c, public.produtos p
 where c.id = e.contagem_id
   and p.unidade_id = c.unidade_id
   and p.sku = e.sku
-  and (e.produto_id is null or e.nome is null or e.grupo is null or e.unidade_base is null);
+  and e.nome is null;
 
 -- ...e, quando o produto já não existe, pelo que ficou gravado nos itens.
 update public.contagem_escopo e
@@ -127,8 +130,13 @@ create table if not exists public.contagem_envios (
   enviado_por uuid references auth.users(id),
   enviado_em timestamptz not null default now(),
   itens_anteriores jsonb not null default '[]'::jsonb,
-  itens_novos jsonb not null default '[]'::jsonb
+  itens_novos jsonb not null default '[]'::jsonb,
+  -- Por que reenviou ou corrigiu. `tipo` diz O QUE aconteceu; isto diz POR QUÊ.
+  -- Nulo só no primeiro envio do setor.
+  motivo text
 );
+
+alter table public.contagem_envios add column if not exists motivo text;
 
 create index if not exists contagem_envios_contagem on public.contagem_envios (contagem_id, setor_id, versao);
 
@@ -187,6 +195,35 @@ create policy "contagem_itens_update_por_vinculo" on public.contagem_itens
   for update to authenticated
   using (setor_id is null and public.usuario_pode_escrever_contagem_legada(contagem_id))
   with check (setor_id is null and public.usuario_pode_escrever_contagem_legada(contagem_id));
+
+-- Mistura barrada também para quem passa por cima do RLS (importação
+-- administrativa, SQL Editor): linha sem setor só em contagem legada, linha
+-- com setor só em contagem por setor.
+create or replace function public.contagem_itens_modalidade_coerente()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_modalidade text;
+begin
+  select c.modalidade into v_modalidade from public.contagens c where c.id = new.contagem_id;
+  if v_modalidade = 'setor' and new.setor_id is null then
+    raise exception 'Esta data é contagem por setor: item sem setor não entra (%).', new.sku
+      using errcode = 'P0001';
+  end if;
+  if v_modalidade = 'legada' and new.setor_id is not null then
+    raise exception 'Esta data foi contada no modo antigo (sem setor): item com setor não entra (%).', new.sku
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists contagem_itens_modalidade_coerente on public.contagem_itens;
+create trigger contagem_itens_modalidade_coerente
+  before insert or update of contagem_id, setor_id on public.contagem_itens
+  for each row execute function public.contagem_itens_modalidade_coerente();
 
 -- Cabeçalho criado direto (fluxo legado) nasce sempre legado.
 drop policy if exists "contagens_insert_por_vinculo" on public.contagens;
@@ -312,12 +349,14 @@ $$;
 -- A versão antiga (sem versão esperada) deixa de existir: ninguém mais grava
 -- setor sem completude, sem trava e sem histórico.
 drop function if exists public.substituir_contagem_setor(uuid, uuid, jsonb);
+drop function if exists public.substituir_contagem_setor(uuid, uuid, jsonb, integer);
 
 create or replace function public.substituir_contagem_setor(
   p_contagem_id uuid,
   p_setor_id uuid,
   p_itens jsonb,
-  p_versao_esperada integer
+  p_versao_esperada integer,
+  p_motivo text default null
 )
 returns jsonb
 language plpgsql
@@ -367,6 +406,11 @@ begin
 
   if p_versao_esperada is null or p_versao_esperada <> v_versao then
     raise exception 'Outra pessoa enviou este setor agora. Recarregue.' using errcode = 'P0001';
+  end if;
+
+  -- Reenvio apaga o que o setor tinha: fica registrado por quê.
+  if v_versao > 0 and length(btrim(coalesce(p_motivo, ''))) < 3 then
+    raise exception 'Informe o motivo do reenvio deste setor.' using errcode = 'P0001';
   end if;
 
   if p_itens is null or jsonb_typeof(p_itens) <> 'array' then
@@ -490,9 +534,10 @@ begin
   where contagem_id = p_contagem_id and setor_id = p_setor_id;
 
   insert into public.contagem_envios (
-    contagem_id, setor_id, versao, tipo, enviado_por, itens_anteriores, itens_novos
+    contagem_id, setor_id, versao, tipo, enviado_por, itens_anteriores, itens_novos, motivo
   )
-  values (p_contagem_id, p_setor_id, v_versao + 1, 'envio', auth.uid(), v_anteriores, v_novos);
+  values (p_contagem_id, p_setor_id, v_versao + 1, 'envio', auth.uid(), v_anteriores, v_novos,
+          nullif(btrim(coalesce(p_motivo, '')), ''));
 
   return jsonb_build_object('gravados', v_gravados, 'versao', v_versao + 1);
 end;
@@ -500,10 +545,16 @@ $$;
 
 -- 10. Corrigir a quantidade de um item, pelo id ------------------------------
 
+-- Contagem legada: corrige pelo id, sem versão nem histórico transacional
+-- (o log geral do app é gravado depois). Só a contagem por setor tem a
+-- garantia completa: trava, versão e antes/depois com motivo, na mesma transação.
+drop function if exists public.corrigir_item_contagem(uuid, numeric, integer);
+
 create or replace function public.corrigir_item_contagem(
   p_item_id uuid,
   p_quantidade numeric,
-  p_versao_esperada integer
+  p_versao_esperada integer,
+  p_motivo text default null
 )
 returns jsonb
 language plpgsql
@@ -557,6 +608,9 @@ begin
     if p_versao_esperada is null or p_versao_esperada <> v_versao then
       raise exception 'Outra pessoa enviou este setor agora. Recarregue.' using errcode = 'P0001';
     end if;
+    if length(btrim(coalesce(p_motivo, ''))) < 3 then
+      raise exception 'Informe o motivo da correção.' using errcode = 'P0001';
+    end if;
   end if;
 
   -- Lido de novo depois da trava: um reenvio pode ter apagado a linha.
@@ -597,10 +651,10 @@ begin
     where contagem_id = v_contagem and setor_id = v_setor;
 
     insert into public.contagem_envios (
-      contagem_id, setor_id, versao, tipo, enviado_por, itens_anteriores, itens_novos
+      contagem_id, setor_id, versao, tipo, enviado_por, itens_anteriores, itens_novos, motivo
     )
     values (v_contagem, v_setor, v_versao + 1, 'correcao', auth.uid(),
-            jsonb_build_array(v_antes), jsonb_build_array(v_depois));
+            jsonb_build_array(v_antes), jsonb_build_array(v_depois), btrim(p_motivo));
 
     return jsonb_build_object('versao', v_versao + 1);
   end if;
@@ -701,12 +755,12 @@ end;
 $$;
 
 revoke all on function public.abrir_contagem_setor(text, date, text) from public, anon;
-revoke all on function public.substituir_contagem_setor(uuid, uuid, jsonb, integer) from public, anon;
-revoke all on function public.corrigir_item_contagem(uuid, numeric, integer) from public, anon;
+revoke all on function public.substituir_contagem_setor(uuid, uuid, jsonb, integer, text) from public, anon;
+revoke all on function public.corrigir_item_contagem(uuid, numeric, integer, text) from public, anon;
 revoke all on function public.designar_setores_produtos(text, jsonb) from public, anon;
 grant execute on function public.abrir_contagem_setor(text, date, text) to authenticated;
-grant execute on function public.substituir_contagem_setor(uuid, uuid, jsonb, integer) to authenticated;
-grant execute on function public.corrigir_item_contagem(uuid, numeric, integer) to authenticated;
+grant execute on function public.substituir_contagem_setor(uuid, uuid, jsonb, integer, text) to authenticated;
+grant execute on function public.corrigir_item_contagem(uuid, numeric, integer, text) to authenticated;
 grant execute on function public.designar_setores_produtos(text, jsonb) to authenticated;
 
 commit;
