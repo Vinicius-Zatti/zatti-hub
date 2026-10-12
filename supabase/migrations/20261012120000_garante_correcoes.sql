@@ -184,25 +184,26 @@ grant execute on function public.garante_itens_completos(uuid, jsonb) to authent
 
 -- 2: operacional lê só a execução que pode cumprir (dele ou sem responsável);
 -- gestão e master, todas da unidade. Respostas e fotos seguem a execução.
-create or replace function public.garante_pode_ver_execucao(p_unidade_id text, p_publicacao_id uuid)
+create or replace function public.usuario_pode_ver_execucao_garante(p_execucao_id text, p_unidade_id text)
 returns boolean language sql stable security definer set search_path = '' as $$
-  select public.usuario_pode_cumprir_garante(
-    p_unidade_id,
-    (select p.responsavel_id from public.garante_publicacoes p where p.id = p_publicacao_id)
+  select exists (
+    select 1
+      from public.garante_execucoes e
+      join public.garante_publicacoes p on p.id = e.publicacao_id
+     where e.id::text = p_execucao_id
+       and e.unidade_id = p_unidade_id
+       and public.usuario_pode_cumprir_garante(e.unidade_id, p.responsavel_id)
   );
 $$;
-revoke all on function public.garante_pode_ver_execucao(text, uuid) from public, anon;
-grant execute on function public.garante_pode_ver_execucao(text, uuid) to authenticated;
+revoke all on function public.usuario_pode_ver_execucao_garante(text, text) from public, anon;
+grant execute on function public.usuario_pode_ver_execucao_garante(text, text) to authenticated;
 
 drop policy if exists garante_execucoes_select on public.garante_execucoes;
 create policy garante_execucoes_select on public.garante_execucoes for select to authenticated
-  using (public.garante_pode_ver_execucao(unidade_id, publicacao_id));
+  using (public.usuario_pode_ver_execucao_garante(id::text, unidade_id));
 drop policy if exists garante_respostas_select on public.garante_respostas;
 create policy garante_respostas_select on public.garante_respostas for select to authenticated
-  using (exists (
-    select 1 from public.garante_execucoes e
-     where e.id = garante_respostas.execucao_id and e.unidade_id = garante_respostas.unidade_id
-  ));
+  using (public.usuario_pode_ver_execucao_garante(execucao_id::text, unidade_id));
 
 -- Iniciar: só checklist com itens; janela hoje/ontem (como antes).
 create or replace function public.garante_iniciar(p_publicacao_id uuid, p_data date)
@@ -460,11 +461,7 @@ create policy garante_evidencias_select on storage.objects for select to authent
   using (
     bucket_id = 'garante-evidencias'
     and created_at > now() - interval '40 days'
-    and exists (
-      select 1 from public.garante_execucoes e
-       where e.id::text = (storage.foldername(name))[2]
-         and e.unidade_id = (storage.foldername(name))[1]
-    )
+    and public.usuario_pode_ver_execucao_garante((storage.foldername(name))[2], (storage.foldername(name))[1])
   );
 
 drop policy if exists garante_evidencias_insert on storage.objects;
