@@ -423,7 +423,9 @@ export async function registrarAuditoriaBatch(
   if (entradas.length === 0) return;
   try {
     const supabase = await createClient();
-    await supabase.from("logs_auditoria").insert(
+    // O cliente do Supabase não lança: falha volta em `error`. Sem conferir,
+    // um log recusado passava calado. Continua sem derrubar a action.
+    const { error } = await supabase.from("logs_auditoria").insert(
       entradas.map((params) => ({
         unidade_id: params.acesso.unidadeId,
         user_id: params.acesso.userId,
@@ -434,6 +436,7 @@ export async function registrarAuditoriaBatch(
         dados_novos: sanitizarAuditoria(params.dadosNovos),
       }))
     );
+    if (error) console.error("Falha ao gravar log de auditoria", error.code ?? "", error.message);
   } catch {
     console.error("Falha ao gravar log de auditoria");
   }
