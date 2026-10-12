@@ -52,6 +52,15 @@ describe("sugerirDocumento", () => {
     const s = sugerirDocumento({ ...base, itens: [{ descricao: "Queijo", valorCentavos: 1200, planoContasCodigo: "c1" }] }, "2026-10-11");
     expect(s.linhas).toEqual([{ planoContasCodigo: "c1", descricao: "Queijo", valorCentavos: 1000 }]);
   });
+  it("abatimento maior que a maior linha devolve o total numa linha sem Plano de Contas", () => {
+    const itens = [
+      { descricao: "Carne", valorCentavos: 6000, planoContasCodigo: "c1" },
+      { descricao: "Caixa", valorCentavos: 4000, planoContasCodigo: "c2" },
+    ];
+    const s = sugerirDocumento({ ...base, valorTotalCentavos: 3000, itens }, "2026-10-11");
+    expect(s.linhas).toEqual([{ planoContasCodigo: null, descricao: "Itens não fecham com o total: revisar o rateio", valorCentavos: 3000 }]);
+    expect(s.vencimentos).toEqual([{ data: "2026-10-01", valorCentavos: 3000 }]);
+  });
 });
 
 const base: ExtracaoDocumento = {

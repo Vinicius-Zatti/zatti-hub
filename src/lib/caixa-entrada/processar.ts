@@ -252,7 +252,7 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
       .maybeSingle();
     contraparteId = (cp as { id: string } | null)?.id ?? null;
   }
-  await admin
+  const { data: gravado, error: erroGravar } = await admin
     .from("fin_caixa_entrada")
     .update({
       situacao: "lido",
@@ -262,6 +262,9 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
     })
     .eq("id", entradaId)
     .eq("situacao", "lendo")
-    .eq("lendo_desde", lendoDesde);
-  return "lido";
+    .eq("lendo_desde", lendoDesde)
+    .select("id");
+  if (erroGravar) throw new Error("gravar_extracao_falhou");
+  // Nenhuma linha: outra ação mudou a entrada durante a leitura; não anuncia leitura concluída.
+  return (gravado ?? []).length > 0 ? "lido" : "falhou";
 }

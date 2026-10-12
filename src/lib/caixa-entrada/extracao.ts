@@ -193,6 +193,11 @@ export function sugerirDocumento(e: ExtracaoDocumento, hoje: string): Sugestao {
   if (linhas.length === 0) linhas.push({ planoContasCodigo: null, descricao: e.contraparteNome ?? "Documento", valorCentavos: total });
   else if (diferenca > 0) linhas.push({ planoContasCodigo: null, descricao: "Diferença para fechar com o total da nota", valorCentavos: diferenca });
   else if (diferenca < 0 && linhas[0].valorCentavos + diferenca > 0) linhas[0].valorCentavos += diferenca; // desconto não detalhado
+  else if (diferenca < 0) {
+    // Abatimento maior que a maior linha: não inventa rateio, devolve o total da nota numa linha só,
+    // sem Plano de Contas, para a pessoa ratear.
+    linhas.splice(0, linhas.length, { planoContasCodigo: null, descricao: "Itens não fecham com o total: revisar o rateio", valorCentavos: total });
+  }
 
   const totalLinhas = linhas.reduce((a, l) => a + l.valorCentavos, 0);
   const somaVenc = e.vencimentos.reduce((a, v) => a + v.valorCentavos, 0);
