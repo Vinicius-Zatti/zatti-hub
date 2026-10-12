@@ -6,7 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
-import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
+import { buscarTudo } from "@/lib/banco/paginacao";
 import type { Setor } from "@/lib/types";
 import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
 
@@ -121,52 +121,24 @@ export async function listarDesignacoesBanco(
 
 /** Substitui a designação dos SKUs informados. Produto pode ficar em vários
  * setores; lista vazia tira o produto de todos e ele cai no alerta de "sem
- * setor". Só mexe nos SKUs recebidos. */
+ * setor". Só mexe nos SKUs recebidos.
+ *
+ * Tudo numa função do Postgres (`designar_setores_produtos`): apaga e grava
+ * na mesma transação (erro no meio não deixa produto sem setor), recusa SKU
+ * repetido ou de fora da unidade e pega a mesma trava da abertura da
+ * contagem, então um snapshot nunca vê a designação pela metade. */
 export async function salvarDesignacoesBanco(
   unidadeId: string,
   designacoes: DesignacaoProduto[],
 ): Promise<void> {
   if (designacoes.length === 0) return;
   const supabase = await createClient();
-
-  const skus = designacoes.map((d) => d.sku);
-  // Em lotes: salvar a grade inteira passa de 1.000 SKUs, e o que ficasse fora
-  // do teto viraria "Produto não encontrado".
-  const produtos = await buscarTudoEmLotes<{ id: string; sku: string }>(skus, (lote, de, ate) =>
-    supabase.from("produtos").select("id, sku").eq("unidade_id", unidadeId).in("sku", lote).order("id").range(de, ate),
-  ).catch((erro: Error) => {
-    throw new Error(`Não foi possível localizar os produtos: ${erro.message}`);
+  const { error } = await supabase.rpc("designar_setores_produtos", {
+    p_unidade_id: unidadeId,
+    p_designacoes: designacoes.map((d) => ({ sku: d.sku, setorIds: d.setorIds })),
   });
-
-  const idPorSku = new Map(produtos.map((p) => [p.sku, p.id]));
-  const desconhecidos = skus.filter((sku) => !idPorSku.has(sku));
-  if (desconhecidos.length > 0) {
-    throw new ErroPublico(`Produto não encontrado nesta unidade: ${desconhecidos.join(", ")}`);
-  }
-
-  const produtoIds = skus.map((sku) => idPorSku.get(sku)!);
-  const { error: erroApagar } = await supabase
-    .from("produto_setores")
-    .delete()
-    .eq("unidade_id", unidadeId)
-    .in("produto_id", produtoIds);
-  if (erroApagar) throw new Error(`Não foi possível limpar a designação: ${erroApagar.message}`);
-
-  const novas = designacoes.flatMap((designacao) =>
-    designacao.setorIds.map((setorId) => ({
-      produto_id: idPorSku.get(designacao.sku)!,
-      setor_id: setorId,
-      unidade_id: unidadeId,
-    })),
-  );
-  if (novas.length === 0) return;
-
-  const { error } = await supabase.from("produto_setores").insert(novas);
   if (error) {
-    // A chave estrangeira composta recusa setor de outra unidade.
-    if (error.message.includes("produto_setores_setor_id_unidade_id_fkey")) {
-      throw new ErroPublico("Esse setor não é desta unidade.");
-    }
+    if (error.code === "P0001") throw new ErroPublico(error.message);
     throw new Error(`Não foi possível salvar a designação: ${error.message}`);
   }
 }
@@ -181,7 +153,7 @@ export async function listarAndamentoBanco(
   const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
     supabase
       .from("contagem_setores")
-      .select("situacao, enviado_em, enviado_por, setores!inner(id, nome), contagens!inner(data, unidade_id)")
+      .select("situacao, enviado_em, enviado_por, versao, setores!inner(id, nome), contagens!inner(data, unidade_id)")
       .eq("contagens.unidade_id", unidadeId)
       .order("id")
       .range(de, ate),
@@ -201,6 +173,7 @@ export async function listarAndamentoBanco(
       situacao: linha.situacao as AndamentoSetor["situacao"],
       enviadoEm: (linha.enviado_em as string | null) ?? null,
       enviadoPor: (linha.enviado_por as string | null) ?? null,
+      versao: Number(linha.versao ?? 0),
     });
     porData.set(dataBr, lista.sort((a, b) => a.setorNome.localeCompare(b.setorNome)));
   }
@@ -218,7 +191,7 @@ export async function listarEscopoBanco(
   const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
     supabase
       .from("contagem_escopo")
-      .select("sku, setores!inner(id, nome), contagens!inner(data, unidade_id)")
+      .select("sku, nome, grupo, unidade_base, setores!inner(id, nome), contagens!inner(data, unidade_id)")
       .eq("contagens.unidade_id", unidadeId)
       .eq("contagens.data", brParaIso(dataBr))
       .order("contagem_id")
@@ -231,7 +204,15 @@ export async function listarEscopoBanco(
 
   return linhas.map((linha) => {
     const setor = linha.setores as unknown as { id: string; nome: string };
-    return { sku: linha.sku as string, setorId: setor.id, setorNome: setor.nome };
+    return {
+      sku: linha.sku as string,
+      setorId: setor.id,
+      setorNome: setor.nome,
+      // Congelados na abertura: a lista da data não depende do cadastro atual.
+      nome: (linha.nome as string | null) ?? (linha.sku as string),
+      grupo: (linha.grupo as string | null) ?? "",
+      unidadeBase: (linha.unidade_base as string | null) ?? "",
+    };
   });
 }
 

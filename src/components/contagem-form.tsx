@@ -6,6 +6,7 @@ import {
   abrirContagemAction,
   registrarContagemAction,
   registrarContagemSetorAction,
+  type ItemDoSnapshot,
 } from "@/app/(app)/estoque/contagem/actions";
 import { GRUPO_ORDEM, GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import type { Setor } from "@/lib/types";
@@ -26,6 +27,21 @@ type ItemCustom = {
   unidadeBase: string;
   precoUnitario: null;
 };
+
+/** Item da lista de contagem. Com setor, nome/grupo/unidade vêm do snapshot
+ * da data (não do cadastro atual); posição e preço do cadastro só servem pra
+ * ordenar e mostrar o valor estimado - o valor gravado é calculado no banco. */
+type ItemLista = {
+  sku: string;
+  nome: string;
+  grupo: string;
+  unidadeBase: string;
+  posicao: number | null;
+  precoUnitario: number | null;
+};
+
+/** Quantos nomes de itens faltando aparecem antes do "e mais N". */
+const MAX_FALTANDO_VISIVEIS = 5;
 
 function skuAvulso(nome: string): string {
   const slug = nome
@@ -61,8 +77,11 @@ export function ContagemForm({
   const [grupos, setGrupos] = useState<string[]>([]);
   const [setorId, setSetorId] = useState("");
   // Lista congelada do setor na data, devolvida pelo "Iniciar contagem".
-  const [escopoSkus, setEscopoSkus] = useState<string[] | null>(null);
+  const [escopoItens, setEscopoItens] = useState<ItemDoSnapshot[] | null>(null);
   const [jaConcluido, setJaConcluido] = useState(false);
+  // Versão do setor vista na abertura: o banco recusa o envio se outra pessoa
+  // enviou o mesmo setor depois disso.
+  const [versaoSetor, setVersaoSetor] = useState(0);
   const [abrindo, setAbrindo] = useState(false);
   const [customItens, setCustomItens] = useState<ItemCustom[]>([]);
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -74,13 +93,35 @@ export function ContagemForm({
   const [isPending, startTransition] = useTransition();
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
-  const noEscopo = escopoSkus === null ? null : new Set(escopoSkus);
-  const ativos = produtos
-    .filter((p) => p.ativo)
-    // Com setor, quem manda é o snapshot da data, não a designação de agora
-    // nem o grupo do produto.
-    .filter((p) => (noEscopo ? noEscopo.has(p.sku) : true))
-    .filter((p) => (usaSetor ? true : grupos.length === 0 || grupos.includes(p.grupo)))
+  const produtoPorSku = new Map(produtos.map((p) => [p.sku, p]));
+  // Com setor, quem manda é o snapshot da data: nem a designação de agora,
+  // nem o grupo, nem o `ativo` atual do cadastro. Produto desativado depois da
+  // abertura continua na lista daquela data.
+  const listaBase: ItemLista[] =
+    escopoItens !== null
+      ? escopoItens.map((item) => {
+          const produto = produtoPorSku.get(item.sku);
+          return {
+            sku: item.sku,
+            nome: item.nome,
+            grupo: item.grupo,
+            unidadeBase: item.unidadeBase,
+            posicao: produto?.posicao ?? null,
+            precoUnitario: produto?.precoUnitario ?? null,
+          };
+        })
+      : produtos
+          .filter((p) => p.ativo)
+          .filter((p) => (usaSetor ? true : grupos.length === 0 || grupos.includes(p.grupo)))
+          .map((p) => ({
+            sku: p.sku,
+            nome: p.nome,
+            grupo: p.grupo,
+            unidadeBase: p.unidadeBase,
+            posicao: p.posicao,
+            precoUnitario: p.precoUnitario,
+          }));
+  const ativos = [...listaBase]
     .sort((a, b) => {
       // Posição é a ordem física de caminhada da contagem - cruza grupo (um
       // item de Hortifrúti que fisicamente fica entre dois de Congelados
@@ -106,6 +147,19 @@ export function ContagemForm({
   const confirmadosCount = todos.filter((i) => confirmados[i.sku] !== undefined).length;
   const pct = totalItens > 0 ? (confirmadosCount / totalItens) * 100 : 0;
   const tudoConfirmado = totalItens > 0 && confirmadosCount === totalItens;
+  // O que ainda bloqueia o envio, pelo nome - "faltam 3" sozinho não ajuda a
+  // achar o item numa lista longa.
+  const faltando = todos.filter((i) => confirmados[i.sku] === undefined);
+  const faltandoTexto =
+    faltando.length === 0
+      ? ""
+      : faltando
+          .slice(0, MAX_FALTANDO_VISIVEIS)
+          .map((i) => i.nome)
+          .join(", ") +
+        (faltando.length > MAX_FALTANDO_VISIVEIS
+          ? ` e mais ${faltando.length - MAX_FALTANDO_VISIVEIS}`
+          : "");
 
   const totalMonetario = todos.reduce((soma, item) => {
     const qty = confirmados[item.sku];
@@ -165,15 +219,20 @@ export function ContagemForm({
     startTransition(async () => {
       try {
         const aberta = await abrirContagemAction(dataISO, setorId);
-        if (aberta.skus.length === 0) {
+        if ("erro" in aberta) {
+          setErro(aberta.erro);
+          return;
+        }
+        if (aberta.itens.length === 0) {
           setErro(
-            "Esse setor não tem nenhum produto designado. Peça pra designar os produtos em " +
-              "Produtos > Setores antes de contar.",
+            "Esse setor não tem nenhum produto nesta data. Os produtos designados depois da " +
+              "abertura da data entram na próxima contagem.",
           );
           return;
         }
-        setEscopoSkus(aberta.skus);
+        setEscopoItens(aberta.itens);
         setJaConcluido(aberta.jaConcluido);
+        setVersaoSetor(aberta.versao);
         setTela("aviso");
       } catch {
         setErro("Não deu pra abrir a contagem agora. Tenta de novo em instantes.");
@@ -291,7 +350,10 @@ export function ContagemForm({
   }
 
   function handleEnviar() {
-    if (!tudoConfirmado) return;
+    if (!tudoConfirmado) {
+      setErro(`Faltam ${faltando.length} ${faltando.length === 1 ? "item" : "itens"}: ${faltandoTexto}.`);
+      return;
+    }
     setErro(null);
 
     const linhasCadastradas = ativos.map((p) => ({
@@ -317,8 +379,20 @@ export function ContagemForm({
 
     startTransition(async () => {
       try {
-        if (usaSetor) await registrarContagemSetorAction(dataISO, setorId, linhas);
-        else await registrarContagemAction(linhas, dataISO);
+        if (usaSetor) {
+          const resultado = await registrarContagemSetorAction(dataISO, setorId, linhas, versaoSetor);
+          if ("erro" in resultado) {
+            setErro(resultado.erro);
+            return;
+          }
+          setVersaoSetor(resultado.versao);
+        } else {
+          const resultado = await registrarContagemAction(linhas, dataISO);
+          if ("erro" in resultado) {
+            setErro(resultado.erro);
+            return;
+          }
+        }
         setEnviado(true);
       } catch {
         setErro("Não deu pra registrar agora. Tenta de novo em instantes.");
@@ -668,6 +742,11 @@ export function ContagemForm({
                 ? "Todos os itens confirmados. Pronto para enviar."
                 : `${totalItens - confirmadosCount} ${totalItens - confirmadosCount === 1 ? "item" : "itens"} ainda não confirmado${totalItens - confirmadosCount === 1 ? "" : "s"}`}
           </div>
+          {!enviado && faltando.length > 0 && (
+            <div className="mb-2 text-center text-[11px] text-cinza-claro">
+              Falta: {faltandoTexto}
+            </div>
+          )}
           {erro && <div className="mb-2 text-center text-[11px] text-red-300">{erro}</div>}
 
           {!tudoConfirmado && pendentesComValor.length > 0 && (

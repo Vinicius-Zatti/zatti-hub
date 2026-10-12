@@ -374,13 +374,17 @@ export async function registrarContagemBanco(
 
   const { data: contagemEncontrada, error: erroContagem } = await supabase
     .from("contagens")
-    .select("id")
+    .select("id, modalidade")
     .eq("unidade_id", unidadeId)
     .eq("data", dataIso)
     .maybeSingle();
 
   if (erroContagem) throw new Error(`Não foi possível localizar a contagem: ${erroContagem.message}`);
-  let contagem = contagemEncontrada;
+  // Legado e setor nunca se misturam na mesma data (o banco também recusa).
+  if (contagemEncontrada?.modalidade === "setor") {
+    throw new ErroPublico(MENSAGEM_DATA_POR_SETOR);
+  }
+  let contagem: { id: string } | null = contagemEncontrada;
   if (!contagem) {
     const criada = await supabase
       .from("contagens")
@@ -403,6 +407,7 @@ export async function registrarContagemBanco(
           unidade_base: unidadeAvulso || "UN",
           quantidade,
           alerta: "Sem cadastro, falta criar produto",
+          avulso: true,
         };
       }
       const produto = porSku.get(sku);
@@ -432,12 +437,17 @@ export async function atualizarQuantidadeInventarioBanco(
   const supabase = await createClient();
   const { data: contagem, error: erroContagem } = await supabase
     .from("contagens")
-    .select("id")
+    .select("id, modalidade")
     .eq("unidade_id", unidadeId)
     .eq("data", dataBrParaIso(data))
     .maybeSingle();
   if (erroContagem) throw new Error(`Não foi possível localizar a contagem: ${erroContagem.message}`);
   if (!contagem) throw new Error("Não achei essa contagem para corrigir.");
+  // Por SKU só vale no legado: com setor o mesmo SKU tem uma linha por setor,
+  // e "o primeiro que achar" corrigiria o setor errado.
+  if (contagem.modalidade === "setor") {
+    throw new ErroPublico("Esta data é contada por setor: corrija a linha do setor pela Conferência.");
+  }
 
   const { data: itens, error: erroItem } = await supabase
     .from("contagem_itens")
@@ -456,11 +466,15 @@ export async function atualizarQuantidadeInventarioBanco(
   const precoUnitario = numeroOuNull(item.preco_unitario);
   const total = precoUnitario === null ? null : Number((quantidade * precoUnitario).toFixed(2));
   const alerta = calcularAlerta(quantidade, precoUnitario, produto);
-  const { error } = await supabase
+  const { data: alterados, error } = await supabase
     .from("contagem_itens")
     .update({ quantidade, total, alerta })
-    .eq("id", item.id);
+    .eq("id", item.id)
+    .select("id");
   if (error) throw new Error(`Não foi possível corrigir a quantidade: ${error.message}`);
+  if (!alterados || alterados.length !== 1) {
+    throw new ErroPublico("A correção não foi gravada. Recarregue e tente de novo.");
+  }
 }
 
 // --- Contagem por setor -----------------------------------------------------
@@ -472,9 +486,23 @@ export type LinhaContagemSetor = {
   unidadeAvulso?: string;
 };
 
+export const MENSAGEM_DATA_POR_SETOR =
+  "Esta data já é contada por setor. Escolha o setor na Contagem para enviar.";
+
+/** Mensagem de regra de negócio levantada pelas funções do banco
+ * (`raise ... using errcode = 'P0001'`) vai pra tela como está; o resto vira
+ * erro interno. */
+function erroDaFuncao(
+  error: { code?: string; message: string },
+  prefixo: string,
+): Error {
+  if (error.code === "P0001") return new ErroPublico(error.message);
+  return new Error(`${prefixo}: ${error.message}`);
+}
+
 /** Abre (ou reaproveita) a contagem da data e congela o snapshot de escopo.
- * Chamada no "Iniciar contagem". A idempotência e a trava de concorrência
- * estão na função do Postgres, não aqui. */
+ * Chamada no "Iniciar contagem". A idempotência, a trava compartilhada com a
+ * designação e a recusa de data legada estão na função do Postgres. */
 export async function abrirContagemBanco(
   unidadeId: string,
   dataBr: string,
@@ -486,93 +514,80 @@ export async function abrirContagemBanco(
     p_data: dataBrParaIso(dataBr),
     p_mes: mes,
   });
-  if (error) throw new Error(`Não foi possível abrir a contagem: ${error.message}`);
+  if (error) throw erroDaFuncao(error, "Não foi possível abrir a contagem");
   if (!data) throw new Error("Não foi possível abrir a contagem.");
   return data as string;
 }
 
 /** Grava a contagem de um setor substituindo o que aquele setor já tinha
- * gravado na data. Tudo numa transação só, dentro do Postgres. */
+ * gravado na data. Tudo numa transação só, dentro do Postgres: completude do
+ * snapshot, preço/total/alerta, versão esperada e histórico em
+ * `contagem_envios`. O navegador manda só SKU e quantidade. */
 export async function substituirContagemSetorBanco(
   contagemId: string,
   setorId: string,
   linhas: LinhaContagemSetor[],
-  unidadeId: string,
-): Promise<number> {
+  versaoEsperada: number,
+): Promise<{ gravados: number; versao: number }> {
   const supabase = await createClient();
-  const produtos = await listarProdutosBanco(unidadeId);
-  const porSku = new Map(produtos.map((produto) => [produto.sku, produto]));
-
-  const itens = linhas.map((linha) => {
-    const produto = porSku.get(linha.sku);
-    const precoUnitario = produto?.precoUnitario ?? null;
-    const quantidade = linha.quantidade;
-    const total =
-      precoUnitario === null || quantidade === null
-        ? null
-        : Number((quantidade * precoUnitario).toFixed(2));
-    if (linha.nomeAvulso) {
-      return {
-        sku: linha.sku,
-        grupo: "",
-        nome: linha.nomeAvulso,
-        unidade_base: linha.unidadeAvulso || "UN",
-        quantidade,
-        preco_unitario: null,
-        total: null,
-        alerta: "Sem cadastro, falta criar produto",
-      };
-    }
-    return {
-      sku: linha.sku,
-      grupo: produto?.grupo ?? "",
-      nome: produto?.nome ?? "",
-      unidade_base: produto?.unidadeBase ?? "",
-      quantidade,
-      preco_unitario: precoUnitario,
-      total,
-      alerta: calcularAlerta(quantidade, precoUnitario, produto),
-  };
-  });
+  const itens = linhas.map((linha) =>
+    linha.nomeAvulso
+      ? {
+          sku: linha.sku,
+          quantidade: linha.quantidade,
+          avulso: true,
+          nome: linha.nomeAvulso,
+          unidade_base: linha.unidadeAvulso || "UN",
+        }
+      : { sku: linha.sku, quantidade: linha.quantidade, avulso: false },
+  );
 
   const { data, error } = await supabase.rpc("substituir_contagem_setor", {
     p_contagem_id: contagemId,
     p_setor_id: setorId,
     p_itens: itens,
+    p_versao_esperada: versaoEsperada,
   });
-  if (error) throw new Error(`Não foi possível gravar a contagem do setor: ${error.message}`);
-  return Number(data ?? 0);
+  if (error) throw erroDaFuncao(error, "Não foi possível gravar a contagem do setor");
+  const resultado = (data ?? {}) as { gravados?: number; versao?: number };
+  return { gravados: Number(resultado.gravados ?? 0), versao: Number(resultado.versao ?? 0) };
 }
 
 /** Corrige a quantidade de UM item, identificado pelo id. Nunca pelo primeiro
  * SKU encontrado: com setor, o mesmo SKU existe em várias linhas da mesma
- * contagem, e corrigir "o primeiro" mexeria no setor errado. */
-export async function atualizarQuantidadeItemBanco(
+ * contagem. A função do banco trava o setor, confere a versão, exige
+ * exatamente 1 linha alterada, recalcula o total e grava o histórico.
+ * Devolve a nova versão do setor (nula em contagem legada). */
+export async function corrigirItemContagemBanco(
   itemId: string,
   quantidade: number,
   unidadeId: string,
-): Promise<void> {
+  versaoEsperada: number | null,
+): Promise<number | null> {
   const supabase = await createClient();
   const { data: item, error: erroItem } = await supabase
     .from("contagem_itens")
-    .select("id, sku, preco_unitario, contagem_id, contagens!inner(unidade_id)")
+    .select("id, contagens!inner(unidade_id)")
     .eq("id", itemId)
     .maybeSingle();
   if (erroItem) throw new Error(`Não foi possível localizar o item: ${erroItem.message}`);
-  if (!item) throw new Error("Não achei esse item para corrigir.");
+  if (!item) {
+    throw new ErroPublico(
+      "Não achei esse item para corrigir. Ele pode ter sido substituído por um envio mais novo. Recarregue.",
+    );
+  }
 
   const contagem = item.contagens as unknown as { unidade_id: string } | null;
   if (!contagem || contagem.unidade_id !== unidadeId) {
-    throw new Error("Esse item não pertence à unidade atual.");
+    throw new ErroPublico("Esse item não pertence à unidade atual.");
   }
 
-  const produto = (await listarProdutosBanco(unidadeId)).find((p) => p.sku === item.sku);
-  const precoUnitario = numeroOuNull(item.preco_unitario);
-  const total = precoUnitario === null ? null : Number((quantidade * precoUnitario).toFixed(2));
-  const alerta = calcularAlerta(quantidade, precoUnitario, produto);
-  const { error } = await supabase
-    .from("contagem_itens")
-    .update({ quantidade, total, alerta })
-    .eq("id", itemId);
-  if (error) throw new Error(`Não foi possível corrigir a quantidade: ${error.message}`);
+  const { data, error } = await supabase.rpc("corrigir_item_contagem", {
+    p_item_id: itemId,
+    p_quantidade: quantidade,
+    p_versao_esperada: versaoEsperada,
+  });
+  if (error) throw erroDaFuncao(error, "Não foi possível corrigir a quantidade");
+  const versao = (data as { versao?: number | null } | null)?.versao;
+  return versao === null || versao === undefined ? null : Number(versao);
 }

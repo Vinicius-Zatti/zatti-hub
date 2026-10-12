@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ItemInventario } from "@/lib/types";
 import { Th } from "@/components/tabela";
@@ -142,6 +142,18 @@ export function VisualizacaoContagens({
   const andamentoUltima = andamentoPorData.get(ultimaData) ?? [];
   const pendentes = Object.keys(edicoes);
 
+  // Versão de cada setor por data. A correção manda a versão que viu; cada
+  // correção salva sobe a versão, então a próxima usa o número devolvido pelo
+  // banco (ref, não estado: o "Salvar todos" corrige em sequência).
+  const versoesLocais = useRef<Record<string, number>>({});
+  function versaoDoSetor(item: ItemInventario): number | null {
+    if (!item.setorId) return null;
+    const chave = `${item.data}|${item.setorId}`;
+    const doServidor =
+      andamentoPorData.get(item.data)?.find((s) => s.setorId === item.setorId)?.versao ?? 0;
+    return Math.max(doServidor, versoesLocais.current[chave] ?? 0);
+  }
+
   async function salvarUm(chave: string): Promise<boolean> {
     const item = filtrados.find((it) => chaveItem(it) === chave);
     const valor = edicoes[chave];
@@ -159,11 +171,14 @@ export function VisualizacaoContagens({
     // é único porque nenhuma linha tem setor.
     const r =
       CONTAGEM_POR_SETOR_ATIVA && item.id
-        ? await corrigirItemContagemAction(item.id, num)
+        ? await corrigirItemContagemAction(item.id, num, versaoDoSetor(item))
         : await atualizarQuantidadeContagemAction(item.data, item.sku, num);
     if ("erro" in r) {
       setStatusPorItem((s) => ({ ...s, [chave]: { tipo: "erro", msg: r.erro } }));
       return false;
+    }
+    if ("versao" in r && typeof r.versao === "number" && item.setorId) {
+      versoesLocais.current[`${item.data}|${item.setorId}`] = r.versao;
     }
     setEdicoes((e) => {
       const novo = { ...e };
@@ -181,7 +196,10 @@ export function VisualizacaoContagens({
 
   async function salvarTodos() {
     setSalvandoTodos(true);
-    await Promise.all(pendentes.map((chave) => salvarUm(chave)));
+    // Em sequência: correções do mesmo setor dependem da versão da anterior.
+    for (const chave of pendentes) {
+      await salvarUm(chave);
+    }
     setSalvandoTodos(false);
     router.refresh();
   }
