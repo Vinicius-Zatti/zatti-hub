@@ -193,7 +193,7 @@ export async function cadastrarMembroAction(formData: FormData): Promise<
     // Marca de pendência no próprio Auth desde o primeiro instante: outro
     // cadastro que achar esta conta antes da pendência ir pro banco a trata
     // como pendente, nunca como conta regular.
-    app_metadata: { zh_pendente: true },
+    app_metadata: { zh_pendente: true, zh_v2: true },
   });
   if (erroCriacao || !criado.user) {
     // Corrida: alguém criou a conta entre a busca e aqui. Tentar de novo cai

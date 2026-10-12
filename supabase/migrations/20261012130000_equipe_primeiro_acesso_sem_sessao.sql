@@ -26,6 +26,24 @@ begin
   end if;
 end $$;
 
+-- Contas pendentes do desenho antigo (provisória era a senha do Auth, com sessão e
+-- recuperação possíveis): uma autenticação já carregada pelo Auth antes desta migration
+-- poderia atravessar a conclusão. Elas não são convertidas: se existir alguma, a
+-- migration para aqui sem mudar nada, e a decisão (apagar e recadastrar) é de Vinícius.
+-- Contas do desenho novo nascem com `zh_v2` e não contam (a migration pode rodar de novo).
+do $$
+declare
+  v_qtd integer;
+begin
+  select count(*) into v_qtd from auth.users u
+   where (exists (select 1 from public.senhas_temporarias t where t.user_id = u.id)
+      or u.raw_app_meta_data ->> 'zh_pendente' = 'true')
+     and coalesce(u.raw_app_meta_data ->> 'zh_v2', '') <> 'true';
+  if v_qtd > 0 then
+    raise exception 'Há % conta(s) da Equipe ainda pendente(s) do desenho antigo. Apague e recadastre antes. Nada foi alterado.', v_qtd;
+  end if;
+end $$;
+
 alter table public.senhas_temporarias
   add column if not exists tentativas integer not null default 0;
 
@@ -91,6 +109,10 @@ begin
     return new;
   end if;
   if not public.equipe_conta_pendente(old.id) then
+    return new;
+  end if;
+  -- Exclusão lógica do próprio Auth (deleteUser com soft delete) troca e-mail e senha: deixa passar.
+  if new.deleted_at is not null and old.deleted_at is null then
     return new;
   end if;
   if new.encrypted_password is distinct from old.encrypted_password then
@@ -162,23 +184,6 @@ begin
 end;
 $$;
 revoke all on function public.equipe_limpar_acessos_auth(uuid) from public, anon, authenticated, service_role;
-
--- Contas que já estavam pendentes no desenho antigo (provisória era a senha do Auth):
--- senha do Auth vira sorteada e o acesso aberto cai. A provisória continua valendo
--- pelo primeiro acesso novo.
-do $$
-declare
-  v_user uuid;
-begin
-  for v_user in select user_id from public.senhas_temporarias loop
-    perform set_config('zatti.troca_senha_equipe', v_user::text, true);
-    update auth.users
-       set encrypted_password = extensions.crypt(encode(extensions.gen_random_bytes(32), 'hex'), extensions.gen_salt('bf', 10))
-     where id = v_user;
-    perform set_config('zatti.troca_senha_equipe', '', true);
-    perform public.equipe_limpar_acessos_auth(v_user);
-  end loop;
-end $$;
 
 -- ── Conferir a provisória (tela de login) ───────────────────────────────
 -- true = e-mail de conta pendente com a provisória vigente certa. Erro conta tentativa;

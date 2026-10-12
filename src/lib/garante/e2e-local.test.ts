@@ -68,7 +68,7 @@ describe.skipIf(!ativo)("Equipe ponta a ponta local (primeiro acesso sem sessão
       email,
       password: randomUUID() + randomUUID(),
       email_confirm: true,
-      app_metadata: { zh_pendente: true },
+      app_metadata: { zh_pendente: true, zh_v2: true },
     });
     expect(erroCriar).toBeNull();
     const userId = criado.user!.id;
