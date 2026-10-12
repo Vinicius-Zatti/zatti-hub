@@ -1,4 +1,4 @@
-export type TipoContaFinanceira = "banco" | "caixa" | "carteira_digital";
+export type TipoContaFinanceira = "banco" | "caixa" | "carteira_digital" | "cartao_credito";
 
 export type ContaFinanceira = {
   id: string;
@@ -11,6 +11,11 @@ export type ContaFinanceira = {
   bancoCodigo?: string | null;
   agencia?: string | null;
   numeroConta?: string | null;
+  /** Só no cartão de crédito: dia do mês em que a fatura fecha e em que vence. */
+  diaFechamento?: number | null;
+  diaVencimento?: number | null;
+  /** Só no cartão de crédito: conta que costuma pagar a fatura (padrão do pagamento). */
+  contaPagadoraId?: string | null;
 };
 
 /** Só pro cartão de Conta Financeira (`listarContasFinanceirasComSaldos`) -
@@ -252,5 +257,9 @@ export type LancamentoBase = Pick<Lancamento, "id" | "tipo" | "categoriaId" | "d
 };
 
 export type BaixaBase = Pick<Baixa, "id" | "parcelaId" | "tipo" | "contaFinanceiraId" | "valor" | "data">;
+
+/** Financeiro V2 (11/10/2026): transferência entre contas próprias (não cancelada). Fica fora da
+ * DRE e da DFC; no caixa só aparece quando se olha uma conta específica (no total se anula). */
+export type TransferenciaBase = { id: string; contaOrigemId: string; contaDestinoId: string; valor: number; data: string };
 
 export type RecorrenciaResumo = Recorrencia & { ocorrencias: number; ocorrenciasEmAberto: number };

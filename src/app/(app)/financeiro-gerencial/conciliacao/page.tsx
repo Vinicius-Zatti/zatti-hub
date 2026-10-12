@@ -8,6 +8,9 @@ import {
   listarImportacoes,
   type FiltrosFila,
 } from "@/lib/banco/conciliacao";
+import { listarDecisoesAtivas } from "@/lib/banco/conciliacao-decisoes";
+import { categoriaCompativel } from "@/lib/conciliacao/classificacao";
+import { inicioJanelaConciliados } from "@/lib/conciliacao/decisao-tela";
 import { ConciliacaoPiloto } from "@/components/financeiro-gerencial/conciliacao-piloto";
 
 export const dynamic = "force-dynamic";
@@ -32,16 +35,27 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
   const pagina = inteiro(busca.pagina);
   const paginaImportacoes = inteiro(busca.pimp);
 
-  const [contas, importacoes, fila, motor] = await Promise.all([
+  // Já conciliados: últimos 60 dias.
+  const desde = inicioJanelaConciliados(new Date());
+  const [contas, importacoes, fila, motor, decisoes] = await Promise.all([
     listarContasFinanceiras(acesso.unidadeId),
     listarImportacoes(acesso.unidadeId, paginaImportacoes),
     listarFila(acesso.unidadeId, filtros, pagina),
     carregarContextoMotor(acesso.unidadeId, acesso.organizacaoId),
+    listarDecisoesAtivas(acesso.unidadeId, desde),
   ]);
+  // Só contas (nível folha) não arquivadas; entrada concilia com receita, saída com despesa.
+  const plano = (direcao: "entrada" | "saida") =>
+    motor.categorias
+      .filter((c) => categoriaCompativel(c, direcao))
+      .map((c) => ({ id: c.id, label: c.caminho }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 
   return (
     <ConciliacaoPiloto
-      contas={contas.map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo }))}
+      // Cartão de crédito não tem extrato bancário para importar nem recebe transferência:
+      // a fatura é paga pela tela Cartões.
+      contas={contas.filter((c) => c.tipo !== "cartao_credito").map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo }))}
       importacoes={importacoes.itens}
       totalImportacoes={importacoes.total}
       paginaImportacoes={paginaImportacoes}
@@ -54,6 +68,10 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
       planoDeContas={Object.fromEntries(motor.categorias.map((c) => [c.id, c.caminho]))}
       iaDocumentos={flags.iaDocumentos}
       ehMaster={acesso.titularFinanceiro}
+      planoReceita={plano("entrada")}
+      planoDespesa={plano("saida")}
+      podeGestao={acesso.role === "gestao" || acesso.role === "master"}
+      decisoes={decisoes}
     />
   );
 }

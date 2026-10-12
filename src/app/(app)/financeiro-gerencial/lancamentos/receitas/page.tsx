@@ -19,7 +19,8 @@ export default async function LancamentosReceitasPage() {
       tipo="receita"
       lancamentos={lancamentos}
       categorias={categoriasReceita}
-      contas={contas}
+      // Cartão de crédito só recebe despesa (o banco recusa receita nele).
+      contas={contas.filter((c) => c.tipo !== "cartao_credito")}
       podeGerir={acesso.role !== "operacional"}
     />
   );

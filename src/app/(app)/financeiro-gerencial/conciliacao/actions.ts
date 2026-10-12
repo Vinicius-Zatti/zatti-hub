@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireConciliacao } from "@/lib/conciliacao/acesso";
 import { importarDocumento, reprocessarImportacao, type ResultadoImportacao } from "@/lib/conciliacao/processar";
 import { confirmarConta, descartarImportacao, listarCandidatos, obterImportacao } from "@/lib/banco/conciliacao";
+import { listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { pontuarCandidato, type CandidatoParcela, type Pontuacao } from "@/lib/conciliacao/candidatos";
 import { TAMANHO_MAXIMO_BYTES } from "@/lib/conciliacao/arquivo";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -29,6 +30,10 @@ export async function importarDocumentoAction(formData: FormData): Promise<Respo
       tipoDocumento: formData.get("tipoDocumento"),
     });
     if (!entrada.success) throw new ErroPublico("Escolha a conta financeira e o tipo de documento.");
+    // Cartão de crédito não tem extrato bancário: a fatura é paga pela tela Cartões.
+    const contas = await listarContasFinanceiras(ctx.acesso.unidadeId);
+    const conta = contas.find((c) => c.id === entrada.data.contaFinanceiraId);
+    if (!conta || conta.tipo === "cartao_credito") throw new ErroPublico("Escolha a conta bancária do extrato.");
     const arquivo = formData.get("arquivo");
     if (!(arquivo instanceof File) || arquivo.size === 0) throw new ErroPublico("Escolha um arquivo.");
     if (arquivo.size > TAMANHO_MAXIMO_BYTES) throw new ErroPublico("Arquivo maior que 4 MB.");

@@ -1,4 +1,4 @@
-import { competenciaDoMes, saldoAntesDe, type AberturaConta, type MovimentoCaixa } from "./caixa";
+import { CATEGORIA_TRANSFERENCIA, competenciaDoMes, saldoAntesDe, type AberturaConta, type MovimentoCaixa } from "./caixa";
 import { ultimoDiaDoMes } from "./datas";
 import type { LinhaDreAnual } from "./dre-anual";
 import { somarValores } from "./parcelas";
@@ -128,6 +128,10 @@ export function montarFluxoMensal(params: {
     divisorMedia,
   );
   const entradas = somaMensal(movimentos, ano, (m) => m.tipo === "receita", 1);
+  const transferenciasRecebidas = somaMensal(movimentos, ano, (m) => m.tipo === "receita" && m.categoriaId === CATEGORIA_TRANSFERENCIA, 1);
+  if (transferenciasRecebidas.some((v) => v !== 0)) {
+    entradasFilhos.push(linhaFluxo("transferencias_recebidas", "Transferências recebidas de outras contas", 1, transferenciasRecebidas, divisorMedia));
+  }
 
   const saidasMov = movimentos.filter((m) => m.tipo === "despesa");
   const grupos = categorias.filter((c) => c.nivel === "grupo_principal" && c.papelDre !== "receita").sort((a, b) => a.ordem - b.ordem);
@@ -138,6 +142,10 @@ export function montarFluxoMensal(params: {
       return linhaFluxo(g.id, g.nome, 1, somarLinhas(filhos), divisorMedia, { filhos });
     })
     .filter(temValor);
+  const transferenciasEnviadas = somaMensal(movimentos, ano, (m) => m.tipo === "despesa" && m.categoriaId === CATEGORIA_TRANSFERENCIA, -1);
+  if (transferenciasEnviadas.some((v) => v !== 0)) {
+    saidasFilhos.push(linhaFluxo("transferencias_enviadas", "Transferências enviadas para outras contas", 1, transferenciasEnviadas, divisorMedia));
+  }
   const saidas = somaMensal(movimentos, ano, (m) => m.tipo === "despesa", -1);
 
   const saldoMes = entradas.map((e, i) => arredondar2(e - saidas[i]));

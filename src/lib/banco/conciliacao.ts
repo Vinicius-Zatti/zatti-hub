@@ -246,8 +246,14 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
     codigo_sistema_alvo: string | null;
     situacao: RegraMotor["situacao"];
     versao: number;
+    nome: string | null;
+    condicao: "igual" | "contem" | "comeca_com";
+    valor_min: number | string | null;
+    valor_max: number | string | null;
+    prioridade: number;
   };
-  const colunas = "id, escopo, padrao_normalizado, versao_normalizacao, direcao, categoria_id, codigo_sistema_alvo, situacao, versao";
+  const colunas =
+    "id, escopo, padrao_normalizado, versao_normalizacao, direcao, categoria_id, codigo_sistema_alvo, situacao, versao, nome, condicao, valor_min, valor_max, prioridade";
   const [locais, organizacionais] = await Promise.all([
     buscarTudo<RegraRow>((de, ate) =>
       supabase.from("fin_regras_classificacao").select(colunas).eq("escopo", "unidade").eq("unidade_id", unidadeId)
@@ -277,6 +283,11 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
       codigoSistemaAlvo: r.codigo_sistema_alvo,
       situacao: r.situacao,
       versao: r.versao,
+      nome: r.nome,
+      condicao: r.condicao,
+      valorMin: r.valor_min == null ? null : Number(r.valor_min),
+      valorMax: r.valor_max == null ? null : Number(r.valor_max),
+      prioridade: r.prioridade,
     })),
   };
 }
@@ -437,6 +448,8 @@ export type ItemFila = {
     fonte: string;
     motivoCodigo: string;
     modeloIa: string | null;
+    /** Nome da regra que gerou a sugestão (evidências do motor), quando houver. */
+    regraNome: string | null;
   } | null;
 };
 
@@ -477,13 +490,21 @@ export async function listarFila(unidadeId: string, filtros: FiltrosFila, pagina
     fonte_extracao: FonteExtracao;
   };
   const linhas = (data as MovRow[] | null) ?? [];
-  type SugRow = { movimento_id: string; categoria_sugerida_id: string | null; confianca: string; fonte: string; motivo_codigo: string; modelo_ia: string | null };
+  type SugRow = {
+    movimento_id: string;
+    categoria_sugerida_id: string | null;
+    confianca: string;
+    fonte: string;
+    motivo_codigo: string;
+    modelo_ia: string | null;
+    evidencias: Record<string, unknown> | null;
+  };
   const sugestoes = await buscarTudoEmLotes<SugRow>(
     linhas.map((l) => l.id),
     (lote, a, b) =>
       supabase
         .from("fin_classificacoes")
-        .select("movimento_id, categoria_sugerida_id, confianca, fonte, motivo_codigo, modelo_ia")
+        .select("movimento_id, categoria_sugerida_id, confianca, fonte, motivo_codigo, modelo_ia, evidencias")
         .eq("situacao", "vigente")
         .in("movimento_id", lote)
         .order("id")
@@ -508,7 +529,14 @@ export async function listarFila(unidadeId: string, filtros: FiltrosFila, pagina
         duplicidadeCandidataId: l.duplicidade_candidata_id,
         fonteExtracao: l.fonte_extracao,
         sugestao: s
-          ? { categoriaId: s.categoria_sugerida_id, confianca: s.confianca, fonte: s.fonte, motivoCodigo: s.motivo_codigo, modeloIa: s.modelo_ia }
+          ? {
+              categoriaId: s.categoria_sugerida_id,
+              confianca: s.confianca,
+              fonte: s.fonte,
+              motivoCodigo: s.motivo_codigo,
+              modeloIa: s.modelo_ia,
+              regraNome: typeof s.evidencias?.regra_nome === "string" ? s.evidencias.regra_nome : null,
+            }
           : null,
       };
     }),

@@ -103,3 +103,27 @@ describe("custo de IA", () => {
     expect(() => custoEstimadoUsd("modelo-desconhecido", { entrada: 1, saida: 1, cacheEscrita: 0, cacheLeitura: 0 })).toThrow();
   });
 });
+
+describe("regras com condição (Financeiro V2)", () => {
+  const mov = (descricaoNormalizada: string, valor?: number) => ({ direcao: "saida" as const, natureza: "saida" as const, descricaoNormalizada, valor });
+  it("contém casa trecho da descrição", () => {
+    const r = regra({ padraoNormalizado: "atacadao", condicao: "contem", nome: "Compras Atacadão" });
+    expect(sugerirDeterministico(mov("pix enviado atacadao sa loja 12"), [r], categorias, 1)).toMatchObject({
+      categoriaId: "cmc",
+      motivoCodigo: "regra_unidade_condicao",
+      evidencias: { regra_nome: "Compras Atacadão" },
+    });
+  });
+  it("começa com e faixa de valor", () => {
+    const r = regra({ padraoNormalizado: "posto", condicao: "comeca_com", valorMax: 300 });
+    expect(sugerirDeterministico(mov("pix enviado posto shell", 250), [r], categorias, 1)?.categoriaId).toBe("cmc");
+    expect(sugerirDeterministico(mov("pix enviado posto shell", 400), [r], categorias, 1)).toBeNull();
+  });
+  it("prioridade menor vence e empate contraditório vai para revisão", () => {
+    const a = regra({ id: "a", padraoNormalizado: "atacadao", condicao: "contem", prioridade: 10, categoriaId: "cmc" });
+    const b = regra({ id: "b", padraoNormalizado: "atacadao", condicao: "contem", prioridade: 20, categoriaId: "tar" });
+    expect(sugerirDeterministico(mov("pix enviado atacadao"), [b, a], categorias, 1)?.categoriaId).toBe("cmc");
+    const c = regra({ id: "c", padraoNormalizado: "atacadao", condicao: "contem", prioridade: 10, categoriaId: "tar" });
+    expect(sugerirDeterministico(mov("pix enviado atacadao"), [a, c], categorias, 1)).toMatchObject({ categoriaId: null, motivoCodigo: "regras_empatadas" });
+  });
+});

@@ -255,7 +255,8 @@ describe("Provisões trabalhistas (critério 2 e planilha)", () => {
   });
 });
 
-describe("Visão geral", () => {
+// Import dinâmico frio passa de 5 s quando a suíte inteira roda em paralelo (11/10/2026).
+describe("Visão geral", { timeout: 20_000 }, () => {
   it("separa realizado de projetado e soma aberto/vencido pelo saldo em aberto da parcela", async () => {
     const { montarVisaoGeral } = await import("./visao-geral");
     const venda = lanc({ tipo: "receita", categoriaId: "receita_salao", dataCompetencia: "2026-09-01", valores: [[500, "2026-09-10"]] });

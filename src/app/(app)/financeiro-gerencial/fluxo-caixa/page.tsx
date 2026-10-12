@@ -1,6 +1,6 @@
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
-import { carregarBaseFinanceira } from "@/lib/banco/financeiro-gerencial-v1";
+import { carregarBaseFinanceira, carregarTransferencias } from "@/lib/banco/financeiro-gerencial-v1";
 import { aberturasDasContas, montarMovimentosCaixa, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
 import { calcularDivisorMedia } from "@/lib/financeiro-gerencial/dre-anual";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
@@ -22,15 +22,16 @@ export default async function FluxoCaixaPage({
   const modo = params.modo === "diario" ? "diario" : "mensal";
   const mesNumero = params.mes && /^(0?[1-9]|1[0-2])$/.test(params.mes) ? Number(params.mes) : Number(hoje.slice(5, 7));
 
-  const [{ lancamentos, baixas }, categorias, contas] = await Promise.all([
+  const [{ lancamentos, baixas }, categorias, contas, transferencias] = await Promise.all([
     carregarBaseFinanceira(acesso.unidadeId),
     listarCategorias(acesso.unidadeId),
     listarContasFinanceiras(acesso.unidadeId),
+    carregarTransferencias(acesso.unidadeId),
   ]);
   // Conta vinda da URL só vale se for desta unidade (a lista já vem filtrada).
   const contaId = params.conta && contas.some((c) => c.id === params.conta) ? params.conta : null;
 
-  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas, contas, contaFinanceiraId: contaId });
+  const movimentos = montarMovimentosCaixa({ visao, lancamentos, baixas, contas, contaFinanceiraId: contaId, transferencias });
   const aberturas = aberturasDasContas(contas, contaId);
 
   return (

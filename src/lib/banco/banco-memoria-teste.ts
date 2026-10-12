@@ -118,6 +118,10 @@ export function criarBancoMemoria(maxRows = 1000): BancoMemoria {
         filtros.push((l) => lista.includes(l[campo]));
         return b;
       },
+      is(campo: string, valor: null) {
+        filtros.push((l) => l[campo] === valor || l[campo] === undefined);
+        return b;
+      },
       not(campo: string, operador: string, valor: unknown) {
         if (operador !== "is" || valor !== null) throw new Error("not() não suportado no teste");
         filtros.push((l) => l[campo] !== null && l[campo] !== undefined);

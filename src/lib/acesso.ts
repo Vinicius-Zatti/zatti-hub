@@ -40,7 +40,8 @@ export type AcessoAtual = {
    * "Financeiro" antigo (Consolidado de Vendas, `consolidadoVendasHabilitado`,
    * renomeado pra "Desempenho" no menu). Mesma convenção de flag por
    * unidade, editada direto no Supabase. Desde 29/09/2026 também exige
-   * `titularFinanceiro` (Financeiro só para Vinícius, até segunda ordem). */
+   * `titularFinanceiro` (Financeiro só para Vinícius, até segunda ordem), exceto na
+   * unidade com `financeiro_liberado_equipe` (Financeiro V2, 11/10/2026). */
   financeiroGerencialHabilitado: boolean;
   /** Vinícius (master com segundo fator, e-mail em `TITULARES_FINANCEIRO`).
    * Única pessoa com Financeiro Gerencial, Conciliação e Uso de IA. */
@@ -82,6 +83,7 @@ type UnidadeRow = {
   consolidado_vendas_habilitado: boolean;
   fichas_tecnicas_habilitado: boolean;
   financeiro_gerencial_habilitado: boolean;
+  financeiro_liberado_equipe: boolean;
   garante_habilitado: boolean;
 };
 
@@ -212,13 +214,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, garante_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado")
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, garante_habilitado")
+        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado")
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -247,7 +249,8 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     fonteDadosEstoque: unidade.fonte_dados_estoque,
     consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
     fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
-    financeiroGerencialHabilitado: unidade.financeiro_gerencial_habilitado && titularFinanceiro,
+    financeiroGerencialHabilitado:
+      unidade.financeiro_gerencial_habilitado && (unidade.financeiro_liberado_equipe || titularFinanceiro),
     titularFinanceiro,
     garanteHabilitado: unidade.garante_habilitado,
     role,

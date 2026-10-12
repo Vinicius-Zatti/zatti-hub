@@ -64,7 +64,8 @@ export async function nomesPorUserId(supabase: SupabaseClient, userIds: string[]
 
 // ── Contas financeiras ──────────────────────────────────────────────────
 
-const COLUNAS_CONTA_FINANCEIRA = "id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo, banco_codigo, agencia, numero_conta";
+const COLUNAS_CONTA_FINANCEIRA =
+  "id, nome, tipo, saldo_inicial, data_saldo_inicial, ativo, banco_codigo, agencia, numero_conta, dia_fechamento, dia_vencimento, conta_pagadora_id";
 
 type ContaFinanceiraRow = {
   id: string;
@@ -76,6 +77,9 @@ type ContaFinanceiraRow = {
   banco_codigo: string | null;
   agencia: string | null;
   numero_conta: string | null;
+  dia_fechamento: number | null;
+  dia_vencimento: number | null;
+  conta_pagadora_id: string | null;
 };
 
 function contaFinanceiraDaLinha(row: ContaFinanceiraRow): ContaFinanceira {
@@ -89,6 +93,9 @@ function contaFinanceiraDaLinha(row: ContaFinanceiraRow): ContaFinanceira {
     bancoCodigo: row.banco_codigo ?? null,
     agencia: row.agencia ?? null,
     numeroConta: row.numero_conta ?? null,
+    diaFechamento: row.dia_fechamento ?? null,
+    diaVencimento: row.dia_vencimento ?? null,
+    contaPagadoraId: row.conta_pagadora_id ?? null,
   };
 }
 
@@ -116,6 +123,9 @@ export async function criarContaFinanceira(params: {
   bancoCodigo?: string | null;
   agencia?: string | null;
   numeroConta?: string | null;
+  diaFechamento?: number | null;
+  diaVencimento?: number | null;
+  contaPagadoraId?: string | null;
   criadoPor: string;
 }): Promise<ContaFinanceira> {
   const supabase = await createClient();
@@ -130,6 +140,9 @@ export async function criarContaFinanceira(params: {
       banco_codigo: params.bancoCodigo ?? null,
       agencia: params.agencia ?? null,
       numero_conta: params.numeroConta ?? null,
+      dia_fechamento: params.diaFechamento ?? null,
+      dia_vencimento: params.diaVencimento ?? null,
+      conta_pagadora_id: params.contaPagadoraId ?? null,
       criado_por: params.criadoPor,
     })
     .select(COLUNAS_CONTA_FINANCEIRA)
@@ -195,6 +208,21 @@ export async function listarContasFinanceirasComSaldos(unidadeId: string): Promi
     saldoAtualPorConta.set(b.conta_financeira_id, atual + sinalTipo * sinalEstorno * Number(b.valor));
   }
 
+  // Financeiro V2: transferência entre contas próprias mexe no saldo das duas pontas.
+  const transferencias = await buscarTudo<{ conta_origem_id: string; conta_destino_id: string; valor: number }>((de, ate) =>
+    supabase
+      .from("fin_transferencias")
+      .select("id, conta_origem_id, conta_destino_id, valor")
+      .eq("unidade_id", unidadeId)
+      .is("cancelada_em", null)
+      .order("id")
+      .range(de, ate),
+  );
+  for (const t of transferencias) {
+    saldoAtualPorConta.set(t.conta_origem_id, (saldoAtualPorConta.get(t.conta_origem_id) ?? 0) - Number(t.valor));
+    saldoAtualPorConta.set(t.conta_destino_id, (saldoAtualPorConta.get(t.conta_destino_id) ?? 0) + Number(t.valor));
+  }
+
   const idsParcelasAbertas = parcelasAbertasData.map((p) => p.id);
   // `.in()` em lotes de ids, cada lote paginado (poucas parcelas podem ter
   // muitas baixas).
@@ -234,6 +262,9 @@ export async function editarContaFinanceira(params: {
   bancoCodigo?: string | null;
   agencia?: string | null;
   numeroConta?: string | null;
+  diaFechamento?: number | null;
+  diaVencimento?: number | null;
+  contaPagadoraId?: string | null;
   ativo: boolean;
 }): Promise<ContaFinanceira> {
   const supabase = await createClient();
@@ -248,6 +279,9 @@ export async function editarContaFinanceira(params: {
       ...(params.bancoCodigo !== undefined ? { banco_codigo: params.bancoCodigo } : {}),
       ...(params.agencia !== undefined ? { agencia: params.agencia } : {}),
       ...(params.numeroConta !== undefined ? { numero_conta: params.numeroConta } : {}),
+      ...(params.diaFechamento !== undefined ? { dia_fechamento: params.diaFechamento } : {}),
+      ...(params.diaVencimento !== undefined ? { dia_vencimento: params.diaVencimento } : {}),
+      ...(params.contaPagadoraId !== undefined ? { conta_pagadora_id: params.contaPagadoraId } : {}),
       ativo: params.ativo,
     })
     .eq("unidade_id", params.unidadeId)
