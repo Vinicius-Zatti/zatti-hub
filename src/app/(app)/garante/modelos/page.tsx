@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireGestaoGarante } from "@/lib/acesso";
 import { BIBLIOTECA_POPS } from "@/lib/garante/biblioteca";
+import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-branco";
 import { criarModeloAction } from "../actions";
 import { carregarModelos } from "../dados";
 
@@ -23,7 +24,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
       <div>
         <h1 className="font-display text-2xl font-bold text-azul-noite">Modelos e publicação</h1>
         <p className="text-sm text-cinza-medio">
-          Escolha um POP da Zatti, ajuste os itens e publique para quem faz e até que horas.
+          Escolha um POP da Zatti, ajuste os itens e publique para quem faz e até que horas. Usar um POP cria uma cópia só desta unidade; o POP original não muda.
         </p>
       </div>
       {erro && ERROS[erro] && <p className="text-sm text-vermelho">{ERROS[erro]}</p>}
@@ -42,7 +43,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
             >
               <span className="font-semibold text-azul-noite">{m.nome}</span>
               <span className="text-xs text-cinza-medio">
-                {m.itens} itens · {m.publicacoes === 0 ? "não publicado" : `${m.publicacoes} publicação(ões)`}
+                {m.itens} itens · {m.publicacoes === 0 ? "não publicado (ninguém recebe)" : `${m.publicacoes} ${m.publicacoes === 1 ? "programação ativa" : "programações ativas"}`}
               </span>
             </Link>
           ))}
@@ -68,13 +69,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
               </button>
             </form>
           ))}
-          <form action={criarModeloAction} className="flex flex-col gap-2 rounded-lg border border-dashed border-cinza-claro bg-branco p-4">
-            <span className="font-semibold text-azul-noite">Checklist em branco</span>
-            <input name="nome" required maxLength={120} placeholder="Nome do checklist" className="rounded-md border border-cinza-claro px-3 py-2 text-sm" />
-            <button type="submit" className="self-start rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco">
-              Criar
-            </button>
-          </form>
+          <NovoChecklistEmBranco />
         </div>
       </section>
     </div>

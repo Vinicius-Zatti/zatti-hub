@@ -21,8 +21,9 @@ export async function enviarAcessoPeloVini(dados: {
   senhaTemporaria?: string;
   validaAte?: Date;
 }): Promise<ResultadoEnvio> {
-  const url = process.env.VINI_URL;
-  const token = process.env.ZATTI_HUB_ENVIO_TOKEN;
+  // trim: valor colado com quebra de linha no painel vira header inválido.
+  const url = process.env.VINI_URL?.trim();
+  const token = process.env.ZATTI_HUB_ENVIO_TOKEN?.trim();
   if (!url || !token) {
     console.error("[equipe] VINI_URL ou ZATTI_HUB_ENVIO_TOKEN ausente: acesso não enviado");
     return "falhou";

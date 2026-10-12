@@ -107,6 +107,8 @@ export type ExecucaoCompleta = {
   prazo: string;
   situacao: "em_andamento" | "concluida";
   unidadeId: string;
+  /** Responsável da programação (null = qualquer pessoa da unidade). */
+  responsavelId: string | null;
   itens: ItemSnapshot[];
   respostas: Record<string, RespostaExecucao>;
   concluidaEm: string | null;
@@ -119,10 +121,15 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
   const supabase = await createClient();
   const { data: exec } = await supabase
     .from("garante_execucoes")
-    .select("id, modelo_nome, data, prazo, situacao, unidade_id, snapshot, concluida_em, concluida_por")
+    .select("id, publicacao_id, modelo_nome, data, prazo, situacao, unidade_id, snapshot, concluida_em, concluida_por")
     .eq("id", id)
     .maybeSingle();
   if (!exec) return null;
+  const { data: pub } = await supabase
+    .from("garante_publicacoes")
+    .select("responsavel_id")
+    .eq("id", exec.publicacao_id as string)
+    .maybeSingle();
   const { data: respostasData } = await supabase
     .from("garante_respostas")
     .select("item_id, valor_bool, valor_numero, valor_texto, nao_se_aplica, justificativa, dentro_meta, foto_path, foto_recebida_em, respondido_por")
@@ -159,6 +166,7 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
     prazo: exec.prazo as string,
     situacao: exec.situacao as "em_andamento" | "concluida",
     unidadeId: exec.unidade_id as string,
+    responsavelId: (pub?.responsavel_id as string | null) ?? null,
     itens: (exec.snapshot as ItemSnapshot[]) ?? [],
     respostas: Object.fromEntries(
       respostas.map((r) => [

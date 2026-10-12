@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { requireGestaoGarante } from "@/lib/acesso";
-import { hojeOperacao, percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { DICA_GARANTE, hojeOperacao, percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ESTILO_SITUACAO } from "@/components/garante/estilos";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { carregarAgenda } from "../dados";
 
 /** Quadro do dia (gestão): o que está pendente, atrasado e feito, com link para
- * ver cada checklist e as fotos. */
+ * ver cada checklist e as fotos. Datas passadas mostram o que estava programado
+ * naquele dia, inclusive de checklist que depois parou de ser usado. */
 export default async function QuadroPage({ searchParams }: { searchParams: Promise<{ data?: string }> }) {
   const acesso = await requireGestaoGarante();
   const { data: dataParam } = await searchParams;
@@ -27,7 +30,9 @@ export default async function QuadroPage({ searchParams }: { searchParams: Promi
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">Quadro do dia</h1>
-          <p className="text-sm text-cinza-medio">{acesso.unidadeNome}</p>
+          <p className="text-sm text-cinza-medio">
+            {acesso.unidadeNome} · {formatarDataBr(data)}
+          </p>
         </div>
         <form className="flex items-end gap-2">
           <label className="text-xs font-semibold text-cinza-medio">
@@ -43,7 +48,10 @@ export default async function QuadroPage({ searchParams }: { searchParams: Promi
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {resumo.map((r) => (
           <div key={r.s} className="rounded-lg border border-cinza-claro bg-branco p-3">
-            <p className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${ESTILO_SITUACAO[r.s].classe}`}>{ESTILO_SITUACAO[r.s].texto}</p>
+            <p className="flex items-center gap-1">
+              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${ESTILO_SITUACAO[r.s].classe}`}>{ESTILO_SITUACAO[r.s].texto}</span>
+              <DicaCalculo rotulo={`checklists ${ESTILO_SITUACAO[r.s].texto.toLowerCase()}`} texto={`Quantos checklists programados nesta data estão nesta situação. ${DICA_GARANTE.situacao}`} />
+            </p>
             <p className="mt-1 font-display text-2xl font-bold text-azul-noite">{r.n}</p>
           </div>
         ))}
@@ -57,9 +65,15 @@ export default async function QuadroPage({ searchParams }: { searchParams: Promi
             <div key={l.publicacaoId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cinza-claro bg-branco p-3 text-sm">
               <div className="min-w-0">
                 <p className="font-semibold text-azul-noite">{l.modeloNome}</p>
-                <p className="text-xs text-cinza-medio">
-                  até {l.horarioLimite} · {l.responsavelNome ?? "qualquer pessoa"} · {percentual(l.respondidos, l.totalItens)}%
-                  {l.foraDaMeta > 0 && <span className="font-semibold text-vermelho"> · {l.foraDaMeta} fora da meta</span>}
+                <p className="flex flex-wrap items-center gap-1 text-xs text-cinza-medio">
+                  até {l.horarioLimite} · {l.responsavelNome ?? "qualquer pessoa"} · {percentual(l.respondidos, l.totalItens)}% feito
+                  <DicaCalculo rotulo="percentual feito" texto={DICA_GARANTE.progresso} />
+                  {l.foraDaMeta > 0 && (
+                    <>
+                      <span className="font-semibold text-vermelho">· {l.foraDaMeta} fora da meta</span>
+                      <DicaCalculo rotulo="fora da meta" texto={DICA_GARANTE.foraDaMeta} />
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">

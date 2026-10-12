@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import { ModalFlutuante } from "@/components/modal-flutuante";
 
 const LADO_MAXIMO = 1280;
 const QUALIDADE = 0.72;
 
-/** Foto só pela câmera, dentro do app: abre a câmera com getUserMedia e
- * captura o quadro. Não existe seletor de arquivo, então não dá para mandar
- * foto da galeria pela tela. A hora que vale é a do servidor ao receber. */
+/** Foto pela câmera, dentro do app, na casca de modal padrão: abre a câmera
+ * com getUserMedia e captura o quadro. A tela não tem seletor de arquivo; a
+ * hora registrada é a do servidor ao receber a foto (comprova o recebimento,
+ * não o momento exato do clique). */
 export function CameraFoto({
   caminhoBase,
   aoEnviar,
@@ -88,16 +90,17 @@ export function CameraFoto({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      <video ref={videoRef} playsInline muted className="h-full w-full flex-1 object-contain" />
-      <div className="flex flex-col gap-2 bg-azul-noite p-4">
-        {erro && <p className="text-sm text-branco">{erro}</p>}
+    <ModalFlutuante aberto onFechar={() => !enviando && aoFechar()}>
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-lg font-bold text-azul-noite">Foto do item</h2>
+        <video ref={videoRef} playsInline muted className="max-h-[60vh] w-full rounded-md bg-azul-noite object-contain" />
+        {erro && <p className="text-sm text-vermelho">{erro}</p>}
         <div className="flex gap-2">
           <button
             type="button"
             onClick={aoFechar}
             disabled={enviando}
-            className="flex-1 rounded-md border border-branco/40 px-4 py-3 text-sm font-semibold text-branco"
+            className="flex-1 rounded-md border border-cinza-claro px-4 py-3 text-sm font-semibold text-cinza"
           >
             Cancelar
           </button>
@@ -105,12 +108,12 @@ export function CameraFoto({
             type="button"
             onClick={capturar}
             disabled={enviando || !cameraPronta}
-            className="flex-[2] rounded-md bg-ambar px-4 py-3 text-sm font-bold text-azul-noite disabled:opacity-60"
+            className="flex-[2] rounded-md bg-azul-noite px-4 py-3 text-sm font-bold text-branco disabled:opacity-60"
           >
             {enviando ? "Enviando..." : "Tirar foto"}
           </button>
         </div>
       </div>
-    </div>
+    </ModalFlutuante>
   );
 }

@@ -3,7 +3,9 @@ import { BIBLIOTECA_POPS, modeloDaBiblioteca } from "./biblioteca";
 import {
   concluidaNoPrazo,
   hojeOperacao,
+  itemCompleto,
   mensagemErroGarante,
+  ontemOperacao,
   percentual,
   situacaoNaTela,
   textoDias,
@@ -109,5 +111,47 @@ describe("mensagemErroGarante", () => {
   it("traduz o erro do banco e esconde o resto", () => {
     expect(mensagemErroGarante("sem_permissao")).toBe("Esse checklist é de outra pessoa.");
     expect(mensagemErroGarante("duplicate key value")).toBe("Não foi possível salvar. Tente de novo.");
+  });
+});
+
+describe("itemCompleto (mesmo critério do banco)", () => {
+  const vazia = { naoSeAplica: false, valorBool: null, valorNumero: null, valorTexto: null, temFoto: false };
+  it("item com foto obrigatória sem a foto não conta, mesmo respondido", () => {
+    expect(itemCompleto({ foto_obrigatoria: true }, { ...vazia, valorNumero: 4 })).toBe(false);
+    expect(itemCompleto({ foto_obrigatoria: true }, { ...vazia, valorNumero: 4, temFoto: true })).toBe(true);
+  });
+  it("só a foto, sem resposta, também não conta", () => {
+    expect(itemCompleto({ foto_obrigatoria: true }, { ...vazia, temFoto: true })).toBe(false);
+  });
+  it("não se aplica conta; sem resposta não conta", () => {
+    expect(itemCompleto({ foto_obrigatoria: true }, { ...vazia, naoSeAplica: true })).toBe(true);
+    expect(itemCompleto({ foto_obrigatoria: false }, undefined)).toBe(false);
+    expect(itemCompleto({ foto_obrigatoria: false }, { ...vazia, valorBool: false })).toBe(true);
+  });
+});
+
+describe("ontemOperacao", () => {
+  it("véspera no fuso de Brasília, inclusive na virada do mês e depois das 21h", () => {
+    expect(ontemOperacao(new Date("2026-11-01T12:00:00Z"))).toBe("2026-10-31");
+    // 23h30 de 12/10 em Brasília = 02h30 UTC de 13/10.
+    expect(ontemOperacao(new Date("2026-10-13T02:30:00Z"))).toBe("2026-10-11");
+    expect(hojeOperacao(new Date("2026-10-13T02:30:00Z"))).toBe("2026-10-12");
+  });
+});
+
+describe("validarItem com número não finito", () => {
+  const base = { titulo: "Temperatura", tipo: "numero", critico: false, fotoObrigatoria: false, permiteNa: true, metaMin: "", metaMax: "" };
+  it("recusa NaN, infinito e número fora do limite", () => {
+    expect(validarItem({ ...base, metaMin: "abc" }).ok).toBe(false);
+    expect(validarItem({ ...base, metaMax: "Infinity" }).ok).toBe(false);
+    expect(validarItem({ ...base, metaMax: "1e9" }).ok).toBe(false);
+    expect(validarItem({ ...base, metaMin: "-18", metaMax: "-12,5" }).ok).toBe(true);
+  });
+});
+
+describe("mensagens novas das RPCs", () => {
+  it("responsável sem acesso e checklist sem itens viram texto de gente", () => {
+    expect(mensagemErroGarante("responsavel_sem_acesso")).toContain("não tem acesso");
+    expect(mensagemErroGarante("checklist_sem_itens")).toContain("não tem itens");
   });
 });

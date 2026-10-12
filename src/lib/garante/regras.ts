@@ -31,6 +31,41 @@ export function hojeOperacao(agora: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(agora);
 }
 
+/** Véspera de hoje no fuso da operação (fechamento que passa da meia-noite).
+ * Conta em cima da data (sem fuso), nunca subtraindo 24 h do relógio. */
+export function ontemOperacao(agora: Date = new Date()): string {
+  const [a, m, d] = hojeOperacao(agora).split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/** Item feito: o mesmo critério do banco (`garante_itens_completos`), usado na
+ * tela para o progresso. "Não se aplica" com motivo, ou resposta com valor E,
+ * se o item exige foto, com a foto enviada. */
+export function itemCompleto(
+  item: { foto_obrigatoria: boolean },
+  resposta:
+    | { naoSeAplica: boolean; valorBool: boolean | null; valorNumero: number | null; valorTexto: string | null; temFoto: boolean }
+    | undefined,
+): boolean {
+  if (!resposta) return false;
+  if (resposta.naoSeAplica) return true;
+  const temValor = resposta.valorBool !== null || resposta.valorNumero !== null || (resposta.valorTexto ?? "") !== "";
+  return temValor && (!item.foto_obrigatoria || resposta.temFoto);
+}
+
+/** Textos do ícone (i) dos indicadores do Garante. */
+export const DICA_GARANTE = {
+  progresso:
+    "Itens feitos ÷ itens do checklist. Item feito = respondido (ou marcado \"não se aplica\" com motivo) e, se o item pede foto, com a foto enviada. Sem a foto obrigatória o item não conta.",
+  foraDaMeta:
+    "Itens cuja resposta ficou fora da meta do modelo: \"não feito\" num item de feito/não feito, ou número e estrelas fora da faixa definida.",
+  diaConcluido: "Checklists concluídos ÷ checklists programados para hoje (os seus, ou todos da unidade se você é da gestão).",
+  situacao:
+    "Concluída = alguém concluiu com todos os itens feitos. Atrasada = passou do horário limite sem concluir. Em andamento = já começou. Pendente = ninguém começou.",
+} as const;
+
+export const LIMITE_NUMERO = 1_000_000;
+
 export function textoDias(dias: number[]): string {
   const ordenados = [...new Set(dias)].sort((a, b) => a - b);
   if (ordenados.length === 7) return "Todo dia";
@@ -83,10 +118,11 @@ export function validarItem(params: {
   if (!TIPOS.includes(params.tipo as TipoItemGarante)) return { ok: false, erro: "Tipo de item inválido." };
   const tipo = params.tipo as TipoItemGarante;
   const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
+  const naoFinito = (v: number | null) => v !== null && (!Number.isFinite(v) || Math.abs(v) > LIMITE_NUMERO);
   let metaMin = tipo === "numero" || tipo === "estrelas" ? num(params.metaMin) : null;
   let metaMax = tipo === "numero" || tipo === "estrelas" ? num(params.metaMax) : null;
-  if ((metaMin !== null && Number.isNaN(metaMin)) || (metaMax !== null && Number.isNaN(metaMax))) {
-    return { ok: false, erro: "Meta precisa ser um número." };
+  if (naoFinito(metaMin) || naoFinito(metaMax)) {
+    return { ok: false, erro: "Meta precisa ser um número (até 1.000.000)." };
   }
   if (tipo === "estrelas") {
     const fora = (v: number | null) => v !== null && (v < 1 || v > 5 || !Number.isInteger(v));
@@ -121,7 +157,7 @@ export function textoMeta(tipo: TipoItemGarante, min: number | null, max: number
 export function mensagemErroGarante(mensagem: string): string {
   const mapa: Record<string, string> = {
     sem_permissao: "Esse checklist é de outra pessoa.",
-    data_fora_da_janela: "Só dá para cumprir o checklist de hoje (ou o de ontem, até fechar).",
+    data_fora_da_janela: "Só dá para mexer no checklist de hoje ou no de ontem. Os mais antigos ficam só para consulta.",
     publicacao_nao_devida_nesta_data: "Esse checklist não está programado para hoje.",
     publicacao_nao_encontrada: "Checklist não encontrado.",
     execucao_nao_encontrada: "Checklist não encontrado.",
@@ -131,6 +167,10 @@ export function mensagemErroGarante(mensagem: string): string {
     justificativa_obrigatoria: "Explique por que não se aplica.",
     valor_obrigatorio: "Responda o item antes de salvar.",
     caminho_invalido: "Foto inválida. Tire de novo.",
+    checklist_sem_itens: "Esse checklist não tem itens. Adicione pelo menos um antes.",
+    responsavel_sem_acesso: "Essa pessoa não tem acesso a esta unidade. Cadastre o acesso dela em Equipe antes.",
+    setor_invalido: "Setor não encontrado nesta unidade.",
+    modelo_nao_encontrado: "Checklist não encontrado (ou já parou de ser usado).",
     foto_nao_recebida: "A foto não chegou. Tire de novo.",
   };
   const chave = Object.keys(mapa).find((k) => mensagem.includes(k));

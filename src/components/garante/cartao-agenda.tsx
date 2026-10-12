@@ -4,11 +4,20 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { iniciarChecklistAction } from "@/app/(app)/garante/actions";
 import type { LinhaAgenda } from "@/app/(app)/garante/dados";
-import { percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { DICA_GARANTE, percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { ESTILO_SITUACAO } from "./estilos";
 
-
-export function CartaoAgenda({ linha, gestao }: { linha: LinhaAgenda; gestao: boolean }) {
+export function CartaoAgenda({
+  linha,
+  gestao,
+  dia = "hoje",
+}: {
+  linha: LinhaAgenda;
+  gestao: boolean;
+  /** "ontem" = fechamento que passou da meia-noite, ainda dá para concluir. */
+  dia?: "hoje" | "ontem";
+}) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -23,7 +32,7 @@ export function CartaoAgenda({ linha, gestao }: { linha: LinhaAgenda; gestao: bo
       return;
     }
     startTransition(async () => {
-      const r = await iniciarChecklistAction(linha.publicacaoId);
+      const r = await iniciarChecklistAction(linha.publicacaoId, dia);
       if ("erro" in r) {
         setErro(r.erro);
         return;
@@ -53,9 +62,15 @@ export function CartaoAgenda({ linha, gestao }: { linha: LinhaAgenda; gestao: bo
         <div className="h-full bg-azul-petroleo" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex items-center justify-between text-xs text-cinza-medio">
-        <span>
-          {linha.respondidos} de {linha.totalItens} itens
-          {linha.foraDaMeta > 0 && <span className="ml-1 font-semibold text-vermelho">· {linha.foraDaMeta} fora da meta</span>}
+        <span className="flex flex-wrap items-center gap-1">
+          {linha.respondidos} de {linha.totalItens} itens feitos ({pct}%)
+          <DicaCalculo rotulo="itens feitos" texto={DICA_GARANTE.progresso} />
+          {linha.foraDaMeta > 0 && (
+            <>
+              <span className="font-semibold text-vermelho">· {linha.foraDaMeta} fora da meta</span>
+              <DicaCalculo rotulo="fora da meta" texto={DICA_GARANTE.foraDaMeta} />
+            </>
+          )}
         </span>
         {podeAbrir && (
           <button

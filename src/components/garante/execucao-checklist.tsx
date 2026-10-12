@@ -4,15 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { concluirChecklistAction, registrarFotoAction, responderItemAction } from "@/app/(app)/garante/actions";
 import type { ExecucaoCompleta, ItemSnapshot, RespostaExecucao } from "@/app/(app)/garante/dados";
-import { percentual, situacaoNaTela, textoMeta } from "@/lib/garante/regras";
+import { DICA_GARANTE, itemCompleto, percentual, situacaoNaTela, textoMeta } from "@/lib/garante/regras";
+import { CampoNumero } from "@/components/campo-numero";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { CameraFoto } from "./camera-foto";
 import { ESTILO_SITUACAO } from "./estilos";
 
 function respondido(item: ItemSnapshot, r: RespostaExecucao | undefined): boolean {
-  if (!r) return false;
-  if (r.naoSeAplica) return true;
-  const temValor = r.valorBool !== null || r.valorNumero !== null || (r.valorTexto ?? "") !== "";
-  return temValor && (!item.foto_obrigatoria || Boolean(r.fotoUrl || r.fotoRecebidaEm));
+  return itemCompleto(item, r && { ...r, temFoto: Boolean(r.fotoUrl || r.fotoRecebidaEm) });
 }
 
 export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: ExecucaoCompleta; podeEditar: boolean }) {
@@ -69,12 +68,19 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
             {ESTILO_SITUACAO[situacao].texto}
           </span>
         </div>
-        <p className="text-sm text-cinza-medio">
-          Prazo {prazoTexto} · {feitos} de {total} itens ({percentual(feitos, total)}%)
+        <p className="flex flex-wrap items-center gap-1 text-sm text-cinza-medio">
+          Prazo {prazoTexto} · {feitos} de {total} itens feitos ({percentual(feitos, total)}%)
+          <DicaCalculo rotulo="itens feitos" texto={DICA_GARANTE.progresso} />
           {execucao.concluidaEm &&
             ` · concluído ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(execucao.concluidaEm))}${execucao.concluidaPorNome ? ` por ${execucao.concluidaPorNome}` : ""}`}
         </p>
       </div>
+
+      {!editavel && execucao.situacao === "em_andamento" && (
+        <p className="rounded-md bg-cinza-claro/50 px-3 py-2 text-xs text-cinza">
+          Só para consulta: este checklist é de outra pessoa ou já passou do prazo para mexer (vale hoje e ontem).
+        </p>
+      )}
 
       {execucao.itens.map((item, i) => {
         const cabecalho = item.grupo && item.grupo !== execucao.itens[i - 1]?.grupo ? item.grupo : null;
@@ -130,7 +136,7 @@ function ItemResposta({
   const [salvando, startSalvar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
-  const [numero, setNumero] = useState(resposta?.valorNumero?.toString() ?? "");
+  const [numero, setNumero] = useState<number | null>(resposta?.valorNumero ?? null);
   const [texto, setTexto] = useState(resposta?.valorTexto ?? "");
   const [naAberto, setNaAberto] = useState(false);
   const [motivo, setMotivo] = useState(resposta?.justificativa ?? "");
@@ -190,27 +196,23 @@ function ItemResposta({
 
       {item.tipo === "numero" && (
         <div className="flex gap-2">
-          <input
-            type="number"
-            inputMode="decimal"
-            step="any"
-            value={numero}
-            disabled={!editavel}
-            onChange={(e) => setNumero(e.target.value)}
-            className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm"
-            placeholder="Valor"
-          />
-          <button
-            type="button"
-            disabled={!editavel || salvando || numero.trim() === ""}
-            onClick={() => {
-              const v = Number(numero.replace(",", "."));
-              if (!Number.isNaN(v)) salvar({ valorNumero: v }, { valorNumero: v, naoSeAplica: false });
-            }}
-            className="rounded-md bg-azul-noite px-3 py-2 text-xs font-semibold text-branco disabled:opacity-60"
-          >
-            Salvar
-          </button>
+          {editavel ? (
+            <CampoNumero value={numero} onChange={setNumero} decimais={1} className="w-full px-3 py-2 text-sm" />
+          ) : (
+            <span className="text-sm text-cinza">{numero === null ? "-" : numero.toLocaleString("pt-BR")}</span>
+          )}
+          {editavel && (
+            <button
+              type="button"
+              disabled={salvando || numero === null}
+              onClick={() => {
+                if (numero !== null && Number.isFinite(numero)) salvar({ valorNumero: numero }, { valorNumero: numero, naoSeAplica: false });
+              }}
+              className="rounded-md bg-azul-noite px-3 py-2 text-xs font-semibold text-branco disabled:opacity-60"
+            >
+              Salvar
+            </button>
+          )}
         </div>
       )}
 
@@ -267,7 +269,7 @@ function ItemResposta({
               onClick={() => setCamera(true)}
               className="rounded-md border border-azul-petroleo px-3 py-2 text-xs font-semibold text-azul-petroleo"
             >
-              {temFoto ? "Tirar outra foto" : "Tirar foto"}
+              {temFoto ? "Tirar outra foto" : "Tirar foto (obrigatória)"}
             </button>
           )}
           {resposta?.fotoRecebidaEm && (
@@ -279,6 +281,10 @@ function ItemResposta({
             </span>
           )}
         </div>
+      )}
+
+      {item.foto_obrigatoria && !temFoto && !resposta?.naoSeAplica && (
+        <p className="text-xs font-semibold text-vermelho">Falta a foto: sem ela este item não conta como feito.</p>
       )}
 
       {editavel && item.permite_na && !item.critico && (

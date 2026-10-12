@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(30);
+select plan(53);
 
 grant select, insert, update, delete on garante_modelos, garante_itens, garante_publicacoes,
   garante_execucoes, garante_respostas to authenticated;
@@ -116,6 +116,8 @@ select lives_ok($$ select public.garante_responder((select id from t where nome 
 
 -- ── Foto e conclusão ────────────────────────────────────────────────────
 select is(public.garante_concluir((select id from t where nome = 'exec')), 1, 'sem a foto obrigatória falta 1 item');
+select is((select respondidos from public.garante_agenda('org-g-a-loja', public.garante_hoje())), 2,
+  'progresso não conta o item respondido sem a foto obrigatória (mesmo critério da conclusão)');
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('garante-evidencias',
   'org-g-b-loja/' || (select id from t where nome = 'exec') || '/00000000-0000-0000-0000-00000000c002-abcdef12.jpg') $$,
   '42501', null, 'Storage recusa foto com unidade trocada no caminho');
@@ -140,6 +142,108 @@ select is((select situacao from public.garante_agenda('org-g-a-loja', public.gar
   'agenda do gestor mostra o checklist concluído');
 select is((select fora_da_meta from public.garante_agenda('org-g-a-loja', public.garante_hoje())), 1,
   'agenda conta 1 item fora da meta');
+
+-- ══ Correções da revisão final do Codex (12/10) ═════════════════════════
+select pg_temp.servidor();
+insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
+  ('00000000-0000-0000-0000-0000000f0005', 'master-g@teste.local', 'x', now(), 'authenticated', 'authenticated');
+insert into vinculos (user_id, organizacao_id, unidade_id, role, status) values
+  ('00000000-0000-0000-0000-0000000f0005', 'org-g-b', null, 'master', 'ativo');
+insert into garante_modelos (id, unidade_id, nome) values
+  ('00000000-0000-0000-0000-00000000b003', 'org-g-a-loja', 'Fechamento antigo'),
+  ('00000000-0000-0000-0000-00000000b004', 'org-g-a-loja', 'Sem itens');
+insert into garante_itens (id, modelo_id, unidade_id, ordem, titulo, tipo) values
+  ('00000000-0000-0000-0000-00000000c010', '00000000-0000-0000-0000-00000000b003', 'org-g-a-loja', 1, 'Desligar o forno', 'check'),
+  ('00000000-0000-0000-0000-00000000c011', '00000000-0000-0000-0000-00000000b003', 'org-g-a-loja', 2, 'Temperatura da câmara', 'numero');
+insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario_limite, vigente_desde) values
+  ('00000000-0000-0000-0000-00000000d003', '00000000-0000-0000-0000-00000000b003', 'org-g-a-loja',
+   array[0,1,2,3,4,5,6]::smallint[], '23:00', public.garante_hoje() - 5);
+insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, snapshot, modelo_nome) values
+  ('00000000-0000-0000-0000-00000000e003', '00000000-0000-0000-0000-00000000d003', 'org-g-a-loja',
+   public.garante_hoje() - 2, now() - interval '2 days',
+   jsonb_build_array(jsonb_build_object('id', '00000000-0000-0000-0000-00000000c010', 'tipo', 'check',
+     'critico', false, 'foto_obrigatoria', false, 'permite_na', true)), 'Fechamento antigo');
+
+create or replace function pg_temp.como_aal2(p_user_id uuid)
+returns void language sql as $$
+  select set_config('role', 'authenticated', true);
+  select set_config('request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+$$;
+
+-- 3: programação só pelas RPCs, responsável com vínculo na unidade.
+select pg_temp.como('00000000-0000-0000-0000-0000000f0001');
+update garante_publicacoes set horario_limite = '23:59' where id = '00000000-0000-0000-0000-00000000d001';
+select is((select horario_limite from garante_publicacoes where id = '00000000-0000-0000-0000-00000000d001'), '10:00'::time,
+  'gestão não altera programação direto pela API (horário fica como era)');
+select throws_ok($$ insert into garante_publicacoes (modelo_id, unidade_id, dias_semana, horario_limite)
+  values ('00000000-0000-0000-0000-00000000b001', 'org-g-a-loja', array[1]::smallint[], '10:00') $$,
+  '42501', null, 'gestão não cria programação direto, só pela RPC');
+select throws_ok($$ select public.garante_publicar('00000000-0000-0000-0000-00000000b001', null,
+  '00000000-0000-0000-0000-0000000f0004', array[1]::smallint[], '10:00') $$,
+  '22023', 'responsavel_sem_acesso', 'responsável sem vínculo com a unidade é recusado');
+select throws_ok($$ select public.garante_publicar('00000000-0000-0000-0000-00000000b004', null, null,
+  array[1]::smallint[], '10:00') $$, '22023', 'checklist_sem_itens', '5: checklist sem itens não publica');
+select lives_ok($$ select public.garante_publicar('00000000-0000-0000-0000-00000000b001', null,
+  '00000000-0000-0000-0000-0000000f0003', array[1,2]::smallint[], '11:00') $$,
+  'gestão publica para alguém da unidade');
+
+-- 12: flag isolada (gestão da organização inteira, unidade com módulo desligado).
+select throws_ok($$ select public.garante_publicar('00000000-0000-0000-0000-00000000b002', null, null,
+  array[1]::smallint[], '10:00') $$, '42501', null, 'gestão com acesso à unidade, mas módulo desligado, não publica');
+select is((select count(*)::int from garante_modelos where unidade_id = 'org-g-a-off'), 0,
+  'gestão com acesso à unidade, mas módulo desligado, não lê');
+
+-- 12: Master.
+select pg_temp.como('00000000-0000-0000-0000-0000000f0005');
+select is((select count(*)::int from garante_modelos), 0, 'master sem segundo fator não vê nada do Garante');
+select pg_temp.como_aal2('00000000-0000-0000-0000-0000000f0005');
+select lives_ok($$ select public.garante_publicar('00000000-0000-0000-0000-00000000b001', null, null,
+  array[3]::smallint[], '12:00') $$, 'master com segundo fator publica');
+select ok((select count(*) from garante_execucoes where unidade_id = 'org-g-a-loja') >= 2,
+  'master com segundo fator lê as execuções da unidade');
+
+-- 2: operacional só lê a execução que pode cumprir.
+select pg_temp.como('00000000-0000-0000-0000-0000000f0003');
+select is((select count(*)::int from garante_execucoes where publicacao_id = '00000000-0000-0000-0000-00000000d001'), 0,
+  'operacional não lê a execução de outra pessoa');
+select is((select count(*)::int from garante_respostas where execucao_id = (select id from t where nome = 'exec')), 0,
+  'nem as respostas dela');
+
+-- 10: janela hoje/ontem em todas as RPCs.
+select throws_ok($$ select public.garante_responder('00000000-0000-0000-0000-00000000e003',
+  '00000000-0000-0000-0000-00000000c010', p_valor_bool => true) $$, '22023', 'data_fora_da_janela',
+  'execução de anteontem não aceita resposta');
+
+-- 5: número não finito.
+insert into t values ('exec3', public.garante_iniciar('00000000-0000-0000-0000-00000000d003', public.garante_hoje()));
+select throws_ok($$ select public.garante_responder((select id from t where nome = 'exec3'),
+  '00000000-0000-0000-0000-00000000c011', p_valor_numero => 'NaN'::numeric) $$, '22023', null, 'resposta NaN é recusada');
+select pg_temp.como('00000000-0000-0000-0000-0000000f0001');
+select throws_ok($$ insert into garante_itens (modelo_id, unidade_id, titulo, tipo, meta_min)
+  values ('00000000-0000-0000-0000-00000000b003', 'org-g-a-loja', 'x', 'numero', 'Infinity'::numeric) $$,
+  '23514', null, 'meta infinita é recusada');
+
+-- 6: Storage valida item e nome.
+select pg_temp.como('00000000-0000-0000-0000-0000000f0003');
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('garante-evidencias',
+  'org-g-a-loja/' || (select id from t where nome = 'exec3') || '/00000000-0000-0000-0000-00000000c001-abcdef12.jpg') $$,
+  '42501', null, 'Storage recusa foto de item que não é deste checklist');
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('garante-evidencias',
+  'org-g-a-loja/' || (select id from t where nome = 'exec3') || '/foto.jpg') $$,
+  '42501', null, 'Storage recusa nome fora do padrão');
+
+-- 8: parar de usar não apaga o histórico.
+select pg_temp.como('00000000-0000-0000-0000-0000000f0001');
+select lives_ok($$ select public.garante_parar_modelo('00000000-0000-0000-0000-00000000b003') $$, 'gestão para de usar o checklist');
+select is((select count(*)::int from public.garante_agenda('org-g-a-loja', public.garante_hoje() - 2)
+  where modelo_id = '00000000-0000-0000-0000-00000000b003'), 1, 'a execução de anteontem continua no quadro');
+select is((select situacao from public.garante_agenda('org-g-a-loja', public.garante_hoje() - 3)
+  where modelo_id = '00000000-0000-0000-0000-00000000b003'), 'pendente', 'dia que ficou sem fazer continua no quadro');
+select is((select count(*)::int from public.garante_agenda('org-g-a-loja', public.garante_hoje())
+  where modelo_id = '00000000-0000-0000-0000-00000000b003'), 1, 'o de hoje, que já tinha começado, continua');
+select is((select count(*)::int from public.garante_agenda('org-g-a-loja', public.garante_hoje() + 1)
+  where modelo_id = '00000000-0000-0000-0000-00000000b003'), 0, 'e some dos próximos dias');
 
 select pg_temp.servidor();
 select * from finish();
