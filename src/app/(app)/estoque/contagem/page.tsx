@@ -34,6 +34,14 @@ export default async function ContagemPage() {
 
   return (
     <ContagemForm
+      unidadeId={acesso.unidadeId}
+      unidadeNome={
+        // "The House Food & Fun Belo Horizonte"; quando unidade e organização
+        // têm o mesmo nome (Dom Quixote), não repete.
+        acesso.organizacaoNome === acesso.unidadeNome
+          ? acesso.unidadeNome
+          : `${acesso.organizacaoNome} ${acesso.unidadeNome}`
+      }
       produtos={produtos}
       setores={setores}
       andamentoPorData={andamentoPorData}

@@ -10,6 +10,7 @@ import {
   corrigirItemContagemAction,
 } from "@/app/(app)/estoque/contagem/actions";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { mensagemFalhaChamada } from "@/lib/erro-chamada";
 import {
   avisoDeContagemParcial,
   consolidarPorSku,
@@ -186,10 +187,16 @@ export function VisualizacaoContagens({
     // Com a contagem por setor ativa, corrige a linha daquele setor pelo id.
     // Enquanto ela não está ativa, segue o caminho de sempre (data + SKU), que
     // é único porque nenhuma linha tem setor.
-    const r =
-      CONTAGEM_POR_SETOR_ATIVA && item.id
-        ? await corrigirItemContagemAction(item.id, num, versaoDoSetor(item), motivo.trim() || undefined)
-        : await atualizarQuantidadeContagemAction(item.data, item.sku, num);
+    let r: { erro: string } | { ok: true; versao?: number | null };
+    try {
+      r =
+        CONTAGEM_POR_SETOR_ATIVA && item.id
+          ? await corrigirItemContagemAction(item.id, num, versaoDoSetor(item), motivo.trim() || undefined)
+          : await atualizarQuantidadeContagemAction(item.data, item.sku, num);
+    } catch (falha) {
+      // Sem isto a linha ficava presa em "salvando" (ex.: app atualizado com a tela aberta).
+      r = { erro: mensagemFalhaChamada(falha, "Não deu pra salvar agora. Tente de novo em instantes.") };
+    }
     if ("erro" in r) {
       setStatusPorItem((s) => ({ ...s, [chave]: { tipo: "erro", msg: r.erro } }));
       return false;

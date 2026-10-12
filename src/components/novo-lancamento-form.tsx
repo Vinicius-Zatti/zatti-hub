@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useSyncExternalStore, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CampoNumero } from "@/components/campo-numero";
 import { AvisoDivergenciaModal } from "@/components/aviso-divergencia-modal";
@@ -11,6 +11,15 @@ import {
 } from "@/app/(app)/financeiro/consolidado/actions";
 import type { ConsolidadoVenda } from "@/lib/types";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
+import { mensagemFalhaChamada } from "@/lib/erro-chamada";
+import {
+  chaveRascunho,
+  lerRascunho,
+  lerRascunhoBruto,
+  limparRascunho,
+  quandoFoiSalvo,
+  salvarRascunho,
+} from "@/lib/rascunho-local";
 
 function hojeISO(): string {
   const h = new Date();
@@ -49,10 +58,37 @@ function num(v: number | null): number {
   return v ?? 0;
 }
 
+const CHAVES_CAMPOS = Object.keys(ZERADOS) as (keyof Campos)[];
+
+function camposDoRascunho(bruto: unknown): Campos | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const origem = (bruto as { campos?: unknown }).campos;
+  if (!origem || typeof origem !== "object") return null;
+  const campos = { ...ZERADOS };
+  for (const chave of CHAVES_CAMPOS) {
+    const v = (origem as Record<string, unknown>)[chave];
+    campos[chave] = typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  }
+  return campos;
+}
+
+// O localStorage não avisa mudança na mesma aba; o rascunho só é lido na
+// abertura da tela, então não há o que assinar.
+function semAssinatura(): () => void {
+  return () => {};
+}
+
 /** Formulário de fechamento diário - usado tanto em "Novo Lançamento" quanto
  * em "Editar" (passando `existente`). Data não é editável depois de salvo,
  * é a chave natural do registro (unique unidade+data). */
-export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda }) {
+export function NovoLancamentoForm({
+  existente,
+  unidadeId,
+}: {
+  existente?: ConsolidadoVenda;
+  /** Só no lançamento novo: separa o rascunho guardado no navegador. */
+  unidadeId?: string;
+}) {
   const router = useRouter();
   const [dataISO] = useState(existente?.data ?? hojeISO());
   const [campos, setCampos] = useState<Campos>(
@@ -80,14 +116,45 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
   const [isPending, startTransition] = useTransition();
   const { ativar, desativar } = useGuardaEdicao();
 
+  // Rascunho do lançamento novo, por unidade e data: o que foi digitado
+  // sobrevive a um F5 ou a uma falha ao salvar. Edição não guarda rascunho.
+  const chave = !existente && unidadeId ? chaveRascunho("desempenho", unidadeId, dataISO) : null;
+  const rascunhoBruto = useSyncExternalStore(
+    semAssinatura,
+    () => (chave ? lerRascunhoBruto(chave) : null),
+    () => null,
+  );
+  const [rascunhoResolvido, setRascunhoResolvido] = useState(false);
+  const rascunho = chave && rascunhoBruto && !rascunhoResolvido ? lerRascunho<{ campos: Campos }>(chave) : null;
+  const camposRascunho = rascunho ? camposDoRascunho(rascunho) : null;
+
+  function recuperarRascunho() {
+    if (camposRascunho) {
+      setCampos(camposRascunho);
+      ativar("Você tem um lançamento não salvo. Se sair agora, ele se perde.");
+    }
+    setRascunhoResolvido(true);
+  }
+
+  function descartarRascunho() {
+    if (chave) limparRascunho(chave);
+    setRascunhoResolvido(true);
+  }
+
   const totalFormasPagamento =
     num(campos.credito) + num(campos.debito) + num(campos.pix) + num(campos.dinheiro) + num(campos.valeAlimentacao);
   const totalCanais = num(campos.salao) + num(campos.deliveryProprio);
   const totalMarketplaces = num(campos.ifood) + num(campos.food99);
   const faturamentoTotal = totalCanais + totalMarketplaces;
 
-  function atualizarCampo(chave: keyof Campos, valor: number | null) {
-    setCampos((c) => ({ ...c, [chave]: valor }));
+  function atualizarCampo(campo: keyof Campos, valor: number | null) {
+    const novos = { ...campos, [campo]: valor };
+    setCampos(novos);
+    if (chave) {
+      salvarRascunho(chave, { campos: novos });
+      // Digitou por cima: o rascunho antigo deixa de ser oferecido.
+      setRascunhoResolvido(true);
+    }
     ativar("Você tem um lançamento não salvo. Se sair agora, ele se perde.");
   }
 
@@ -111,11 +178,27 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
     setErro(null);
     setJaExiste(null);
     startTransition(async () => {
-      const resultado = existente
-        ? await editarConsolidadoAction(existente.id, montarInput(confirmarDivergencia))
-        : await criarConsolidadoAction(montarInput(confirmarDivergencia));
+      let resultado: Awaited<ReturnType<typeof criarConsolidadoAction>>;
+      try {
+        resultado = existente
+          ? await editarConsolidadoAction(existente.id, montarInput(confirmarDivergencia))
+          : await criarConsolidadoAction(montarInput(confirmarDivergencia));
+      } catch (falha) {
+        setDivergencia(null);
+        setErro(
+          mensagemFalhaChamada(
+            falha,
+            chave
+              ? "Não deu pra salvar agora. Os valores estão guardados neste aparelho: tente de novo em instantes."
+              : "Não deu pra salvar agora. Tente de novo em instantes.",
+            { guardado: Boolean(chave) },
+          ),
+        );
+        return;
+      }
 
       if (resultado.ok) {
+        if (chave) limparRascunho(chave);
         desativar();
         setDivergencia(null);
         router.push("/financeiro/consolidado");
@@ -150,6 +233,32 @@ export function NovoLancamentoForm({ existente }: { existente?: ConsolidadoVenda
           Fechamento diário: formas de pagamento contra canais próprios, com marketplaces separados.
         </p>
       </div>
+
+      {camposRascunho && rascunho && (
+        <div className="rounded-lg border border-ambar/60 bg-ambar/10 p-4 text-sm text-cinza">
+          <p>
+            Há valores deste dia digitados neste aparelho
+            {quandoFoiSalvo(rascunho.salvoEm) ? ` em ${quandoFoiSalvo(rascunho.salvoEm)}` : ""} que ainda
+            não foram salvos.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={recuperarRascunho}
+              className="rounded-md bg-ambar px-3 py-2 text-xs font-bold text-azul-noite"
+            >
+              Recuperar valores
+            </button>
+            <button
+              type="button"
+              onClick={descartarRascunho}
+              className="rounded-md border border-cinza-claro px-3 py-2 text-xs font-semibold text-cinza-medio hover:bg-off-white"
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">

@@ -13,6 +13,14 @@ import type { Setor } from "@/lib/types";
 import type { AndamentoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
 import { WHATSAPP_VINICIUS } from "@/lib/suporte";
+import { mensagemFalhaChamada } from "@/lib/erro-chamada";
+import {
+  chaveRascunho,
+  lerRascunho,
+  limparRascunho,
+  quandoFoiSalvo,
+  salvarRascunho,
+} from "@/lib/rascunho-local";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -40,6 +48,26 @@ type ItemLista = {
   posicao: number | null;
   precoUnitario: number | null;
 };
+
+/** O que fica guardado no navegador enquanto a contagem não é enviada. */
+type RascunhoContagem = {
+  valores: Record<string, string>;
+  confirmados: Record<string, number>;
+  customItens: ItemCustom[];
+  motivoReenvio?: string;
+};
+
+/** "The House Food & Fun" -> "the-house-food-fun", para nome de arquivo. */
+function slugArquivo(nome: string): string {
+  return (
+    nome
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "unidade"
+  );
+}
 
 /** Quantos nomes de itens faltando aparecem antes do "e mais N". */
 const MAX_FALTANDO_VISIVEIS = 5;
@@ -69,11 +97,18 @@ function hojeISO(): string {
 }
 
 export function ContagemForm({
+  unidadeId,
+  unidadeNome,
   produtos,
   setores = [],
   andamentoPorData = new Map(),
   modalidadePorData = new Map(),
 }: {
+  /** Unidade da sessão: separa o rascunho guardado no navegador. */
+  unidadeId: string;
+  /** Nome da unidade (com a organização quando difere), usado no arquivo do
+   * "Baixar CSV". */
+  unidadeNome: string;
   produtos: Produto[];
   /** Todos os setores da unidade, ativos e desativados. Sem nenhum ativo e
    * sem data por setor = fluxo antigo, com escopo por grupo de produto. */
@@ -123,6 +158,7 @@ export function ContagemForm({
   const [addUnidade, setAddUnidade] = useState("UN");
   const [enviado, setEnviado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [avisoRascunho, setAvisoRascunho] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
@@ -220,6 +256,66 @@ export function ContagemForm({
     return () => desativar();
   }, [tela, enviado, ativar, desativar]);
 
+  // Rascunho por unidade, data e setor: o que foi digitado sobrevive a um
+  // recarregar da página (F5) ou a uma falha no envio. Some depois do envio.
+  const chaveAtual = chaveRascunho("contagem", unidadeId, dataISO, usaSetor ? setorId : "sem-setor");
+
+  useEffect(() => {
+    if (tela !== "inventario" || enviado) return;
+    const temAlgo =
+      Object.values(valores).some((v) => v.trim() !== "") ||
+      Object.keys(confirmados).length > 0 ||
+      customItens.length > 0;
+    if (!temAlgo) return;
+    salvarRascunho<RascunhoContagem>(chaveAtual, { valores, confirmados, customItens, motivoReenvio });
+  }, [tela, enviado, chaveAtual, valores, confirmados, customItens, motivoReenvio]);
+
+  /** Recupera o rascunho desta unidade/data/setor, só com os itens que ainda
+   * fazem parte da lista (o snapshot do setor ou o escopo legado escolhido). */
+  function restaurarRascunho(skusDaLista: string[]) {
+    const rascunho = lerRascunho<RascunhoContagem>(chaveAtual);
+    if (!rascunho) return;
+    const avulsos = Array.isArray(rascunho.customItens)
+      ? rascunho.customItens.filter(
+          (c) =>
+            c &&
+            typeof c.sku === "string" &&
+            c.sku.startsWith(PENDENTE_PREFIX) &&
+            typeof c.nome === "string" &&
+            typeof c.unidadeBase === "string",
+        ).map((c) => ({ ...c, grupo: "CUSTOM", precoUnitario: null }))
+      : [];
+    const validos = new Set([...skusDaLista, ...avulsos.map((c) => c.sku)]);
+    const novosValores: Record<string, string> = {};
+    for (const [sku, v] of Object.entries(rascunho.valores ?? {})) {
+      if (validos.has(sku) && typeof v === "string") novosValores[sku] = v;
+    }
+    const novosConfirmados: Record<string, number> = {};
+    for (const [sku, q] of Object.entries(rascunho.confirmados ?? {})) {
+      if (validos.has(sku) && typeof q === "number" && Number.isFinite(q) && q >= 0) {
+        novosConfirmados[sku] = q;
+      }
+    }
+    const recuperados = new Set([
+      ...Object.keys(novosValores).filter((sku) => novosValores[sku].trim() !== ""),
+      ...Object.keys(novosConfirmados),
+    ]).size;
+    if (recuperados === 0 && avulsos.length === 0) {
+      limparRascunho(chaveAtual);
+      return;
+    }
+    setValores(novosValores);
+    setConfirmados(novosConfirmados);
+    setCustomItens(avulsos);
+    if (typeof rascunho.motivoReenvio === "string") setMotivoReenvio(rascunho.motivoReenvio);
+    const quando = quandoFoiSalvo(rascunho.salvoEm);
+    setAvisoRascunho(
+      `Recuperamos ${recuperados} ${recuperados === 1 ? "item digitado" : "itens digitados"} neste aparelho` +
+        (quando ? ` em ${quando}` : "") +
+        ". Confira e continue de onde parou.",
+    );
+  }
+
   useEffect(() => {
     function focarPrimeiroPendente() {
       for (const item of todos) {
@@ -240,6 +336,7 @@ export function ContagemForm({
   function confirmarData() {
     if (!dataISO) return;
     if (!usaSetor) {
+      restaurarRascunho(ativos.map((p) => p.sku));
       setTela("aviso");
       return;
     }
@@ -266,9 +363,10 @@ export function ContagemForm({
         setEscopoItens(aberta.itens);
         setJaConcluido(aberta.jaConcluido);
         setVersaoSetor(aberta.versao);
+        restaurarRascunho(aberta.itens.map((item) => item.sku));
         setTela("aviso");
-      } catch {
-        setErro("Não deu pra abrir a contagem agora. Tenta de novo em instantes.");
+      } catch (falha) {
+        setErro(mensagemFalhaChamada(falha, "Não deu pra abrir a contagem agora. Tenta de novo em instantes."));
       } finally {
         setAbrindo(false);
       }
@@ -437,9 +535,16 @@ export function ContagemForm({
             return;
           }
         }
+        limparRascunho(chaveAtual);
         setEnviado(true);
-      } catch {
-        setErro("Não deu pra registrar agora. Tenta de novo em instantes.");
+      } catch (falha) {
+        setErro(
+          mensagemFalhaChamada(
+            falha,
+            "Não deu pra registrar agora. Seus números estão guardados neste aparelho: tenta de novo em instantes.",
+            { guardado: true },
+          ),
+        );
       }
     });
   }
@@ -470,7 +575,7 @@ export function ContagemForm({
     const url = URL.createObjectURL(blob);
     const a2 = document.createElement("a");
     a2.href = url;
-    a2.download = `inventario-domquixote-${dataISO}.csv`;
+    a2.download = `inventario-${slugArquivo(unidadeNome)}-${dataISO}.csv`;
     document.body.appendChild(a2);
     a2.click();
     document.body.removeChild(a2);
@@ -619,6 +724,11 @@ export function ContagemForm({
             ))}
           </ul>
         </div>
+        {avisoRascunho && (
+          <p className="mt-4 rounded-lg border border-azul-petroleo/30 bg-off-white px-3 py-2.5 text-sm text-cinza">
+            {avisoRascunho}
+          </p>
+        )}
         <button
           onClick={() => setTela("inventario")}
           className="mt-6 w-full rounded-lg bg-ambar px-4 py-3.5 text-sm font-bold text-azul-noite"

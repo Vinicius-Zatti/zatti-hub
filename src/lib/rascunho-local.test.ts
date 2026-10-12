@@ -1,0 +1,74 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  chaveRascunho,
+  lerRascunho,
+  lerRascunhoBruto,
+  limparRascunho,
+  quandoFoiSalvo,
+  salvarRascunho,
+} from "@/lib/rascunho-local";
+
+function armazenamentoEmMemoria() {
+  const dados = new Map<string, string>();
+  return {
+    getItem: (k: string) => dados.get(k) ?? null,
+    setItem: (k: string, v: string) => void dados.set(k, v),
+    removeItem: (k: string) => void dados.delete(k),
+  };
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("rascunho local", () => {
+  it("separa por unidade, data e setor", () => {
+    const a = chaveRascunho("contagem", "the-house-food-fun-belo-horizonte", "2026-10-11", "setor-1");
+    const b = chaveRascunho("contagem", "the-house-food-fun-belo-horizonte", "2026-10-11", "setor-2");
+    const c = chaveRascunho("contagem", "dom-quixote", "2026-10-11", "setor-1");
+    expect(new Set([a, b, c]).size).toBe(3);
+  });
+
+  it("guarda, lê e limpa", () => {
+    vi.stubGlobal("window", { localStorage: armazenamentoEmMemoria() });
+    const chave = chaveRascunho("contagem", "u", "2026-10-11", "s");
+    salvarRascunho(chave, { valores: { SKU1: "12" } });
+    const lido = lerRascunho<{ valores: Record<string, string> }>(chave);
+    expect(lido?.valores).toEqual({ SKU1: "12" });
+    expect(typeof lido?.salvoEm).toBe("string");
+    expect(lerRascunhoBruto(chave)).not.toBeNull();
+    limparRascunho(chave);
+    expect(lerRascunho(chave)).toBeNull();
+  });
+
+  it("não quebra sem localStorage (modo privado, bloqueado)", () => {
+    const quebrado = {
+      getItem: () => {
+        throw new Error("SecurityError");
+      },
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {
+        throw new Error("SecurityError");
+      },
+    };
+    vi.stubGlobal("window", { localStorage: quebrado });
+    expect(() => salvarRascunho("k", { a: 1 })).not.toThrow();
+    expect(lerRascunho("k")).toBeNull();
+    expect(lerRascunhoBruto("k")).toBeNull();
+    expect(() => limparRascunho("k")).not.toThrow();
+  });
+
+  it("ignora conteúdo corrompido", () => {
+    const armazenamento = armazenamentoEmMemoria();
+    armazenamento.setItem("k", "{nao e json");
+    armazenamento.setItem("lista", "[1,2]");
+    vi.stubGlobal("window", { localStorage: armazenamento });
+    expect(lerRascunho("k")).toBeNull();
+    expect(lerRascunho("lista")).toBeNull();
+  });
+
+  it("formata quando foi salvo", () => {
+    expect(quandoFoiSalvo(new Date(2026, 9, 11, 12, 4).toISOString())).toBe("11/10 às 12:04");
+    expect(quandoFoiSalvo("invalido")).toBe("");
+  });
+});
