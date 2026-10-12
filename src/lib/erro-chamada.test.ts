@@ -12,6 +12,8 @@ describe("mensagemFalhaChamada", () => {
     expect(mensagemFalhaChamada(erro, "genérica")).toBe(MENSAGEM_APP_ATUALIZADO);
     expect(mensagemFalhaChamada(erro, "genérica", { guardado: true })).toBe(MENSAGEM_APP_ATUALIZADO_GUARDADO);
     expect(MENSAGEM_APP_ATUALIZADO_GUARDADO).toContain("F5");
+    // Não conseguiu guardar: nunca diz que está guardado.
+    expect(mensagemFalhaChamada(erro, "genérica", { guardado: false, semGuarda: "baixe o CSV" })).toBe("baixe o CSV");
   });
 
   it("outra falha (rede etc.): mantém a mensagem da tela", () => {

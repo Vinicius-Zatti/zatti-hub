@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconeNavegacao, type NomeIconeNavegacao } from "@/components/icones-navegacao";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { signOutAction } from "@/lib/supabase/actions";
+import { limparTodosRascunhos } from "@/lib/rascunho-local";
 
 export type SecaoNavegacao = {
   label: string;
@@ -269,7 +270,8 @@ export function EstruturaAplicativo({
             </span>
           </button>
 
-          <form action={signOutAction}>
+          {/* Sair limpa os rascunhos de Contagem/Desempenho deste aparelho. */}
+          <form action={signOutAction} onSubmit={limparTodosRascunhos}>
             <button
               type="submit"
               aria-label="Sair"

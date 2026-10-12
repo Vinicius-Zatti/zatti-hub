@@ -83,10 +83,13 @@ function semAssinatura(): () => void {
  * é a chave natural do registro (unique unidade+data). */
 export function NovoLancamentoForm({
   existente,
+  userId,
   unidadeId,
 }: {
   existente?: ConsolidadoVenda;
-  /** Só no lançamento novo: separa o rascunho guardado no navegador. */
+  /** Só no lançamento novo: usuário e unidade separam o rascunho guardado
+   * no navegador (outro usuário no mesmo aparelho não herda os valores). */
+  userId?: string;
   unidadeId?: string;
 }) {
   const router = useRouter();
@@ -118,7 +121,8 @@ export function NovoLancamentoForm({
 
   // Rascunho do lançamento novo, por unidade e data: o que foi digitado
   // sobrevive a um F5 ou a uma falha ao salvar. Edição não guarda rascunho.
-  const chave = !existente && unidadeId ? chaveRascunho("desempenho", unidadeId, dataISO) : null;
+  const chave =
+    !existente && userId && unidadeId ? chaveRascunho("desempenho", userId, unidadeId, dataISO) : null;
   const rascunhoBruto = useSyncExternalStore(
     semAssinatura,
     () => (chave ? lerRascunhoBruto(chave) : null),
@@ -151,11 +155,22 @@ export function NovoLancamentoForm({
     const novos = { ...campos, [campo]: valor };
     setCampos(novos);
     if (chave) {
-      salvarRascunho(chave, { campos: novos });
+      guardarRascunho(novos);
       // Digitou por cima: o rascunho antigo deixa de ser oferecido.
       setRascunhoResolvido(true);
     }
     ativar("Você tem um lançamento não salvo. Se sair agora, ele se perde.");
+  }
+
+  /** Grava o rascunho e devolve se a gravação foi confirmada. Formulário
+   * todo zerado de novo apaga o rascunho. */
+  function guardarRascunho(valores: Campos): boolean {
+    if (!chave) return false;
+    if (CHAVES_CAMPOS.every((c) => num(valores[c]) === 0)) {
+      limparRascunho(chave);
+      return false;
+    }
+    return salvarRascunho(chave, { campos: valores });
   }
 
   function montarInput(confirmarDivergencia: boolean): EntradaForm {
@@ -177,6 +192,7 @@ export function NovoLancamentoForm({
   function salvar(confirmarDivergencia: boolean) {
     setErro(null);
     setJaExiste(null);
+    const guardado = guardarRascunho(campos);
     startTransition(async () => {
       let resultado: Awaited<ReturnType<typeof criarConsolidadoAction>>;
       try {
@@ -188,10 +204,15 @@ export function NovoLancamentoForm({
         setErro(
           mensagemFalhaChamada(
             falha,
-            chave
+            guardado
               ? "Não deu pra salvar agora. Os valores estão guardados neste aparelho: tente de novo em instantes."
-              : "Não deu pra salvar agora. Tente de novo em instantes.",
-            { guardado: Boolean(chave) },
+              : "Não deu pra salvar agora. Anote os valores antes de recarregar a página e tente de novo em instantes.",
+            {
+              guardado,
+              semGuarda:
+                "O app foi atualizado e este aparelho não guardou os valores. Anote os valores, " +
+                "recarregue a página (F5) e salve de novo.",
+            },
           ),
         );
         return;

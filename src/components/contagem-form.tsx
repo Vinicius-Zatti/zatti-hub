@@ -97,6 +97,7 @@ function hojeISO(): string {
 }
 
 export function ContagemForm({
+  userId,
   unidadeId,
   unidadeNome,
   produtos,
@@ -104,7 +105,9 @@ export function ContagemForm({
   andamentoPorData = new Map(),
   modalidadePorData = new Map(),
 }: {
-  /** Unidade da sessão: separa o rascunho guardado no navegador. */
+  /** Usuário e unidade da sessão: separam o rascunho guardado no navegador
+   * (quem entra depois no mesmo aparelho não herda os números de outro). */
+  userId: string;
   unidadeId: string;
   /** Nome da unidade (com a organização quando difere), usado no título e no arquivo do
    * "Baixar CSV". */
@@ -256,18 +259,28 @@ export function ContagemForm({
     return () => desativar();
   }, [tela, enviado, ativar, desativar]);
 
-  // Rascunho por unidade, data e setor: o que foi digitado sobrevive a um
-  // recarregar da página (F5) ou a uma falha no envio. Some depois do envio.
-  const chaveAtual = chaveRascunho("contagem", unidadeId, dataISO, usaSetor ? setorId : "sem-setor");
+  // Rascunho por usuário, unidade, data e setor: o que foi digitado
+  // sobrevive a um recarregar da página (F5) ou a uma falha no envio. Some
+  // depois do envio, e quando a lista fica toda vazia de novo.
+  const chaveAtual = chaveRascunho("contagem", userId, unidadeId, dataISO, usaSetor ? setorId : "sem-setor");
 
-  useEffect(() => {
-    if (tela !== "inventario" || enviado) return;
+  function guardarRascunhoAgora(): boolean {
     const temAlgo =
       Object.values(valores).some((v) => v.trim() !== "") ||
       Object.keys(confirmados).length > 0 ||
       customItens.length > 0;
-    if (!temAlgo) return;
-    salvarRascunho<RascunhoContagem>(chaveAtual, { valores, confirmados, customItens, motivoReenvio });
+    if (!temAlgo) {
+      limparRascunho(chaveAtual);
+      return false;
+    }
+    return salvarRascunho<RascunhoContagem>(chaveAtual, { valores, confirmados, customItens, motivoReenvio });
+  }
+
+  useEffect(() => {
+    if (tela !== "inventario" || enviado) return;
+    guardarRascunhoAgora();
+    // guardarRascunhoAgora só lê os valores listados abaixo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tela, enviado, chaveAtual, valores, confirmados, customItens, motivoReenvio]);
 
   /** Recupera o rascunho desta unidade/data/setor, só com os itens que ainda
@@ -513,6 +526,10 @@ export function ContagemForm({
       if (!segue) return;
     }
 
+    // Grava e confere o rascunho agora: a mensagem de falha só promete que
+    // os números estão guardados se a gravação foi confirmada.
+    const guardado = guardarRascunhoAgora();
+
     startTransition(async () => {
       try {
         if (usaSetor) {
@@ -541,8 +558,16 @@ export function ContagemForm({
         setErro(
           mensagemFalhaChamada(
             falha,
-            "Não deu pra registrar agora. Seus números estão guardados neste aparelho: tenta de novo em instantes.",
-            { guardado: true },
+            guardado
+              ? "Não deu pra registrar agora. Seus números estão guardados neste aparelho: tenta de novo em instantes."
+              : "Não deu pra registrar agora e este aparelho não conseguiu guardar os números. " +
+                  "Toque em Baixar CSV (backup) antes de recarregar a página e tente de novo em instantes.",
+            {
+              guardado,
+              semGuarda:
+                "O app foi atualizado e este aparelho não conseguiu guardar os números. Toque em " +
+                "Baixar CSV (backup) antes de recarregar a página (F5), depois envie de novo.",
+            },
           ),
         );
       }

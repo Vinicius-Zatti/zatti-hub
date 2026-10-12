@@ -34,6 +34,7 @@ export default async function ContagemPage() {
 
   return (
     <ContagemForm
+      userId={acesso.userId}
       unidadeId={acesso.unidadeId}
       unidadeNome={
         // "The House Food & Fun Belo Horizonte"; quando unidade e organização

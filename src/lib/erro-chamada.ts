@@ -9,14 +9,17 @@ export const MENSAGEM_APP_ATUALIZADO =
   "O app foi atualizado. Recarregue a página (F5) e tente de novo.";
 
 /** Mensagem para o catch de uma Server Action chamada pelo navegador.
- * `guardado`: a tela tem rascunho salvo, então dá pra dizer que nada se perde. */
+ * `guardado`: o rascunho foi gravado e confirmado agora, então dá pra dizer
+ * que nada se perde. `semGuarda`: o que orientar quando a tela tinha dados
+ * e não conseguiu guardá-los (baixar o CSV, anotar os valores). */
 export function mensagemFalhaChamada(
   erro: unknown,
   fallback: string,
-  { guardado = false }: { guardado?: boolean } = {},
+  { guardado = false, semGuarda }: { guardado?: boolean; semGuarda?: string } = {},
 ): string {
   if (unstable_isUnrecognizedActionError(erro)) {
-    return guardado ? MENSAGEM_APP_ATUALIZADO_GUARDADO : MENSAGEM_APP_ATUALIZADO;
+    if (guardado) return MENSAGEM_APP_ATUALIZADO_GUARDADO;
+    return semGuarda ?? MENSAGEM_APP_ATUALIZADO;
   }
   return fallback;
 }

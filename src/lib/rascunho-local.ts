@@ -34,11 +34,16 @@ export function lerRascunho<T>(chave: string): (T & { salvoEm: string }) | null 
   }
 }
 
-export function salvarRascunho<T extends object>(chave: string, dados: T): void {
+/** Devolve `true` só quando a gravação foi confirmada (lida de volta igual).
+ * Com armazenamento bloqueado ou cheio devolve `false`, e a tela não pode
+ * dizer que os números estão guardados. */
+export function salvarRascunho<T extends object>(chave: string, dados: T): boolean {
   try {
-    window.localStorage.setItem(chave, JSON.stringify({ ...dados, salvoEm: new Date().toISOString() }));
+    const texto = JSON.stringify({ ...dados, salvoEm: new Date().toISOString() });
+    window.localStorage.setItem(chave, texto);
+    return window.localStorage.getItem(chave) === texto;
   } catch {
-    // Sem armazenamento disponível: o rascunho só não fica guardado.
+    return false;
   }
 }
 
@@ -47,6 +52,21 @@ export function limparRascunho(chave: string): void {
     window.localStorage.removeItem(chave);
   } catch {
     // Idem: nada a fazer.
+  }
+}
+
+/** Apaga todos os rascunhos do app neste navegador. Chamada no "Sair": o
+ * próximo a entrar no mesmo aparelho não herda nada. */
+export function limparTodosRascunhos(): void {
+  try {
+    const chaves: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const chave = window.localStorage.key(i);
+      if (chave?.startsWith(`${PREFIXO}:`)) chaves.push(chave);
+    }
+    chaves.forEach((chave) => window.localStorage.removeItem(chave));
+  } catch {
+    // Sem armazenamento: não há o que limpar.
   }
 }
 
