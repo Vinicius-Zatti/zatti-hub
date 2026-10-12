@@ -91,10 +91,9 @@ describe.skipIf(!ativo)("Equipe ponta a ponta local (primeiro acesso sem sessão
     // Pendente: a provisória não é senha do Auth, e nenhum caminho cria sessão.
     const anonimo = createClient(url, anon, { auth: { persistSession: false } });
     expect((await anonimo.auth.signInWithPassword({ email, password: provisoria })).error).not.toBeNull();
-    const { data: link } = await admin.auth.admin.generateLink({ type: "magiclink", email });
-    const tokenHash = link?.properties?.hashed_token;
-    expect(tokenHash).toBeTruthy();
-    expect((await anonimo.auth.verifyOtp({ token_hash: tokenHash!, type: "magiclink" })).error).not.toBeNull();
+    // Nenhum fluxo de acesso começa: link mágico e recuperação são recusados pelo banco.
+    expect((await admin.auth.admin.generateLink({ type: "magiclink", email })).error).not.toBeNull();
+    expect((await admin.auth.admin.generateLink({ type: "recovery", email })).error).not.toBeNull();
     // Nem o Auth troca a senha por fora do primeiro acesso.
     expect((await admin.auth.admin.updateUserById(userId, { password: "por-fora-da-equipe-123" })).error).not.toBeNull();
 

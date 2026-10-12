@@ -1,15 +1,10 @@
 import Image from "next/image";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { PrimeiroAcessoForm } from "@/components/equipe/primeiro-acesso-form";
 
 /** Primeiro acesso sem sessão (conta pendente não consegue entrar): e-mail,
- * senha provisória e senha nova. Rota pública. Quem já está logado vai para o app. */
-export default async function PrimeiroAcessoPage() {
-  const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  if (claims?.claims.sub) redirect("/");
-
+ * senha provisória e senha nova. Rota pública e sem redirecionamento: um
+ * cookie antigo, de sessão já revogada, não pode criar laço com o app. */
+export default function PrimeiroAcessoPage() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-azul-noite px-4">
       <div className="w-full max-w-sm rounded-lg bg-branco p-6">

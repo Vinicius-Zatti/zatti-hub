@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(59);
+select plan(62);
 
 grant select, insert, update on organizacoes, unidades, vinculos, perfis, setores to authenticated;
 
@@ -155,6 +155,16 @@ select throws_ok($$ insert into auth.sessions (id, user_id, created_at, updated_
 select throws_ok($$ update auth.users set encrypted_password = 'escrita-de-fora' where id = '00000000-0000-0000-0000-0000000e0001' $$,
   '42501', 'senha_pendente_primeiro_acesso', 'com pendência ninguém troca a senha no Auth (nem o próprio Auth)');
 
+-- Conta recém-criada, marcada no Auth, antes de a pendência ir para o banco.
+insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role, raw_app_meta_data) values
+  ('00000000-0000-0000-0000-0000000e0009', 'recem-criada@teste.local', 'x', now(), 'authenticated', 'authenticated',
+   '{"zh_pendente": true}'::jsonb);
+select throws_ok($$ insert into auth.sessions (id, user_id, created_at, updated_at)
+  values (gen_random_uuid(), '00000000-0000-0000-0000-0000000e0009', now(), now()) $$, '42501', 'conta_pendente_sem_sessao',
+  'conta marcada pendente no Auth não ganha sessão nem antes de a pendência ir para o banco');
+select throws_ok($$ update auth.users set recovery_token = 'link' where id = '00000000-0000-0000-0000-0000000e0009' $$,
+  '42501', 'conta_pendente_sem_acesso', 'nem link de recuperação');
+
 -- ── Reenvio: só o hash da provisória, pelo vínculo de origem ───────────
 create temp table t_senha (nome text primary key, hash text);
 insert into t_senha select 'inicial', encrypted_password from auth.users where id = '00000000-0000-0000-0000-0000000e0001';
@@ -191,11 +201,12 @@ update senhas_temporarias set expira_em = now() - interval '1 minute' where user
 select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'MinhaSenhaNova123'), 'provisoria_invalida',
   'provisória vencida não conclui');
 update senhas_temporarias set expira_em = now() + interval '7 days', tentativas = 0 where user_id = '00000000-0000-0000-0000-0000000e0001';
-update auth.users set recovery_token = 'recuperacao-aberta' where id = '00000000-0000-0000-0000-0000000e0001';
+select throws_ok($$ update auth.users set recovery_token = 'recuperacao-aberta' where id = '00000000-0000-0000-0000-0000000e0001' $$,
+  '42501', 'conta_pendente_sem_acesso', 'recuperação de senha não começa durante a pendência');
 select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'MinhaSenhaNova123'), 'ok', 'com a provisória vigente conclui');
 select ok((select encrypted_password = extensions.crypt('MinhaSenhaNova123', encrypted_password) from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), 'senha nova gravada no Auth na mesma transação');
 select is((select raw_app_meta_data ->> 'zh_pendente' from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), 'false', 'marca de pendência sai junto');
-select is((select recovery_token from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), '', 'recuperação aberta antes da troca é invalidada');
+select is((select coalesce(recovery_token, '') from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), '', 'nenhum token de recuperação sobra depois da troca');
 select is((select count(*)::int from auth.sessions where user_id = '00000000-0000-0000-0000-0000000e0001'), 0, 'sessões anteriores caem no Auth');
 select is((select count(*)::int from senhas_temporarias where user_id = '00000000-0000-0000-0000-0000000e0001'), 0, 'pendência apagada');
 select is(public.concluir_primeiro_acesso('pendente@teste.local', 'Provisoria234', 'OutraSenha12345'), 'provisoria_invalida',

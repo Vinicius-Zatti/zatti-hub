@@ -21,7 +21,7 @@ do $$
 begin
   if not (has_table_privilege('auth.users', 'UPDATE') and has_table_privilege('auth.users', 'TRIGGER')
           and has_table_privilege('auth.sessions', 'DELETE') and has_table_privilege('auth.sessions', 'TRIGGER')
-          and has_table_privilege('auth.flow_state', 'DELETE')) then
+          and has_table_privilege('auth.flow_state', 'DELETE') and has_table_privilege('auth.flow_state', 'TRIGGER')) then
     raise exception 'Sem permissão em auth.users/auth.sessions/auth.flow_state para este usuário. Nada foi alterado.';
   end if;
 end $$;
@@ -57,12 +57,26 @@ $$;
 revoke all on function public.equipe_pendente_por_email(text) from public, anon, authenticated;
 
 -- ── Proteção no Auth enquanto a conta está pendente ─────────────────────
--- Vale para QUALQUER escritor, inclusive o próprio Auth. Só passa a troca feita por
--- `concluir_primeiro_acesso`, marcada na própria transação.
+-- Pendente = tem senha provisória guardada OU nasceu marcada no Auth (zh_pendente), o que
+-- cobre a conta desde o primeiro instante, antes de a pendência ir para o banco, e o
+-- cadastro que ficou pela metade. Vale para QUALQUER escritor, inclusive o próprio Auth:
+-- enquanto pendente, nenhuma sessão é criada e nenhum fluxo que leva a sessão ou a troca
+-- de senha começa (recuperação, link mágico, PKCE, reautenticação, troca de e-mail).
+-- Como nada começa durante a pendência, não existe operação em andamento que atravesse a
+-- conclusão. Só passa a escrita marcada na própria transação por `concluir_primeiro_acesso`.
+create or replace function public.equipe_conta_pendente(p_user_id uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select p_user_id is not null and (
+    exists (select 1 from public.senhas_temporarias t where t.user_id = p_user_id)
+    or exists (select 1 from auth.users u where u.id = p_user_id and u.raw_app_meta_data ->> 'zh_pendente' = 'true')
+  );
+$$;
+revoke all on function public.equipe_conta_pendente(uuid) from public, anon, authenticated;
+
 create or replace function public.equipe_bloquear_sessao_pendente()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if exists (select 1 from public.senhas_temporarias t where t.user_id = new.user_id) then
+  if public.equipe_conta_pendente(new.user_id) then
     raise exception 'conta_pendente_sem_sessao' using errcode = '42501';
   end if;
   return new;
@@ -73,19 +87,39 @@ revoke all on function public.equipe_bloquear_sessao_pendente() from public, ano
 create or replace function public.equipe_proteger_senha()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if new.encrypted_password is not distinct from old.encrypted_password then
-    return new;
-  end if;
   if current_setting('zatti.troca_senha_equipe', true) = new.id::text then
     return new;
   end if;
-  if exists (select 1 from public.senhas_temporarias t where t.user_id = new.id) then
+  if not public.equipe_conta_pendente(old.id) then
+    return new;
+  end if;
+  if new.encrypted_password is distinct from old.encrypted_password then
     raise exception 'senha_pendente_primeiro_acesso' using errcode = '42501';
+  end if;
+  -- Nenhum fluxo de acesso começa durante a pendência (tokens só podem ser apagados).
+  if (coalesce(new.recovery_token, '') <> '' and new.recovery_token is distinct from old.recovery_token)
+     or (coalesce(new.confirmation_token, '') <> '' and new.confirmation_token is distinct from old.confirmation_token)
+     or (coalesce(new.reauthentication_token, '') <> '' and new.reauthentication_token is distinct from old.reauthentication_token)
+     or (coalesce(new.email_change_token_new, '') <> '' and new.email_change_token_new is distinct from old.email_change_token_new)
+     or (coalesce(new.email_change_token_current, '') <> '' and new.email_change_token_current is distinct from old.email_change_token_current)
+     or (new.email is distinct from old.email) then
+    raise exception 'conta_pendente_sem_acesso' using errcode = '42501';
   end if;
   return new;
 end;
 $$;
 revoke all on function public.equipe_proteger_senha() from public, anon, authenticated, service_role;
+
+create or replace function public.equipe_bloquear_fluxo_pendente()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if public.equipe_conta_pendente(new.user_id) then
+    raise exception 'conta_pendente_sem_acesso' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.equipe_bloquear_fluxo_pendente() from public, anon, authenticated, service_role;
 
 drop trigger if exists equipe_bloquear_sessao_pendente on auth.sessions;
 create trigger equipe_bloquear_sessao_pendente
@@ -94,8 +128,22 @@ create trigger equipe_bloquear_sessao_pendente
 
 drop trigger if exists equipe_proteger_senha on auth.users;
 create trigger equipe_proteger_senha
-  before update of encrypted_password on auth.users
+  before update on auth.users
   for each row execute function public.equipe_proteger_senha();
+
+drop trigger if exists equipe_bloquear_fluxo_pendente on auth.flow_state;
+create trigger equipe_bloquear_fluxo_pendente
+  before insert or update on auth.flow_state
+  for each row execute function public.equipe_bloquear_fluxo_pendente();
+
+do $$
+begin
+  if to_regclass('auth.one_time_tokens') is not null then
+    execute 'drop trigger if exists equipe_bloquear_fluxo_pendente on auth.one_time_tokens';
+    execute 'create trigger equipe_bloquear_fluxo_pendente before insert or update on auth.one_time_tokens '
+         || 'for each row execute function public.equipe_bloquear_fluxo_pendente()';
+  end if;
+end $$;
 
 -- Limpa no Auth tudo o que dá acesso ou troca a senha: sessões (refresh tokens caem em
 -- cascata), recuperação e reautenticação pendentes, estado PKCE e links de uso único.
