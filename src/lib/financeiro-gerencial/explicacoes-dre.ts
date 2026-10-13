@@ -38,7 +38,7 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
   sugestao_contagem_estoque:
     "Sugestão = valor da última contagem completa com data dentro do mês (contagem antiga, ou contagem por setor com todos os setores concluídos), a mais próxima do fim do mês. " +
     "Valor = soma de quantidade × preço de todos os itens da contagem, o mesmo da Contagem > Visualização e da Calculadora de CMV. Item sem preço ou sem quantidade vale R$ 0 e deixa o valor parcial. " +
-    "A Contagem não separa embalagens, por isso a sugestão vai só para Mercadorias. Usar o valor só preenche o campo: nada é salvo sem você.",
+    "Embalagens = itens do grupo EMB do padrão de SKU Zatti (as 3 primeiras letras do SKU; SKU fora do padrão usa o grupo do cadastro). Mercadorias = todos os outros itens; item sem grupo reconhecido também vai para Mercadorias e a tela avisa quantos. Usar o valor só preenche o campo: nada é salvo sem você.",
   painel_faturamento: "Faturamento = Receita Operacional Bruta da DRE no mês de competência (mesmo número da DRE).",
   painel_cmv_percentual:
     "% CMV da DRE no mês = CMV ÷ Venda de Produtos, quando o estoque final e a Venda de Produtos do mês estão informados. " +

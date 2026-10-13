@@ -63,11 +63,30 @@ function diaMes(data: string): string {
   return data.split("/").slice(0, 2).join("/");
 }
 
-/** Célula da linha "Sugestão da Contagem" de um mês (Fase 3, item 2): mostra a
- * última contagem completa do mês e, para a Gestão, o botão que só preenche o
- * campo de Estoque Final de Mercadorias. Nunca grava sozinho. */
+/** Campos que recebem sugestão da Contagem: Mercadorias (tudo que não é
+ * embalagem) e Embalagens (grupo EMB), decisão 5 de 13/10. Cada um com o
+ * próprio "Usar este valor". */
+const CAMPOS_COM_SUGESTAO = {
+  estoqueFinalMercadorias: { rotulo: "Mercadorias", valor: (s: SugestaoEstoqueContagem) => s.mercadorias },
+  estoqueFinalEmbalagens: { rotulo: "Embalagens", valor: (s: SugestaoEstoqueContagem) => s.embalagens },
+} as const;
+type CampoComSugestao = keyof typeof CAMPOS_COM_SUGESTAO;
+
+function ehCampoComSugestao(campo: keyof CamposMes): campo is CampoComSugestao {
+  return campo in CAMPOS_COM_SUGESTAO;
+}
+
+function chavePendente(indiceMes: number, campo: CampoComSugestao): string {
+  return `${indiceMes}:${campo}`;
+}
+
+/** Célula da linha "Sugestão da Contagem" de um mês e de um campo (Fase 3,
+ * item 2): mostra a última contagem completa do mês e, para a Gestão, o botão
+ * que só preenche aquele campo. Nunca grava sozinho. */
 function CelulaSugestao({
   sugestao,
+  valor,
+  semGrupo,
   podeGerir,
   status,
   pendente,
@@ -77,6 +96,10 @@ function CelulaSugestao({
   onSalvar,
 }: {
   sugestao: SugestaoEstoqueContagem | null;
+  /** Parcela da contagem que vai para este campo (mercadorias ou embalagens). */
+  valor: number;
+  /** Só na linha de Mercadorias: itens sem grupo reconhecido que caíram aqui. */
+  semGrupo: number;
   podeGerir: boolean;
   status: Status;
   /** Valor da Contagem posto no campo pelo "Usar este valor" e ainda não
@@ -92,10 +115,15 @@ function CelulaSugestao({
   return (
     <span className="flex flex-col items-end gap-0.5 text-[11px] leading-tight">
       <span className="text-cinza-medio">Contagem de {diaMes(sugestao.data)}:</span>
-      <span className="font-mono font-semibold text-cinza">R$ {formatarNumero(sugestao.valor)}</span>
+      <span className="font-mono font-semibold text-cinza">R$ {formatarNumero(valor)}</span>
       {sugestao.itensSemValor > 0 && (
         <span className="text-ambar" title="Itens sem preço no cadastro ou sem quantidade valem R$ 0: o valor é parcial.">
           {sugestao.itensSemValor} {sugestao.itensSemValor === 1 ? "item" : "itens"} sem preço (parcial)
+        </span>
+      )}
+      {semGrupo > 0 && (
+        <span className="text-ambar" title="Item cujo SKU e cadastro não dizem o grupo: foi somado em Mercadorias. Confira o cadastro do produto.">
+          {semGrupo} {semGrupo === 1 ? "item sem grupo" : "itens sem grupo"} (em Mercadorias)
         </span>
       )}
       {podeGerir && pendente ? (
@@ -141,8 +169,8 @@ export function DadosComplementaresDre({
 }: {
   ano: number;
   estoquesDoAno: (EstoqueMensal | null)[];
-  /** Fase 3 (13/10): sugestão de Estoque Final de Mercadorias vinda da
-   * Contagem, por mês. `null` = a Contagem não pôde ser lida agora. */
+  /** Fase 3 (13/10): sugestão de Estoque Final de Mercadorias e de Embalagens
+   * vinda da Contagem, por mês. `null` = a Contagem não pôde ser lida agora. */
   sugestoesContagem?: (SugestaoEstoqueContagem | null)[] | null;
   podeGerir: boolean;
 }) {
@@ -150,16 +178,17 @@ export function DadosComplementaresDre({
   const [valores, setValores] = useState<CamposMes[]>(() => estoquesDoAno.map(paraCampos));
   const [statusPorMes, setStatusPorMes] = useState<Record<number, Status>>({});
   const [erroPorMes, setErroPorMes] = useState<Record<number, string>>({});
-  const [sugestaoPendentePorMes, setSugestaoPendentePorMes] = useState<Record<number, boolean>>({});
+  /** Chave `mês:campo` (ver `chavePendente`): cada campo com sugestão tem o seu pendente. */
+  const [sugestaoPendente, setSugestaoPendente] = useState<Record<string, boolean>>({});
 
   function alterarCampo(indiceMes: number, campo: keyof CamposMes, valor: number | null) {
     setValores((atual) => atual.map((mes, i) => (i === indiceMes ? { ...mes, [campo]: valor } : mes)));
   }
 
-  /** "Usar este valor": só preenche o campo; a pessoa confere e salva. */
-  function usarSugestao(indiceMes: number, valor: number) {
-    alterarCampo(indiceMes, "estoqueFinalMercadorias", Math.round(valor * 100) / 100);
-    setSugestaoPendentePorMes((atual) => ({ ...atual, [indiceMes]: true }));
+  /** "Usar este valor": só preenche aquele campo; a pessoa confere e salva. */
+  function usarSugestao(indiceMes: number, campo: CampoComSugestao, valor: number) {
+    alterarCampo(indiceMes, campo, Math.round(valor * 100) / 100);
+    setSugestaoPendente((atual) => ({ ...atual, [chavePendente(indiceMes, campo)]: true }));
   }
 
   async function salvarMes(indiceMes: number) {
@@ -186,7 +215,11 @@ export function DadosComplementaresDre({
       delete proximo[indiceMes];
       return proximo;
     });
-    setSugestaoPendentePorMes((atual) => ({ ...atual, [indiceMes]: false }));
+    setSugestaoPendente((atual) => ({
+      ...atual,
+      [chavePendente(indiceMes, "estoqueFinalMercadorias")]: false,
+      [chavePendente(indiceMes, "estoqueFinalEmbalagens")]: false,
+    }));
     setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "salvo" }));
     router.refresh();
     setTimeout(() => setStatusPorMes((atual) => (atual[indiceMes] === "salvo" ? { ...atual, [indiceMes]: undefined } : atual)), 2000);
@@ -203,8 +236,9 @@ export function DadosComplementaresDre({
           (embalagens, se houver) para fechar o CMV do mês.
         </p>
         <p className="mt-1 text-sm text-cinza-medio">
-          Sugestão da Contagem: valor da última contagem completa de cada mês. A Contagem não separa mercadorias de embalagens, então o
-          valor inteiro é sugerido só para o Estoque Final de Mercadorias: confira antes de usar. Nada é salvo sem você.
+          Sugestão da Contagem: valor da última contagem completa de cada mês, separado pelo grupo do SKU: Embalagens recebe os itens do
+          grupo EMB e Mercadorias recebe todos os outros (item sem grupo reconhecido vai para Mercadorias, e a célula avisa quantos).
+          Confira antes de usar. Nada é salvo sem você.
         </p>
       </div>
       <TabelaRolavel ariaLabel="Tabela de dados complementares da DRE">
@@ -244,7 +278,7 @@ export function DadosComplementaresDre({
                               ? "ring-2 ring-vermelho"
                               : status === "salvo"
                                 ? "ring-2 ring-verde"
-                                : sugestaoPendentePorMes[indiceMes] && campo === "estoqueFinalMercadorias"
+                                : ehCampoComSugestao(campo) && sugestaoPendente[chavePendente(indiceMes, campo)]
                                   ? "ring-2 ring-ambar"
                                   : ""
                           }`}
@@ -259,14 +293,14 @@ export function DadosComplementaresDre({
                   );
                 })}
               </tr>
-              {campo === "estoqueFinalMercadorias" && (
+              {ehCampoComSugestao(campo) && (
                 <tr className="bg-off-white">
                   <td className="sticky left-0 z-10 bg-off-white py-2 pr-3 pl-3 text-xs font-semibold text-cinza-medio">
                     <span className="flex items-center gap-1.5">
-                      <span className="block min-w-0 truncate" title="Sugestão da Contagem (Mercadorias)">
-                        Sugestão da Contagem
+                      <span className="block min-w-0 truncate" title={`Sugestão da Contagem (${CAMPOS_COM_SUGESTAO[campo].rotulo})`}>
+                        Sugestão da Contagem ({CAMPOS_COM_SUGESTAO[campo].rotulo})
                       </span>
-                      <DicaCalculo texto={EXPLICACAO_CALCULO.sugestao_contagem_estoque} rotulo="Sugestão da Contagem" />
+                      <DicaCalculo texto={EXPLICACAO_CALCULO.sugestao_contagem_estoque} rotulo={`Sugestão da Contagem (${CAMPOS_COM_SUGESTAO[campo].rotulo})`} />
                     </span>
                   </td>
                   {sugestoesContagem === null ? (
@@ -276,16 +310,19 @@ export function DadosComplementaresDre({
                   ) : (
                     valores.map((mes, indiceMes) => {
                       const sugestao = sugestoesContagem[indiceMes] ?? null;
+                      const valorSugerido = sugestao ? Math.round(CAMPOS_COM_SUGESTAO[campo].valor(sugestao) * 100) / 100 : 0;
                       return (
                         <td key={indiceMes} className="px-2 py-1.5 text-right align-top">
                           <CelulaSugestao
                             sugestao={sugestao}
+                            valor={valorSugerido}
+                            semGrupo={campo === "estoqueFinalMercadorias" ? (sugestao?.itensSemGrupo ?? 0) : 0}
                             podeGerir={podeGerir}
                             status={statusPorMes[indiceMes]}
-                            pendente={sugestaoPendentePorMes[indiceMes] === true}
+                            pendente={sugestaoPendente[chavePendente(indiceMes, campo)] === true}
                             erro={erroPorMes[indiceMes]}
-                            jaIgual={sugestao !== null && mes.estoqueFinalMercadorias === Math.round(sugestao.valor * 100) / 100}
-                            onUsar={() => sugestao && usarSugestao(indiceMes, sugestao.valor)}
+                            jaIgual={sugestao !== null && mes[campo] === valorSugerido}
+                            onUsar={() => sugestao && usarSugestao(indiceMes, campo, valorSugerido)}
                             onSalvar={() => salvarMes(indiceMes)}
                           />
                         </td>

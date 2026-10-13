@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { AndamentoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 import type { ItemInventario } from "@/lib/types";
-import { sugestaoEstoqueDoMes, sugestoesEstoqueDoAno } from "./sugestao-estoque-contagem";
+import { grupoDoItem, sugestaoEstoqueDoMes, sugestoesEstoqueDoAno } from "./sugestao-estoque-contagem";
 
-function item(data: string, quantidade: number | null, preco: number | null, sku = "HORLTA001"): ItemInventario {
+function item(data: string, quantidade: number | null, preco: number | null, sku = "HORLTA001", grupo = "HOR"): ItemInventario {
   return {
     data,
     mes: "",
     sku,
-    grupo: "HOR",
+    grupo,
     nome: sku,
     unidadeBase: "KG",
     quantidade,
@@ -27,7 +27,13 @@ const SEM_SETOR = { andamentoPorData: new Map<string, AndamentoSetor[]>(), modal
 describe("sugestão de estoque final vinda da Contagem (Fase 3, item 2)", () => {
   it("escolhe a contagem completa mais próxima do fim do mês, com o valor da Contagem", () => {
     const itens = [item("05/09/2026", 2, 10), item("28/09/2026", 3, 10), item("28/09/2026", 1, 50, "CARBOV001"), item("02/10/2026", 9, 10)];
-    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR })).toEqual({ data: "28/09/2026", valor: 80, itensSemValor: 0 });
+    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR })).toEqual({
+      data: "28/09/2026",
+      mercadorias: 80,
+      embalagens: 0,
+      itensSemValor: 0,
+      itensSemGrupo: 0,
+    });
   });
 
   it("contagem por setor com setor pendente não entra: volta para a última completa do mês", () => {
@@ -46,7 +52,7 @@ describe("sugestão de estoque final vinda da Contagem (Fase 3, item 2)", () => 
   it("contagem legada conta como completa", () => {
     const itens = [item("30/09/2026", 4, 10)];
     const modalidadePorData = new Map<string, ModalidadeContagem>([["30/09/2026", "legada"]]);
-    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, andamentoPorData: new Map(), modalidadePorData })?.valor).toBe(40);
+    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, andamentoPorData: new Map(), modalidadePorData })?.mercadorias).toBe(40);
   });
 
   it("sem contagem completa no mês: null (nunca usa contagem de outro mês)", () => {
@@ -56,14 +62,51 @@ describe("sugestão de estoque final vinda da Contagem (Fase 3, item 2)", () => 
 
   it("conta os itens sem preço ou sem quantidade (valor parcial)", () => {
     const itens = [item("30/09/2026", 2, 10), item("30/09/2026", 3, null, "SEMPRECO1"), item("30/09/2026", null, 5, "SEMQTD001")];
-    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR })).toEqual({ data: "30/09/2026", valor: 20, itensSemValor: 2 });
+    const s = sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR });
+    expect(s?.mercadorias).toBe(20);
+    expect(s?.itensSemValor).toBe(2);
+  });
+
+  it("separa embalagens (EMB) de mercadorias pelo grupo do SKU (decisão 5, 13/10)", () => {
+    const itens = [
+      item("30/09/2026", 2, 10),
+      item("30/09/2026", 100, 0.5, "EMBCAI001", "EMB"),
+      item("30/09/2026", 10, 2, "EMBSAC001", "OPE"), // SKU diz EMB: o SKU manda
+      item("30/09/2026", 1, 7, "DESCOP001", "DES"), // descartável interno fica em mercadorias, como antes
+    ];
+    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR })).toEqual({
+      data: "30/09/2026",
+      mercadorias: 27,
+      embalagens: 70,
+      itensSemValor: 0,
+      itensSemGrupo: 0,
+    });
+  });
+
+  it("SKU fora do padrão usa o grupo do cadastro; sem nenhum dos dois vai para mercadorias e é contado", () => {
+    const itens = [
+      item("30/09/2026", 4, 1, "CX-123", "EMB"), // SKU antigo, cadastro diz EMB
+      item("30/09/2026", 3, 1, "X1", ""), // sem grupo reconhecido
+      item("30/09/2026", 2, 1, "ZZZ999", "FOO"), // grupo desconhecido nos dois
+    ];
+    expect(sugestaoEstoqueDoMes({ competencia: "2026-09", itens, ...SEM_SETOR })).toEqual({
+      data: "30/09/2026",
+      mercadorias: 5,
+      embalagens: 4,
+      itensSemValor: 0,
+      itensSemGrupo: 2,
+    });
+    expect(grupoDoItem({ sku: "embcai001", grupo: "" })).toBe("EMB");
+    expect(grupoDoItem({ sku: "PREMAIVER", grupo: "" })).toBe("PRE");
+    expect(grupoDoItem({ sku: "12", grupo: "lim" })).toBe("LIM");
+    expect(grupoDoItem({ sku: "12", grupo: "" })).toBeNull();
   });
 
   it("ano inteiro: uma sugestão por mês, na ordem da grade", () => {
     const itens = [item("31/01/2026", 1, 10), item("15/03/2026", 2, 10)];
     const ano = sugestoesEstoqueDoAno({ ano: 2026, itens, ...SEM_SETOR });
     expect(ano).toHaveLength(12);
-    expect(ano[0]?.valor).toBe(10);
+    expect(ano[0]?.mercadorias).toBe(10);
     expect(ano[1]).toBeNull();
     expect(ano[2]?.data).toBe("15/03/2026");
   });
