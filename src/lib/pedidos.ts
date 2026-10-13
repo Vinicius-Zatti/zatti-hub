@@ -269,7 +269,12 @@ export async function confirmarVencedor(params: {
 /** Desfaz a confirmação de vencedor: tira a marca do fornecedor atual e, se
  * o item tinha concorrentes que perderam a disputa, recria o item neles
  * (mesma quantidade, preço não confirmado). Pra fornecedor único
- * (sem concorrente nenhum), só desmarca - não tem ninguém pra recriar. */
+ * (sem concorrente nenhum), só desmarca - não tem ninguém pra recriar.
+ *
+ * Tudo numa transação só, na função do banco `desfazer_vencedor_pedido`
+ * (trava os pedidos envolvidos na mesma ordem do recebimento): se um
+ * concorrente já estiver recebido, o banco recusa e nada muda - o vencedor
+ * continua confirmado, sem estado pela metade. */
 export async function desfazerVencedor(params: {
   unidadeId: string;
   dataContagemBase: string;
@@ -279,32 +284,19 @@ export async function desfazerVencedor(params: {
   criadoPor: string;
 }): Promise<void> {
   const supabase = await createClient();
-  const pedidoIdAtual = await garantirPedido(
-    supabase,
-    params.unidadeId,
-    params.fornecedorAtual,
-    params.dataContagemBase,
-    params.criadoPor
-  );
-  const { error: erroDesmarcarVencedor } = await supabase
-    .from("pedido_itens")
-    .update({ vencedor_confirmado: false })
-    .eq("pedido_id", pedidoIdAtual)
-    .eq("sku", params.item.sku);
-  if (erroDesmarcarVencedor) throw erroGravacaoItem(erroDesmarcarVencedor);
-
-  await Promise.all(
-    params.outrosFornecedores.map((fornecedor) =>
-      confirmarItem({
-        unidadeId: params.unidadeId,
-        fornecedor,
-        dataContagemBase: params.dataContagemBase,
-        item: { ...params.item, precoAtualizado: null, precoConfirmado: false },
-        atualizarPreco: true,
-        criadoPor: params.criadoPor,
-      })
-    )
-  );
+  const { error } = await supabase.rpc("desfazer_vencedor_pedido", {
+    p_unidade_id: params.unidadeId,
+    p_data_contagem_base: params.dataContagemBase,
+    p_fornecedor_atual: params.fornecedorAtual,
+    p_outros_fornecedores: params.outrosFornecedores,
+    p_sku: params.item.sku,
+    p_nome: params.item.nome,
+    p_nome_compra: params.item.nomeCompra,
+    p_unidade_base: params.item.unidadeBase,
+    p_quantidade_pedida: params.item.quantidadePedida,
+    p_preco_antigo: params.item.precoAntigo,
+  });
+  if (error) throw erroGravacaoItem(error);
 }
 
 /** Atualiza só a previsão de entrega de um fornecedor - campo isolado, sem

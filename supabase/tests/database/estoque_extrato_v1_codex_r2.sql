@@ -5,7 +5,10 @@
 --      vencedor e corrigir SKU de item pendente (o que o tornaria elegível);
 --   2. nome e preço de item sem vencedor continuam editáveis;
 --   3. pedido não recebido continua aceitando item novo e vencedor;
---   4. desmarcar, alterar e receber de novo lança as compras que faltavam.
+--   4. desmarcar, alterar e receber de novo lança as compras que faltavam;
+--   5. (rodada 3) desfazer vencedor é uma transação só: concorrente recebido
+--      recusa e nada muda; concorrente aberto (ou sem pedido) ganha o item;
+--      outra unidade e Operacional são recusados.
 --
 -- Rodar com o Supabase local no ar: `npx supabase test db`. Sem dado real.
 
@@ -13,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(14);
+select plan(25);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 
@@ -153,6 +156,149 @@ select results_eq(
            ('HORLIM001'::text, 5::numeric, 8::numeric),
            ('MERARR001'::text, 3::numeric, 5::numeric)$$,
   'o extrato fica completo com os itens alterados'
+);
+
+-- ── Desfazer vencedor numa transação só (rodada 3) ───────────────────────
+
+reset role;
+
+insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role)
+values
+  ('00000000-0000-0000-0000-0000000e9202', 'extrato.r3.outra@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-0000000e9203', 'extrato.r3.oper@teste.local', 'x', now(), 'authenticated', 'authenticated');
+
+insert into organizacoes (id, nome, tipo_cliente, ativo)
+values ('org-extrato-r3b', 'Org Extrato R3 B', 'saas', true);
+
+insert into unidades (id, organizacao_id, nome, fonte_dados_estoque, ativo)
+values ('uni-extrato-r3b', 'org-extrato-r3b', 'R3 B', 'banco', true);
+
+insert into vinculos (user_id, organizacao_id, unidade_id, role, status)
+values
+  ('00000000-0000-0000-0000-0000000e9202', 'org-extrato-r3b', null, 'gestao', 'ativo'),
+  ('00000000-0000-0000-0000-0000000e9203', 'org-extrato-r2', 'uni-extrato-r2', 'operacional', 'ativo');
+
+-- Contagem 02/10: G venceu o arroz; F perdeu (item removido) e já foi recebido.
+-- Contagem 03/10: G venceu o arroz; F perdeu e está aberto; F3 nem tem pedido.
+insert into pedidos (id, unidade_id, fornecedor, data_contagem_base, criado_por, recebido, recebido_em, recebido_dia)
+values
+  ('00000000-0000-0000-0000-0000000e7211', 'uni-extrato-r2', 'G', '2026-10-02', '00000000-0000-0000-0000-0000000e9201', false, null, null),
+  ('00000000-0000-0000-0000-0000000e7212', 'uni-extrato-r2', 'F', '2026-10-02', '00000000-0000-0000-0000-0000000e9201', true, now(), current_date),
+  ('00000000-0000-0000-0000-0000000e7221', 'uni-extrato-r2', 'G', '2026-10-03', '00000000-0000-0000-0000-0000000e9201', false, null, null),
+  ('00000000-0000-0000-0000-0000000e7222', 'uni-extrato-r2', 'F', '2026-10-03', '00000000-0000-0000-0000-0000000e9201', false, null, null);
+
+insert into pedido_itens (pedido_id, sku, nome, unidade_base, quantidade_pedida, preco_antigo, preco_atualizado, preco_confirmado, vencedor_confirmado)
+values
+  ('00000000-0000-0000-0000-0000000e7211', 'MERARR001', 'arroz', 'KG', 3, 5, 6, true, true),
+  ('00000000-0000-0000-0000-0000000e7212', 'BALCER001', 'cerveja', 'UN', 6, 4, 4, true, false),
+  ('00000000-0000-0000-0000-0000000e7221', 'MERARR001', 'arroz', 'KG', 3, 5, 6, true, true);
+
+create temp table r3_itens_antes as
+  select pedido_id, sku, nome, quantidade_pedida, preco_atualizado, preco_confirmado, vencedor_confirmado
+  from pedido_itens
+  where pedido_id in ('00000000-0000-0000-0000-0000000e7211', '00000000-0000-0000-0000-0000000e7212');
+
+create temp table r3_versoes_antes as
+  select id, versao_itens from pedidos
+  where id in ('00000000-0000-0000-0000-0000000e7211', '00000000-0000-0000-0000-0000000e7212');
+
+set local role authenticated;
+set local request.jwt.claims to
+  '{"sub":"00000000-0000-0000-0000-0000000e9201","role":"authenticated","aal":"aal1"}';
+
+select throws_ok(
+  $$select desfazer_vencedor_pedido('uni-extrato-r2', '2026-10-02', 'G', array['F'],
+      'MERARR001', 'arroz', '', 'KG', 3, 5)$$,
+  'P0001', NULL,
+  'desfazer vencedor com concorrente já recebido é recusado'
+);
+
+reset role;
+
+select is(
+  (select vencedor_confirmado from pedido_itens
+   where pedido_id = '00000000-0000-0000-0000-0000000e7211' and sku = 'MERARR001'),
+  true,
+  'recusado, G continua vencedor (a desmarcação não ficou pela metade)'
+);
+
+select results_eq(
+  $$select pedido_id, sku, nome, quantidade_pedida, preco_atualizado, preco_confirmado, vencedor_confirmado
+    from pedido_itens
+    where pedido_id in ('00000000-0000-0000-0000-0000000e7211', '00000000-0000-0000-0000-0000000e7212')
+    order by pedido_id, sku$$,
+  $$select * from r3_itens_antes order by pedido_id, sku$$,
+  'recusado, os itens de G e F ficam iguais ao antes'
+);
+
+select results_eq(
+  $$select id, versao_itens from pedidos
+    where id in ('00000000-0000-0000-0000-0000000e7211', '00000000-0000-0000-0000-0000000e7212')
+    order by id$$,
+  $$select * from r3_versoes_antes order by id$$,
+  'recusado, a versão dos pedidos G e F não muda'
+);
+
+set local role authenticated;
+
+select lives_ok(
+  $$select desfazer_vencedor_pedido('uni-extrato-r2', '2026-10-03', 'G', array['F', 'F3'],
+      'MERARR001', 'arroz', 'arroz tipo 1', 'KG', 3, 5)$$,
+  'desfazer vencedor com concorrente aberto passa'
+);
+
+select is(
+  (select vencedor_confirmado from pedido_itens
+   where pedido_id = '00000000-0000-0000-0000-0000000e7221' and sku = 'MERARR001'),
+  false,
+  'G deixa de ser vencedor'
+);
+
+select results_eq(
+  $$select sku, nome_compra, quantidade_pedida, preco_antigo, preco_atualizado, preco_confirmado, vencedor_confirmado
+    from pedido_itens where pedido_id = '00000000-0000-0000-0000-0000000e7222'$$,
+  $$values ('MERARR001'::text, 'arroz tipo 1'::text, 3::numeric, 5::numeric, null::numeric, false, false)$$,
+  'F ganha o item de volta, com preço só de referência'
+);
+
+select is(
+  (select count(*)::int from pedido_itens pi join pedidos p on p.id = pi.pedido_id
+   where p.unidade_id = 'uni-extrato-r2' and p.data_contagem_base = '2026-10-03'
+     and p.fornecedor = 'F3' and pi.sku = 'MERARR001'),
+  1,
+  'concorrente sem pedido ganha o pedido e o item'
+);
+
+-- ── Permissão ────────────────────────────────────────────────────────────
+
+set local request.jwt.claims to
+  '{"sub":"00000000-0000-0000-0000-0000000e9202","role":"authenticated","aal":"aal1"}';
+
+select throws_ok(
+  $$select desfazer_vencedor_pedido('uni-extrato-r2', '2026-10-02', 'G', array[]::text[],
+      'MERARR001', 'arroz', '', 'KG', 3, 5)$$,
+  '42501', NULL,
+  'Gestão de outra unidade é recusada'
+);
+
+set local request.jwt.claims to
+  '{"sub":"00000000-0000-0000-0000-0000000e9203","role":"authenticated","aal":"aal1"}';
+
+select throws_ok(
+  $$select desfazer_vencedor_pedido('uni-extrato-r2', '2026-10-02', 'G', array[]::text[],
+      'MERARR001', 'arroz', '', 'KG', 3, 5)$$,
+  '42501', NULL,
+  'Operacional da unidade é recusado'
+);
+
+reset role;
+
+select results_eq(
+  $$select pi.vencedor_confirmado, p.versao_itens
+    from pedido_itens pi join pedidos p on p.id = pi.pedido_id
+    where p.id = '00000000-0000-0000-0000-0000000e7211' and pi.sku = 'MERARR001'$$,
+  $$select true, (select versao_itens from r3_versoes_antes where id = '00000000-0000-0000-0000-0000000e7211')$$,
+  'recusas de permissão não mexem no vencedor nem na versão de G'
 );
 
 select * from finish();
