@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { TipoItemGarante } from "@/lib/garante/biblioteca";
 import { REGRA_PADRAO, type SituacaoAgenda } from "@/lib/garante/regras";
-import { normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta } from "@/lib/garante/nota";
+import { intervaloNota, normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta } from "@/lib/garante/nota";
+import { contarAtrasados, contarCriticosFora, textoRespostaOrigem, type SituacaoPlano } from "@/lib/garante/planos";
 
 export type LinhaAgenda = {
   publicacaoId: string;
@@ -365,17 +366,17 @@ export async function carregarNota(
   };
 }
 
-export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number };
+export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number; prazoPlanoHoras: number };
 
 /** Regra que vale hoje, a próxima já agendada e os dias sem operação de hoje
  * em diante (leitura pelo RLS: quem acessa a unidade). Sem regra cadastrada,
- * vale o padrão (120 min antes, 60 min de atraso). */
+ * vale o padrão (120 min antes, 60 min de atraso, 24 h para o plano de ação). */
 export async function carregarRegras(acesso: AcessoAtual, hoje: string) {
   const supabase = await createClient();
   const [{ data: regras }, { data: dias }] = await Promise.all([
     supabase
       .from("garante_regras_unidade")
-      .select("vigente_desde, antecedencia_min, atraso_max_min")
+      .select("vigente_desde, antecedencia_min, atraso_max_min, prazo_plano_horas")
       .eq("unidade_id", acesso.unidadeId)
       .order("vigente_desde"),
     supabase
@@ -385,20 +386,175 @@ export async function carregarRegras(acesso: AcessoAtual, hoje: string) {
       .gte("data", hoje)
       .order("data"),
   ]);
-  const lista = ((regras ?? []) as { vigente_desde: string; antecedencia_min: number; atraso_max_min: number }[]).map((r) => ({
+  const lista = (
+    (regras ?? []) as { vigente_desde: string; antecedencia_min: number; atraso_max_min: number; prazo_plano_horas: number }[]
+  ).map((r) => ({
     vigenteDesde: r.vigente_desde,
     antecedenciaMin: r.antecedencia_min,
     atrasoMaxMin: r.atraso_max_min,
+    prazoPlanoHoras: r.prazo_plano_horas,
   }));
   const vigente: RegraUnidade = [...lista].reverse().find((r) => r.vigenteDesde <= hoje) ?? {
     vigenteDesde: null,
     antecedenciaMin: REGRA_PADRAO.antecedenciaMin,
     atrasoMaxMin: REGRA_PADRAO.atrasoMaxMin,
+    prazoPlanoHoras: REGRA_PADRAO.prazoPlanoHoras,
   };
   const agendadas: RegraUnidade[] = lista.filter((r) => r.vigenteDesde > hoje);
   return {
     vigente,
     agendadas,
     diasSemOperacao: ((dias ?? []) as { data: string; motivo: string }[]).map((d) => ({ data: d.data, motivo: d.motivo })),
+  };
+}
+
+export type PlanoTela = {
+  id: string;
+  situacao: SituacaoPlano;
+  origem: "conclusao" | "vencida";
+  prazo: string;
+  fechadoEm: string | null;
+  data: string;
+  modeloNome: string;
+  execucaoId: string;
+  itemTitulo: string;
+  critico: boolean;
+  respostaTexto: string;
+  responsavelId: string | null;
+  responsavelNome: string | null;
+  resolucao: string | null;
+  motivoDescarte: string | null;
+  fechadoPorNome: string | null;
+  podeResolver: boolean;
+  podeDescartar: boolean;
+};
+
+type PlanoBruto = {
+  id: string;
+  situacao: SituacaoPlano;
+  origem: "conclusao" | "vencida";
+  prazo: string;
+  fechado_em: string | null;
+  data: string;
+  modelo_nome: string;
+  execucao_id: string;
+  resposta_id: string;
+  item: { titulo?: string; critico?: boolean; tipo?: TipoItemGarante; meta_min?: number | null; meta_max?: number | null } | null;
+  responsavel_id: string | null;
+  resolucao: string | null;
+  motivo_descarte: string | null;
+  fechado_por: string | null;
+};
+
+const COLUNAS_PLANO =
+  "id, situacao, origem, prazo, fechado_em, data, modelo_nome, execucao_id, resposta_id, item, responsavel_id, resolucao, motivo_descarte, fechado_por";
+
+/** Planos de ação da unidade da sessão: antes de ler, gera os do item crítico
+ * fora da meta em checklist que venceu sem concluir (`garante_gerar_planos_vencidos`,
+ * idempotente). O RLS mostra tudo para a gestão e só os planos de que a pessoa
+ * é responsável para o operacional. Abertos todos; fechados, os dos últimos 30 dias. */
+export async function carregarPlanos(acesso: AcessoAtual): Promise<PlanoTela[]> {
+  const supabase = await createClient();
+  // Falha aqui não impede ler o que já existe: a próxima leitura tenta de novo.
+  await supabase.rpc("garante_gerar_planos_vencidos", { p_unidade_id: acesso.unidadeId });
+  const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const [{ data: abertos, error: e1 }, { data: fechados, error: e2 }] = await Promise.all([
+    supabase.from("garante_planos_acao").select(COLUNAS_PLANO).eq("unidade_id", acesso.unidadeId).eq("situacao", "aberto").order("prazo").limit(500),
+    supabase
+      .from("garante_planos_acao")
+      .select(COLUNAS_PLANO)
+      .eq("unidade_id", acesso.unidadeId)
+      .neq("situacao", "aberto")
+      .gte("fechado_em", desde)
+      .order("fechado_em", { ascending: false })
+      .limit(100),
+  ]);
+  if (e1 || e2) throw new Error("Não foi possível carregar os planos de ação.");
+  const brutos = [...((abertos ?? []) as PlanoBruto[]), ...((fechados ?? []) as PlanoBruto[])];
+
+  const pessoas = [...new Set(brutos.flatMap((p) => [p.responsavel_id, p.fechado_por]).filter(Boolean))] as string[];
+  const respostasIds = brutos.map((p) => p.resposta_id);
+  const [{ data: perfis }, { data: respostas }] = await Promise.all([
+    pessoas.length ? supabase.from("perfis").select("id, nome").in("id", pessoas) : Promise.resolve({ data: [] }),
+    respostasIds.length
+      ? supabase.from("garante_respostas").select("id, valor_bool, valor_numero, valor_texto").in("id", respostasIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const nome = new Map(((perfis ?? []) as { id: string; nome: string | null }[]).map((p) => [p.id, p.nome]));
+  const resposta = new Map(
+    ((respostas ?? []) as { id: string; valor_bool: boolean | null; valor_numero: number | string | null; valor_texto: string | null }[]).map((r) => [
+      r.id,
+      { valorBool: r.valor_bool, valorNumero: r.valor_numero === null ? null : Number(r.valor_numero), valorTexto: r.valor_texto },
+    ]),
+  );
+
+  const gestao = acesso.role !== "operacional";
+  return brutos.map((p) => ({
+    id: p.id,
+    situacao: p.situacao,
+    origem: p.origem,
+    prazo: p.prazo,
+    fechadoEm: p.fechado_em,
+    data: p.data,
+    modeloNome: p.modelo_nome,
+    execucaoId: p.execucao_id,
+    itemTitulo: p.item?.titulo ?? "Item",
+    critico: Boolean(p.item?.critico),
+    respostaTexto: textoRespostaOrigem({ tipo: p.item?.tipo ?? "check", meta_min: p.item?.meta_min, meta_max: p.item?.meta_max }, resposta.get(p.resposta_id) ?? null),
+    responsavelId: p.responsavel_id,
+    responsavelNome: p.responsavel_id ? nome.get(p.responsavel_id) ?? "Pessoa sem nome" : null,
+    resolucao: p.resolucao,
+    motivoDescarte: p.motivo_descarte,
+    fechadoPorNome: p.fechado_por ? nome.get(p.fechado_por) ?? "Pessoa sem nome" : null,
+    podeResolver: p.situacao === "aberto" && (gestao || p.responsavel_id === acesso.userId),
+    podeDescartar: p.situacao === "aberto" && gestao,
+  }));
+}
+
+export type ResumoGarantePainel = {
+  nota: number | null;
+  atrasadosHoje: number;
+  criticosFora: number;
+  planosAbertos: number;
+  planosAtrasados: number;
+};
+
+/** Card "Checklist Garante" do Painel geral (gestão, com a flag). Nota dos
+ * últimos 7 dias pela `garante_nota` (que confere a gestão no banco), atrasados
+ * de hoje pela agenda, críticos fora da meta nos últimos 7 dias pelo snapshot de
+ * cada execução e planos abertos (gerando antes os de checklist vencido). */
+export async function carregarResumoGarantePainel(acesso: AcessoAtual, agora: Date = new Date()): Promise<ResumoGarantePainel> {
+  const supabase = await createClient();
+  const { de, ate } = intervaloNota(7, agora);
+  await supabase.rpc("garante_gerar_planos_vencidos", { p_unidade_id: acesso.unidadeId });
+  const [nota, agenda, execucoes, abertos] = await Promise.all([
+    supabase.rpc("garante_nota", { p_unidade_id: acesso.unidadeId, p_de: de, p_ate: ate }),
+    supabase.rpc("garante_agenda", { p_unidade_id: acesso.unidadeId, p_data: ate }),
+    supabase.from("garante_execucoes").select("id, snapshot").eq("unidade_id", acesso.unidadeId).gte("data", de).lte("data", ate),
+    supabase.from("garante_planos_acao").select("prazo").eq("unidade_id", acesso.unidadeId).eq("situacao", "aberto").limit(5000),
+  ]);
+  if (nota.error || agenda.error || execucoes.error || abertos.error) throw new Error("Não foi possível carregar o Checklist Garante.");
+
+  const listaExecucoes = (execucoes.data ?? []) as { id: string; snapshot: { id: string; critico?: boolean }[] | null }[];
+  let respostasFora: { execucaoId: string; itemId: string }[] = [];
+  if (listaExecucoes.length) {
+    const { data, error } = await supabase
+      .from("garante_respostas")
+      .select("execucao_id, item_id")
+      .eq("unidade_id", acesso.unidadeId)
+      .eq("dentro_meta", false)
+      .in("execucao_id", listaExecucoes.map((e) => e.id));
+    if (error) throw new Error("Não foi possível carregar o Checklist Garante.");
+    respostasFora = ((data ?? []) as { execucao_id: string; item_id: string }[]).map((r) => ({ execucaoId: r.execucao_id, itemId: r.item_id }));
+  }
+
+  const unidade = ((nota.data ?? []) as LinhaNotaBruta[]).map(normalizarLinhaNota).find((l) => l.nivel === "unidade");
+  const prazos = ((abertos.data ?? []) as { prazo: string }[]).map((p) => p.prazo);
+  return {
+    nota: unidade?.nota ?? null,
+    atrasadosHoje: contarAtrasados((agenda.data ?? []) as { situacao: SituacaoAgenda; prazo: string }[], agora),
+    criticosFora: contarCriticosFora(listaExecucoes, respostasFora),
+    planosAbertos: prazos.length,
+    planosAtrasados: prazos.filter((p) => new Date(p).getTime() < agora.getTime()).length,
   };
 }

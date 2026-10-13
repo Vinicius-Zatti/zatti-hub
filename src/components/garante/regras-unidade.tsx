@@ -12,14 +12,16 @@ import { DicaCalculo } from "@/components/dica-calculo";
 
 const CAMPO = "mt-1 w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm";
 const ROTULO = "text-xs font-semibold text-cinza-medio";
+const DICA_PRAZO_PLANO =
+  "Prazo do plano de ação = hora da conclusão do checklist (ou do fim da tolerância de atraso, quando ele não foi concluído) + estas horas. Cada plano guarda o prazo com que nasceu: mudar aqui não muda plano já aberto.";
 const DICA_JANELA =
   "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o horário limite mais a tolerância de atraso. Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
 
 type Resultado = { ok: true } | { erro: string };
 type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
 
-/** Regras da unidade (gestão, em Modelos): antecedência e tolerância de atraso
- * (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
+/** Regras da unidade (gestão, em Modelos): antecedência, tolerância de atraso e
+ * prazo do plano de ação (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
  * confere tudo de novo (`garante_definir_regra`, `garante_marcar_dia_sem_operacao`). */
 export function RegrasUnidade({
   vigente,
@@ -68,10 +70,14 @@ export function RegrasUnidade({
           <p className="text-cinza">
             Abre {textoMinutos(vigente.antecedenciaMin)} antes do horário limite e aceita até {textoMinutos(vigente.atrasoMaxMin)} de atraso.
           </p>
+          <p className="flex items-center gap-1 text-cinza">
+            Plano de ação: prazo de {vigente.prazoPlanoHoras} h.
+            <DicaCalculo rotulo="prazo do plano de ação" texto={DICA_PRAZO_PLANO} />
+          </p>
           {proxima && (
             <p className="text-xs text-cinza-medio">
-              A partir de {formatarDataBr(proxima.vigenteDesde as string)}: abre {textoMinutos(proxima.antecedenciaMin)} antes e aceita até{" "}
-              {textoMinutos(proxima.atrasoMaxMin)} de atraso.
+              A partir de {formatarDataBr(proxima.vigenteDesde as string)}: abre {textoMinutos(proxima.antecedenciaMin)} antes, aceita até{" "}
+              {textoMinutos(proxima.atrasoMaxMin)} de atraso e o plano de ação tem {proxima.prazoPlanoHoras} h.
             </p>
           )}
           <button
@@ -170,20 +176,21 @@ function FormRegra({
   amanha: string;
   erro: string | null;
   pendente: boolean;
-  aoSalvar: (dados: { antecedenciaMin: number | null; atrasoMaxMin: number | null }) => void;
+  aoSalvar: (dados: { antecedenciaMin: number | null; atrasoMaxMin: number | null; prazoPlanoHoras: number | null }) => void;
   aoCancelar: () => void;
 }) {
   const [antecedencia, setAntecedencia] = useState<number | null>(inicial.antecedenciaMin);
   const [atraso, setAtraso] = useState<number | null>(inicial.atrasoMaxMin);
+  const [prazoPlano, setPrazoPlano] = useState<number | null>(inicial.prazoPlanoHoras);
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        aoSalvar({ antecedenciaMin: antecedencia, atrasoMaxMin: atraso });
+        aoSalvar({ antecedenciaMin: antecedencia, atrasoMaxMin: atraso, prazoPlanoHoras: prazoPlano });
       }}
       className="flex flex-col gap-3"
     >
-      <h2 className="font-display text-lg font-bold text-azul-noite">Janela do checklist</h2>
+      <h2 className="font-display text-lg font-bold text-azul-noite">Janela do checklist e prazo do plano</h2>
       <label className={ROTULO}>
         Abre quantos minutos antes do horário limite (0 a 720)
         <CampoNumero value={antecedencia} onChange={setAntecedencia} decimais={0} className="mt-1 block w-full" />
@@ -192,9 +199,17 @@ function FormRegra({
         Aceita quantos minutos de atraso (0 a 1.440)
         <CampoNumero value={atraso} onChange={setAtraso} decimais={0} className="mt-1 block w-full" />
       </label>
+      <label className={ROTULO}>
+        <span className="inline-flex items-center gap-1">
+          Prazo do plano de ação, em horas (1 a 168)
+          <DicaCalculo rotulo="prazo do plano de ação" texto={DICA_PRAZO_PLANO} />
+        </span>
+        <CampoNumero value={prazoPlano} onChange={setPrazoPlano} decimais={0} className="mt-1 block w-full" />
+      </label>
       <ul className="list-disc pl-5 text-xs text-cinza">
         <li>Vale para os checklists a partir de {formatarDataBr(amanha)}.</li>
         <li>Hoje e os dias que já passaram continuam com a regra que valia, e a nota deles não muda.</li>
+        <li>Plano de ação já aberto mantém o prazo com que nasceu.</li>
       </ul>
       {erro && <p className="text-sm text-vermelho">{erro}</p>}
       <div className="flex gap-2">

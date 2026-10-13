@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { modeloDaBiblioteca } from "@/lib/garante/biblioteca";
+import { mensagemErroPlano, validarMotivoDescarte, validarResolucao } from "@/lib/garante/planos";
 import {
   dataDoDiaAgenda,
   hojeOperacao,
@@ -266,10 +267,14 @@ export async function encerrarPublicacaoAction(publicacaoId: string): Promise<Re
 
 // ── Regras da unidade (gestão) ───────────────────────────────────────────
 
-/** Muda a antecedência e a tolerância de atraso da unidade a partir de
- * amanhã. Hoje e o passado continuam com a regra que valia (o banco recusa
- * data de hoje ou anterior: `garante_definir_regra`). */
-export async function definirRegraAction(dados: { antecedenciaMin: number | null; atrasoMaxMin: number | null }): Promise<Resultado> {
+/** Muda a antecedência, a tolerância de atraso e o prazo do plano de ação da
+ * unidade a partir de amanhã. Hoje e o passado continuam com a regra que valia
+ * (o banco recusa data de hoje ou anterior: `garante_definir_regra`). */
+export async function definirRegraAction(dados: {
+  antecedenciaMin: number | null;
+  atrasoMaxMin: number | null;
+  prazoPlanoHoras: number | null;
+}): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
   const r = validarRegra(dados);
   if (!r.ok) return { erro: r.erro };
@@ -278,6 +283,7 @@ export async function definirRegraAction(dados: { antecedenciaMin: number | null
     p_unidade_id: acesso.unidadeId,
     p_antecedencia_min: r.antecedenciaMin,
     p_atraso_max_min: r.atrasoMaxMin,
+    p_prazo_plano_horas: r.prazoPlanoHoras ?? null,
   });
   if (error) return { erro: mensagemErroGarante(error.message) };
   await registrarAuditoria({ acesso, acao: "garante_definir_regra", entidade: "garante_regra_unidade", entidadeId: acesso.unidadeId, dadosNovos: { ...r, vigenteDesde: data } });
@@ -307,6 +313,35 @@ export async function desmarcarDiaSemOperacaoAction(data: string): Promise<Resul
   const { error } = await supabase.rpc("garante_desmarcar_dia_sem_operacao", { p_unidade_id: acesso.unidadeId, p_data: data });
   if (error) return { erro: mensagemErroGarante(error.message) };
   await registrarAuditoria({ acesso, acao: "garante_desmarcar_dia_sem_operacao", entidade: "garante_dia_sem_operacao", entidadeId: data });
+  revalidarGarante();
+  return { ok: true };
+}
+
+// ── Planos de ação ───────────────────────────────────────────────────────
+
+/** Resolve o plano com o texto do que foi feito. Só o responsável do plano ou a
+ * gestão da unidade; origem, responsável e prazo não mudam (`garante_resolver_plano`). */
+export async function resolverPlanoAction(planoId: string, texto: string): Promise<Resultado> {
+  const acesso = await requireGarante();
+  const r = validarResolucao(texto);
+  if (!r.ok) return { erro: r.erro };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_resolver_plano", { p_plano_id: planoId, p_resolucao: r.texto });
+  if (error) return { erro: mensagemErroPlano(error.message) };
+  await registrarAuditoria({ acesso, acao: "garante_resolver_plano", entidade: "garante_plano_acao", entidadeId: planoId, dadosNovos: { resolucao: r.texto } });
+  revalidarGarante();
+  return { ok: true };
+}
+
+/** Descarta o plano (não precisa de ação), com motivo. Só gestão (`garante_descartar_plano`). */
+export async function descartarPlanoAction(planoId: string, motivo: string): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  const r = validarMotivoDescarte(motivo);
+  if (!r.ok) return { erro: r.erro };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_descartar_plano", { p_plano_id: planoId, p_motivo: r.texto });
+  if (error) return { erro: mensagemErroPlano(error.message) };
+  await registrarAuditoria({ acesso, acao: "garante_descartar_plano", entidade: "garante_plano_acao", entidadeId: planoId, dadosNovos: { motivo: r.texto } });
   revalidarGarante();
   return { ok: true };
 }

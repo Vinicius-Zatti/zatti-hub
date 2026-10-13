@@ -2,6 +2,7 @@ import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PainelGeral, type DadosPainelGeral } from "@/components/painel-geral";
 import { getAcessoAtual } from "@/lib/acesso";
+import { carregarResumoGarantePainel } from "@/app/(app)/garante/dados";
 import { listPedidosFeitos } from "@/lib/pedidos";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listInventario } from "@/lib/sheets/inventario";
@@ -78,6 +79,17 @@ export default async function PainelPage() {
   const pedidosPendentes = pedidosReais.filter((pedido) => !pedido.recebido);
   const agora = new Date();
 
+  // Card do Checklist Garante: só com a flag e só para a gestão (a nota é da
+  // gestão; o banco confere de novo em garante_nota). Falha aqui não derruba o Painel.
+  let garante: DadosPainelGeral["garante"] = null;
+  if (acesso.garanteHabilitado && acesso.role !== "operacional") {
+    try {
+      garante = { estado: "ok", ...(await carregarResumoGarantePainel(acesso, agora)) };
+    } catch {
+      garante = { estado: "erro" };
+    }
+  }
+
   const dados: DadosPainelGeral = {
     saudacao: saudacaoAtual(agora),
     nomeUsuario: primeiroNome(acesso.usuarioNome, acesso.usuarioEmail),
@@ -104,6 +116,7 @@ export default async function PainelPage() {
       ),
       0,
     ),
+    garante,
   };
 
   return <PainelGeral dados={dados} />;

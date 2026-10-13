@@ -117,20 +117,32 @@ export function mostrarNaAgenda(
   return linha.execucaoId !== null || janela === "aberta";
 }
 
-export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: 60 } as const;
+export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: 60, prazoPlanoHoras: 24 } as const;
 
-export type ResultadoRegra = { ok: true; antecedenciaMin: number; atrasoMaxMin: number } | { ok: false; erro: string };
+export type ResultadoRegra =
+  | { ok: true; antecedenciaMin: number; atrasoMaxMin: number; prazoPlanoHoras?: number }
+  | { ok: false; erro: string };
 
-/** Antecedência (0 a 720 min) e atraso (0 a 1.440 min), inteiros. Mesmos limites do banco. */
-export function validarRegra(params: { antecedenciaMin: number | null; atrasoMaxMin: number | null }): ResultadoRegra {
-  const { antecedenciaMin: a, atrasoMaxMin: b } = params;
+/** Antecedência (0 a 720 min), atraso (0 a 1.440 min) e, quando vier, o prazo do
+ * plano de ação (1 a 168 h), inteiros. Mesmos limites do banco. Sem o prazo do
+ * plano, o banco mantém o que valia. */
+export function validarRegra(params: {
+  antecedenciaMin: number | null;
+  atrasoMaxMin: number | null;
+  prazoPlanoHoras?: number | null;
+}): ResultadoRegra {
+  const { antecedenciaMin: a, atrasoMaxMin: b, prazoPlanoHoras: c } = params;
   if (a === null || !Number.isInteger(a) || a < 0 || a > 720) {
     return { ok: false, erro: "Antecedência em minutos inteiros, de 0 a 720 (12 h)." };
   }
   if (b === null || !Number.isInteger(b) || b < 0 || b > 1440) {
     return { ok: false, erro: "Atraso em minutos inteiros, de 0 a 1.440 (24 h)." };
   }
-  return { ok: true, antecedenciaMin: a, atrasoMaxMin: b };
+  if (c === undefined) return { ok: true, antecedenciaMin: a, atrasoMaxMin: b };
+  if (c === null || !Number.isInteger(c) || c < 1 || c > 168) {
+    return { ok: false, erro: "Prazo do plano de ação em horas inteiras, de 1 a 168 (7 dias)." };
+  }
+  return { ok: true, antecedenciaMin: a, atrasoMaxMin: b, prazoPlanoHoras: c };
 }
 
 export type ResultadoDiaSemOperacao = { ok: true; data: string; motivo: string } | { ok: false; erro: string };
@@ -247,7 +259,7 @@ export function mensagemErroGarante(mensagem: string): string {
     janela_ainda_nao_abriu: "Esse checklist ainda não abriu. Ele abre um tempo antes do horário limite (regra da unidade).",
     unidade_fechada_nesta_data: "A unidade não opera nesta data (dia sem operação).",
     so_data_futura: "Só dá para mudar daqui para a frente: escolha uma data a partir de amanhã.",
-    regra_invalida: "Antecedência vai de 0 a 720 minutos (12 h) e atraso de 0 a 1.440 minutos (24 h).",
+    regra_invalida: "Antecedência vai de 0 a 720 minutos (12 h), atraso de 0 a 1.440 minutos (24 h) e prazo do plano de ação de 1 a 168 horas.",
     motivo_obrigatorio: "Escreva o motivo (de 3 a 200 caracteres).",
     data_com_checklist: "Já tem checklist começado nesta data, então ela não pode virar dia sem operação.",
     periodo_invalido: "Período inválido (até 93 dias).",
@@ -265,6 +277,11 @@ export function mensagemErroGarante(mensagem: string): string {
     setor_invalido: "Setor não encontrado nesta unidade.",
     modelo_nao_encontrado: "Checklist não encontrado (ou já parou de ser usado).",
     foto_nao_recebida: "A foto não chegou. Tire de novo.",
+    plano_nao_encontrado: "Plano de ação não encontrado.",
+    plano_fechado: "Esse plano de ação já foi resolvido ou descartado.",
+    plano_imutavel: "Origem, responsável e prazo do plano de ação não mudam.",
+    resolucao_obrigatoria: "Escreva o que foi feito para resolver (de 3 a 500 caracteres).",
+    motivo_descarte_obrigatorio: "Escreva o motivo do descarte (de 3 a 500 caracteres).",
   };
   const chave = Object.keys(mapa).find((k) => mensagem.includes(k));
   return chave ? mapa[chave] : "Não foi possível salvar. Tente de novo.";
