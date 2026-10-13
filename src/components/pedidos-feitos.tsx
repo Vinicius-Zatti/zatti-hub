@@ -95,10 +95,13 @@ export function PedidosFeitos({
             quantidadeRecebida: toNumeroBR(quantidadesRecebidasTexto[pedido.id]?.[it.sku]),
           }))
         : [],
+      versaoItens: pedido.versaoItens,
     });
     setSalvando((s) => ({ ...s, [pedido.id]: false }));
-    setStatus((s) => ({ ...s, [pedido.id]: "erro" in resultado ? resultado.erro : "Salvo." }));
-    setTimeout(() => setStatus((s) => ({ ...s, [pedido.id]: "" })), 4000);
+    setStatus((s) => ({ ...s, [pedido.id]: "erro" in resultado ? resultado.erro : resultado.mensagem }));
+    // Aviso do extrato (item sem preço ou fora do cadastro) fica mais tempo na tela.
+    const demorado = "mensagem" in resultado && resultado.mensagem !== "Salvo.";
+    setTimeout(() => setStatus((s) => ({ ...s, [pedido.id]: "" })), demorado ? 12000 : 4000);
   }
 
   const seletorData = datasDisponiveis.length > 0 && (

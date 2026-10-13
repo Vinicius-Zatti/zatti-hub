@@ -177,6 +177,9 @@ export async function excluirProdutoBanco(unidadeId: string, sku: string): Promi
     p_unidade_id: unidadeId,
     p_sku: sku,
   });
+  // Produto com lançamento no extrato do estoque: o banco recusa com a
+  // explicação (P0001) e orienta a desativar.
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
   if (error) throw new Error(`Não foi possível excluir o produto: ${error.message}`);
   return (data as number | null) ?? 0;
 }

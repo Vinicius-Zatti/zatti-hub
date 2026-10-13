@@ -154,6 +154,8 @@ export type Pedido = {
   recebido: boolean;
   criadoEm: string;
   atualizadoEm: string;
+  /** Versão que a tela leu; o recebimento desatualizado é recusado pelo banco. */
+  versaoItens: number;
   itens: PedidoItem[];
 };
 
