@@ -12,6 +12,7 @@
 --                            incompleta (gerado na leitura, idempotente)
 --   garante_resolver_plano   responsável ou gestão, com o texto da resolução
 --   garante_descartar_plano  só gestão, com motivo
+--   garante_resumo_planos    contagens do card do Painel no banco (sem teto de linhas)
 --
 -- Idempotente (pode rodar 2 vezes) e sem nada que impeça rodar numa transação só.
 
@@ -237,6 +238,17 @@ $$;
 -- (tela de planos e card do Painel). Prazo = fim da janela + horas da regra. Só a
 -- partir do início da nota na unidade (primeira regra), para não abrir plano de
 -- checklist antigo. Mesma trava por unidade e data do garante_iniciar.
+--
+-- Corrida com responder/concluir (Codex, P1): essas RPCs não pegam a trava
+-- consultiva, só "for update" na execução. Por isso cada execução é travada aqui
+-- também ("for update", na ordem do id) e relida depois da trava: se uma conclusão
+-- terminou enquanto esperávamos, ela já não está em andamento e não gera nada.
+-- A folga de 5 minutos depois do fim da janela cobre o outro lado: responder e
+-- concluir conferem a janela com o now() do início da transação, então uma
+-- transação que começou antes do fecha_em ainda pode gravar um pouco depois dele.
+-- Sem a folga, a leitura podia criar o plano 'vencida' e logo depois a conclusão
+-- (ou a resposta) ainda passar. Transação de responder/concluir é curta, bem abaixo
+-- de 5 minutos.
 create or replace function public.garante_gerar_planos_vencidos(p_unidade_id text)
 returns integer
 language plpgsql
@@ -246,7 +258,10 @@ as $$
 declare
   v_inicio date;
   v_data date;
-  v_exec record;
+  v_id uuid;
+  v_situacao text;
+  v_fecha timestamptz;
+  v_limite timestamptz := now() - interval '5 minutes';
   v_total integer := 0;
 begin
   if not public.usuario_pode_usar_garante(p_unidade_id) then
@@ -260,17 +275,23 @@ begin
       join public.garante_respostas r on r.execucao_id = e.id and r.dentro_meta = false and not r.nao_se_aplica
       join lateral jsonb_array_elements(e.snapshot) s(item)
         on (s.item ->> 'id')::uuid = r.item_id and coalesce((s.item ->> 'critico')::boolean, false)
-     where e.unidade_id = p_unidade_id and e.situacao = 'em_andamento' and e.fecha_em < now()
+     where e.unidade_id = p_unidade_id and e.situacao = 'em_andamento' and e.fecha_em < v_limite
        and (v_inicio is null or e.data >= v_inicio)
        and not exists (select 1 from public.garante_planos_acao pl where pl.execucao_id = e.id and pl.item_id = r.item_id)
      order by e.data
   loop
     perform pg_advisory_xact_lock(hashtextextended('garante_dia:' || p_unidade_id || ':' || v_data::text, 0));
-    for v_exec in
-      select e.id, e.fecha_em from public.garante_execucoes e
-       where e.unidade_id = p_unidade_id and e.data = v_data and e.situacao = 'em_andamento' and e.fecha_em < now()
+    for v_id in
+      select e.id from public.garante_execucoes e
+       where e.unidade_id = p_unidade_id and e.data = v_data and e.situacao = 'em_andamento' and e.fecha_em < v_limite
+       order by e.id
+       for update
     loop
-      v_total := v_total + public.garante_criar_planos(v_exec.id, 'vencida', v_exec.fecha_em);
+      -- Relê depois da trava: só gera se continua em andamento e vencida (com a folga).
+      select e.situacao, e.fecha_em into v_situacao, v_fecha from public.garante_execucoes e where e.id = v_id;
+      if v_situacao = 'em_andamento' and v_fecha < v_limite then
+        v_total := v_total + public.garante_criar_planos(v_id, 'vencida', v_fecha);
+      end if;
     end loop;
   end loop;
   return v_total;
@@ -333,3 +354,38 @@ revoke all on function public.garante_resolver_plano(uuid, text) from public, an
 revoke all on function public.garante_descartar_plano(uuid, text) from public, anon;
 grant execute on function public.garante_resolver_plano(uuid, text) to authenticated;
 grant execute on function public.garante_descartar_plano(uuid, text) to authenticated;
+
+-- ══ Resumo do card do Painel ═══════════════════════════════════════════
+-- Contagens no banco (a leitura pelo PostgREST é cortada em max_rows e escondia
+-- planos). Só gestão da unidade. Críticos fora da meta = resposta fora da meta em
+-- item crítico do snapshot da própria execução, nas execuções da unidade com data
+-- entre p_de e p_ate, concluídas ou não (mesmo critério do antigo
+-- contarCriticosFora no app). "not nao_se_aplica" não muda a conta: resposta
+-- "não se aplica" grava dentro_meta nulo e item crítico nem aceita "não se aplica".
+create or replace function public.garante_resumo_planos(p_unidade_id text, p_de date, p_ate date)
+returns table (planos_abertos integer, planos_atrasados integer, criticos_fora integer)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.usuario_pode_usar_garante(p_unidade_id, array['gestao']) then
+    raise exception 'sem_permissao' using errcode = '42501';
+  end if;
+  return query
+  select
+    (select count(*)::integer from public.garante_planos_acao pl
+      where pl.unidade_id = p_unidade_id and pl.situacao = 'aberto'),
+    (select count(*)::integer from public.garante_planos_acao pl
+      where pl.unidade_id = p_unidade_id and pl.situacao = 'aberto' and pl.prazo < now()),
+    (select count(*)::integer
+       from public.garante_execucoes e
+       join public.garante_respostas r on r.execucao_id = e.id and r.dentro_meta = false and not r.nao_se_aplica
+      where e.unidade_id = p_unidade_id and e.data between p_de and p_ate
+        and exists (select 1 from jsonb_array_elements(e.snapshot) s(item)
+                     where (s.item ->> 'id')::uuid = r.item_id and coalesce((s.item ->> 'critico')::boolean, false)));
+end;
+$$;
+revoke all on function public.garante_resumo_planos(text, date, date) from public, anon;
+grant execute on function public.garante_resumo_planos(text, date, date) to authenticated;

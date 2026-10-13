@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   contarAtrasados,
-  contarCriticosFora,
+  calcularPaginacao,
+  lerPagina,
   mensagemErroPlano,
   ordenarPlanos,
   situacaoPlanoNaTela,
@@ -115,20 +116,26 @@ describe("contarAtrasados", () => {
   });
 });
 
-describe("contarCriticosFora", () => {
-  it("conta só resposta fora da meta em item crítico do snapshot daquela execução", () => {
-    const execucoes = [
-      { id: "e1", snapshot: [{ id: "i1", critico: true }, { id: "i2", critico: false }] },
-      { id: "e2", snapshot: [{ id: "i1", critico: false }] },
-      { id: "e3", snapshot: null },
-    ];
-    const fora = [
-      { execucaoId: "e1", itemId: "i1" },
-      { execucaoId: "e1", itemId: "i2" },
-      { execucaoId: "e2", itemId: "i1" },
-      { execucaoId: "e3", itemId: "i1" },
-    ];
-    expect(contarCriticosFora(execucoes, fora)).toBe(1);
+describe("lerPagina", () => {
+  it("aceita inteiro de 1 a 10.000; o resto vira 1", () => {
+    expect(lerPagina("3")).toBe(3);
+    expect(lerPagina(["2", "5"])).toBe(2);
+    for (const v of [undefined, "", "0", "-1", "1.5", "abc", "10001"]) expect(lerPagina(v)).toBe(1);
+  });
+});
+
+describe("calcularPaginacao", () => {
+  it("100 por página, range inclusivo", () => {
+    expect(calcularPaginacao(250, 1)).toEqual({ pagina: 1, totalPaginas: 3, de: 0, ate: 99 });
+    expect(calcularPaginacao(250, 3)).toEqual({ pagina: 3, totalPaginas: 3, de: 200, ate: 299 });
+  });
+  it("exatamente 100 é uma página só; 101 são duas", () => {
+    expect(calcularPaginacao(100, 1).totalPaginas).toBe(1);
+    expect(calcularPaginacao(101, 2)).toEqual({ pagina: 2, totalPaginas: 2, de: 100, ate: 199 });
+  });
+  it("página além da última vira a última; sem planos fica 1 de 1", () => {
+    expect(calcularPaginacao(150, 9)).toEqual({ pagina: 2, totalPaginas: 2, de: 100, ate: 199 });
+    expect(calcularPaginacao(0, 4)).toEqual({ pagina: 1, totalPaginas: 1, de: 0, ate: 99 });
   });
 });
 

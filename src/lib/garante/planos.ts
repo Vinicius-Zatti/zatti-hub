@@ -79,14 +79,27 @@ export function contarAtrasados(linhas: { situacao: SituacaoAgenda; prazo: strin
   return linhas.filter((l) => situacaoNaTela(l.situacao, l.prazo, agora) === "atrasada").length;
 }
 
-/** Respostas fora da meta em itens críticos (pelo snapshot de cada execução). */
-export function contarCriticosFora(
-  execucoes: { id: string; snapshot: { id: string; critico?: boolean }[] | null }[],
-  respostasFora: { execucaoId: string; itemId: string }[],
-): number {
-  const criticos = new Set<string>();
-  for (const e of execucoes) for (const i of e.snapshot ?? []) if (i.critico) criticos.add(`${e.id}:${i.id}`);
-  return respostasFora.filter((r) => criticos.has(`${r.execucaoId}:${r.itemId}`)).length;
+/** Planos abertos por página na tela de planos (e teto dos fechados mostrados). */
+export const PLANOS_POR_PAGINA = 100;
+
+/** `?pagina=N` da URL: inteiro de 1 a 10.000; qualquer outra coisa vira 1. */
+export function lerPagina(valor: string | string[] | undefined): number {
+  const n = Number(Array.isArray(valor) ? valor[0] : valor);
+  return Number.isInteger(n) && n >= 1 && n <= 10_000 ? n : 1;
+}
+
+/** Página pedida limitada ao total (página além da última vira a última) e as
+ * posições `de`/`ate` para o `.range()` do Supabase (inclusivas). Sem nenhum
+ * plano, continua página 1 de 1. */
+export function calcularPaginacao(
+  total: number,
+  pedida: number,
+  porPagina: number = PLANOS_POR_PAGINA,
+): { pagina: number; totalPaginas: number; de: number; ate: number } {
+  const totalPaginas = Math.max(1, Math.ceil(Math.max(0, total) / porPagina));
+  const pagina = Math.min(Math.max(1, Math.floor(pedida) || 1), totalPaginas);
+  const de = (pagina - 1) * porPagina;
+  return { pagina, totalPaginas, de, ate: de + porPagina - 1 };
 }
 
 /** Textos do ícone (i) da tela de planos e do card do Painel. */

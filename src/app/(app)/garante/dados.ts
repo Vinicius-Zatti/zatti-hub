@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { TipoItemGarante } from "@/lib/garante/biblioteca";
 import { REGRA_PADRAO, type SituacaoAgenda } from "@/lib/garante/regras";
 import { intervaloNota, normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta } from "@/lib/garante/nota";
-import { contarAtrasados, contarCriticosFora, textoRespostaOrigem, type SituacaoPlano } from "@/lib/garante/planos";
+import { calcularPaginacao, contarAtrasados, PLANOS_POR_PAGINA, textoRespostaOrigem, type SituacaoPlano } from "@/lib/garante/planos";
 
 export type LinhaAgenda = {
   publicacaoId: string;
@@ -449,28 +449,74 @@ type PlanoBruto = {
 const COLUNAS_PLANO =
   "id, situacao, origem, prazo, fechado_em, data, modelo_nome, execucao_id, resposta_id, item, responsavel_id, resolucao, motivo_descarte, fechado_por";
 
+export type PlanosDaTela = {
+  planos: PlanoTela[];
+  /** Totais reais (count no banco), não só o que veio na página. */
+  totalAbertos: number;
+  totalAtrasados: number;
+  /** Fechados nos últimos 30 dias; a tela mostra no máximo PLANOS_POR_PAGINA. */
+  totalFechados: number;
+  pagina: number;
+  totalPaginas: number;
+};
+
 /** Planos de ação da unidade da sessão: antes de ler, gera os do item crítico
  * fora da meta em checklist que venceu sem concluir (`garante_gerar_planos_vencidos`,
  * idempotente). O RLS mostra tudo para a gestão e só os planos de que a pessoa
- * é responsável para o operacional. Abertos todos; fechados, os dos últimos 30 dias. */
-export async function carregarPlanos(acesso: AcessoAtual): Promise<PlanoTela[]> {
+ * é responsável para o operacional. Abertos paginados (100 por página, por prazo,
+ * então os atrasados vêm primeiro); fechados, os 100 mais recentes dos últimos
+ * 30 dias, com o total real. Página além da última vira a última. */
+export async function carregarPlanos(acesso: AcessoAtual, paginaPedida: number, agora: Date = new Date()): Promise<PlanosDaTela> {
   const supabase = await createClient();
   // Falha aqui não impede ler o que já existe: a próxima leitura tenta de novo.
   await supabase.rpc("garante_gerar_planos_vencidos", { p_unidade_id: acesso.unidadeId });
-  const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const [{ data: abertos, error: e1 }, { data: fechados, error: e2 }] = await Promise.all([
-    supabase.from("garante_planos_acao").select(COLUNAS_PLANO).eq("unidade_id", acesso.unidadeId).eq("situacao", "aberto").order("prazo").limit(500),
+  const desde = new Date(agora.getTime() - 30 * 86_400_000).toISOString();
+  const lerAbertos = (pagina: number) => {
+    const de = (pagina - 1) * PLANOS_POR_PAGINA;
+    return supabase
+      .from("garante_planos_acao")
+      .select(COLUNAS_PLANO, { count: "exact" })
+      .eq("unidade_id", acesso.unidadeId)
+      .eq("situacao", "aberto")
+      .order("prazo")
+      .order("id")
+      .range(de, de + PLANOS_POR_PAGINA - 1);
+  };
+  const [primeiraLeitura, atrasados, fechados] = await Promise.all([
+    lerAbertos(paginaPedida),
     supabase
       .from("garante_planos_acao")
-      .select(COLUNAS_PLANO)
+      .select("id", { count: "exact", head: true })
+      .eq("unidade_id", acesso.unidadeId)
+      .eq("situacao", "aberto")
+      .lt("prazo", agora.toISOString()),
+    supabase
+      .from("garante_planos_acao")
+      .select(COLUNAS_PLANO, { count: "exact" })
       .eq("unidade_id", acesso.unidadeId)
       .neq("situacao", "aberto")
       .gte("fechado_em", desde)
       .order("fechado_em", { ascending: false })
-      .limit(100),
+      .order("id")
+      .limit(PLANOS_POR_PAGINA),
   ]);
-  if (e1 || e2) throw new Error("Não foi possível carregar os planos de ação.");
-  const brutos = [...((abertos ?? []) as PlanoBruto[]), ...((fechados ?? []) as PlanoBruto[])];
+  let abertos = primeiraLeitura;
+  // Página além da última (link antigo, plano resolvido no meio): o PostgREST
+  // recusa o range (PGRST103) ou devolve vazio. Conta e lê a última página.
+  if (abertos.error?.code === "PGRST103") {
+    const { count, error } = await supabase
+      .from("garante_planos_acao")
+      .select("id", { count: "exact", head: true })
+      .eq("unidade_id", acesso.unidadeId)
+      .eq("situacao", "aberto");
+    if (error) throw new Error("Não foi possível carregar os planos de ação.");
+    abertos = await lerAbertos(calcularPaginacao(count ?? 0, paginaPedida).pagina);
+  } else if (!abertos.error && calcularPaginacao(abertos.count ?? 0, paginaPedida).pagina !== paginaPedida) {
+    abertos = await lerAbertos(calcularPaginacao(abertos.count ?? 0, paginaPedida).pagina);
+  }
+  if (abertos.error || atrasados.error || fechados.error) throw new Error("Não foi possível carregar os planos de ação.");
+  const paginacao = calcularPaginacao(abertos.count ?? 0, paginaPedida);
+  const brutos = [...((abertos.data ?? []) as PlanoBruto[]), ...((fechados.data ?? []) as PlanoBruto[])];
 
   const pessoas = [...new Set(brutos.flatMap((p) => [p.responsavel_id, p.fechado_por]).filter(Boolean))] as string[];
   const respostasIds = brutos.map((p) => p.resposta_id);
@@ -489,7 +535,7 @@ export async function carregarPlanos(acesso: AcessoAtual): Promise<PlanoTela[]> 
   );
 
   const gestao = acesso.role !== "operacional";
-  return brutos.map((p) => ({
+  const planos = brutos.map((p): PlanoTela => ({
     id: p.id,
     situacao: p.situacao,
     origem: p.origem,
@@ -509,6 +555,14 @@ export async function carregarPlanos(acesso: AcessoAtual): Promise<PlanoTela[]> 
     podeResolver: p.situacao === "aberto" && (gestao || p.responsavel_id === acesso.userId),
     podeDescartar: p.situacao === "aberto" && gestao,
   }));
+  return {
+    planos,
+    totalAbertos: abertos.count ?? 0,
+    totalAtrasados: atrasados.count ?? 0,
+    totalFechados: fechados.count ?? 0,
+    pagina: paginacao.pagina,
+    totalPaginas: paginacao.totalPaginas,
+  };
 }
 
 export type ResumoGarantePainel = {
@@ -521,40 +575,27 @@ export type ResumoGarantePainel = {
 
 /** Card "Checklist Garante" do Painel geral (gestão, com a flag). Nota dos
  * últimos 7 dias pela `garante_nota` (que confere a gestão no banco), atrasados
- * de hoje pela agenda, críticos fora da meta nos últimos 7 dias pelo snapshot de
- * cada execução e planos abertos (gerando antes os de checklist vencido). */
+ * de hoje pela agenda, e planos abertos, atrasados e críticos fora da meta nos
+ * últimos 7 dias contados no banco por `garante_resumo_planos` (sem o teto de
+ * linhas do PostgREST), gerando antes os planos de checklist vencido. */
 export async function carregarResumoGarantePainel(acesso: AcessoAtual, agora: Date = new Date()): Promise<ResumoGarantePainel> {
   const supabase = await createClient();
   const { de, ate } = intervaloNota(7, agora);
   await supabase.rpc("garante_gerar_planos_vencidos", { p_unidade_id: acesso.unidadeId });
-  const [nota, agenda, execucoes, abertos] = await Promise.all([
+  const [nota, agenda, resumo] = await Promise.all([
     supabase.rpc("garante_nota", { p_unidade_id: acesso.unidadeId, p_de: de, p_ate: ate }),
     supabase.rpc("garante_agenda", { p_unidade_id: acesso.unidadeId, p_data: ate }),
-    supabase.from("garante_execucoes").select("id, snapshot").eq("unidade_id", acesso.unidadeId).gte("data", de).lte("data", ate),
-    supabase.from("garante_planos_acao").select("prazo").eq("unidade_id", acesso.unidadeId).eq("situacao", "aberto").limit(5000),
+    supabase.rpc("garante_resumo_planos", { p_unidade_id: acesso.unidadeId, p_de: de, p_ate: ate }),
   ]);
-  if (nota.error || agenda.error || execucoes.error || abertos.error) throw new Error("Não foi possível carregar o Checklist Garante.");
-
-  const listaExecucoes = (execucoes.data ?? []) as { id: string; snapshot: { id: string; critico?: boolean }[] | null }[];
-  let respostasFora: { execucaoId: string; itemId: string }[] = [];
-  if (listaExecucoes.length) {
-    const { data, error } = await supabase
-      .from("garante_respostas")
-      .select("execucao_id, item_id")
-      .eq("unidade_id", acesso.unidadeId)
-      .eq("dentro_meta", false)
-      .in("execucao_id", listaExecucoes.map((e) => e.id));
-    if (error) throw new Error("Não foi possível carregar o Checklist Garante.");
-    respostasFora = ((data ?? []) as { execucao_id: string; item_id: string }[]).map((r) => ({ execucaoId: r.execucao_id, itemId: r.item_id }));
-  }
+  if (nota.error || agenda.error || resumo.error) throw new Error("Não foi possível carregar o Checklist Garante.");
 
   const unidade = ((nota.data ?? []) as LinhaNotaBruta[]).map(normalizarLinhaNota).find((l) => l.nivel === "unidade");
-  const prazos = ((abertos.data ?? []) as { prazo: string }[]).map((p) => p.prazo);
+  const contagens = ((resumo.data ?? []) as { planos_abertos: number; planos_atrasados: number; criticos_fora: number }[])[0];
   return {
     nota: unidade?.nota ?? null,
     atrasadosHoje: contarAtrasados((agenda.data ?? []) as { situacao: SituacaoAgenda; prazo: string }[], agora),
-    criticosFora: contarCriticosFora(listaExecucoes, respostasFora),
-    planosAbertos: prazos.length,
-    planosAtrasados: prazos.filter((p) => new Date(p).getTime() < agora.getTime()).length,
+    criticosFora: contagens?.criticos_fora ?? 0,
+    planosAbertos: contagens?.planos_abertos ?? 0,
+    planosAtrasados: contagens?.planos_atrasados ?? 0,
   };
 }

@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { descartarPlanoAction, resolverPlanoAction } from "@/app/(app)/garante/actions";
 import type { PlanoTela } from "@/app/(app)/garante/dados";
-import { DICA_PLANOS, ordenarPlanos, situacaoPlanoNaTela, type SituacaoPlanoTela } from "@/lib/garante/planos";
+import { DICA_PLANOS, ordenarPlanos, PLANOS_POR_PAGINA, situacaoPlanoNaTela, type SituacaoPlanoTela } from "@/lib/garante/planos";
 import { hojeOperacao, horaOperacao } from "@/lib/garante/regras";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { Paginacao } from "@/components/paginacao";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 
 const ESTILO: Record<SituacaoPlanoTela, { texto: string; classe: string }> = {
@@ -22,10 +23,33 @@ const SEM_RESPONSAVEL = "__gestao__";
 
 type Janela = { tipo: "resolver" | "descartar"; plano: PlanoTela } | null;
 
+const TITULO_FECHADOS = "Resolvidos e descartados (últimos 30 dias)";
+const linkPagina = (n: number) => (n > 1 ? `/garante/planos?pagina=${n}` : "/garante/planos");
+
 /** Lista de planos (atrasados no topo, depois no prazo, depois os fechados nos
- * últimos 30 dias). Gestão filtra por responsável. Resolver e descartar abrem
- * um ModalFlutuante com o texto; o banco confere quem pode de novo. */
-export function ListaPlanos({ planos, gestao, agoraIso }: { planos: PlanoTela[]; gestao: boolean; agoraIso: string }) {
+ * últimos 30 dias). Abertos em páginas de 100; os números entre parênteses são
+ * os totais do banco (sem filtro). Gestão filtra por responsável dentro da
+ * página. Resolver e descartar abrem um ModalFlutuante com o texto; o banco
+ * confere quem pode de novo. */
+export function ListaPlanos({
+  planos,
+  gestao,
+  agoraIso,
+  totalAbertos,
+  totalAtrasados,
+  totalFechados,
+  pagina,
+  totalPaginas,
+}: {
+  planos: PlanoTela[];
+  gestao: boolean;
+  agoraIso: string;
+  totalAbertos: number;
+  totalAtrasados: number;
+  totalFechados: number;
+  pagina: number;
+  totalPaginas: number;
+}) {
   const router = useRouter();
   const agora = useMemo(() => new Date(agoraIso), [agoraIso]);
   const [filtro, setFiltro] = useState("");
@@ -47,11 +71,25 @@ export function ListaPlanos({ planos, gestao, agoraIso }: { planos: PlanoTela[];
     planos.filter((p) => !filtro || (filtro === SEM_RESPONSAVEL ? !p.responsavelId : p.responsavelId === filtro)),
     agora,
   );
-  const grupos: { titulo: string; itens: PlanoTela[] }[] = [
-    { titulo: "Atrasados", itens: visiveis.filter((p) => situacaoPlanoNaTela(p.situacao, p.prazo, agora) === "atrasado") },
-    { titulo: "No prazo", itens: visiveis.filter((p) => situacaoPlanoNaTela(p.situacao, p.prazo, agora) === "aberto") },
-    { titulo: "Resolvidos e descartados (últimos 30 dias)", itens: visiveis.filter((p) => p.situacao !== "aberto") },
+  // Com filtro, o número é o da página filtrada; sem filtro, o total do banco.
+  const grupos: { titulo: string; itens: PlanoTela[]; total: number; aviso?: string }[] = [
+    { titulo: "Atrasados", itens: visiveis.filter((p) => situacaoPlanoNaTela(p.situacao, p.prazo, agora) === "atrasado"), total: totalAtrasados },
+    {
+      titulo: "No prazo",
+      itens: visiveis.filter((p) => situacaoPlanoNaTela(p.situacao, p.prazo, agora) === "aberto"),
+      total: Math.max(0, totalAbertos - totalAtrasados),
+    },
+    {
+      titulo: TITULO_FECHADOS,
+      itens: visiveis.filter((p) => p.situacao !== "aberto"),
+      total: totalFechados,
+      aviso: totalFechados > PLANOS_POR_PAGINA ? `Mostrando os ${PLANOS_POR_PAGINA} mais recentes.` : undefined,
+    },
   ];
+  const comItens = grupos.filter((g) => g.itens.length > 0);
+  // Paginação em cima e no fim dos abertos (antes dos fechados, que não paginam).
+  const ultimoAberto = comItens.filter((g) => g.titulo !== TITULO_FECHADOS).at(-1);
+  const paginacao = <Paginacao atual={pagina} total={totalPaginas} link={linkPagina} />;
 
   function abrir(j: NonNullable<Janela>) {
     setErro(null);
@@ -77,7 +115,7 @@ export function ListaPlanos({ planos, gestao, agoraIso }: { planos: PlanoTela[];
     <div className="flex flex-col gap-5">
       {gestao && opcoes.length > 1 && (
         <div className="max-w-sm">
-          <p className="text-xs font-semibold text-cinza-medio">Responsável</p>
+          <p className="text-xs font-semibold text-cinza-medio">Responsável{totalPaginas > 1 && " (filtra esta página)"}</p>
           <SeletorComBusca value={filtro} opcoes={opcoes} onChange={setFiltro} vazioLabel="Todos" placeholder="Buscar responsável..." />
         </div>
       )}
@@ -89,20 +127,22 @@ export function ListaPlanos({ planos, gestao, agoraIso }: { planos: PlanoTela[];
         </p>
       )}
 
-      {grupos
-        .filter((g) => g.itens.length > 0)
-        .map((g) => (
-          <section key={g.titulo} className="flex flex-col gap-3">
-            <h2 className="font-display text-lg font-bold text-azul-noite">
-              {g.titulo} <span className="text-sm font-normal text-cinza-medio">({g.itens.length})</span>
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2">
-              {g.itens.map((p) => (
-                <CartaoPlano key={p.id} plano={p} agora={agora} aoResolver={() => abrir({ tipo: "resolver", plano: p })} aoDescartar={() => abrir({ tipo: "descartar", plano: p })} />
-              ))}
-            </div>
-          </section>
-        ))}
+      {paginacao}
+
+      {comItens.map((g) => (
+        <section key={g.titulo} className="flex flex-col gap-3">
+          <h2 className="font-display text-lg font-bold text-azul-noite">
+            {g.titulo} <span className="text-sm font-normal text-cinza-medio">({filtro ? g.itens.length : g.total})</span>
+          </h2>
+          {g.aviso && <p className="text-xs text-cinza-medio">{g.aviso}</p>}
+          <div className="grid gap-3 md:grid-cols-2">
+            {g.itens.map((p) => (
+              <CartaoPlano key={p.id} plano={p} agora={agora} aoResolver={() => abrir({ tipo: "resolver", plano: p })} aoDescartar={() => abrir({ tipo: "descartar", plano: p })} />
+            ))}
+          </div>
+          {g === ultimoAberto && paginacao}
+        </section>
+      ))}
 
       <ModalFlutuante aberto={janela !== null} onFechar={() => !pendente && setJanela(null)}>
         {janela && (

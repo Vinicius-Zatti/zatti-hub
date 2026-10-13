@@ -5,13 +5,15 @@
 -- origem/responsável/prazo imutáveis (até para o servidor), resolver só responsável ou
 -- gestão, descartar só gestão, prazo pela regra vigente na data, regra nova com e sem o
 -- prazo do plano, isolamento entre unidades e organizações, operacional só vê os dele,
+-- folga de 5 minutos depois do fim da janela antes de gerar o 'vencida', resumo do card
+-- do Painel no banco (garante_resumo_planos, só gestão da unidade),
 -- e flag desligada esconde tudo. Só fixtures de teste, sem depender da hora em que roda.
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(57);
+select plan(66);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -258,6 +260,62 @@ select pg_temp.como('00000000-0000-0000-0000-0000000b2002');
 select throws_ok($$ select public.garante_definir_regra('org-p-a-loja', 30, 10, null, 12) $$, '42501', 'sem_permissao',
   'operacional não muda o prazo do plano');
 
+-- ── Vencida: folga de 5 minutos e execução concluída ───────────────────
+-- A corrida real (leitura gerando enquanto outra transação responde ou conclui) não
+-- dá para provar no pgTAP, que roda numa transação só. A garantia vem do "for update"
+-- na execução + releitura da situação e do fecha_em depois da trava, e da folga de
+-- 5 minutos (transação de responder/concluir que começou antes do fecha_em). Aqui
+-- fica provado o corte da folga e que execução concluída não vira 'vencida'.
+--   E8 (P2, -5): fechou há 10 min.  E9 (P2, -6): fechou há 2 min.
+--   E10 (P2, -7): concluída, janela já fechada.  E11 (P2, -8): fechou há dias (prazo do plano vencido).
+-- Todas com o crítico fora da meta. Nesta altura não há plano aberto na unidade.
+select pg_temp.servidor();
+insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, abre_em, fecha_em, snapshot, modelo_nome) values
+  ('00000000-0000-0000-0000-0000000b7008', '00000000-0000-0000-0000-0000000b6002', 'org-p-a-loja', public.garante_hoje() - 5,
+   pg_temp.prazo(public.garante_hoje() - 5), now() - interval '3 hours', now() - interval '10 minutes', pg_temp.snap(), 'Abertura'),
+  ('00000000-0000-0000-0000-0000000b7009', '00000000-0000-0000-0000-0000000b6002', 'org-p-a-loja', public.garante_hoje() - 6,
+   pg_temp.prazo(public.garante_hoje() - 6), now() - interval '3 hours', now() - interval '2 minutes', pg_temp.snap(), 'Abertura'),
+  ('00000000-0000-0000-0000-0000000b7011', '00000000-0000-0000-0000-0000000b6002', 'org-p-a-loja', public.garante_hoje() - 8,
+   pg_temp.prazo(public.garante_hoje() - 8), pg_temp.prazo(public.garante_hoje() - 8) - interval '2 hours',
+   pg_temp.prazo(public.garante_hoje() - 8) + interval '1 hour', pg_temp.snap(), 'Abertura');
+insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, abre_em, fecha_em, snapshot, modelo_nome, situacao, concluida_em) values
+  ('00000000-0000-0000-0000-0000000b7010', '00000000-0000-0000-0000-0000000b6002', 'org-p-a-loja', public.garante_hoje() - 7,
+   pg_temp.prazo(public.garante_hoje() - 7), pg_temp.prazo(public.garante_hoje() - 7) - interval '2 hours',
+   pg_temp.prazo(public.garante_hoje() - 7) + interval '1 hour', pg_temp.snap(), 'Abertura',
+   'concluida', pg_temp.prazo(public.garante_hoje() - 7) - interval '30 minutes');
+insert into garante_respostas (execucao_id, unidade_id, item_id, valor_bool, valor_numero, dentro_meta) values
+  ('00000000-0000-0000-0000-0000000b7008', 'org-p-a-loja', '00000000-0000-0000-0000-0000000b4002', null, 9, false),
+  ('00000000-0000-0000-0000-0000000b7009', 'org-p-a-loja', '00000000-0000-0000-0000-0000000b4002', null, 9, false),
+  ('00000000-0000-0000-0000-0000000b7010', 'org-p-a-loja', '00000000-0000-0000-0000-0000000b4002', null, 9, false),
+  ('00000000-0000-0000-0000-0000000b7011', 'org-p-a-loja', '00000000-0000-0000-0000-0000000b4002', null, 9, false);
+
+select pg_temp.como('00000000-0000-0000-0000-0000000b2001');
+select is(public.garante_gerar_planos_vencidos('org-p-a-loja'), 2, 'leitura gera só E8 e E11');
+select pg_temp.servidor();
+select is((select count(*)::int from garante_planos_acao where execucao_id = '00000000-0000-0000-0000-0000000b7009'), 0,
+  'execução vencida há menos de 5 minutos ainda não gera plano (folga para responder/concluir em curso)');
+select results_eq($$ select origem from garante_planos_acao where execucao_id = '00000000-0000-0000-0000-0000000b7008' $$,
+  $$ values ('vencida') $$, 'execução vencida há mais de 5 minutos gera o plano do crítico');
+select is((select count(*)::int from garante_planos_acao where execucao_id = '00000000-0000-0000-0000-0000000b7010' and origem = 'vencida'), 0,
+  'execução concluída não gera plano de origem vencida');
+
+-- ── Resumo do card do Painel (contagens no banco) ───────────────────────
+-- Abertos: E8 (prazo no futuro) e E11 (prazo vencido). Os outros já foram fechados.
+-- Críticos fora da meta de -8 a hoje: E2, E4, E5, E8, E9, E10, E11 (o comum fora da E2
+-- não conta, a E1 respondeu o crítico dentro). De -3 a hoje: E2, E4, E5.
+select pg_temp.como('00000000-0000-0000-0000-0000000b2001');
+select results_eq($$ select planos_abertos, planos_atrasados, criticos_fora
+    from public.garante_resumo_planos('org-p-a-loja', public.garante_hoje() - 8, public.garante_hoje()) $$,
+  $$ values (2, 1, 7) $$, 'resumo: 2 abertos, 1 atrasado, 7 críticos fora da meta no período');
+select results_eq($$ select criticos_fora from public.garante_resumo_planos('org-p-a-loja', public.garante_hoje() - 3, public.garante_hoje()) $$,
+  $$ values (3) $$, 'críticos fora da meta respeitam o período');
+select pg_temp.como('00000000-0000-0000-0000-0000000b2004');
+select throws_ok($$ select * from public.garante_resumo_planos('org-p-a-loja', public.garante_hoje() - 7, public.garante_hoje()) $$,
+  '42501', 'sem_permissao', 'gestão de outra unidade não lê o resumo');
+select pg_temp.como('00000000-0000-0000-0000-0000000b2002');
+select throws_ok($$ select * from public.garante_resumo_planos('org-p-a-loja', public.garante_hoje() - 7, public.garante_hoje()) $$,
+  '42501', 'sem_permissao', 'operacional não lê o resumo');
+
 -- ── Flag desligada ──────────────────────────────────────────────────────
 select pg_temp.servidor();
 update unidades set garante_habilitado = false where id = 'org-p-a-loja';
@@ -265,6 +323,8 @@ select pg_temp.como('00000000-0000-0000-0000-0000000b2001');
 select is((select count(*)::int from garante_planos_acao), 0, 'flag desligada: gestão não vê planos');
 select throws_ok($$ select public.garante_gerar_planos_vencidos('org-p-a-loja') $$, '42501', 'sem_permissao',
   'flag desligada: não gera planos');
+select throws_ok($$ select * from public.garante_resumo_planos('org-p-a-loja', public.garante_hoje() - 7, public.garante_hoje()) $$,
+  '42501', 'sem_permissao', 'flag desligada: não lê o resumo');
 
 select pg_temp.servidor();
 select * from finish();
