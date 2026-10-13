@@ -1,6 +1,6 @@
 import { listProdutos } from "./produtos";
 import { listInventario, calcularAlerta } from "./inventario";
-import { ordenarGrupos } from "@/lib/pedido";
+import { ordenarDatasContagemBase, ordenarGrupos } from "@/lib/pedido";
 import {
   quantidadePorSku,
   setoresPendentes,
@@ -8,6 +8,7 @@ import {
   type AndamentoSetor,
   type EscopoSetor,
 } from "@/lib/contagem/setor";
+import { consolidarVariasDatas } from "@/lib/contagem/varias-datas";
 import type { SugestaoCompra } from "@/lib/types";
 
 function parseDataBr(d: string): number {
@@ -33,14 +34,20 @@ export async function datasDisponiveis(spreadsheetId: string | null): Promise<st
  * data escolhida (`gruposContadosNoDia`) - se no dia 21/07 só rolou contagem
  * de Limpeza, Pedidos não mostra Proteínas/Hortifrúti/etc como "não
  * contado", porque isso nunca fez parte daquela contagem. `opcoes.grupos`
- * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar. */
+ * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar.
+ *
+ * `datas` (13/10/2026): mais de uma contagem base junta os setores que
+ * contaram em dias diferentes - regra em `lib/contagem/varias-datas.ts`. A
+ * mais recente vira `dataUsada` (a contagem base que dá nome ao pedido). Com
+ * uma data só, tudo fica exatamente como era. */
 export async function gerarPedido(
   opcoes: {
     data?: string;
+    datas?: string[];
     grupos?: string[];
     /** Snapshot do escopo da data (fonte banco, com setor cadastrado). Vazio
      * em contagem legada e em unidade na planilha, e aí vale a regra antiga
-     * de escopo por grupo contado. */
+     * de escopo por grupo contado. Com várias datas, já vem consolidado. */
     escopo?: EscopoSetor[];
     andamento?: AndamentoSetor[];
   } = {},
@@ -48,6 +55,7 @@ export async function gerarPedido(
 ): Promise<{
   itens: SugestaoCompra[];
   dataUsada: string;
+  datasUsadas: string[];
   gruposContadosNoDia: string[];
   setoresPendentes: string[];
 }> {
@@ -56,10 +64,14 @@ export async function gerarPedido(
     listInventario(spreadsheetId),
   ]);
 
-  const dataUsada = opcoes.data || datasMaisRecente(inventario);
+  const datasUsadas = opcoes.datas?.length
+    ? ordenarDatasContagemBase(Array.from(new Set(opcoes.datas)))
+    : [opcoes.data || datasMaisRecente(inventario)];
+  const dataUsada = datasUsadas[0];
   const escopo = opcoes.escopo ?? [];
   const andamento = opcoes.andamento ?? [];
-  const itensDoDia = inventario.filter((item) => item.data === dataUsada);
+  const consolidado = consolidarVariasDatas(inventario, datasUsadas);
+  const itensDoDia = consolidado.itens;
 
   // SOMA, nunca sobrescreve. Antes desta versão, o mesmo SKU contado duas
   // vezes na mesma data deixava valendo a última linha gravada, enquanto o
@@ -141,12 +153,14 @@ export async function gerarPedido(
       // registro daquele dia.
       alerta: calcularAlerta(estoqueAtual, produto.precoUnitario, produto),
       setoresQueNaoContaram: incompletosPorSku.get(produto.sku) ?? [],
+      datasContagem: consolidado.datasPorSku.get(produto.sku) ?? [],
     });
   }
 
   return {
     itens,
     dataUsada,
+    datasUsadas,
     gruposContadosNoDia,
     setoresPendentes: setoresPendentes(andamento),
   };
