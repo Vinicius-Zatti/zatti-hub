@@ -97,7 +97,8 @@ select throws_ok(
 select throws_ok(
   $$update pedido_itens set pedido_id = '00000000-0000-0000-0000-0000000e7201'
     where pedido_id = '00000000-0000-0000-0000-0000000e7202' and sku = 'MERFEI001'$$,
-  'P0001', NULL,
+  -- Já barrado antes pela trava de campos imutáveis do item (pedido_id não muda).
+  '42501', NULL,
   'mover item para pedido recebido é recusado'
 );
 
