@@ -13,6 +13,7 @@ import {
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { Paginacao } from "@/components/paginacao";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
@@ -414,17 +415,6 @@ function Filtro({ ativo, href, children }: { ativo: boolean; href: string; child
     <Link href={href} className={`rounded-full border px-2.5 py-1 ${ativo ? "border-azul-petroleo bg-azul-petroleo text-branco" : "border-cinza-claro text-azul-noite"}`}>
       {children}
     </Link>
-  );
-}
-
-function Paginacao({ atual, total, link }: { atual: number; total: number; link: (n: number) => string }) {
-  if (total <= 1) return null;
-  return (
-    <div className="flex items-center justify-end gap-2 text-xs">
-      {atual > 1 && <Link href={link(atual - 1)} className="rounded border border-cinza-claro px-2 py-1">Anterior</Link>}
-      <span className="text-cinza-medio">Página {atual} de {total}</span>
-      {atual < total && <Link href={link(atual + 1)} className="rounded border border-cinza-claro px-2 py-1">Próxima</Link>}
-    </div>
   );
 }
 

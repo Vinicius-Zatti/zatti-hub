@@ -47,6 +47,12 @@ insert into garante_publicacoes (id, modelo_id, unidade_id, responsavel_id, dias
   ('00000000-0000-0000-0000-00000000d001', '00000000-0000-0000-0000-00000000b001', 'org-g-a-loja',
    '00000000-0000-0000-0000-0000000f0002', array[0,1,2,3,4,5,6]::smallint[], '10:00', current_date - 7);
 
+-- Janela da Fase 2a (abre_em <= agora <= fecha_em): regra larga para os testes não
+-- dependerem da hora em que rodam. Prazo 10:00 abre 00:00 do dia e fecha 10:00 do dia
+-- seguinte; o de amanhã só abre amanhã.
+insert into garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min) values
+  ('org-g-a-loja', current_date - 30, 600, 1440);
+
 create or replace function pg_temp.como(p_user_id uuid)
 returns void language sql as $$
   select set_config('role', 'authenticated', true);
@@ -157,7 +163,7 @@ insert into garante_itens (id, modelo_id, unidade_id, ordem, titulo, tipo) value
   ('00000000-0000-0000-0000-00000000c011', '00000000-0000-0000-0000-00000000b003', 'org-g-a-loja', 2, 'Temperatura da câmara', 'numero');
 insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario_limite, vigente_desde) values
   ('00000000-0000-0000-0000-00000000d003', '00000000-0000-0000-0000-00000000b003', 'org-g-a-loja',
-   array[0,1,2,3,4,5,6]::smallint[], '23:00', public.garante_hoje() - 5);
+   array[0,1,2,3,4,5,6]::smallint[], '10:00', public.garante_hoje() - 5);
 insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, snapshot, modelo_nome) values
   ('00000000-0000-0000-0000-00000000e003', '00000000-0000-0000-0000-00000000d003', 'org-g-a-loja',
    public.garante_hoje() - 2, now() - interval '2 days',
@@ -210,7 +216,7 @@ select is((select count(*)::int from garante_execucoes where publicacao_id = '00
 select is((select count(*)::int from garante_respostas where execucao_id = (select id from t where nome = 'exec')), 0,
   'nem as respostas dela');
 
--- 10: janela hoje/ontem em todas as RPCs.
+-- 10: janela em todas as RPCs (Fase 2a: até fecha_em; a de anteontem já fechou).
 select throws_ok($$ select public.garante_responder('00000000-0000-0000-0000-00000000e003',
   '00000000-0000-0000-0000-00000000c010', p_valor_bool => true) $$, '22023', 'data_fora_da_janela',
   'execução de anteontem não aceita resposta');

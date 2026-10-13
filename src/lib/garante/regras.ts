@@ -60,11 +60,109 @@ export const DICA_GARANTE = {
   foraDaMeta:
     "Itens cuja resposta ficou fora da meta do modelo: \"não feito\" num item de feito/não feito, ou número e estrelas fora da faixa definida.",
   diaConcluido: "Checklists concluídos ÷ checklists programados para hoje (os seus, ou todos da unidade se você é da gestão).",
+  janela:
+    "Começar: a partir do horário limite menos a antecedência da unidade. Responder, tirar foto e concluir: até o horário limite mais a tolerância de atraso. As duas ficam em Modelos e publicação > Regras da unidade (gestão).",
   situacao:
     "Concluída = alguém concluiu com todos os itens feitos. Atrasada = passou do horário limite sem concluir. Em andamento = já começou. Pendente = ninguém começou.",
 } as const;
 
 export const LIMITE_NUMERO = 1_000_000;
+
+export type EstadoJanela = "antes" | "aberta" | "fechada";
+
+/** Onde o relógio está na janela do checklist (mesma regra das RPCs): começar
+ * só a partir de `abreEm`; responder, foto e concluir até `fechaEm`. */
+export function estadoJanela(abreEm: string | Date, fechaEm: string | Date, agora: Date): EstadoJanela {
+  if (agora.getTime() < new Date(abreEm).getTime()) return "antes";
+  if (agora.getTime() > new Date(fechaEm).getTime()) return "fechada";
+  return "aberta";
+}
+
+/** Hora (HH:MM) e, se não for o dia de referência, a data (DD/MM) no fuso da operação. */
+export function horaOperacao(instante: string | Date, diaReferencia?: string): string {
+  const d = new Date(instante);
+  const hora = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(d);
+  if (!diaReferencia || hojeOperacao(d) === diaReferencia) return hora;
+  const [, m, dia] = hojeOperacao(d).split("-");
+  return `${dia}/${m} ${hora}`;
+}
+
+/** Soma dias a uma data AAAA-MM-DD sem passar por fuso. */
+export function somarDias(dataIso: string, dias: number): string {
+  const [a, m, d] = dataIso.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
+}
+
+/** Dia da agenda que a tela mostra: hoje, o de ontem que ainda aceita (fechamento
+ * depois da meia-noite) e o de amanhã cuja antecedência já abriu (checklist de
+ * 01h com 2 h de antecedência começa às 23h da véspera). */
+export type DiaAgenda = "ontem" | "hoje" | "amanha";
+
+/** Data AAAA-MM-DD do dia da agenda, no fuso da operação. */
+export function dataDoDiaAgenda(dia: DiaAgenda, agora: Date = new Date()): string {
+  const hoje = hojeOperacao(agora);
+  return dia === "ontem" ? somarDias(hoje, -1) : dia === "amanha" ? somarDias(hoje, 1) : hoje;
+}
+
+/** Hoje aparece sempre. Ontem: só o que não concluiu e ainda está na janela.
+ * Amanhã: só o que já começou ou cuja janela já abriu. */
+export function mostrarNaAgenda(
+  dia: DiaAgenda,
+  linha: { situacao: SituacaoAgenda; execucaoId: string | null; abreEm: string | Date; fechaEm: string | Date },
+  agora: Date,
+): boolean {
+  if (dia === "hoje") return true;
+  const janela = estadoJanela(linha.abreEm, linha.fechaEm, agora);
+  if (dia === "ontem") return linha.situacao !== "concluida" && janela !== "fechada";
+  return linha.execucaoId !== null || janela === "aberta";
+}
+
+export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: 60, prazoPlanoHoras: 24 } as const;
+
+export type ResultadoRegra =
+  | { ok: true; antecedenciaMin: number; atrasoMaxMin: number; prazoPlanoHoras?: number }
+  | { ok: false; erro: string };
+
+/** Antecedência (0 a 720 min), atraso (0 a 1.440 min) e, quando vier, o prazo do
+ * plano de ação (1 a 168 h), inteiros. Mesmos limites do banco. Sem o prazo do
+ * plano, o banco mantém o que valia. */
+export function validarRegra(params: {
+  antecedenciaMin: number | null;
+  atrasoMaxMin: number | null;
+  prazoPlanoHoras?: number | null;
+}): ResultadoRegra {
+  const { antecedenciaMin: a, atrasoMaxMin: b, prazoPlanoHoras: c } = params;
+  if (a === null || !Number.isInteger(a) || a < 0 || a > 720) {
+    return { ok: false, erro: "Antecedência em minutos inteiros, de 0 a 720 (12 h)." };
+  }
+  if (b === null || !Number.isInteger(b) || b < 0 || b > 1440) {
+    return { ok: false, erro: "Atraso em minutos inteiros, de 0 a 1.440 (24 h)." };
+  }
+  if (c === undefined) return { ok: true, antecedenciaMin: a, atrasoMaxMin: b };
+  if (c === null || !Number.isInteger(c) || c < 1 || c > 168) {
+    return { ok: false, erro: "Prazo do plano de ação em horas inteiras, de 1 a 168 (7 dias)." };
+  }
+  return { ok: true, antecedenciaMin: a, atrasoMaxMin: b, prazoPlanoHoras: c };
+}
+
+export type ResultadoDiaSemOperacao = { ok: true; data: string; motivo: string } | { ok: false; erro: string };
+
+/** Dia sem operação: data a partir de amanhã e motivo de 3 a 200 caracteres. */
+export function validarDiaSemOperacao(params: { data: string; motivo: string; hoje: string }): ResultadoDiaSemOperacao {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(params.data)) return { ok: false, erro: "Escolha a data." };
+  if (params.data <= params.hoje) return { ok: false, erro: "Só dá para marcar a partir de amanhã." };
+  const motivo = params.motivo.trim();
+  if (motivo.length < 3 || motivo.length > 200) return { ok: false, erro: "Escreva o motivo (de 3 a 200 caracteres)." };
+  return { ok: true, data: params.data, motivo };
+}
+
+/** Texto de minutos para gente: 90 -> "1 h 30 min". */
+export function textoMinutos(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
 
 export function textoDias(dias: number[]): string {
   const ordenados = [...new Set(dias)].sort((a, b) => a - b);
@@ -157,7 +255,14 @@ export function textoMeta(tipo: TipoItemGarante, min: number | null, max: number
 export function mensagemErroGarante(mensagem: string): string {
   const mapa: Record<string, string> = {
     sem_permissao: "Esse checklist é de outra pessoa.",
-    data_fora_da_janela: "Só dá para mexer no checklist de hoje ou no de ontem. Os mais antigos ficam só para consulta.",
+    data_fora_da_janela: "O prazo para mexer neste checklist já acabou (horário limite + tolerância de atraso da unidade). Ele fica só para consulta.",
+    janela_ainda_nao_abriu: "Esse checklist ainda não abriu. Ele abre um tempo antes do horário limite (regra da unidade).",
+    unidade_fechada_nesta_data: "A unidade não opera nesta data (dia sem operação).",
+    so_data_futura: "Só dá para mudar daqui para a frente: escolha uma data a partir de amanhã.",
+    regra_invalida: "Antecedência vai de 0 a 720 minutos (12 h), atraso de 0 a 1.440 minutos (24 h) e prazo do plano de ação de 1 a 168 horas.",
+    motivo_obrigatorio: "Escreva o motivo (de 3 a 200 caracteres).",
+    data_com_checklist: "Já tem checklist começado nesta data, então ela não pode virar dia sem operação.",
+    periodo_invalido: "Período inválido (até 93 dias).",
     publicacao_nao_devida_nesta_data: "Esse checklist não está programado para hoje.",
     publicacao_nao_encontrada: "Checklist não encontrado.",
     execucao_nao_encontrada: "Checklist não encontrado.",
@@ -172,6 +277,11 @@ export function mensagemErroGarante(mensagem: string): string {
     setor_invalido: "Setor não encontrado nesta unidade.",
     modelo_nao_encontrado: "Checklist não encontrado (ou já parou de ser usado).",
     foto_nao_recebida: "A foto não chegou. Tire de novo.",
+    plano_nao_encontrado: "Plano de ação não encontrado.",
+    plano_fechado: "Esse plano de ação já foi resolvido ou descartado.",
+    plano_imutavel: "Origem, responsável e prazo do plano de ação não mudam.",
+    resolucao_obrigatoria: "Escreva o que foi feito para resolver (de 3 a 500 caracteres).",
+    motivo_descarte_obrigatorio: "Escreva o motivo do descarte (de 3 a 500 caracteres).",
   };
   const chave = Object.keys(mapa).find((k) => mensagem.includes(k));
   return chave ? mapa[chave] : "Não foi possível salvar. Tente de novo.";

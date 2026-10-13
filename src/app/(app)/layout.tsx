@@ -228,13 +228,20 @@ export default async function AppLayout({
       activePrefix: "/garante",
       disabled: !acesso.garanteHabilitado,
       sections: [
-        { label: "Cumprir", items: [{ label: "Hoje", href: "/garante" }] },
+        {
+          label: "Cumprir",
+          items: [
+            { label: "Hoje", href: "/garante" },
+            { label: "Planos de ação", href: "/garante/planos" },
+          ],
+        },
         ...(podeGerir
           ? [
               {
                 label: "Gestão",
                 items: [
                   { label: "Quadro do dia", href: "/garante/quadro" },
+                  { label: "Nota", href: "/garante/nota" },
                   { label: "Modelos e publicação", href: "/garante/modelos" },
                 ],
               },

@@ -1,5 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { DicaCalculo } from "@/components/dica-calculo";
+import { DICA_CARD_GARANTE } from "@/lib/garante/planos";
+import { textoNota } from "@/lib/garante/nota";
 
 export type DadosPainelGeral = {
   saudacao: string;
@@ -18,6 +21,11 @@ export type DadosPainelGeral = {
   produtosSemPreco: number;
   pedidosPendentes: number;
   valorPedidosPendentes: number;
+  /** Card do Checklist Garante: só com a flag e só para a gestão (null = não mostra). */
+  garante:
+    | { estado: "ok"; nota: number | null; atrasadosHoje: number; criticosFora: number; planosAbertos: number; planosAtrasados: number }
+    | { estado: "erro" }
+    | null;
 };
 
 const moeda = new Intl.NumberFormat("pt-BR", {
@@ -48,7 +56,7 @@ export function PainelGeral({ dados }: { dados: DadosPainelGeral }) {
         </p>
       </header>
 
-      <section aria-label="Resumo do dia" className="grid gap-3 md:grid-cols-3">
+      <section aria-label="Resumo do dia" className={`grid gap-3 ${dados.garante ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
         <CartaoResumo
           titulo="Cadastro"
           descricao="Base pronta para a operação"
@@ -91,6 +99,32 @@ export function PainelGeral({ dados }: { dados: DadosPainelGeral }) {
           />
           <Metrica valor={moeda.format(dados.valorPedidosPendentes)} rotulo="valor estimado" />
         </CartaoResumo>
+
+        {dados.garante && (
+          <CartaoResumo
+            titulo="Checklist Garante"
+            descricao="Rotina da unidade: últimos 7 dias e hoje"
+            icone={<Icone nome="lista" />}
+            href="/garante/quadro"
+            destaque={dados.garante.estado === "ok" && dados.garante.atrasadosHoje + dados.garante.criticosFora + dados.garante.planosAtrasados > 0}
+          >
+            {dados.garante.estado === "erro" ? (
+              <p className="text-sm text-cinza-medio">Não foi possível carregar agora. Abra o Quadro do dia.</p>
+            ) : (
+              <>
+                <Metrica valor={textoNota(dados.garante.nota)} rotulo="nota 7 dias" dica={DICA_CARD_GARANTE.nota} />
+                <Metrica valor={String(dados.garante.atrasadosHoje)} rotulo="atrasados hoje" alerta={dados.garante.atrasadosHoje > 0} dica={DICA_CARD_GARANTE.atrasados} />
+                <Metrica valor={String(dados.garante.criticosFora)} rotulo="críticos fora da meta (7 dias)" alerta={dados.garante.criticosFora > 0} dica={DICA_CARD_GARANTE.criticos} />
+                <Metrica
+                  valor={String(dados.garante.planosAbertos)}
+                  rotulo={dados.garante.planosAtrasados > 0 ? `planos abertos (${dados.garante.planosAtrasados} atrasados)` : "planos abertos"}
+                  alerta={dados.garante.planosAtrasados > 0}
+                  dica={DICA_CARD_GARANTE.planos}
+                />
+              </>
+            )}
+          </CartaoResumo>
+        )}
       </section>
 
       <section aria-labelledby="titulo-estoque">
@@ -175,8 +209,16 @@ function CartaoResumo({ titulo, descricao, icone, href, destaque = false, childr
   );
 }
 
-function Metrica({ valor, rotulo, alerta = false }: { valor: string; rotulo: string; alerta?: boolean }) {
-  return <div><p className={`text-xl font-bold ${alerta ? "text-ambar" : "text-azul-noite"}`}>{valor}</p><p className="text-xs text-cinza-medio">{rotulo}</p></div>;
+function Metrica({ valor, rotulo, alerta = false, dica }: { valor: string; rotulo: string; alerta?: boolean; dica?: string }) {
+  return (
+    <div>
+      <p className={`text-xl font-bold ${alerta ? "text-ambar" : "text-azul-noite"}`}>{valor}</p>
+      <p className="flex items-center gap-1 text-xs text-cinza-medio">
+        {rotulo}
+        {dica && <DicaCalculo rotulo={rotulo} texto={dica} />}
+      </p>
+    </div>
+  );
 }
 
 function MetricaGrande({ valor, rotulo }: { valor: string; rotulo: string }) {

@@ -4,9 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { iniciarChecklistAction } from "@/app/(app)/garante/actions";
 import type { LinhaAgenda } from "@/app/(app)/garante/dados";
-import { DICA_GARANTE, percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { DICA_GARANTE, estadoJanela, horaOperacao, percentual, situacaoNaTela, type DiaAgenda } from "@/lib/garante/regras";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ESTILO_SITUACAO } from "./estilos";
+
+/** Data (AAAA-MM-DD) do prazo no fuso da operação, para só mostrar a data
+ * junto da hora quando a janela passa para outro dia. */
+function hojeDoPrazo(prazo: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(prazo));
+}
 
 export function CartaoAgenda({
   linha,
@@ -15,13 +21,17 @@ export function CartaoAgenda({
 }: {
   linha: LinhaAgenda;
   gestao: boolean;
-  /** "ontem" = fechamento que passou da meia-noite, ainda dá para concluir. */
-  dia?: "hoje" | "ontem";
+  /** "ontem" = fechamento que passou da meia-noite, ainda dá para concluir.
+   * "amanha" = antecedência que abriu antes da meia-noite, já dá para começar. */
+  dia?: DiaAgenda;
 }) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
-  const situacao = situacaoNaTela(linha.situacao, linha.prazo, new Date());
+  const agora = new Date();
+  const situacao = situacaoNaTela(linha.situacao, linha.prazo, agora);
+  // Mesma janela das RPCs: começa a partir de abreEm; mexe até fechaEm.
+  const janela = estadoJanela(linha.abreEm, linha.fechaEm, agora);
   const estilo = ESTILO_SITUACAO[situacao];
   const pct = percentual(linha.respondidos, linha.totalItens);
 
@@ -42,7 +52,7 @@ export function CartaoAgenda({
   }
 
   // Gestão pode abrir qualquer um (o banco confere); operacional, só o dele.
-  const podeAbrir = gestao || linha.ehMinha || linha.execucaoId !== null;
+  const podeAbrir = (gestao || linha.ehMinha || linha.execucaoId !== null) && (linha.execucaoId !== null || janela === "aberta");
   const rotulo = linha.situacao === "concluida" ? "Ver" : linha.execucaoId ? "Continuar" : "Começar";
 
   return (
@@ -55,6 +65,16 @@ export function CartaoAgenda({
             {linha.setorNome && ` · ${linha.setorNome}`}
             {` · ${linha.responsavelNome ?? (linha.responsavelId ? "responsável" : "qualquer pessoa da unidade")}`}
           </p>
+          {linha.situacao !== "concluida" && (
+            <p className="flex items-center gap-1 text-xs text-cinza-medio">
+              {janela === "antes"
+                ? `abre às ${horaOperacao(linha.abreEm, hojeDoPrazo(linha.prazo))}`
+                : janela === "aberta"
+                  ? `aceita até ${horaOperacao(linha.fechaEm, hojeDoPrazo(linha.prazo))}`
+                  : "tolerância de atraso encerrada"}
+              <DicaCalculo rotulo="janela do checklist" texto={DICA_GARANTE.janela} />
+            </p>
+          )}
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${estilo.classe}`}>{estilo.texto}</span>
       </div>
