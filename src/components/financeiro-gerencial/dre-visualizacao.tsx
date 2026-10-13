@@ -21,6 +21,7 @@ import { mesDoResumo, montarQuadrosDre, type Quadro, type ValorQuadro } from "@/
 import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import { avisosDre, mesesConsiderados, mesesJaIniciados, MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import type { EstoqueMensal, SaidaSemReceita } from "@/lib/financeiro-gerencial/tipos";
+import type { SugestaoEstoqueContagem } from "@/lib/financeiro-gerencial/sugestao-estoque-contagem";
 
 function formatarValorQuadro(v: ValorQuadro | null): string {
   if (!v) return "-";
@@ -101,12 +102,15 @@ export function DreVisualizacao({
   dreAnual,
   ano,
   estoquesDoAno,
+  sugestoesContagem,
   saidasSemReceitaDoAno,
   podeGerir,
 }: {
   dreAnual: DreAnual;
   ano: number;
   estoquesDoAno: (EstoqueMensal | null)[];
+  /** Sugestão de estoque final por mês vinda da Contagem; null = não deu pra ler. */
+  sugestoesContagem: (SugestaoEstoqueContagem | null)[] | null;
   saidasSemReceitaDoAno: SaidaSemReceita[];
   podeGerir: boolean;
 }) {
@@ -284,7 +288,7 @@ export function DreVisualizacao({
         )}
       </div>
 
-      <DadosComplementaresDre ano={ano} estoquesDoAno={estoquesDoAno} podeGerir={podeGerir} />
+      <DadosComplementaresDre ano={ano} estoquesDoAno={estoquesDoAno} sugestoesContagem={sugestoesContagem} podeGerir={podeGerir} />
       <SaidasSemReceitaDre ano={ano} saidasSemReceitaDoAno={saidasSemReceitaDoAno} podeGerir={podeGerir} />
     </div>
   );

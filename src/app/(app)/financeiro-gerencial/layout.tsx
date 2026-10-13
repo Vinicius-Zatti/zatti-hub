@@ -25,6 +25,8 @@ const SUB_ITEMS = [
   { label: "Contas a pagar e receber", href: "/financeiro-gerencial/contas-pagar-receber" },
   { label: "Cartões", href: "/financeiro-gerencial/cartoes" },
   { label: "Caixa de Entrada", href: "/financeiro-gerencial/caixa-entrada" },
+  // Fase 3 (13/10/2026): novo no fim, como manda a ordem aprovada.
+  { label: "Painel M.E.G.A.", href: "/financeiro-gerencial/painel-mega" },
 ];
 
 // Contas financeiras e Plano de Contas são configuração - só Gestão/master

@@ -171,6 +171,13 @@ function comPercentuais(linhas: LinhaDreAnual[], denominadorPorId: Record<string
   });
 }
 
+/** O mês mostra "% CMV" (e não o "% CMC" provisório) só com o CMV fechado e a
+ * Venda de Produtos preenchida. Exportada para o Painel M.E.G.A. saber qual
+ * dos dois a DRE está mostrando, sem repetir a regra. */
+export function mesUsaPercentualCmv(cmvProvisorio: boolean, vendaProdutos: number | null | undefined): boolean {
+  return !cmvProvisorio && (vendaProdutos ?? 0) > 0;
+}
+
 /** Percentual logo abaixo do CMV (regra final de 25/09), mês a mês:
  * - "% CMV" = CMV / Venda de Produtos, só com o CMV fechado (estoque final
  *   informado) E a Venda de Produtos preenchida;
@@ -191,7 +198,7 @@ function comPercentualCmv(
   const cmc = absoluto.find((l) => l.id === "cmc");
   if (!cmv || !cmc) return linhas;
 
-  const usaCmv = (i: number) => !provisorioPorMes[i] && (vendaProdutos.valoresPorMes[i] ?? 0) > 0;
+  const usaCmv = (i: number) => mesUsaPercentualCmv(provisorioPorMes[i], vendaProdutos.valoresPorMes[i]);
   const valoresPorMes = cmv.valoresPorMes.map((_, i) =>
     usaCmv(i) ? dividirRazao(cmv.valoresPorMes[i], vendaProdutos.valoresPorMes[i]) : dividirRazao(cmc.valoresPorMes[i], receitaBruta.valoresPorMes[i]),
   );

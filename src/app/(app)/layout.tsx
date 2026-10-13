@@ -107,6 +107,7 @@ export default async function AppLayout({
         { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
         { label: "DRE", href: "/financeiro-gerencial/dre" },
         { label: "DFC", href: "/financeiro-gerencial/dfc" },
+        { label: "Painel M.E.G.A.", href: "/financeiro-gerencial/painel-mega" },
       ],
     },
     ...(podeGerir
