@@ -165,6 +165,8 @@ export function DadosComplementaresDre({
   async function salvarMes(indiceMes: number) {
     const mes = valores[indiceMes];
     setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "salvando" }));
+    // Falha de rede (a chamada rejeita) vira o mesmo erro do retorno {ok:false}:
+    // o botão volta e a sugestão continua pendente para nova tentativa.
     const resultado = await salvarEstoqueMensalAction({
       competencia: competenciaDoMes(ano, indiceMes),
       receitaVendasProdutos: mes.receitaVendasProdutos ?? 0,
@@ -172,7 +174,7 @@ export function DadosComplementaresDre({
       estoqueInicialEmbalagens: mes.estoqueInicialEmbalagens ?? 0,
       estoqueFinalMercadorias: mes.estoqueFinalMercadorias ?? 0,
       estoqueFinalEmbalagens: mes.estoqueFinalEmbalagens ?? 0,
-    });
+    }).catch(() => ({ ok: false as const, mensagem: "Sem conexão com o servidor. Tente salvar de novo." }));
     if (!resultado.ok) {
       setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "erro" }));
       setErroPorMes((atual) => ({ ...atual, [indiceMes]: resultado.mensagem }));
