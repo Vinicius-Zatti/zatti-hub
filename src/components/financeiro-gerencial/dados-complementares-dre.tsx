@@ -145,7 +145,14 @@ function CelulaSugestao({
       ) : (
         podeGerir &&
         !jaIgual && (
-          <button type="button" onClick={onUsar} className="rounded border border-azul-petroleo px-1.5 py-0.5 font-semibold text-azul-petroleo">
+          // Enquanto o mês salva, não se aplica sugestão: a resposta do salvamento
+          // limparia o pendente e o campo pareceria salvo sem estar (Codex, 13/10).
+          <button
+            type="button"
+            onClick={onUsar}
+            disabled={status === "salvando"}
+            className="rounded border border-azul-petroleo px-1.5 py-0.5 font-semibold text-azul-petroleo disabled:opacity-50"
+          >
             Usar este valor
           </button>
         )
@@ -193,6 +200,11 @@ export function DadosComplementaresDre({
 
   async function salvarMes(indiceMes: number) {
     const mes = valores[indiceMes];
+    // Só os pendentes que vão neste envio saem com o sucesso; sugestão aplicada
+    // depois do início do salvamento continua pendente (e pede novo "Salvar mês").
+    const pendentesEnviados = (["estoqueFinalMercadorias", "estoqueFinalEmbalagens"] as const).filter(
+      (campo) => sugestaoPendente[chavePendente(indiceMes, campo)] === true,
+    );
     setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "salvando" }));
     // Falha de rede (a chamada rejeita) vira o mesmo erro do retorno {ok:false}:
     // o botão volta e a sugestão continua pendente para nova tentativa.
@@ -215,11 +227,11 @@ export function DadosComplementaresDre({
       delete proximo[indiceMes];
       return proximo;
     });
-    setSugestaoPendente((atual) => ({
-      ...atual,
-      [chavePendente(indiceMes, "estoqueFinalMercadorias")]: false,
-      [chavePendente(indiceMes, "estoqueFinalEmbalagens")]: false,
-    }));
+    setSugestaoPendente((atual) => {
+      const proximo = { ...atual };
+      for (const campo of pendentesEnviados) proximo[chavePendente(indiceMes, campo)] = false;
+      return proximo;
+    });
     setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "salvo" }));
     router.refresh();
     setTimeout(() => setStatusPorMes((atual) => (atual[indiceMes] === "salvo" ? { ...atual, [indiceMes]: undefined } : atual)), 2000);
