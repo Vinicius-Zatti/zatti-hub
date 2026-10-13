@@ -50,6 +50,11 @@ export type AcessoAtual = {
   /** Liga o Checklist Garante (rotinas com foto e nota, etapa Garante do
    * M.E.G.A.) nessa unidade - `unidades.garante_habilitado`. */
   garanteHabilitado: boolean;
+  /** Chave "Usar extrato do estoque" da unidade (`unidades.extrato_estoque_habilitado`,
+   * decisão 7 de 13/10/2026). Desligada: Movimentações e Perdas mostram só o
+   * aviso, sem número; o recebimento continua gravando as compras em segundo
+   * plano. Só master liga (Acessos > Unidades ou SQL). */
+  extratoEstoqueHabilitado: boolean;
   /** Unidade a que o vínculo efetivo está preso (`null` = organização
    * inteira, ou master). Limita o que o gestor administra em Equipe. */
   unidadeFixa: string | null;
@@ -85,7 +90,12 @@ type UnidadeRow = {
   financeiro_gerencial_habilitado: boolean;
   financeiro_liberado_equipe: boolean;
   garante_habilitado: boolean;
+  extrato_estoque_habilitado: boolean;
 };
+
+const COLUNAS_UNIDADE =
+  "id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, " +
+  "financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado, extrato_estoque_habilitado";
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
  * direto da sessão - nunca a partir de um id vindo de formulário ou da URL.
@@ -214,13 +224,13 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const unidadeQuery = unidadeFixa
     ? supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado")
+        .select(COLUNAS_UNIDADE)
         .eq("id", unidadeFixa)
         .eq("ativo", true)
         .limit(1)
     : supabase
         .from("unidades")
-        .select("id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado")
+        .select(COLUNAS_UNIDADE)
         .eq("organizacao_id", organizacaoId)
         .eq("ativo", true)
         .order("id")
@@ -253,6 +263,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
       unidade.financeiro_gerencial_habilitado && (unidade.financeiro_liberado_equipe || titularFinanceiro),
     titularFinanceiro,
     garanteHabilitado: unidade.garante_habilitado,
+    extratoEstoqueHabilitado: unidade.extrato_estoque_habilitado,
     role,
     unidadeFixa,
     equipeHabilitado,

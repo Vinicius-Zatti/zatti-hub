@@ -128,6 +128,9 @@ describe("mensagemRecebimento", () => {
       "Salvo. 2 itens entraram no extrato sem preço (ficam pendentes em Movimentações). Fora do extrato: ABC (produto não encontrado no cadastro).",
     );
   });
+  it("com a chave da unidade desligada não fala do extrato (a tela não mostra a pendência)", () => {
+    expect(mensagemRecebimento({ sem_preco: 2, pendencias: [{ sku: "ABC", motivo: "x" }] }, false)).toBe("Salvo.");
+  });
 });
 
 describe("perdaEstoqueSchema", () => {

@@ -1,5 +1,6 @@
 import { Th } from "@/components/tabela";
 import { AcoesVinculo } from "@/components/acoes-vinculo";
+import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { carregarPainelAcessos } from "./dados";
 
@@ -82,12 +83,13 @@ export default async function AcessosPage() {
                 <Th>Fonte do estoque</Th>
                 <Th align="center">Planilha</Th>
                 <Th align="center">Consolidado de vendas</Th>
+                <Th align="center">Extrato do estoque</Th>
               </tr>
             </thead>
             <tbody>
               {unidades.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-cinza-medio">
+                  <td colSpan={6} className="px-3 py-6 text-center text-cinza-medio">
                     Nenhuma unidade cadastrada ainda.
                   </td>
                 </tr>
@@ -112,6 +114,13 @@ export default async function AcessosPage() {
                     <Pill tom={u.consolidadoVendasHabilitado ? "verde" : "cinza"}>
                       {u.consolidadoVendasHabilitado ? "Habilitado" : "Desligado"}
                     </Pill>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <ChaveExtratoEstoque
+                      unidadeId={u.id}
+                      ligada={u.extratoEstoqueHabilitado}
+                      temEstoqueNoBanco={u.fonteDadosEstoque === "banco"}
+                    />
                   </td>
                 </tr>
               ))}

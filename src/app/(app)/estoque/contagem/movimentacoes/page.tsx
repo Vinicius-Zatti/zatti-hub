@@ -1,5 +1,6 @@
 import { getAcessoAtual } from "@/lib/acesso";
 import { ErroCarregamento } from "@/components/erro-carregamento";
+import { ExtratoDesligado } from "@/components/extrato/extrato-desligado";
 import { ExtratoMovimentacoes } from "@/components/extrato/extrato-movimentacoes";
 import { listarExtratoPagina, listarSaldos } from "@/lib/banco/extrato";
 import { lerFiltroExtrato } from "@/lib/extrato";
@@ -19,6 +20,8 @@ export default async function MovimentacoesPage({
       </div>
     );
   }
+  // Chave da unidade desligada (decisão 7): nenhum número, só o aviso.
+  if (!acesso.extratoEstoqueHabilitado) return <ExtratoDesligado titulo="Movimentações" />;
 
   const filtro = lerFiltroExtrato(await searchParams);
   let pagina;

@@ -254,12 +254,30 @@ export function saldoDaView(row: Record<string, unknown>): SaldoSku {
   };
 }
 
-/** Mensagem após salvar o recebimento: só fala do extrato quando há algo a dizer. */
-export function mensagemRecebimento(resultado: {
-  sem_preco?: number;
-  pendencias?: { sku: string; motivo: string }[];
-}): string {
+/** Textos do aviso das telas do extrato com a chave da unidade desligada
+ * (`unidades.extrato_estoque_habilitado`, decisão 7 de 13/10/2026). */
+export const AVISO_EXTRATO_DESLIGADO = {
+  titulo: "O extrato do estoque está desligado nesta unidade.",
+  corpo:
+    "Enquanto os pedidos não forem recebidos 100% pelo Zatti Hub, o saldo sairia errado com cara de certo. " +
+    "As compras recebidas continuam sendo registradas em segundo plano: quando a chave ligar, o histórico já está aqui.",
+  quemLiga: "Quem liga é a Zatti (acesso master), em Acessos > Unidades, chave \"Usar extrato do estoque\".",
+} as const;
+
+export const ERRO_EXTRATO_DESLIGADO = "O extrato do estoque está desligado nesta unidade.";
+
+/** Mensagem após salvar o recebimento: só fala do extrato quando há algo a dizer
+ * e a chave da unidade está ligada (desligada, a tela Movimentações não mostra
+ * o que ficou pendente, então o aviso só confundiria). */
+export function mensagemRecebimento(
+  resultado: {
+    sem_preco?: number;
+    pendencias?: { sku: string; motivo: string }[];
+  },
+  extratoLigado = true,
+): string {
   const partes = ["Salvo."];
+  if (!extratoLigado) return partes[0];
   const semPreco = Number(resultado.sem_preco ?? 0);
   if (semPreco > 0) {
     partes.push(

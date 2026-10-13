@@ -18,6 +18,8 @@ export type UnidadePainel = {
   fonteDadosEstoque: string;
   spreadsheetId: string | null;
   consolidadoVendasHabilitado: boolean;
+  /** Chave "Usar extrato do estoque" (decisão 7, 13/10/2026). Só master liga. */
+  extratoEstoqueHabilitado: boolean;
   ativo: boolean;
 };
 
@@ -57,7 +59,7 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
     admin.from("organizacoes").select("id, nome, tipo_cliente, ativo").order("nome"),
     admin
       .from("unidades")
-      .select("id, organizacao_id, nome, fonte_dados_estoque, spreadsheet_id, consolidado_vendas_habilitado, ativo")
+      .select("id, organizacao_id, nome, fonte_dados_estoque, spreadsheet_id, consolidado_vendas_habilitado, extrato_estoque_habilitado, ativo")
       .order("nome"),
     admin.from("vinculos").select("id, user_id, organizacao_id, unidade_id, role, status, created_at").order("created_at", { ascending: false }),
     admin.auth.admin.listUsers({ perPage: 1000 }),
@@ -107,6 +109,7 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
     fonteDadosEstoque: u.fonte_dados_estoque,
     spreadsheetId: u.spreadsheet_id,
     consolidadoVendasHabilitado: u.consolidado_vendas_habilitado,
+    extratoEstoqueHabilitado: Boolean(u.extrato_estoque_habilitado),
     ativo: u.ativo,
   }));
 

@@ -27,7 +27,11 @@ export async function marcarRecebidoAction(input: {
     const resultado = await atualizarRecebimento({ ...entrada, unidadeId: acesso.unidadeId });
     revalidatePath("/estoque/pedidos/feitos");
     revalidatePath("/estoque/contagem/movimentacoes");
-    return { ok: true, mensagem: mensagemRecebimento(resultado), versaoItens: Number(resultado.versao_itens) };
+    return {
+      ok: true,
+      mensagem: mensagemRecebimento(resultado, acesso.extratoEstoqueHabilitado),
+      versaoItens: Number(resultado.versao_itens),
+    };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel atualizar o recebimento.") };
   }

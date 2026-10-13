@@ -1,5 +1,6 @@
 import { getAcessoAtual } from "@/lib/acesso";
 import { ErroCarregamento } from "@/components/erro-carregamento";
+import { ExtratoDesligado } from "@/components/extrato/extrato-desligado";
 import { PerdasEstoque } from "@/components/extrato/perdas-estoque";
 import { listarExtratoPagina, listarProdutosParaPerda } from "@/lib/banco/extrato";
 import { lerFiltroExtrato } from "@/lib/extrato";
@@ -20,6 +21,8 @@ export default async function PerdasPage({
       </div>
     );
   }
+  // Chave da unidade desligada (decisão 7): nem lista nem registro de perda.
+  if (!acesso.extratoEstoqueHabilitado) return <ExtratoDesligado titulo="Perdas" />;
 
   // Perdas canceladas continuam na lista (riscadas): o histórico não some.
   const filtro = { ...lerFiltroExtrato(await searchParams), tipo: "perda" as const, incluirCancelados: true };
