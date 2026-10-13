@@ -624,3 +624,52 @@ end;
 $$;
 revoke all on function public.garante_nota(text, date, date) from public, anon;
 grant execute on function public.garante_nota(text, date, date) to authenticated;
+
+-- ══ Parar de usar sem apagar ocorrência já fechada ══════════════════════
+-- A nota conta a ocorrência de hoje quando a janela dela já fechou (mesmo sem
+-- ninguém ter começado). Parar o modelo depois disso não pode tirar esse zero:
+-- a programação termina hoje (e não ontem) se hoje já tem execução OU se a janela
+-- de hoje já fechou. Programação que começou hoje com a janela de hoje fechada
+-- também fica (encerrada hoje) em vez de deixar de existir. Para a frente nada
+-- muda: amanhã em diante some como antes. garante_encerrar_publicacao já encerra
+-- em hoje, então não perde ocorrência fechada e fica como está.
+create or replace function public.garante_parar_modelo(p_modelo_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_modelo record;
+  v_hoje date := public.garante_hoje();
+begin
+  select id, unidade_id into v_modelo from public.garante_modelos where id = p_modelo_id and ativo for update;
+  if not found then raise exception 'modelo_nao_encontrado' using errcode = 'P0002'; end if;
+  if not public.usuario_pode_usar_garante(v_modelo.unidade_id, array['gestao']) then
+    raise exception 'sem_permissao' using errcode = '42501';
+  end if;
+
+  update public.garante_publicacoes p
+     set ativo = false
+   where p.modelo_id = p_modelo_id and p.ativo and p.vigente_desde >= v_hoje
+     and not exists (select 1 from public.garante_execucoes e where e.publicacao_id = p.id)
+     and not (p.vigente_desde = v_hoje
+              and exists (select 1 from public.garante_janela(p.unidade_id, v_hoje, p.horario_limite) j
+                           where now() > j.fecha_em));
+
+  update public.garante_publicacoes p
+     set vigente_ate = case
+           when exists (select 1 from public.garante_execucoes e where e.publicacao_id = p.id and e.data = v_hoje)
+             or exists (select 1 from public.garante_janela(p.unidade_id, v_hoje, p.horario_limite) j
+                         where now() > j.fecha_em)
+             then v_hoje
+           else v_hoje - 1
+         end
+   where p.modelo_id = p_modelo_id and p.ativo
+     and (p.vigente_ate is null or p.vigente_ate >= v_hoje);
+
+  update public.garante_modelos set ativo = false, atualizado_em = now() where id = p_modelo_id;
+end;
+$$;
+revoke all on function public.garante_parar_modelo(uuid) from public, anon;
+grant execute on function public.garante_parar_modelo(uuid) to authenticated;

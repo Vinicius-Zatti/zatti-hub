@@ -4,13 +4,14 @@
 -- depois de fechar falham, inclusive no Storage); regra nova só vale para o futuro e
 -- não muda a nota passada; dia sem operação some da agenda e da nota e é recusado em
 -- data passada e em data com checklist; operacional não lê a nota; outra unidade não
--- lê nada. Só fixtures de teste, sem depender da hora em que roda.
+-- lê nada; parar o modelo e encerrar a programação não tiram da nota a ocorrência de
+-- hoje com a janela já fechada. Só fixtures de teste, sem depender da hora em que roda.
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(65);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -226,6 +227,56 @@ select is((select min(vigente_desde) from garante_regras_unidade where unidade_i
   'a primeira regra da unidade nasce na primeira programação (nota do passado preservada)');
 select throws_ok($$ insert into garante_regras_unidade (unidade_id, vigente_desde) values ('org-n-a-loja', public.garante_hoje() + 5) $$,
   '42501', null, 'ninguém grava regra direto, só pela RPC');
+
+-- ── Parar e encerrar não mudam a nota já fechada ────────────────────────
+-- Unidade com regra 0/0: checklist de 00:00 tem a janela de hoje sempre fechada;
+-- o de 23:59:59 ainda não fechou. Ninguém iniciou nada.
+select pg_temp.servidor();
+insert into unidades (id, organizacao_id, nome, fonte_dados_estoque, ativo, garante_habilitado) values
+  ('org-n-a-par', 'org-n-a', 'Loja NA Parar', 'banco', true, true);
+insert into garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min) values
+  ('org-n-a-par', public.garante_hoje() - 30, 0, 0);
+insert into garante_modelos (id, unidade_id, nome) values
+  ('00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', 'Fechamento'),
+  ('00000000-0000-0000-0000-0000000a3102', 'org-n-a-par', 'Limpeza');
+insert into garante_itens (modelo_id, unidade_id, ordem, titulo, tipo) values
+  ('00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', 1, 'Caixa', 'check'),
+  ('00000000-0000-0000-0000-0000000a3102', 'org-n-a-par', 1, 'Chão', 'check');
+insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario_limite, vigente_desde) values
+  -- P1: 00:00 desde anteontem (3 ocorrências fechadas). P2: 00:00 desde hoje (1 fechada).
+  ('00000000-0000-0000-0000-0000000a6101', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '00:00', public.garante_hoje() - 2),
+  ('00000000-0000-0000-0000-0000000a6102', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '00:00', public.garante_hoje()),
+  -- P3: 23:59:59 desde anteontem (hoje ainda aberta). P5: 23:59:59 desde hoje (nada fechado).
+  ('00000000-0000-0000-0000-0000000a6103', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '23:59:59', public.garante_hoje() - 2),
+  ('00000000-0000-0000-0000-0000000a6105', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '23:59:59', public.garante_hoje()),
+  -- P4 (outro modelo): 00:00 desde anteontem, para encerrar a programação.
+  ('00000000-0000-0000-0000-0000000a6104', '00000000-0000-0000-0000-0000000a3102', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '00:00', public.garante_hoje() - 2);
+create or replace function pg_temp.nota_par()
+returns text language sql as $$
+  select string_agg(n::text, ';' order by n.nivel, n.chave)
+    from public.garante_nota('org-n-a-par', public.garante_hoje() - 2, public.garante_hoje()) n
+$$;
+
+select pg_temp.como('00000000-0000-0000-0000-0000000a2001');
+insert into t select 'nota_par', pg_temp.nota_par();
+select is((select previstas from public.garante_nota('org-n-a-par', public.garante_hoje() - 2, public.garante_hoje()) where nivel = 'unidade'),
+  9, 'antes de parar: 9 ocorrências fechadas sem início (P1 3, P2 1, P3 2, P4 3)');
+select lives_ok($$ select public.garante_parar_modelo('00000000-0000-0000-0000-0000000a3101') $$, 'gestão para o modelo');
+select is(pg_temp.nota_par(), (select valor from t where nome = 'nota_par'), 'nota igual depois de parar o modelo');
+select is((select vigente_ate from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6101'), public.garante_hoje(),
+  'janela de hoje fechada: a programação termina hoje, não ontem');
+select is((select ativo::text || ' ' || vigente_ate::text from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6102'),
+  'true ' || public.garante_hoje()::text, 'programação que começou hoje com a janela fechada continua (encerrada hoje)');
+select is((select vigente_ate from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6103'), public.garante_hoje() - 1,
+  'janela de hoje ainda aberta e sem início: termina ontem, como antes');
+select is((select count(*)::int from public.garante_agenda('org-n-a-par', public.garante_hoje())
+            where publicacao_id = '00000000-0000-0000-0000-0000000a6103'), 0, 'e some da agenda de hoje (para a frente nada muda)');
+select is((select ativo from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6105'), false,
+  'programação de hoje sem nada fechado deixa de existir, como antes');
+select lives_ok($$ select public.garante_encerrar_publicacao('00000000-0000-0000-0000-0000000a6104') $$, 'gestão encerra a programação');
+select is(pg_temp.nota_par(), (select valor from t where nome = 'nota_par'), 'nota igual depois de encerrar a programação');
+select is((select vigente_ate from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6104'), public.garante_hoje(),
+  'encerrar mantém hoje');
 
 -- ── Permissões ──────────────────────────────────────────────────────────
 select pg_temp.como('00000000-0000-0000-0000-0000000a2002');
