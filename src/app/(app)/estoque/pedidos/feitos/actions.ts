@@ -18,7 +18,7 @@ export async function marcarRecebidoAction(input: {
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
   versaoItens: number;
-}): Promise<{ ok: true; mensagem: string } | { erro: string }> {
+}): Promise<{ ok: true; mensagem: string; versaoItens: number } | { erro: string }> {
   const acesso = await getAcessoAtual();
 
   try {
@@ -27,7 +27,7 @@ export async function marcarRecebidoAction(input: {
     const resultado = await atualizarRecebimento({ ...entrada, unidadeId: acesso.unidadeId });
     revalidatePath("/estoque/pedidos/feitos");
     revalidatePath("/estoque/contagem/movimentacoes");
-    return { ok: true, mensagem: mensagemRecebimento(resultado) };
+    return { ok: true, mensagem: mensagemRecebimento(resultado), versaoItens: Number(resultado.versao_itens) };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel atualizar o recebimento.") };
   }

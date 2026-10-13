@@ -7,7 +7,13 @@ import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { marcarRecebidoAction } from "@/app/(app)/estoque/pedidos/feitos/actions";
 import { toNumeroBR } from "@/lib/sheets/numero";
-import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
+import { formatarQuantidade } from "@/lib/unidades";
+import {
+  formularioDoPedido,
+  pedidoMudouDesdeOFormulario,
+  sincronizarFormularios,
+  type FormularioRecebimento,
+} from "@/lib/pedidos-feitos-formulario";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -60,44 +66,62 @@ export function PedidosFeitos({
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
-  // Texto exatamente como digitado (não o número já convertido) - mesmo
-  // motivo do Editor de Espelhos: campo controlado pelo número redesenha e
-  // apaga a vírgula no meio da digitação.
-  const [quantidadesRecebidasTexto, setQuantidadesRecebidasTexto] = useState<Record<string, Record<string, string>>>(
-    () =>
-      Object.fromEntries(
-        pedidos.map((p) => [
-          p.id,
-          Object.fromEntries(
-            p.itens.map((it) => [it.sku, textoEdicaoQuantidade(it.quantidadeRecebida ?? it.quantidadePedida, it.unidadeBase)])
-          ),
-        ])
-      )
+  // Um formulário por pedido, com a versão do pedido de quando foi carregado
+  // (é ela que vai para o banco). Quantidade como texto exatamente como
+  // digitado - mesmo motivo do Editor de Espelhos: campo controlado pelo
+  // número redesenha e apaga a vírgula no meio da digitação.
+  const [formularios, setFormularios] = useState<Record<string, FormularioRecebimento>>(() =>
+    sincronizarFormularios({}, pedidos)
   );
-  const [observacoes, setObservacoes] = useState<Record<string, string>>(() =>
-    Object.fromEntries(pedidos.map((p) => [p.id, p.observacaoEntrega ?? ""]))
-  );
-  const [recebido, setRecebido] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(pedidos.map((p) => [p.id, p.recebido]))
-  );
+  // Props novas (revalidação depois de salvar, outra pessoa mexeu): formulário
+  // não editado recarrega; editado fica e mostra o aviso abaixo.
+  const sincronizados = sincronizarFormularios(formularios, pedidos);
+  if (sincronizados !== formularios) setFormularios(sincronizados);
+
   const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
 
+  function editar(pedido: Pedido, mudanca: (f: FormularioRecebimento) => Partial<FormularioRecebimento>) {
+    setFormularios((fs) => {
+      const atual = fs[pedido.id] ?? formularioDoPedido(pedido);
+      return { ...fs, [pedido.id]: { ...atual, ...mudanca(atual), editado: true } };
+    });
+  }
+
+  function recarregar(pedido: Pedido) {
+    setFormularios((fs) => ({ ...fs, [pedido.id]: formularioDoPedido(pedido) }));
+    setStatus((s) => ({ ...s, [pedido.id]: "" }));
+  }
+
   async function salvar(pedido: Pedido) {
+    const formulario = formularios[pedido.id] ?? formularioDoPedido(pedido);
     setSalvando((s) => ({ ...s, [pedido.id]: true }));
     const resultado = await marcarRecebidoAction({
       pedidoId: pedido.id,
-      recebido: recebido[pedido.id] ?? false,
-      observacaoEntrega: observacoes[pedido.id]?.trim() || null,
+      recebido: formulario.recebido,
+      observacaoEntrega: formulario.observacao.trim() || null,
       itensRecebidos: podeEditarQuantidade
-        ? pedido.itens.map((it) => ({
-            sku: it.sku,
-            quantidadeRecebida: toNumeroBR(quantidadesRecebidasTexto[pedido.id]?.[it.sku]),
+        ? Object.entries(formulario.quantidades).map(([sku, texto]) => ({
+            sku,
+            quantidadeRecebida: toNumeroBR(texto),
           }))
         : [],
-      versaoItens: pedido.versaoItens,
+      versaoItens: formulario.versao,
     });
     setSalvando((s) => ({ ...s, [pedido.id]: false }));
+    if ("versaoItens" in resultado) {
+      // O que está na tela é o que o banco gravou, já na versão nova.
+      setFormularios((fs) => {
+        const atual = fs[pedido.id];
+        if (!atual || atual.versao !== formulario.versao) return fs;
+        // Digitou algo durante o envio: continua marcado como editado.
+        return { ...fs, [pedido.id]: { ...atual, versao: resultado.versaoItens, editado: atual !== formulario } };
+      });
+    } else {
+      // Recusa (ex.: pedido mudou): busca as props atuais para o aviso de
+      // "mudou depois que você começou a editar" aparecer com o botão.
+      router.refresh();
+    }
     setStatus((s) => ({ ...s, [pedido.id]: "erro" in resultado ? resultado.erro : resultado.mensagem }));
     // Aviso do extrato (item sem preço ou fora do cadastro) fica mais tempo na tela.
     const demorado = "mensagem" in resultado && resultado.mensagem !== "Salvo.";
@@ -140,6 +164,8 @@ export function PedidosFeitos({
       {pedidos.map((pedido) => {
         const totalVolumes = pedido.itens.reduce((soma, it) => soma + it.quantidadePedida, 0);
         const totalPedido = pedido.itens.reduce((soma, it) => soma + (precoTotalDe(it) ?? 0), 0);
+        const formulario = formularios[pedido.id];
+        const mudouPorFora = pedidoMudouDesdeOFormulario(formulario, pedido);
 
         return (
           <div key={pedido.id} className="rounded-lg border border-cinza-claro bg-branco">
@@ -178,13 +204,11 @@ export function PedidosFeitos({
                             <input
                               type="text"
                               inputMode="decimal"
-                              value={quantidadesRecebidasTexto[pedido.id]?.[item.sku] ?? ""}
-                              onChange={(e) =>
-                                setQuantidadesRecebidasTexto((q) => ({
-                                  ...q,
-                                  [pedido.id]: { ...q[pedido.id], [item.sku]: e.target.value },
-                                }))
-                              }
+                              value={formulario?.quantidades[item.sku] ?? ""}
+                              onChange={(e) => {
+                                const texto = e.target.value;
+                                editar(pedido, (f) => ({ quantidades: { ...f.quantidades, [item.sku]: texto } }));
+                              }}
                               className="w-16 rounded border border-cinza-claro px-1.5 py-1 text-right focus:border-ambar focus:outline-none"
                             />
                           ) : (
@@ -223,8 +247,11 @@ export function PedidosFeitos({
               <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
                 Observação da entrega
                 <textarea
-                  value={observacoes[pedido.id] ?? ""}
-                  onChange={(e) => setObservacoes((o) => ({ ...o, [pedido.id]: e.target.value }))}
+                  value={formulario?.observacao ?? ""}
+                  onChange={(e) => {
+                    const texto = e.target.value;
+                    editar(pedido, () => ({ observacao: texto }));
+                  }}
                   rows={2}
                   className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
                   placeholder="Ex: faltou 1 caixa de coca, fornecedor repõe na quinta"
@@ -233,8 +260,11 @@ export function PedidosFeitos({
               <label className="flex items-center gap-1.5 text-xs font-semibold text-cinza-medio">
                 <input
                   type="checkbox"
-                  checked={recebido[pedido.id] ?? false}
-                  onChange={(e) => setRecebido((r) => ({ ...r, [pedido.id]: e.target.checked }))}
+                  checked={formulario?.recebido ?? false}
+                  onChange={(e) => {
+                    const marcado = e.target.checked;
+                    editar(pedido, () => ({ recebido: marcado }));
+                  }}
                 />
                 Pedido recebido
               </label>
@@ -247,6 +277,21 @@ export function PedidosFeitos({
                 {salvando[pedido.id] ? "Salvando..." : "Salvar"}
               </button>
             </div>
+            {mudouPorFora && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-cinza-claro bg-off-white px-4 py-2 text-xs text-cinza">
+                <span>
+                  Este pedido mudou depois que você começou a editar (outra pessoa alterou itens ou o recebimento).
+                  Salvar será recusado. Recarregue para ver a versão atual - o que você digitou aqui será descartado.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => recarregar(pedido)}
+                  className="shrink-0 rounded-md border border-ambar px-3 py-1 text-xs font-bold text-azul-noite hover:bg-ambar"
+                >
+                  Recarregar pedido
+                </button>
+              </div>
+            )}
             {status[pedido.id] && (
               <div className="border-t border-cinza-claro px-4 py-2 text-xs text-cinza-medio">
                 {status[pedido.id]}

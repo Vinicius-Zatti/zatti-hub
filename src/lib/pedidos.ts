@@ -60,6 +60,13 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
 /** Acha o pedido de um fornecedor (unidade + contagem base) ou cria vazio -
  * nunca apaga itens existentes, diferente do antigo `salvarPedido`. Base de
  * toda gravação item-a-item abaixo. */
+/** Recusa do gatilho do extrato (P0001) já vem com texto para o usuário (ex.:
+ * "pedido já recebido, desmarque o recebimento antes"); o resto fica genérico. */
+function erroGravacaoItem(error: { code?: string; message: string }): Error {
+  if (error.code === "P0001") return new ErroPublico(error.message);
+  return new Error(error.message);
+}
+
 async function garantirPedido(
   supabase: Awaited<ReturnType<typeof createClient>>,
   unidadeId: string,
@@ -162,12 +169,12 @@ export async function confirmarItem(params: {
       .from("pedido_itens")
       .update(params.atualizarPreco ? linhaComPreco : linhaBase)
       .eq("id", existente.id);
-    if (error) throw new Error(error.message);
+    if (error) throw erroGravacaoItem(error);
   } else {
     const { error } = await supabase
       .from("pedido_itens")
       .insert({ pedido_id: pedidoId, sku: params.item.sku, ...linhaComPreco });
-    if (error) throw new Error(error.message);
+    if (error) throw erroGravacaoItem(error);
   }
 
   const outrosPedidos = await buscarTudo<{ id: string }>((de, ate) =>
@@ -183,11 +190,20 @@ export async function confirmarItem(params: {
 
   const outrosIds = outrosPedidos.map((p) => p.id);
   if (outrosIds.length > 0) {
-    await supabase
+    // A cópia é um UPDATE só: se um dos outros pedidos recusar (ex.: já
+    // recebido), nenhum recebe a quantidade. O fornecedor confirmado acima já
+    // gravou - a mensagem diz isso, para ninguém achar que nada foi salvo.
+    const { error: erroCopia } = await supabase
       .from("pedido_itens")
       .update({ quantidade_pedida: params.item.quantidadePedida })
       .eq("sku", params.item.sku)
       .in("pedido_id", outrosIds);
+    if (erroCopia) {
+      const motivo = erroCopia.code === "P0001" ? ` ${erroCopia.message}` : "";
+      throw new ErroPublico(
+        `Quantidade salva em ${params.fornecedor}, mas não foi copiada para os outros fornecedores deste item.${motivo}`
+      );
+    }
   }
 }
 
@@ -228,7 +244,7 @@ export async function confirmarVencedor(params: {
     .update({ vencedor_confirmado: true })
     .eq("pedido_id", pedidoIdVencedor)
     .eq("sku", params.item.sku);
-  if (erroMarcarVencedor) throw new Error(erroMarcarVencedor.message);
+  if (erroMarcarVencedor) throw erroGravacaoItem(erroMarcarVencedor);
 
   if (params.outrosFornecedores.length === 0) return;
   const { data: pedidosPerdedores, error: erroBuscarPerdedores } = await supabase
@@ -246,7 +262,7 @@ export async function confirmarVencedor(params: {
       .delete()
       .eq("sku", params.item.sku)
       .in("pedido_id", ids);
-    if (erroRemoverPerdedores) throw new Error(erroRemoverPerdedores.message);
+    if (erroRemoverPerdedores) throw erroGravacaoItem(erroRemoverPerdedores);
   }
 }
 
@@ -275,7 +291,7 @@ export async function desfazerVencedor(params: {
     .update({ vencedor_confirmado: false })
     .eq("pedido_id", pedidoIdAtual)
     .eq("sku", params.item.sku);
-  if (erroDesmarcarVencedor) throw new Error(erroDesmarcarVencedor.message);
+  if (erroDesmarcarVencedor) throw erroGravacaoItem(erroDesmarcarVencedor);
 
   await Promise.all(
     params.outrosFornecedores.map((fornecedor) =>
