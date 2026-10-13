@@ -23,8 +23,9 @@
 -- não preenche recebido_em de pedido já recebido (fica nulo: a data real não existe
 -- no banco), não muda contagem, CMV, cotação nem fichas. Custo médio fica para depois.
 --
--- Idempotente: rodar de novo não duplica nada nem altera dado gravado. Sem begin/commit
--- próprios: a migração já roda numa transação.
+-- Idempotente: rodar de novo não duplica nada nem altera dado gravado.
+
+begin;
 
 -- 1. Pedidos: data do recebimento -------------------------------------------
 
@@ -1219,3 +1220,5 @@ do $$ begin
       to vini_leitura;
   end if;
 end $$;
+
+commit;
