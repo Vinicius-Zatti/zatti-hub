@@ -1,11 +1,12 @@
 -- Financeiro V2, Fase 3 (13/10/2026): metas da unidade para o farol do Painel M.E.G.A.
 -- Garante: RLS de leitura igual ao Financeiro da unidade, escrita só pela RPC e só por
 -- Gestão/master, vigência por mês sem reescrever o mês anterior, e a restrição exclusiva de
--- 29/09 valendo em unidade não liberada. Fixtures isoladas, sem dado real.
+-- 29/09 valendo em unidade não liberada. Master titular com aal2 lê e grava (inclusive em
+-- unidade não liberada); master sem aal2 não lê nem grava. Fixtures isoladas, sem dado real.
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(27);
 
 -- ── Fixture ────────────────────────────────────────────────────────────────
 update fin_acesso_exclusivo set ativo = true where id;
@@ -14,7 +15,9 @@ insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, 
   ('00000000-0000-0000-0000-0000000f5001', 'gestao.meta@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000f5002', 'oper.meta@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000f5003', 'gestao.outra@teste.local', 'x', now(), 'authenticated', 'authenticated'),
-  ('00000000-0000-0000-0000-0000000f5004', 'gestao.restrita@teste.local', 'x', now(), 'authenticated', 'authenticated');
+  ('00000000-0000-0000-0000-0000000f5004', 'gestao.restrita@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-0000000f5005', 'master.titular.meta@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-0000000f5006', 'master.outro.meta@teste.local', 'x', now(), 'authenticated', 'authenticated');
 
 insert into organizacoes (id, nome, tipo_cliente, ativo) values
   ('org-meta', 'Org Meta', 'saas', true),
@@ -28,10 +31,13 @@ insert into vinculos (user_id, organizacao_id, unidade_id, role, status) values
   ('00000000-0000-0000-0000-0000000f5001', 'org-meta', null, 'gestao', 'ativo'),
   ('00000000-0000-0000-0000-0000000f5002', 'org-meta', 'uni-meta', 'operacional', 'ativo'),
   ('00000000-0000-0000-0000-0000000f5003', 'org-meta-outra', null, 'gestao', 'ativo'),
-  ('00000000-0000-0000-0000-0000000f5004', 'org-meta-restrita', null, 'gestao', 'ativo');
+  ('00000000-0000-0000-0000-0000000f5004', 'org-meta-restrita', null, 'gestao', 'ativo'),
+  ('00000000-0000-0000-0000-0000000f5005', 'org-meta', null, 'master', 'ativo'),
+  ('00000000-0000-0000-0000-0000000f5006', 'org-meta', null, 'master', 'ativo');
+insert into fin_acesso_titulares (user_id) values ('00000000-0000-0000-0000-0000000f5005');
 
-create function pg_temp.como(p_user text) returns void language sql as $$
-  select set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+create function pg_temp.como(p_user text, p_aal text default 'aal1') returns void language sql as $$
+  select set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated', 'aal', p_aal)::text, true);
 $$;
 
 -- ── Estrutura ──────────────────────────────────────────────────────────────
@@ -85,6 +91,28 @@ select throws_ok($$ select public.fin_meta_unidade_salvar('uni-meta', '2027-01-0
 select pg_temp.como('00000000-0000-0000-0000-0000000f5004');
 select throws_ok($$ select public.fin_meta_unidade_salvar('uni-meta-restrita', '2026-10-01', 1000, null, null, null) $$,
   '42501', null, 'Gestão sem ser titular não grava meta em unidade não liberada');
+
+-- ── Master titular com aal2: lê e grava, inclusive em unidade não liberada ──
+select pg_temp.como('00000000-0000-0000-0000-0000000f5005', 'aal2');
+select lives_ok($$ select public.fin_meta_unidade_salvar('uni-meta', '2026-12-01', 130000, 0.31, 0.38, 12000) $$,
+  'master titular com aal2 grava meta na unidade');
+select is((select count(*)::int || ' ' || bool_and(criado_por = '00000000-0000-0000-0000-0000000f5005')::text
+  from fin_metas_unidade where unidade_id = 'uni-meta' and vigente_desde = '2026-12-01'),
+  '1 true', 'master titular lê a meta que gravou, com a autoria dele');
+select is((select count(*)::int from fin_metas_unidade where unidade_id = 'uni-meta'), 3, 'master titular lê todas as metas da unidade');
+select lives_ok($$ select public.fin_meta_unidade_salvar('uni-meta-restrita', '2026-10-01', 5000, null, null, null) $$,
+  'master titular com aal2 grava meta em unidade não liberada');
+
+-- ── Master titular sem aal2: nem lê, nem grava ─────────────────────────────
+select pg_temp.como('00000000-0000-0000-0000-0000000f5005', 'aal1');
+select is((select count(*)::int from fin_metas_unidade), 0, 'master sem segundo fator não lê metas');
+select throws_ok($$ select public.fin_meta_unidade_salvar('uni-meta', '2027-01-01', 1000, null, null, null) $$,
+  '42501', null, 'master sem segundo fator não grava meta');
+
+-- ── Outro master (não titular) com aal2: unidade não liberada fica fechada ──
+select pg_temp.como('00000000-0000-0000-0000-0000000f5006', 'aal2');
+select throws_ok($$ select public.fin_meta_unidade_salvar('uni-meta-restrita', '2026-11-01', 1000, null, null, null) $$,
+  '42501', null, 'master não titular não grava meta em unidade não liberada');
 
 select * from finish();
 rollback;

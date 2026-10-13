@@ -42,7 +42,7 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
   painel_faturamento: "Faturamento = Receita Operacional Bruta da DRE no mês de competência (mesmo número da DRE).",
   painel_cmv_percentual:
     "% CMV da DRE no mês = CMV ÷ Venda de Produtos, quando o estoque final e a Venda de Produtos do mês estão informados. " +
-    "Enquanto não estão, a DRE mostra o % CMC provisório = CMC ÷ (Receita Operacional Bruta - receitas de entrega), e o farol fica sem cor.",
+    "Enquanto não estão, a DRE mostra o % CMC provisório = CMC ÷ (Receita Operacional Bruta - receitas de entrega), e o painel inteiro fica sem farol.",
   painel_margem:
     "Margem de Contribuição = Resultado Operacional Bruto da DRE (Receita Operacional Líquida - CMV). % = Resultado Operacional Bruto ÷ Receita Operacional Bruta.",
   painel_custo_fixo: "% Custos Fixos da DRE = (CMO + Custos Operacionais) ÷ Receita Operacional Bruta do mês.",
@@ -55,7 +55,7 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
     "Caixa projetado em 30 dias = saldo do Fluxo de Caixa projetado, todas as contas, no fim do dia de hoje + 30 dias: saldos iniciais das contas + todas as parcelas não canceladas (valor cheio) pela data prevista até essa data. Não depende do mês escolhido.",
   painel_farol:
     "Farol = número da DRE comparado com a meta da unidade vigente no mês (a meta cadastrada com início no próprio mês ou no mês anterior mais recente). " +
-    "Faturamento e Resultado: verde quando o número é maior ou igual à meta. % CMV e % Custos Fixos: verde quando é menor ou igual à meta. Senão, vermelho. Sem meta cadastrada, o número fica sem cor.",
+    "Faturamento e Resultado: verde quando o número é maior ou igual à meta. % CMV e % Custos Fixos: verde quando é menor ou igual à meta. Senão, vermelho. Sem meta cadastrada, o número fica sem cor. Mês com CMV provisório: nenhum indicador ganha cor até o mês fechar.",
   produtos_sem_receita:
     "Valor dos produtos que saíram sem entrada de dinheiro, preenchido à mão por grupo. Não gera receita, não vira despesa e não altera o CMV: só explica consumo sem venda. Total = soma dos 12 meses.",
 };

@@ -141,6 +141,38 @@ describe("Painel M.E.G.A. igual à DRE do mesmo mês", () => {
     expect(outubro.cmvPercentual.farol).toBe("provisorio");
   });
 
+  it("CMV provisório com todas as metas preenchidas: nenhum indicador ganha farol", () => {
+    const { dreAnual, receitaVendasProdutosPorMes } = dreDoAno();
+    // Metas que outubro "cumpriria" (faturamento, resultado) e "não cumpriria" (% custos fixos): nenhuma vira cor.
+    const metas: MetaUnidade[] = [{ vigenteDesde: "2026-01-01", faturamento: 1000, cmvPercentual: 0.9, custoFixoPercentual: -1, resultado: -100000 }];
+    const outubro = montarPainelMega({ dreAnual, mesIndice: 9, receitaVendasProdutosPorMes, metas, caixaProjetado30Dias: CAIXA });
+    expect(outubro.cmvPercentual.percentualCmvFechado).toBe(false);
+    expect(outubro.faturamento).toEqual({ valor: 15000, meta: 1000, farol: "provisorio" });
+    expect(outubro.cmvPercentual.farol).toBe("provisorio");
+    expect(outubro.custoFixoPercentual.farol).toBe("provisorio");
+    expect(outubro.resultado.farol).toBe("provisorio");
+    // As metas continuam visíveis no texto, só sem cor.
+    expect(outubro.resultado.meta).toBe(-100000);
+  });
+
+  it("CMV provisório sem meta num indicador: continua sem meta (convite para definir)", () => {
+    const { dreAnual, receitaVendasProdutosPorMes } = dreDoAno();
+    const metas: MetaUnidade[] = [{ vigenteDesde: "2026-01-01", faturamento: 1000, cmvPercentual: null, custoFixoPercentual: null, resultado: null }];
+    const outubro = montarPainelMega({ dreAnual, mesIndice: 9, receitaVendasProdutosPorMes, metas, caixaProjetado30Dias: CAIXA });
+    expect(outubro.faturamento.farol).toBe("provisorio");
+    expect(outubro.resultado.farol).toBe("sem_meta");
+  });
+
+  it("mês fechado com as mesmas metas: o farol volta a colorir", () => {
+    const { dreAnual, receitaVendasProdutosPorMes } = dreDoAno();
+    const metas: MetaUnidade[] = [{ vigenteDesde: "2026-01-01", faturamento: 1000, cmvPercentual: 0.9, custoFixoPercentual: 0.01, resultado: -100000 }];
+    const setembro = montarPainelMega({ dreAnual, mesIndice: 8, receitaVendasProdutosPorMes, metas, caixaProjetado30Dias: CAIXA });
+    expect(setembro.faturamento.farol).toBe("cumpre");
+    expect(setembro.cmvPercentual.farol).toBe("cumpre");
+    expect(setembro.custoFixoPercentual.farol).toBe("nao_cumpre");
+    expect(setembro.resultado.farol).toBe("cumpre");
+  });
+
   it("caixa projetado em 30 dias = saldo do fluxo projetado, todas as contas", () => {
     const contas: ContaFinanceira[] = [{ id: "banco", nome: "Banco", tipo: "banco", saldoInicial: 1000, dataSaldoInicial: "2026-01-01", ativo: true } as ContaFinanceira];
     const lancamentos = [lanc("receita", "receita_salao", "2026-10-01", 500, "2026-11-12"), lanc("despesa", "co_aluguel", "2026-10-01", 300, "2026-11-13")];

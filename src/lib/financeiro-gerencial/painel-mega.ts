@@ -58,8 +58,10 @@ export type PainelMega = {
   previsao: boolean;
   metaVigenteDesde: string | null;
   faturamento: IndicadorComFarol;
-  /** `percentualCmvFechado` false = a DRE mostra o % CMC provisório nesse mês;
-   * o farol fica "provisorio" (sem cor) para não comparar CMC com meta de CMV. */
+  /** `percentualCmvFechado` false = a DRE mostra o % CMC provisório nesse mês.
+   * Nesse mês nenhum indicador ganha farol (todos "provisorio", sem cor): o
+   * CMV mexe na margem e no resultado, então nenhuma comparação com meta vale
+   * antes do fechamento. */
   cmvPercentual: IndicadorComFarol & { percentualCmvFechado: boolean };
   margemContribuicao: { valor: number | null; percentual: number | null };
   custoFixoPercentual: IndicadorComFarol & { custosFixos: number | null };
@@ -90,6 +92,9 @@ export function montarPainelMega(params: {
   const percentualCmvFechado = mesUsaPercentualCmv(dreAnual.cmvProvisorioPorMes[mesIndice], receitaVendasProdutosPorMes[mesIndice]);
   const custoFixoPercentual = v("custos_fixos_percentual");
   const resultado = v("resultado_liquido");
+  // CMV provisório: nenhum indicador com meta ganha cor (Codex, 13/10).
+  const farol = (valor: number | null, metaDoIndicador: number | null, sentido: SentidoMeta): Farol =>
+    metaDoIndicador !== null && !percentualCmvFechado ? "provisorio" : calcularFarol(valor, metaDoIndicador, sentido);
   const metaCmv = meta?.cmvPercentual ?? null;
 
   return {
@@ -97,25 +102,25 @@ export function montarPainelMega(params: {
     mesIndice,
     previsao: mesIndice >= dreAnual.primeiroMesPrevisto,
     metaVigenteDesde: meta?.vigenteDesde ?? null,
-    faturamento: { valor: faturamento, meta: meta?.faturamento ?? null, farol: calcularFarol(faturamento, meta?.faturamento ?? null, "piso") },
+    faturamento: { valor: faturamento, meta: meta?.faturamento ?? null, farol: farol(faturamento, meta?.faturamento ?? null, "piso") },
     cmvPercentual: {
       valor: cmvPercentual,
       meta: metaCmv,
-      farol: metaCmv !== null && !percentualCmvFechado ? "provisorio" : calcularFarol(cmvPercentual, metaCmv, "teto"),
+      farol: farol(cmvPercentual, metaCmv, "teto"),
       percentualCmvFechado,
     },
     margemContribuicao: { valor: v("margem"), percentual: v("margem_percentual") },
     custoFixoPercentual: {
       valor: custoFixoPercentual,
       meta: meta?.custoFixoPercentual ?? null,
-      farol: calcularFarol(custoFixoPercentual, meta?.custoFixoPercentual ?? null, "teto"),
+      farol: farol(custoFixoPercentual, meta?.custoFixoPercentual ?? null, "teto"),
       custosFixos: v("custos_fixos"),
     },
     pontoDeEquilibrio: montarQuadrosDre(linhas, mesIndice).pontoDeEquilibrio.atual,
     resultado: {
       valor: resultado,
       meta: meta?.resultado ?? null,
-      farol: calcularFarol(resultado, meta?.resultado ?? null, "piso"),
+      farol: farol(resultado, meta?.resultado ?? null, "piso"),
       percentual: v("resultado_liquido_percentual"),
     },
     caixaProjetado30Dias,

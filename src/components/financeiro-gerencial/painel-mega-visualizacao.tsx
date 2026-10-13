@@ -6,6 +6,8 @@ import { salvarMetaUnidadeAction } from "@/app/(app)/financeiro-gerencial/painel
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { formatarNumero, formatarPercentual } from "@/components/financeiro-gerencial/tabela-anual";
 import { MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
@@ -43,7 +45,7 @@ function TextoFarol({ farol, meta, formatar, onDefinirMeta }: { farol: Farol; me
   const textoMeta = `meta ${formatar(meta)}`;
   if (farol === "cumpre") return <span className="text-xs font-semibold text-verde">Cumpre a meta ({textoMeta})</span>;
   if (farol === "nao_cumpre") return <span className="text-xs font-semibold text-vermelho">Não cumpre a meta ({textoMeta})</span>;
-  if (farol === "provisorio") return <span className="text-xs text-cinza-medio">CMV ainda provisório no mês, sem farol ({textoMeta})</span>;
+  if (farol === "provisorio") return <span className="text-xs text-cinza-medio">Sem farol enquanto o CMV do mês é provisório ({textoMeta})</span>;
   return <span className="text-xs text-cinza-medio">Sem número no mês ({textoMeta})</span>;
 }
 
@@ -214,6 +216,13 @@ export function PainelMegaVisualizacao({
         </div>
       </div>
 
+      {!cmvPercentual.percentualCmvFechado && (
+        <p role="status" className="rounded-lg border border-ambar bg-ambar/10 px-3 py-2 text-sm text-azul-noite">
+          <span className="font-semibold">Mês sem farol:</span> o CMV de {nomeDoMes(painel.competencia)} ainda é provisório (falta estoque final ou
+          Venda de Produtos na DRE). Como o CMV mexe na margem e no resultado, nenhum indicador é comparado com a meta até o mês fechar.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Cartao
           titulo="Faturamento"
@@ -277,15 +286,15 @@ export function PainelMegaVisualizacao({
             Nenhuma meta cadastrada. Sem meta, os números aparecem sem cor{podeGerir ? "." : " (quem define é a Gestão)."}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-cinza-claro bg-branco">
+          <TabelaRolavel ariaLabel="Metas da unidade">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
-                <tr className="bg-azul-petroleo text-left text-branco">
-                  <th className="px-3 py-2">Vale a partir de</th>
-                  <th className="px-3 py-2 text-right">Faturamento</th>
-                  <th className="px-3 py-2 text-right">% CMV</th>
-                  <th className="px-3 py-2 text-right">% Custos Fixos</th>
-                  <th className="px-3 py-2 text-right">Resultado</th>
+                <tr className="bg-azul-petroleo text-branco">
+                  <Th>Vale a partir de</Th>
+                  <Th align="right">Faturamento</Th>
+                  <Th align="right">% CMV</Th>
+                  <Th align="right">% Custos Fixos</Th>
+                  <Th align="right">Resultado</Th>
                 </tr>
               </thead>
               <tbody>
@@ -303,7 +312,7 @@ export function PainelMegaVisualizacao({
                 ))}
               </tbody>
             </table>
-          </div>
+          </TabelaRolavel>
         )}
       </div>
 

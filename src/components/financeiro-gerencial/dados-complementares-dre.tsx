@@ -56,9 +56,7 @@ function formatarNumero(v: number | null): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** "nao_salvo" = valor da Contagem posto no campo pelo "Usar este valor" e
- * ainda não salvo (quem salva é a pessoa). */
-type Status = "salvando" | "salvo" | "erro" | "nao_salvo" | undefined;
+type Status = "salvando" | "salvo" | "erro" | undefined;
 
 /** "DD/MM/AAAA" -> "DD/MM". */
 function diaMes(data: string): string {
@@ -72,6 +70,8 @@ function CelulaSugestao({
   sugestao,
   podeGerir,
   status,
+  pendente,
+  erro,
   jaIgual,
   onUsar,
   onSalvar,
@@ -79,6 +79,11 @@ function CelulaSugestao({
   sugestao: SugestaoEstoqueContagem | null;
   podeGerir: boolean;
   status: Status;
+  /** Valor da Contagem posto no campo pelo "Usar este valor" e ainda não
+   * salvo. Só sai daqui com o mês salvo com sucesso: se o salvamento falhar,
+   * o botão continua para nova tentativa. */
+  pendente: boolean;
+  erro: string | undefined;
   jaIgual: boolean;
   onUsar: () => void;
   onSalvar: () => void;
@@ -93,10 +98,22 @@ function CelulaSugestao({
           {sugestao.itensSemValor} {sugestao.itensSemValor === 1 ? "item" : "itens"} sem preço (parcial)
         </span>
       )}
-      {podeGerir && status === "nao_salvo" ? (
-        <button type="button" onClick={onSalvar} className="rounded bg-azul-noite px-1.5 py-0.5 font-bold text-branco">
-          Salvar mês
-        </button>
+      {podeGerir && pendente ? (
+        <>
+          {status === "erro" && erro && (
+            <span role="alert" className="max-w-[120px] text-right text-vermelho">
+              Não salvou: {erro}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onSalvar}
+            disabled={status === "salvando"}
+            className="rounded bg-azul-noite px-1.5 py-0.5 font-bold text-branco disabled:opacity-50"
+          >
+            {status === "salvando" ? "Salvando..." : status === "erro" ? "Tentar salvar de novo" : "Salvar mês"}
+          </button>
+        </>
       ) : (
         podeGerir &&
         !jaIgual && (
@@ -133,6 +150,7 @@ export function DadosComplementaresDre({
   const [valores, setValores] = useState<CamposMes[]>(() => estoquesDoAno.map(paraCampos));
   const [statusPorMes, setStatusPorMes] = useState<Record<number, Status>>({});
   const [erroPorMes, setErroPorMes] = useState<Record<number, string>>({});
+  const [sugestaoPendentePorMes, setSugestaoPendentePorMes] = useState<Record<number, boolean>>({});
 
   function alterarCampo(indiceMes: number, campo: keyof CamposMes, valor: number | null) {
     setValores((atual) => atual.map((mes, i) => (i === indiceMes ? { ...mes, [campo]: valor } : mes)));
@@ -141,7 +159,7 @@ export function DadosComplementaresDre({
   /** "Usar este valor": só preenche o campo; a pessoa confere e salva. */
   function usarSugestao(indiceMes: number, valor: number) {
     alterarCampo(indiceMes, "estoqueFinalMercadorias", Math.round(valor * 100) / 100);
-    setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "nao_salvo" }));
+    setSugestaoPendentePorMes((atual) => ({ ...atual, [indiceMes]: true }));
   }
 
   async function salvarMes(indiceMes: number) {
@@ -166,6 +184,7 @@ export function DadosComplementaresDre({
       delete proximo[indiceMes];
       return proximo;
     });
+    setSugestaoPendentePorMes((atual) => ({ ...atual, [indiceMes]: false }));
     setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "salvo" }));
     router.refresh();
     setTimeout(() => setStatusPorMes((atual) => (atual[indiceMes] === "salvo" ? { ...atual, [indiceMes]: undefined } : atual)), 2000);
@@ -223,7 +242,7 @@ export function DadosComplementaresDre({
                               ? "ring-2 ring-vermelho"
                               : status === "salvo"
                                 ? "ring-2 ring-verde"
-                                : status === "nao_salvo" && campo === "estoqueFinalMercadorias"
+                                : sugestaoPendentePorMes[indiceMes] && campo === "estoqueFinalMercadorias"
                                   ? "ring-2 ring-ambar"
                                   : ""
                           }`}
@@ -261,6 +280,8 @@ export function DadosComplementaresDre({
                             sugestao={sugestao}
                             podeGerir={podeGerir}
                             status={statusPorMes[indiceMes]}
+                            pendente={sugestaoPendentePorMes[indiceMes] === true}
+                            erro={erroPorMes[indiceMes]}
                             jaIgual={sugestao !== null && mes.estoqueFinalMercadorias === Math.round(sugestao.valor * 100) / 100}
                             onUsar={() => sugestao && usarSugestao(indiceMes, sugestao.valor)}
                             onSalvar={() => salvarMes(indiceMes)}
