@@ -6,9 +6,10 @@ import { requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/
 import { createClient } from "@/lib/supabase/server";
 import { modeloDaBiblioteca } from "@/lib/garante/biblioteca";
 import {
+  dataDoDiaAgenda,
   hojeOperacao,
   mensagemErroGarante,
-  ontemOperacao,
+  type DiaAgenda,
   validarDiaSemOperacao,
   validarItem,
   validarPublicacao,
@@ -27,17 +28,19 @@ function revalidarGarante() {
 
 // ── Cumprir ──────────────────────────────────────────────────────────────
 
-/** Começa (ou continua) o checklist de hoje ou o de ontem (fechamento que
- * passou da meia-noite). A data sai daqui, nunca do navegador. O banco só
- * deixa começar dentro da janela da unidade (prazo - antecedência até prazo
- * + atraso) e fora de dia sem operação. */
+/** Começa (ou continua) o checklist de hoje, o de ontem (fechamento que
+ * passou da meia-noite) ou o de amanhã (antecedência que começa antes da
+ * meia-noite). A data sai daqui, nunca do navegador. O banco só deixa começar
+ * dentro da janela da unidade (prazo - antecedência até prazo + atraso) e fora
+ * de dia sem operação. */
 export async function iniciarChecklistAction(
   publicacaoId: string,
-  dia: "hoje" | "ontem" = "hoje",
+  dia: DiaAgenda = "hoje",
 ): Promise<Resultado<{ ok: true; execucaoId: string }>> {
   await requireGarante();
+  if (dia !== "hoje" && dia !== "ontem" && dia !== "amanha") return { erro: "Dia inválido." };
   const supabase = await createClient();
-  const dataDoChecklist = dia === "ontem" ? ontemOperacao() : hojeOperacao();
+  const dataDoChecklist = dataDoDiaAgenda(dia);
   const { data, error } = await supabase.rpc("garante_iniciar", { p_publicacao_id: publicacaoId, p_data: dataDoChecklist });
   if (error || !data) return { erro: mensagemErroGarante(error?.message ?? "") };
   revalidarGarante();

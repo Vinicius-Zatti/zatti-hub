@@ -93,6 +93,30 @@ export function somarDias(dataIso: string, dias: number): string {
   return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
 }
 
+/** Dia da agenda que a tela mostra: hoje, o de ontem que ainda aceita (fechamento
+ * depois da meia-noite) e o de amanhã cuja antecedência já abriu (checklist de
+ * 01h com 2 h de antecedência começa às 23h da véspera). */
+export type DiaAgenda = "ontem" | "hoje" | "amanha";
+
+/** Data AAAA-MM-DD do dia da agenda, no fuso da operação. */
+export function dataDoDiaAgenda(dia: DiaAgenda, agora: Date = new Date()): string {
+  const hoje = hojeOperacao(agora);
+  return dia === "ontem" ? somarDias(hoje, -1) : dia === "amanha" ? somarDias(hoje, 1) : hoje;
+}
+
+/** Hoje aparece sempre. Ontem: só o que não concluiu e ainda está na janela.
+ * Amanhã: só o que já começou ou cuja janela já abriu. */
+export function mostrarNaAgenda(
+  dia: DiaAgenda,
+  linha: { situacao: SituacaoAgenda; execucaoId: string | null; abreEm: string | Date; fechaEm: string | Date },
+  agora: Date,
+): boolean {
+  if (dia === "hoje") return true;
+  const janela = estadoJanela(linha.abreEm, linha.fechaEm, agora);
+  if (dia === "ontem") return linha.situacao !== "concluida" && janela !== "fechada";
+  return linha.execucaoId !== null || janela === "aberta";
+}
+
 export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: 60 } as const;
 
 export type ResultadoRegra = { ok: true; antecedenciaMin: number; atrasoMaxMin: number } | { ok: false; erro: string };

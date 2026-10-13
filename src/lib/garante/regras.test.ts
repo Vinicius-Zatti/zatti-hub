@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { BIBLIOTECA_POPS, modeloDaBiblioteca } from "./biblioteca";
 import {
   concluidaNoPrazo,
+  dataDoDiaAgenda,
   hojeOperacao,
   itemCompleto,
   mensagemErroGarante,
+  mostrarNaAgenda,
   ontemOperacao,
   percentual,
   situacaoNaTela,
@@ -170,5 +172,36 @@ describe("mensagens novas das RPCs", () => {
   it("responsável sem acesso e checklist sem itens viram texto de gente", () => {
     expect(mensagemErroGarante("responsavel_sem_acesso")).toContain("não tem acesso");
     expect(mensagemErroGarante("checklist_sem_itens")).toContain("não tem itens");
+  });
+});
+
+describe("dias da agenda (ontem, hoje e amanhã)", () => {
+  // 23h de 13/10 em Brasília = 02h UTC de 14/10.
+  const as23h = new Date("2026-10-14T02:00:00Z");
+  it("datas no fuso da operação, inclusive na virada do mês", () => {
+    expect(dataDoDiaAgenda("ontem", as23h)).toBe("2026-10-12");
+    expect(dataDoDiaAgenda("hoje", as23h)).toBe("2026-10-13");
+    expect(dataDoDiaAgenda("amanha", as23h)).toBe("2026-10-14");
+    expect(dataDoDiaAgenda("amanha", new Date("2026-10-31T15:00:00Z"))).toBe("2026-11-01");
+  });
+
+  // Checklist de amanhã (14/10) às 01h com 120 min de antecedência: abre às 23h de 13/10.
+  const amanha01h = {
+    situacao: "pendente" as const,
+    execucaoId: null,
+    abreEm: "2026-10-14T02:00:00Z",
+    fechaEm: "2026-10-14T05:00:00Z",
+  };
+  it("amanhã aparece quando a antecedência já abriu, não antes", () => {
+    expect(mostrarNaAgenda("amanha", amanha01h, as23h)).toBe(true);
+    expect(mostrarNaAgenda("amanha", amanha01h, new Date("2026-10-14T01:59:00Z"))).toBe(false);
+    expect(mostrarNaAgenda("amanha", { ...amanha01h, execucaoId: "e1", situacao: "em_andamento" }, as23h)).toBe(true);
+  });
+  it("ontem só enquanto não concluiu e a janela não fechou; hoje sempre", () => {
+    const ontem = { situacao: "em_andamento" as const, execucaoId: "e1", abreEm: "2026-10-13T00:00:00Z", fechaEm: "2026-10-14T03:00:00Z" };
+    expect(mostrarNaAgenda("ontem", ontem, as23h)).toBe(true);
+    expect(mostrarNaAgenda("ontem", { ...ontem, situacao: "concluida" }, as23h)).toBe(false);
+    expect(mostrarNaAgenda("ontem", ontem, new Date("2026-10-14T03:00:01Z"))).toBe(false);
+    expect(mostrarNaAgenda("hoje", { ...amanha01h, abreEm: "2027-01-01T00:00:00Z" }, as23h)).toBe(true);
   });
 });

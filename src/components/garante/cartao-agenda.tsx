@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { iniciarChecklistAction } from "@/app/(app)/garante/actions";
 import type { LinhaAgenda } from "@/app/(app)/garante/dados";
-import { DICA_GARANTE, estadoJanela, horaOperacao, percentual, situacaoNaTela } from "@/lib/garante/regras";
+import { DICA_GARANTE, estadoJanela, horaOperacao, percentual, situacaoNaTela, type DiaAgenda } from "@/lib/garante/regras";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ESTILO_SITUACAO } from "./estilos";
 
@@ -21,8 +21,9 @@ export function CartaoAgenda({
 }: {
   linha: LinhaAgenda;
   gestao: boolean;
-  /** "ontem" = fechamento que passou da meia-noite, ainda dá para concluir. */
-  dia?: "hoje" | "ontem";
+  /** "ontem" = fechamento que passou da meia-noite, ainda dá para concluir.
+   * "amanha" = antecedência que abriu antes da meia-noite, já dá para começar. */
+  dia?: DiaAgenda;
 }) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
