@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireGestaoGarante } from "@/lib/acesso";
 import { BIBLIOTECA_POPS } from "@/lib/garante/biblioteca";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-branco";
 import { criarModeloAction } from "../actions";
 import { carregarModelos } from "../dados";
@@ -59,7 +60,9 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
               <span className="font-semibold text-azul-noite">{pop.nome}</span>
               <span className="text-xs text-cinza-medio">{pop.descricao}</span>
               <span className="text-xs text-cinza-medio">
-                {pop.itens.length} itens · {pop.itens.filter((i) => i.foto).length} com foto · {pop.quando}
+                {pop.itens.length} itens · {pop.itens.filter((i) => i.foto).length} com foto{" "}
+                <DicaCalculo rotulo="itens com foto" texto="Quantos itens deste POP já nascem pedindo foto: os que dá para provar numa foto (temperatura, limpeza, etiqueta, óleo, gás). Sem a foto, o item não conta como feito. Dá para mudar item a item depois de criar." />{" "}
+                · {pop.quando}
               </span>
               <button
                 type="submit"
