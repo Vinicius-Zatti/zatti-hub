@@ -662,6 +662,21 @@ export const estoqueMensalEntradaSchema = z
   })
   .strict();
 
+/** Metas da unidade (Painel M.E.G.A., Fase 3): campo nulo = sem meta nesse
+ * indicador. Percentuais em fração (0.32 = 32%), entre 0 e 100% exclusivos,
+ * igual ao `check` da tabela. Resultado pode ser negativo (meta de prejuízo
+ * máximo é decisão da gestão, não do sistema). */
+const fracaoMetaPercentual = z.number().finite().gt(0).lt(1).nullable();
+export const metaUnidadeEntradaSchema = z
+  .object({
+    vigenteDesde: competenciaMensalSchema,
+    faturamento: z.number().finite().gt(0).max(LIMITE_DINHEIRO).nullable(),
+    cmvPercentual: fracaoMetaPercentual,
+    custoFixoPercentual: fracaoMetaPercentual,
+    resultado: z.number().finite().min(-LIMITE_DINHEIRO).max(LIMITE_DINHEIRO).nullable(),
+  })
+  .strict();
+
 export const tipoSaidaSemReceitaSchema = z.enum([
   "bonificacao_cortesia",
   "fidelidade",
