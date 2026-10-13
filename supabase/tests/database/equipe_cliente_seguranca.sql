@@ -173,7 +173,7 @@ select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e00
   'vínculo de outro cliente não redefine a provisória');
 select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01',
   public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Provisoria234'), now() + interval '7 days'), true, 'vínculo de origem reenvia');
-select is((select encrypted_password from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), (select hash from t_senha where nome = 'inicial'),
+select is((select encrypted_password::text from auth.users where id = '00000000-0000-0000-0000-0000000e0001'), (select hash from t_senha where nome = 'inicial'),
   'reenvio não escreve nada no Auth');
 select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-00000000aa01',
   public.equipe_hash_provisoria('00000000-0000-0000-0000-0000000e0001', 'Outra23456789'), now() + interval '7 days'), false,
