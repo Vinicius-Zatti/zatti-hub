@@ -1,0 +1,42 @@
+# Testes do banco (pgTAP) num servidor do GitHub, para não depender do Docker na
+# máquina do Vinícius (13/10/2026). Sobe o Supabase local mínimo, aplica todas as
+# migrations do zero e roda supabase/tests/database.
+name: Testes do banco
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: testes-banco-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pgtap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Valores vazios só para o config.toml não reclamar de env() ausente.
+      OPENAI_API_KEY: ""
+      SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN: ""
+      SUPABASE_AUTH_EXTERNAL_APPLE_SECRET: ""
+      S3_HOST: ""
+      S3_REGION: ""
+      S3_ACCESS_KEY: ""
+      S3_SECRET_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # A correção de 25/08 confere 2 linhas que só existem em produção; num banco
+      # vazio ela pararia o reset. Só nesta cópia do CI a checagem é desligada.
+      - name: Neutralizar checagem de dado de produção
+        run: sed -i 's/^  if v_linhas <> 2 then/  if false then/' supabase/migrations/20260825090000_financeiro_gerencial_correcao_fase1.sql
+      - name: Subir Supabase local
+        run: supabase start -x realtime,studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
+      - name: Rodar pgTAP
+        run: supabase test db
+      - name: Desligar
+        if: always()
+        run: supabase stop --no-backup
