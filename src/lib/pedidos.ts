@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import type { Pedido, PedidoItem } from "@/lib/types";
+import { ErroPublico } from "@/lib/erros";
+import { registrarRecebimentoBanco, type ResultadoRecebimento } from "@/lib/banco/extrato";
 
 type PedidoRow = {
   id: string;
@@ -382,14 +384,19 @@ async function montarPedidosComItens(
 /** Ação restrita: só toca recebimento (quantidade recebida por item,
  * observação, marcar recebido) - nunca preço nem quantidade pedida. É o que
  * permite o papel Operacional mexer em Pedidos Feitos com segurança, mesmo
- * chamando essa mesma função. */
+ * chamando essa mesma função.
+ *
+ * Desde o extrato do estoque (13/10/2026) tudo vai numa transação só, na
+ * função do banco `registrar_recebimento_pedido`: cabeçalho, itens e as
+ * compras do extrato. Reenvio idêntico não muda nada; alteração cancela e
+ * regrava; desmarcar só cancela (auditado). */
 export async function atualizarRecebimento(params: {
   unidadeId: string;
   pedidoId: string;
   recebido: boolean;
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
-}): Promise<void> {
+}): Promise<ResultadoRecebimento> {
   const supabase = await createClient();
 
   // pedidoId vem do navegador. Confirma o escopo da unidade resolvida pela
@@ -401,33 +408,12 @@ export async function atualizarRecebimento(params: {
     .eq("unidade_id", params.unidadeId)
     .maybeSingle();
   if (erroPedido) throw new Error("Nao foi possivel validar o pedido");
-  if (!pedido) throw new Error("Pedido nao encontrado nesta unidade");
+  if (!pedido) throw new ErroPublico("Pedido nao encontrado nesta unidade");
 
-  const { data: pedidoAtualizado, error: erroAtualizarPedido } = await supabase
-    .from("pedidos")
-    .update({
-      recebido: params.recebido,
-      observacao_entrega: params.observacaoEntrega,
-      atualizado_em: new Date().toISOString(),
-    })
-    .eq("id", params.pedidoId)
-    .eq("unidade_id", params.unidadeId)
-    .select("id")
-    .maybeSingle();
-  if (erroAtualizarPedido || !pedidoAtualizado) {
-    throw new Error("Nao foi possivel atualizar o recebimento");
-  }
-
-  for (const item of params.itensRecebidos) {
-    const { data: itemAtualizado, error: erroAtualizarItem } = await supabase
-      .from("pedido_itens")
-      .update({ quantidade_recebida: item.quantidadeRecebida })
-      .eq("pedido_id", params.pedidoId)
-      .eq("sku", item.sku)
-      .select("id")
-      .maybeSingle();
-    if (erroAtualizarItem || !itemAtualizado) {
-      throw new Error("Um item do pedido nao pertence a esta unidade");
-    }
-  }
+  return registrarRecebimentoBanco({
+    pedidoId: params.pedidoId,
+    recebido: params.recebido,
+    observacaoEntrega: params.observacaoEntrega,
+    itensRecebidos: params.itensRecebidos,
+  });
 }

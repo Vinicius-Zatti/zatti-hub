@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { recebimentoSchema, validarEntrada } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
+import { mensagemRecebimento } from "@/lib/extrato";
 
 /** Só toca recebimento (quantidade recebida, observação, marcar recebido) -
  * nunca preço nem quantidade pedida, então serve tanto pra Gestão quanto
@@ -16,15 +17,16 @@ export async function marcarRecebidoAction(input: {
   recebido: boolean;
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
-}): Promise<{ ok: true } | { erro: string }> {
+}): Promise<{ ok: true; mensagem: string } | { erro: string }> {
   const acesso = await getAcessoAtual();
 
   try {
     await exigirLimiteRequisicao("recebimento");
     const entrada = validarEntrada(recebimentoSchema, input);
-    await atualizarRecebimento({ ...entrada, unidadeId: acesso.unidadeId });
+    const resultado = await atualizarRecebimento({ ...entrada, unidadeId: acesso.unidadeId });
     revalidatePath("/estoque/pedidos/feitos");
-    return { ok: true };
+    revalidatePath("/estoque/contagem/movimentacoes");
+    return { ok: true, mensagem: mensagemRecebimento(resultado) };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel atualizar o recebimento.") };
   }

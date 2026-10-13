@@ -249,6 +249,28 @@ export const recebimentoSchema = z
   })
   .strict();
 
+/** Perda do extrato do estoque (regra 5). O banco repete todas estas regras
+ * em `registrar_perda_estoque`; aqui é só para a mensagem chegar antes. */
+export const perdaEstoqueSchema = z
+  .object({
+    produtoId: z.string().uuid(),
+    quantidade: z.number().finite().gt(0).max(LIMITE_QUANTIDADE),
+    data: dataIsoSchema,
+    motivo: z.enum(["vencido", "estragou", "erro_preparo", "quebra", "outro"]),
+    observacao: texto(500).nullable(),
+  })
+  .strict()
+  .refine((v) => v.motivo !== "outro" || (v.observacao ?? "").trim().length >= 3, {
+    message: "Descreva o motivo da perda.",
+  });
+
+export const cancelarMovimentacaoSchema = z
+  .object({
+    movimentacaoId: z.string().uuid(),
+    motivo: texto(500, 3),
+  })
+  .strict();
+
 const valorConsolidado = z.number().finite().min(0).max(LIMITE_DINHEIRO);
 
 export const consolidadoSchema = z
