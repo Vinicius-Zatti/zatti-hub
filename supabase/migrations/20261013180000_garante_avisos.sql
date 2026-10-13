@@ -396,4 +396,8 @@ $$;
 revoke all on function public.garante_avisos_confirmar(uuid, text) from public, anon, authenticated;
 grant execute on function public.garante_avisos_confirmar(uuid, text) to service_role;
 
+-- ══ Service role: só leitura das duas tabelas (telas de Acessos e Regras da unidade, depois de
+-- requireMaster / requireGestaoGarante) e as duas RPCs do ciclo. Escrita só pelas RPCs. ═══════
+grant select on table public.garante_avisos_destinatarios, public.garante_avisos to service_role;
+
 commit;
