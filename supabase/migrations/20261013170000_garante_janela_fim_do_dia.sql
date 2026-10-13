@@ -16,8 +16,10 @@
 -- gravado; ocorrência não iniciada usa a regra vigente na data. Unidade cuja regra
 -- vigente é a padrão criada pela migration da fase 2a (60 min, sem autor) ganha uma
 -- versão a partir de AMANHÃ com "até o fim do dia", igual ao que a gestão faria na
--- tela. Regra definida pela gestão (com autor) não muda. Unidade sem regra alguma
--- passa a usar o novo padrão direto (antes caía nos 60 min implícitos).
+-- tela. Regra definida pela gestão (com autor) não muda. Unidade que usa o Garante
+-- sem regra alguma recebe antes a regra implícita antiga (120/60) desde a primeira
+-- programação e só então a versão de amanhã: hoje e o passado ficam como estavam.
+-- Só unidade criada depois desta migration nasce direto no padrão novo.
 --
 -- Idempotente. O app em produção continua funcionando com isto aplicado antes da
 -- publicação: as RPCs mantêm a assinatura e o app antigo manda minutos.
@@ -139,22 +141,57 @@ begin
 end;
 $$;
 
--- ══ Unidades com a regra padrão da fase 2a: nova versão a partir de amanhã ═══
--- Só a regra vigente sem autor (criada pela migration) e com os 60 min padrão,
--- sem versão futura agendada pela gestão. Rodar de novo não cria outra.
-insert into public.garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min, prazo_plano_horas)
-select r.unidade_id, public.garante_hoje() + 1, r.antecedencia_min, null, r.prazo_plano_horas
-  from public.garante_regras_unidade r
- where r.criado_por is null
-   and r.atraso_max_min = 60
-   and r.vigente_desde = (
-     select max(v.vigente_desde) from public.garante_regras_unidade v
-      where v.unidade_id = r.unidade_id and v.vigente_desde <= public.garante_hoje()
-   )
-   and not exists (
-     select 1 from public.garante_regras_unidade f
-      where f.unidade_id = r.unidade_id and f.vigente_desde > public.garante_hoje()
-   )
-on conflict (unidade_id, vigente_desde) do nothing;
+-- ══ Transição versionada para o padrão novo (a partir de amanhã) ═══════════
+-- Função interna (sem grant; só o dono chama, aqui e no pgTAP) para a mesma
+-- seleção da migration poder ser provada com fixtures. Idempotente.
+--   1. Unidade que usa o Garante e não tem regra alguma: ganha antes a regra que
+--      valia implicitamente (120 min antes, 60 min de atraso) desde a primeira
+--      programação, para hoje e o passado não mudarem (ocorrência já vencida não
+--      reabre nem perde o zero na nota).
+--   2. Unidade cuja regra vigente é a padrão sem autor (criada por migration) com
+--      60 min, sem versão futura agendada pela gestão: ganha a versão de amanhã
+--      com "até o fim do dia". Regra definida pela gestão (com autor) não muda.
+create or replace function public.garante_aplicar_padrao_fim_do_dia()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_hoje date := public.garante_hoje();
+  v_base integer := 0;
+  v_novas integer := 0;
+begin
+  insert into public.garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min)
+  select u.id, least(v_hoje, coalesce(min(p.vigente_desde), v_hoje)), 120, 60
+    from public.unidades u
+    left join public.garante_publicacoes p on p.unidade_id = u.id
+   where (u.garante_habilitado or p.id is not null)
+     and not exists (select 1 from public.garante_regras_unidade r where r.unidade_id = u.id)
+   group by u.id
+  on conflict (unidade_id, vigente_desde) do nothing;
+  get diagnostics v_base = row_count;
+
+  insert into public.garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min, prazo_plano_horas)
+  select r.unidade_id, v_hoje + 1, r.antecedencia_min, null, r.prazo_plano_horas
+    from public.garante_regras_unidade r
+   where r.criado_por is null
+     and r.atraso_max_min = 60
+     and r.vigente_desde = (
+       select max(v.vigente_desde) from public.garante_regras_unidade v
+        where v.unidade_id = r.unidade_id and v.vigente_desde <= v_hoje
+     )
+     and not exists (
+       select 1 from public.garante_regras_unidade f
+        where f.unidade_id = r.unidade_id and f.vigente_desde > v_hoje
+     )
+  on conflict (unidade_id, vigente_desde) do nothing;
+  get diagnostics v_novas = row_count;
+  return v_base + v_novas;
+end;
+$$;
+revoke all on function public.garante_aplicar_padrao_fim_do_dia() from public, anon, authenticated;
+
+select public.garante_aplicar_padrao_fim_do_dia();
 
 commit;

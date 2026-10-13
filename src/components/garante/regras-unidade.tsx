@@ -21,7 +21,7 @@ type Resultado = { ok: true } | { erro: string };
 type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
 
 /** Regras da unidade (gestão, em Modelos): antecedência, até quando concluir
- * (fim do dia, o padrão, ou uma tolerância de atraso menor) e prazo do plano de
+ * (fim do dia, o padrão, ou uma tolerância de atraso em minutos) e prazo do plano de
  * ação (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
  * confere tudo de novo (`garante_definir_regra`, `garante_marcar_dia_sem_operacao`). */
 export function RegrasUnidade({
@@ -185,10 +185,17 @@ function FormRegra({
   const [ateFimDoDia, setAteFimDoDia] = useState(inicial.atrasoMaxMin === null);
   const [atraso, setAtraso] = useState<number | null>(inicial.atrasoMaxMin);
   const [prazoPlano, setPrazoPlano] = useState<number | null>(inicial.prazoPlanoHoras);
+  const [erroLocal, setErroLocal] = useState<string | null>(null);
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        setErroLocal(null);
+        // Modo tolerância com minutos em branco não pode virar "fim do dia" por engano (0 é válido).
+        if (!ateFimDoDia && atraso === null) {
+          setErroLocal("Informe os minutos de tolerância (0 a 1.440) ou escolha \"o fim do dia\".");
+          return;
+        }
         aoSalvar({ antecedenciaMin: antecedencia, atrasoMaxMin: ateFimDoDia ? null : atraso, prazoPlanoHoras: prazoPlano });
       }}
       className="flex flex-col gap-3"
@@ -206,7 +213,7 @@ function FormRegra({
         </label>
         <label className="flex items-center gap-2 text-sm text-cinza">
           <input type="radio" name="ate" checked={!ateFimDoDia} onChange={() => setAteFimDoDia(false)} />
-          Uma tolerância menor, em minutos depois do horário limite (0 a 1.440)
+          Uma tolerância em minutos depois do horário limite (0 a 1.440)
         </label>
         {!ateFimDoDia && (
           <CampoNumero value={atraso} onChange={setAtraso} decimais={0} className="mt-1 block w-full" />
@@ -224,7 +231,7 @@ function FormRegra({
         <li>Hoje e os dias que já passaram continuam com a regra que valia, e a nota deles não muda.</li>
         <li>Plano de ação já aberto mantém o prazo com que nasceu.</li>
       </ul>
-      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      {(erro ?? erroLocal) && <p className="text-sm text-vermelho">{erro ?? erroLocal}</p>}
       <div className="flex gap-2">
         <button type="submit" disabled={pendente} className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
           {pendente ? "Salvando..." : `Valer a partir de ${formatarDataBr(amanha)}`}

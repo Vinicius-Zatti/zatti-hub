@@ -15,6 +15,11 @@
 -- Quem liga: só master (Zatti), em Acessos > Unidades ou por SQL do dono. A
 -- tabela unidades não tem policy de escrita (mesmo padrão de garante_habilitado).
 --
+-- A chave é do APP, não do banco: a leitura direta das views do extrato e as RPCs
+-- registrar_perda_estoque e cancelar_movimentacao_estoque continuam disponíveis
+-- para quem já tinha permissão (a RLS do extrato não muda). Não concede escrita
+-- em unidades nem desliga os gatilhos do recebimento.
+--
 -- Idempotente. O app em produção continua funcionando com isto aplicado antes
 -- da publicação (coluna nova com padrão; o app antigo não a lê).
 

@@ -331,8 +331,9 @@ export async function definirExtratoEstoqueAction(unidadeId: string, ligar: bool
   const { error } = await admin.from("unidades").update({ extrato_estoque_habilitado: ligar }).eq("id", unidadeId);
   if (error) return { erro: error.message };
 
+  // O log vai na unidade alterada, não na unidade da sessão do master.
   await registrarAuditoria({
-    acesso,
+    acesso: { ...acesso, unidadeId },
     acao: ligar ? "ligar_extrato_estoque" : "desligar_extrato_estoque",
     entidade: "unidade",
     entidadeId: unidadeId,
