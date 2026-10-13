@@ -1,22 +1,26 @@
 import { aberturasDasContas, montarMovimentosCaixa, saldoAte } from "./caixa";
 import { mesUsaPercentualCmv, type DreAnual, type LinhaDreAnual } from "./dre-anual";
+import { montarRitmoDoMes, type RitmoDoMes } from "./painel-mega-ritmo";
 import { montarQuadrosDre, type ValorQuadro } from "./quadros-dre";
-import type { BaixaBase, ContaFinanceira, LancamentoBase } from "./tipos";
+import type { BaixaBase, CategoriaFinanceira, ContaFinanceira, LancamentoBase } from "./tipos";
 
 /** Painel M.E.G.A. com farol (Financeiro V2, Fase 3, item 3, 13/10). Nenhuma
  * fórmula nova: todo número sai da DRE anual já calculada
  * (`montarDreAnualDaUnidade`) e o Ponto de Equilíbrio do mesmo quadro da DRE
  * (`montarQuadrosDre`). O farol só existe onde a gestão cadastrou meta;
- * nenhum limite padrão. */
+ * nenhum limite padrão. Mês com CMV provisório ganha o farol por ritmo
+ * (`painel-mega-ritmo.ts`, decisão 4 de 13/10) no lugar do farol da DRE. */
 
 /** Meta da unidade vigente a partir de `vigenteDesde` ("AAAA-MM-01").
- * Percentuais em fração (0.32 = 32%), igual à DRE. `null` = sem meta. */
+ * Percentuais em fração (0.32 = 32%), igual à DRE. `null` = sem meta.
+ * `custosVariaveis` = R$ do mês, teto do ritmo (migração 20261013190000). */
 export type MetaUnidade = {
   vigenteDesde: string;
   faturamento: number | null;
   cmvPercentual: number | null;
   custoFixoPercentual: number | null;
   resultado: number | null;
+  custosVariaveis: number | null;
 };
 
 /** Meta vigente no mês `competencia` ("AAAA-MM"): a de início no próprio mês
@@ -68,6 +72,10 @@ export type PainelMega = {
   pontoDeEquilibrio: ValorQuadro;
   resultado: IndicadorComFarol & { percentual: number | null };
   caixaProjetado30Dias: { data: string; saldo: number };
+  /** Farol por ritmo (compras e custos variáveis contra a meta proporcional aos
+   * dias decorridos). Só enquanto o CMV do mês é provisório; mês com
+   * inventário volta ao farol da DRE e fica `null` aqui. */
+  ritmo: RitmoDoMes | null;
 };
 
 function valorDaLinha(linhas: LinhaDreAnual[], id: string, mesIndice: number): number | null {
@@ -80,8 +88,12 @@ export function montarPainelMega(params: {
   receitaVendasProdutosPorMes: number[];
   metas: MetaUnidade[];
   caixaProjetado30Dias: { data: string; saldo: number };
+  /** Hoje ("AAAA-MM-DD", fuso de Brasília) e a carga da unidade, para o ritmo do mês aberto. */
+  hoje: string;
+  lancamentos: LancamentoBase[];
+  categorias: CategoriaFinanceira[];
 }): PainelMega {
-  const { dreAnual, mesIndice, receitaVendasProdutosPorMes, metas, caixaProjetado30Dias } = params;
+  const { dreAnual, mesIndice, receitaVendasProdutosPorMes, metas, caixaProjetado30Dias, hoje, lancamentos, categorias } = params;
   const linhas = dreAnual.linhas;
   const competencia = `${dreAnual.ano}-${String(mesIndice + 1).padStart(2, "0")}`;
   const meta = metaVigente(metas, competencia);
@@ -124,6 +136,8 @@ export function montarPainelMega(params: {
       percentual: v("resultado_liquido_percentual"),
     },
     caixaProjetado30Dias,
+    // CMV fechado: o farol da DRE assume, sem ritmo (desenho de 13/10).
+    ritmo: percentualCmvFechado ? null : montarRitmoDoMes({ competencia, hoje, lancamentos, categorias, meta }),
   };
 }
 

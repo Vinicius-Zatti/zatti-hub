@@ -37,6 +37,10 @@ export default async function PainelMegaPage({ searchParams }: { searchParams: P
     receitaVendasProdutosPorMes,
     metas,
     caixaProjetado30Dias: caixaProjetadoEmDias({ hoje, dias: 30, lancamentos: todosLancamentos, baixas, contas }),
+    // Ritmo do mês aberto: gasto por data de competência até hoje (Brasília).
+    hoje,
+    lancamentos: todosLancamentos,
+    categorias,
   });
 
   return (

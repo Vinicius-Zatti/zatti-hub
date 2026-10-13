@@ -10,6 +10,7 @@ type MetaRow = {
   cmv_percentual: number | string | null;
   custo_fixo_percentual: number | string | null;
   resultado: number | string | null;
+  custos_variaveis: number | string | null;
 };
 
 function numeroOuNull(v: number | string | null): number | null {
@@ -22,7 +23,7 @@ export async function listarMetasUnidade(unidadeId: string): Promise<MetaUnidade
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("fin_metas_unidade")
-    .select("vigente_desde, faturamento, cmv_percentual, custo_fixo_percentual, resultado")
+    .select("vigente_desde, faturamento, cmv_percentual, custo_fixo_percentual, resultado, custos_variaveis")
     .eq("unidade_id", unidadeId)
     .order("vigente_desde", { ascending: false });
   if (error) throw new Error(`Não foi possível carregar as metas: ${error.message}`);
@@ -32,6 +33,7 @@ export async function listarMetasUnidade(unidadeId: string): Promise<MetaUnidade
     cmvPercentual: numeroOuNull(m.cmv_percentual),
     custoFixoPercentual: numeroOuNull(m.custo_fixo_percentual),
     resultado: numeroOuNull(m.resultado),
+    custosVariaveis: numeroOuNull(m.custos_variaveis),
   }));
 }
 
@@ -43,6 +45,7 @@ export async function salvarMetaUnidade(params: {
   cmvPercentual: number | null;
   custoFixoPercentual: number | null;
   resultado: number | null;
+  custosVariaveis: number | null;
 }): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("fin_meta_unidade_salvar", {
@@ -52,6 +55,7 @@ export async function salvarMetaUnidade(params: {
     p_cmv_percentual: params.cmvPercentual,
     p_custo_fixo_percentual: params.custoFixoPercentual,
     p_resultado: params.resultado,
+    p_custos_variaveis: params.custosVariaveis,
   });
   if (error) throw erroDeNegocio(error);
 }

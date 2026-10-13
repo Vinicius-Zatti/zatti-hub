@@ -13,6 +13,7 @@ import { MESES_POR_EXTENSO } from "@/lib/financeiro-gerencial/dre-avisos";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import type { Farol, MetaUnidade, PainelMega } from "@/lib/financeiro-gerencial/painel-mega";
+import type { FarolRitmo, IndicadorRitmo, RitmoDoMes } from "@/lib/financeiro-gerencial/painel-mega-ritmo";
 
 const ESTILO_FAROL: Record<Farol, string> = {
   cumpre: "border-verde bg-verde/10",
@@ -20,6 +21,14 @@ const ESTILO_FAROL: Record<Farol, string> = {
   sem_meta: "border-cinza-claro bg-branco",
   sem_valor: "border-cinza-claro bg-branco",
   provisorio: "border-cinza-claro bg-branco",
+};
+
+const ESTILO_FAROL_RITMO: Record<FarolRitmo, string> = {
+  no_ritmo: "border-verde bg-verde/10",
+  acima_do_ritmo: "border-ambar bg-ambar/10",
+  muito_acima_do_ritmo: "border-vermelho bg-vermelho/10",
+  sem_meta: "border-cinza-claro bg-branco",
+  mes_nao_comecou: "border-cinza-claro bg-branco",
 };
 
 function nomeDoMes(competencia: string): string {
@@ -55,6 +64,7 @@ function Cartao({
   detalhe,
   dica,
   farol = "sem_valor",
+  estilo,
   rodape,
 }: {
   titulo: string;
@@ -62,10 +72,12 @@ function Cartao({
   detalhe?: string;
   dica: string;
   farol?: Farol;
+  /** Classes de cor prontas (farol por ritmo); sem isso, vale `farol`. */
+  estilo?: string;
   rodape?: React.ReactNode;
 }) {
   return (
-    <div className={`flex flex-col gap-1 rounded-lg border p-3 ${ESTILO_FAROL[farol]}`}>
+    <div className={`flex flex-col gap-1 rounded-lg border p-3 ${estilo ?? ESTILO_FAROL[farol]}`}>
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cinza-medio">
         {titulo}
         <DicaCalculo texto={dica} rotulo={titulo} />
@@ -73,6 +85,64 @@ function Cartao({
       <div className="font-mono text-lg font-bold text-azul-noite">{valor}</div>
       {detalhe && <div className="text-xs text-cinza-medio">{detalhe}</div>}
       {rodape}
+    </div>
+  );
+}
+
+/** Texto do farol por ritmo: a cor nunca é a única informação. */
+function TextoFarolRitmo({ indicador, onDefinirMeta }: { indicador: IndicadorRitmo; onDefinirMeta: (() => void) | null }) {
+  const { farol, esperado, limiteVermelho } = indicador;
+  if (farol === "sem_meta") {
+    return onDefinirMeta ? (
+      <button type="button" onClick={onDefinirMeta} className="text-xs font-semibold text-azul-petroleo underline">
+        definir meta
+      </button>
+    ) : (
+      <span className="text-xs text-cinza-medio">Sem meta cadastrada</span>
+    );
+  }
+  if (farol === "mes_nao_comecou") return <span className="text-xs text-cinza-medio">Mês ainda não começou: sem ritmo (esperado no mês {formatarMoeda(indicador.metaDoMes)})</span>;
+  if (farol === "no_ritmo") return <span className="text-xs font-semibold text-verde">No ritmo (esperado {formatarMoeda(esperado)})</span>;
+  if (farol === "acima_do_ritmo") {
+    return (
+      <span className="text-xs font-semibold text-ambar">
+        Acima do ritmo (esperado {formatarMoeda(esperado)}; vermelho acima de {formatarMoeda(limiteVermelho)})
+      </span>
+    );
+  }
+  return <span className="text-xs font-semibold text-vermelho">Mais de 20% acima do ritmo (esperado {formatarMoeda(esperado)}; limite {formatarMoeda(limiteVermelho)})</span>;
+}
+
+/** Ritmo do mês (decisão 4 de 13/10): compras e custos variáveis até hoje contra a
+ * meta proporcional aos dias decorridos. Só aparece com o CMV provisório. */
+function RitmoDoMesCartoes({ ritmo, onDefinirMeta }: { ritmo: RitmoDoMes; onDefinirMeta: (() => void) | null }) {
+  const mesInteiro = ritmo.fracao >= 1;
+  const ate = mesInteiro ? "mês inteiro" : `até ${formatarDataBr(ritmo.hoje)} (${ritmo.diasDecorridos} de ${ritmo.diasDoMes} dias)`;
+  const metaTexto = (i: IndicadorRitmo) => (i.metaDoMes === null ? "Sem meta do mês." : `Meta do mês ${formatarMoeda(i.metaDoMes)} · esperado ${ate}: ${formatarMoeda(i.esperado)}.`);
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Ritmo do mês</h2>
+      <p className="text-sm text-cinza-medio">
+        Gasto lançado pela data de competência até hoje, comparado com a meta do mês proporcional aos dias decorridos. Folha fixa não entra: não se divide por dia.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Cartao
+          titulo="CMV de compras até hoje"
+          valor={formatarMoeda(ritmo.cmvCompras.realizado)}
+          detalhe={`Mercadorias ${formatarMoeda(ritmo.cmvCompras.comprasMercadorias)} + Embalagens ${formatarMoeda(ritmo.cmvCompras.comprasEmbalagens)}. ${metaTexto(ritmo.cmvCompras)}`}
+          dica={`${EXPLICACAO_CALCULO.painel_ritmo_cmv_compras} ${EXPLICACAO_CALCULO.painel_ritmo_farol}`}
+          estilo={ESTILO_FAROL_RITMO[ritmo.cmvCompras.farol]}
+          rodape={<TextoFarolRitmo indicador={ritmo.cmvCompras} onDefinirMeta={onDefinirMeta} />}
+        />
+        <Cartao
+          titulo="Custos variáveis até hoje"
+          valor={formatarMoeda(ritmo.custosVariaveis.realizado)}
+          detalhe={`Custos de Venda Variáveis ${formatarMoeda(ritmo.custosVariaveis.custosVendaVariaveis)} + Freelancers ${formatarMoeda(ritmo.custosVariaveis.freelancers)}. ${metaTexto(ritmo.custosVariaveis)}`}
+          dica={`${EXPLICACAO_CALCULO.painel_ritmo_custos_variaveis} ${EXPLICACAO_CALCULO.painel_ritmo_farol}`}
+          estilo={ESTILO_FAROL_RITMO[ritmo.custosVariaveis.farol]}
+          rodape={<TextoFarolRitmo indicador={ritmo.custosVariaveis} onDefinirMeta={onDefinirMeta} />}
+        />
+      </div>
     </div>
   );
 }
@@ -93,6 +163,7 @@ function FormularioMeta({ competenciaInicial, metaAtual, onFechar }: { competenc
   const [cmv, setCmv] = useState<number | null>(paraPercentualTela(metaAtual?.cmvPercentual ?? null));
   const [custoFixo, setCustoFixo] = useState<number | null>(paraPercentualTela(metaAtual?.custoFixoPercentual ?? null));
   const [resultado, setResultado] = useState<number | null>(metaAtual?.resultado ?? null);
+  const [custosVariaveis, setCustosVariaveis] = useState<number | null>(metaAtual?.custosVariaveis ?? null);
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -106,6 +177,7 @@ function FormularioMeta({ competenciaInicial, metaAtual, onFechar }: { competenc
         cmvPercentual: deTelaParaFracao(cmv),
         custoFixoPercentual: deTelaParaFracao(custoFixo),
         resultado,
+        custosVariaveis,
       });
       if (!r.ok) {
         setErro(r.mensagem);
@@ -154,6 +226,11 @@ function FormularioMeta({ competenciaInicial, metaAtual, onFechar }: { competenc
           <CampoNumero value={custoFixo} onChange={setCustoFixo} className="w-full" />
         </label>
       </div>
+      <label className={rotulo}>
+        Custos variáveis máximos no mês (R$)
+        <CampoNumero value={custosVariaveis} onChange={setCustosVariaveis} className="w-full" />
+        <span className="text-xs font-normal">Teto do Ritmo do mês: Custos de Venda Variáveis + Freelancers. Folha fixa fica fora.</span>
+      </label>
       {erro && <p className="text-sm text-vermelho">{erro}</p>}
       <div className="mt-1 flex gap-2">
         <button type="submit" disabled={isPending || !vigenteDesde} className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50">
@@ -218,10 +295,13 @@ export function PainelMegaVisualizacao({
 
       {!cmvPercentual.percentualCmvFechado && (
         <p role="status" className="rounded-lg border border-ambar bg-ambar/10 px-3 py-2 text-sm text-azul-noite">
-          <span className="font-semibold">Mês sem farol:</span> o CMV de {nomeDoMes(painel.competencia)} ainda é provisório (falta estoque final ou
-          Venda de Produtos na DRE). Como o CMV mexe na margem e no resultado, nenhum indicador é comparado com a meta até o mês fechar.
+          <span className="font-semibold">Mês com CMV provisório:</span> falta estoque final ou Venda de Produtos de {nomeDoMes(painel.competencia)} na DRE.
+          Como o CMV mexe na margem e no resultado, os indicadores da DRE ficam sem farol até o mês fechar. Enquanto isso, o acompanhamento é pelo Ritmo do
+          mês logo abaixo.
         </p>
       )}
+
+      {painel.ritmo && <RitmoDoMesCartoes ritmo={painel.ritmo} onDefinirMeta={definirMeta} />}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Cartao
@@ -287,7 +367,7 @@ export function PainelMegaVisualizacao({
           </p>
         ) : (
           <TabelaRolavel ariaLabel="Metas da unidade">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[680px] text-sm">
               <thead>
                 <tr className="bg-azul-petroleo text-branco">
                   <Th>Vale a partir de</Th>
@@ -295,6 +375,7 @@ export function PainelMegaVisualizacao({
                   <Th align="right">% CMV</Th>
                   <Th align="right">% Custos Fixos</Th>
                   <Th align="right">Resultado</Th>
+                  <Th align="right">Custos variáveis</Th>
                 </tr>
               </thead>
               <tbody>
@@ -308,6 +389,7 @@ export function PainelMegaVisualizacao({
                     <td className="px-3 py-2 text-right font-mono">{formatarPercentual(m.cmvPercentual)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatarPercentual(m.custoFixoPercentual)}</td>
                     <td className="px-3 py-2 text-right font-mono">{formatarMoeda(m.resultado)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatarMoeda(m.custosVariaveis)}</td>
                   </tr>
                 ))}
               </tbody>

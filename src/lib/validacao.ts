@@ -697,6 +697,8 @@ export const metaUnidadeEntradaSchema = z
     cmvPercentual: fracaoMetaPercentual,
     custoFixoPercentual: fracaoMetaPercentual,
     resultado: z.number().finite().min(-LIMITE_DINHEIRO).max(LIMITE_DINHEIRO).nullable(),
+    // Teto de custos variáveis em R$ no mês (farol por ritmo, 13/10).
+    custosVariaveis: z.number().finite().gt(0).max(LIMITE_DINHEIRO).nullable(),
   })
   .strict();
 
