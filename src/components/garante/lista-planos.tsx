@@ -53,6 +53,12 @@ export function ListaPlanos({
   const router = useRouter();
   const agora = useMemo(() => new Date(agoraIso), [agoraIso]);
   const [filtro, setFiltro] = useState("");
+  // O filtro vale só para a página: ao trocar de página ele volta para "Todos".
+  const [paginaDoFiltro, setPaginaDoFiltro] = useState(pagina);
+  if (paginaDoFiltro !== pagina) {
+    setPaginaDoFiltro(pagina);
+    setFiltro("");
+  }
   const [janela, setJanela] = useState<Janela>(null);
   const [texto, setTexto] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -113,7 +119,9 @@ export function ListaPlanos({
 
   return (
     <div className="flex flex-col gap-5">
-      {gestao && opcoes.length > 1 && (
+      {/* Com filtro ativo o seletor fica visível mesmo numa página de um só responsável,
+          para dar para limpar o filtro (Codex 13/10). */}
+      {gestao && (opcoes.length > 1 || Boolean(filtro)) && (
         <div className="max-w-sm">
           <p className="text-xs font-semibold text-cinza-medio">Responsável{totalPaginas > 1 && " (filtra esta página)"}</p>
           <SeletorComBusca value={filtro} opcoes={opcoes} onChange={setFiltro} vazioLabel="Todos" placeholder="Buscar responsável..." />
