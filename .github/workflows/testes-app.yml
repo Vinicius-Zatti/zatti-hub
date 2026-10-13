@@ -1,0 +1,43 @@
+# Testes do app (TypeScript, ESLint, Vitest e build do Next) num servidor do GitHub,
+# para não rodar nada pesado na máquina do Vinícius (13/10/2026). Mesmo gatilho do
+# workflow do banco: todo push e à mão.
+#
+# O build precisa das variáveis públicas do Supabase e do Turnstile só para o
+# Next montar a CSP e os clientes; aqui vão valores falsos, nunca os de produção.
+# Nenhum teste chama Supabase de verdade (o E2E local do Garante e da Conciliação
+# só liga com URL localhost no ambiente).
+name: Testes do app
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: testes-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://exemplo.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: chave-anon-falsa-so-para-o-build
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: ESLint
+        run: npm run lint
+      - name: Vitest
+        run: npm test
+      - name: Build do Next
+        run: npm run build
