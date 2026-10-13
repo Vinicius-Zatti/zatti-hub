@@ -8,8 +8,6 @@ import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrup
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
-import { DicaCalculo } from "@/components/dica-calculo";
-import { DICA_VARIAS_CONTAGENS, SeletorContagens } from "@/components/seletor-contagens";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 
@@ -17,15 +15,9 @@ function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-/** "11/10/2026 e 12/10/2026" - pra textos que falam das contagens juntas. */
-function listarDatas(datas: string[]): string {
-  return datas.join(" e ");
-}
-
 export function PedidoCompras({
   itens,
   dataUsada,
-  datasUsadas,
   datasDisponiveis,
   gruposSelecionados,
   gruposContadosNoDia,
@@ -37,10 +29,7 @@ export function PedidoCompras({
   setoresPendentes = [],
 }: {
   itens: SugestaoCompra[];
-  /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
   dataUsada: string;
-  /** Todas as contagens marcadas, mais recente primeiro (uma só é o padrão). */
-  datasUsadas: string[];
   datasDisponiveis: string[];
   gruposSelecionados: string[];
   gruposContadosNoDia: string[];
@@ -57,13 +46,10 @@ export function PedidoCompras({
   const router = useRouter();
   const pathname = usePathname();
   const legenda = `${organizacaoNome} · Pedido de Cotação`;
-  const variasContagens = datasUsadas.length > 1;
 
-  // `data` leva todas as contagens marcadas separadas por vírgula; o servidor
-  // só aceita datas que existem na unidade e põe a mais recente como base.
-  function atualizarUrl(novasDatas: string[], novosGrupos: string[]) {
+  function atualizarUrl(novaData: string, novosGrupos: string[]) {
     const params = new URLSearchParams();
-    if (novasDatas.length > 0) params.set("data", novasDatas.join(","));
+    if (novaData) params.set("data", novaData);
     if (novosGrupos.length > 0) params.set("grupos", novosGrupos.join(","));
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -72,7 +58,7 @@ export function PedidoCompras({
   function alternarGrupo(codigo: string) {
     const ativo = gruposSelecionados.includes(codigo);
     const novos = ativo ? gruposSelecionados.filter((g) => g !== codigo) : [...gruposSelecionados, codigo];
-    atualizarUrl(datasUsadas, novos);
+    atualizarUrl(dataUsada, novos);
   }
 
   // Correção manual da quantidade sugerida - compartilhada entre a tabela de
@@ -222,18 +208,27 @@ export function PedidoCompras({
       )}
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">
-        <SeletorContagens
-          datasDisponiveis={datasDisponiveis}
-          datasUsadas={datasUsadas}
-          onChange={(novasDatas) => atualizarUrl(novasDatas, gruposSelecionados)}
-        />
+        <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+          Contagem base
+          <select
+            value={dataUsada}
+            onChange={(e) => atualizarUrl(e.target.value, gruposSelecionados)}
+            className="rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
+          >
+            {datasDisponiveis.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
           Escopo
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => atualizarUrl(datasUsadas, [])}
+              onClick={() => atualizarUrl(dataUsada, [])}
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                 gruposSelecionados.length === 0
                   ? "border-azul-noite bg-azul-noite text-branco"
@@ -267,20 +262,11 @@ export function PedidoCompras({
         </div>
       </div>
 
-      {variasContagens && (
-        <p className="rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
-          Estoque atual junta as contagens de {listarDatas(datasUsadas)}: cada setor entra com a
-          contagem mais recente dele. A coluna Estoque atual mostra de qual data veio cada item. O
-          pedido fica gravado na contagem base ({dataUsada}).
-        </p>
-      )}
-
       {gruposContadosNoDia.length > 0 && (
         <p className="rounded-md border border-cinza-claro bg-off-white px-3 py-2 text-xs text-cinza-medio">
-          {variasContagens ? `Nessas contagens (${listarDatas(datasUsadas)})` : `Nessa contagem (${dataUsada})`}{" "}
-          foram contados os grupos:{" "}
+          Nessa contagem ({dataUsada}) foram contados os grupos:{" "}
           <strong className="text-cinza">{gruposContadosNoDia.map(nomeGrupo).join(", ")}</strong>. O resto
-          do cadastro nem entra aqui, porque não fez parte {variasContagens ? "dessas contagens" : "dessa contagem"}.
+          do cadastro nem entra aqui, porque não fez parte dessa contagem.
         </p>
       )}
 
@@ -308,7 +294,6 @@ export function PedidoCompras({
                 confirmando={confirmando}
                 erroConfirmar={erroConfirmar}
                 podeEditar={podeConfirmar}
-                mostrarDatas={variasContagens}
                 onIniciarEdicao={iniciarEdicao}
                 onConfirmarEdicao={confirmarEdicaoGrupo}
                 onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
@@ -355,7 +340,6 @@ function TabelaItens({
   confirmando,
   erroConfirmar,
   podeEditar,
-  mostrarDatas,
   onIniciarEdicao,
   onConfirmarEdicao,
   onChangeEditando,
@@ -367,8 +351,6 @@ function TabelaItens({
   confirmando: Record<string, boolean>;
   erroConfirmar: Record<string, string>;
   podeEditar: boolean;
-  /** Com mais de uma contagem marcada: mostra de qual data veio cada estoque. */
-  mostrarDatas: boolean;
   onIniciarEdicao: (item: SugestaoCompra) => void;
   onConfirmarEdicao: (item: SugestaoCompra) => void;
   onChangeEditando: (sku: string, valor: string) => void;
@@ -389,16 +371,7 @@ function TabelaItens({
           <thead>
             <tr className="bg-off-white text-cinza-medio">
               <Th>Item</Th>
-              <Th align="right">
-                {mostrarDatas ? (
-                  <span className="inline-flex items-center gap-1">
-                    Estoque atual
-                    <DicaCalculo rotulo="Estoque atual com mais de uma contagem" texto={DICA_VARIAS_CONTAGENS} />
-                  </span>
-                ) : (
-                  "Estoque atual"
-                )}
-              </Th>
+              <Th align="right">Estoque atual</Th>
               <Th align="right">Necessário</Th>
               <Th align="right">Comprar</Th>
               <Th align="right">Valor</Th>
@@ -421,11 +394,6 @@ function TabelaItens({
                     {item.estoqueAtual !== null
                       ? `${formatarQuantidade(item.estoqueAtual, item.unidadeBase)} ${item.unidadeBase}`
                       : "não contado"}
-                    {mostrarDatas && item.datasContagem && item.datasContagem.length > 0 && (
-                      <span className="block text-[10px] font-medium" title={`Contado em ${listarDatas(item.datasContagem)}`}>
-                        {item.datasContagem.map((d) => d.slice(0, 5)).join(" + ")}
-                      </span>
-                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
                     {formatarQuantidade(item.estoqueNecessario, item.unidadeBase)} {item.unidadeBase}

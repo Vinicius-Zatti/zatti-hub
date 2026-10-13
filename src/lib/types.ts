@@ -108,11 +108,6 @@ export type SugestaoCompra = {
    * tem gente nessa lista, `estoqueAtual` é soma parcial: o comprador precisa
    * ver isso antes de comprar em cima de um número incompleto. */
   setoresQueNaoContaram: string[];
-  /** Datas (DD/MM/AAAA, mais recente primeiro) de onde veio `estoqueAtual`
-   * quando a Cotação junta mais de uma contagem - cada setor entra com a
-   * contagem mais recente dele (`lib/contagem/varias-datas.ts`). Vazio
-   * quando o item não foi contado; ausente em item montado fora da Cotação. */
-  datasContagem?: string[];
 };
 
 export type PedidoItem = {

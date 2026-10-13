@@ -9,7 +9,6 @@ import { ErroPublico } from "@/lib/erros";
 import { buscarTudo } from "@/lib/banco/paginacao";
 import type { Setor } from "@/lib/types";
 import type { AndamentoSetor, EscopoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
-import { andamentoDeVariasDatas, escopoDeVariasDatas } from "@/lib/contagem/varias-datas";
 
 export type DesignacaoProduto = {
   sku: string;
@@ -242,25 +241,6 @@ export async function listarEscopoBanco(
       unidadeBase: (linha.unidade_base as string | null) ?? "",
     };
   });
-}
-
-/** Escopo e andamento das contagens escolhidas na Cotação (uma ou várias
- * datas), já consolidados pela regra de `lib/contagem/varias-datas.ts`: setor
- * concluído em qualquer data conta como concluído, e o escopo é a união dos
- * snapshots. Com uma data só, é o mesmo que ler escopo e andamento dela. */
-export async function carregarEscopoEAndamentoBanco(
-  unidadeId: string,
-  datasBr: string[],
-): Promise<{ escopo: EscopoSetor[]; andamento: AndamentoSetor[] }> {
-  const [escopos, andamentoPorData] = await Promise.all([
-    Promise.all(datasBr.map((data) => listarEscopoBanco(unidadeId, data))),
-    listarAndamentoBanco(unidadeId),
-  ]);
-  const escopoPorData = new Map(datasBr.map((data, i) => [data, escopos[i]]));
-  return {
-    escopo: escopoDeVariasDatas(escopoPorData, datasBr),
-    andamento: andamentoDeVariasDatas(andamentoPorData, datasBr),
-  };
 }
 
 function isoParaBr(data: string): string {

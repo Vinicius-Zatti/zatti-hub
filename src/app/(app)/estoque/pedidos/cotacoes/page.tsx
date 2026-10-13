@@ -7,9 +7,8 @@ import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarForne
 import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
-import { carregarEscopoEAndamentoBanco } from "@/lib/banco/setores";
+import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
-import { escolherDatasContagem } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
 
@@ -47,17 +46,25 @@ export default async function EditorEspelhosPage({
   let resultado, datas, fornecedoresCadastro, produtos;
   try {
     datas = await datasDisponiveis(acesso.spreadsheetId);
-    // Mesma chave de Criar Cotação: `data` com várias contagens separadas
-    // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
-    const datasEscolhidas = escolherDatasContagem(params.data, datas);
+    const dataEscolhida = params.data || datas[0];
 
-    const { escopo, andamento } =
-      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
-        ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
-        : { escopo: [], andamento: [] };
+    const [escopo, andamentoPorData] =
+      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && dataEscolhida
+        ? await Promise.all([
+            listarEscopoBanco(acesso.unidadeId, dataEscolhida),
+            listarAndamentoBanco(acesso.unidadeId),
+          ])
+        : [[], new Map()];
 
     [resultado, fornecedoresCadastro, produtos] = await Promise.all([
-      gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId),
+      gerarPedido(
+        {
+          data: dataEscolhida,
+          escopo,
+          andamento: andamentoPorData.get(dataEscolhida ?? "") ?? [],
+        },
+        acesso.spreadsheetId,
+      ),
       listFornecedores(acesso.spreadsheetId),
       listProdutos(acesso.spreadsheetId),
     ]);
@@ -121,7 +128,6 @@ export default async function EditorEspelhosPage({
       itensPorFornecedor={itensPorFornecedor}
       fornecedores={fornecedores}
       dataUsada={resultado.dataUsada}
-      datasUsadas={resultado.datasUsadas}
       datasDisponiveis={datas}
       pedidoSalvoPorFornecedor={pedidoSalvoPorFornecedor}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
