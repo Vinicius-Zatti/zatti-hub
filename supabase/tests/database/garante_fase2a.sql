@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(67);
+select plan(70);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -277,8 +277,16 @@ select is((select vigente_ate from garante_publicacoes where id = '00000000-0000
   'janela de hoje ainda aberta e sem início: termina ontem, como antes');
 select is((select count(*)::int from public.garante_agenda('org-n-a-par', public.garante_hoje())
             where publicacao_id = '00000000-0000-0000-0000-0000000a6103'), 0, 'e some da agenda de hoje (para a frente nada muda)');
-select is((select ativo::text || ' ' || vigente_ate::text from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6106'),
-  'true ' || (public.garante_hoje() + 1)::text, 'checklist de amanhã já iniciado: a programação termina amanhã, sem erro');
+select is((select ativo from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6106'), false,
+  'só com o checklist de amanhã iniciado: a programação é desativada, sem erro');
+select is((select count(*)::int from public.garante_agenda('org-n-a-par', public.garante_hoje())
+            where publicacao_id = '00000000-0000-0000-0000-0000000a6106'), 0,
+  'hoje (aberto e sem início) sai da agenda, então não vira zero na nota quando a janela fechar');
+select is((select count(*)::int from public.garante_agenda('org-n-a-par', public.garante_hoje() + 1)
+            where publicacao_id = '00000000-0000-0000-0000-0000000a6106' and execucao_id is not null), 1,
+  'o checklist de amanhã já iniciado continua na agenda de amanhã');
+select is((select previstas from public.garante_nota('org-n-a-par', public.garante_hoje() - 2, public.garante_hoje()) where nivel = 'unidade'),
+  9, 'nota de hoje não ganha ocorrência da programação desativada');
 select is((select count(*)::int from garante_execucoes where publicacao_id = '00000000-0000-0000-0000-0000000a6106'), 1,
   'a execução de amanhã continua');
 select is((select ativo from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6105'), false,
