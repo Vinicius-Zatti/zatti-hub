@@ -85,14 +85,14 @@ export function ordenarPorNota<T extends { nota: number | null; nome: string }>(
 /** Textos do ícone (i) da tela Nota. */
 export const DICA_NOTA = {
   nota:
-    "Nota = (P + E + Q) ÷ 3, cada um de 0 a 100. Se E e Q ficam sem valor (tudo \"não se aplica\"), a nota é só o P. Conta só checklist fechado: concluído, ou com a tolerância de atraso já vencida. Sem nenhum fechado no período, mostra \"-\".",
+    "Nota = (P + E + Q) ÷ 3, cada um de 0 a 100. Se E e Q ficam sem valor (tudo \"não se aplica\"), a nota é só o P. Conta só checklist fechado: concluído, ou com a janela já vencida (fim do dia, ou a tolerância de atraso que a gestão definiu). Sem nenhum fechado no período, mostra \"-\".",
   p: "Pontualidade (P): média por checklist, 100 se foi concluído até o horário limite e 0 se concluiu no atraso ou não concluiu.",
   e: "Execução (E): média por checklist de itens feitos ÷ itens que valiam (sem os \"não se aplica\") x 100. Item com foto obrigatória sem a foto não conta como feito. Checklist que ninguém começou vale 0.",
   q: "Qualidade (Q): média por checklist de respostas dentro da meta ÷ respostas feitas (sem os \"não se aplica\") x 100. \"Não\" num item de feito/não feito e número ou estrelas fora da faixa ficam fora. Texto conta como dentro. Checklist que ninguém começou vale 0.",
   adesao:
     "Adesão = checklists concluídos ÷ checklists previstos já fechados x 100, no período. Separada da nota. Dia sem operação não entra.",
   previstas:
-    "Checklists previstos no período (programação x dias da semana, fora dos dias sem operação) que já fecharam: concluídos, ou com a tolerância de atraso vencida.",
+    "Checklists previstos no período (programação x dias da semana, fora dos dias sem operação) que já fecharam: concluídos, ou com a janela vencida (fim do dia, ou a tolerância de atraso que a gestão definiu).",
   concluidos: "Checklists concluídos (no prazo ou no atraso) de quantos estavam previstos e já fecharam no período.",
   pessoa: "Pessoa = responsável da programação do checklist. \"Qualquer pessoa da unidade\" junta os checklists sem responsável.",
 } as const;

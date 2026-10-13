@@ -65,7 +65,7 @@ export default async function NotaPage({ searchParams }: { searchParams: Promise
 
       {(unidade?.previstas ?? 0) === 0 ? (
         <p className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">
-          Nenhum checklist fechado neste período ainda. A nota conta só checklist concluído ou com a tolerância de atraso vencida, a partir da data em que a nota começou a valer na unidade.
+          Nenhum checklist fechado neste período ainda. A nota conta só checklist concluído ou com a janela vencida (fim do dia, ou a tolerância de atraso que a gestão definiu), a partir da data em que a nota começou a valer na unidade.
         </p>
       ) : (
         <>

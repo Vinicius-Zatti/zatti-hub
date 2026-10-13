@@ -91,7 +91,7 @@ insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, situa
   ('00000000-0000-0000-0000-0000000a7003', '00000000-0000-0000-0000-0000000a6001', 'org-n-a-loja',
    public.garante_hoje() - 5, pg_temp.prazo(public.garante_hoje() - 5), 'concluida', pg_temp.snap(), 'Abertura',
    pg_temp.prazo(public.garante_hoje() - 5) - interval '5 minutes');
--- Ontem: começou e ficou aberto (a janela de 60 min já fechou).
+-- Ontem: começou e ficou aberto (a janela fechou no fim do dia de ontem).
 insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, situacao, snapshot, modelo_nome) values
   ('00000000-0000-0000-0000-0000000a7004', '00000000-0000-0000-0000-0000000a6001', 'org-n-a-loja',
    public.garante_hoje() - 1, pg_temp.prazo(public.garante_hoje() - 1), 'em_andamento', pg_temp.snap(), 'Abertura');
@@ -112,7 +112,7 @@ insert into garante_dias_sem_operacao (unidade_id, data, motivo) values ('org-n-
 
 -- ── Janela gravada ──────────────────────────────────────────────────────
 select is((select fecha_em from garante_execucoes where id = '00000000-0000-0000-0000-0000000a7004'),
-  pg_temp.prazo(public.garante_hoje() - 1) + interval '60 minutes', 'execução sem janela ganha a da regra padrão (60 min de atraso)');
+  public.garante_fim_do_dia(public.garante_hoje() - 1), 'execução sem janela ganha a da regra padrão (até o fim do dia, decisão de 13/10)');
 select is((select abre_em from garante_execucoes where id = '00000000-0000-0000-0000-0000000a7004'),
   pg_temp.prazo(public.garante_hoje() - 1) - interval '120 minutes', 'e abre 120 min antes do prazo');
 
@@ -205,7 +205,7 @@ select throws_ok($$ insert into storage.objects (bucket_id, name) values ('garan
   'org-n-a-loja/00000000-0000-0000-0000-0000000a7004/00000000-0000-0000-0000-0000000a4002-abcdef12.jpg') $$,
   '42501', null, 'Storage recusa foto depois de fechar');
 select is((select fecha_em from public.garante_agenda('org-n-a-loja', public.garante_hoje() + 4)),
-  pg_temp.prazo(public.garante_hoje() + 4) + interval '60 minutes', 'agenda mostra quando fecha');
+  public.garante_fim_do_dia(public.garante_hoje() + 4), 'agenda mostra quando fecha (fim do dia)');
 
 -- ── Regra nova só vale para o futuro ────────────────────────────────────
 select pg_temp.como('00000000-0000-0000-0000-0000000a2001');
@@ -216,11 +216,11 @@ select throws_ok($$ select public.garante_definir_regra('org-n-a-loja', 30, 5000
   '22023', 'regra_invalida', 'atraso acima de 24 h é recusado');
 select is(public.garante_definir_regra('org-n-a-loja', 30, 10), public.garante_hoje() + 1, 'nova regra vale a partir de amanhã');
 select is((select fecha_em from public.garante_janela('org-n-a-loja', public.garante_hoje(), '10:00')),
-  pg_temp.prazo(public.garante_hoje()) + interval '60 minutes', 'hoje continua com a regra antiga');
+  public.garante_fim_do_dia(public.garante_hoje()), 'hoje continua com a regra antiga (fim do dia)');
 select is((select fecha_em from public.garante_janela('org-n-a-loja', public.garante_hoje() + 1, '10:00')),
   pg_temp.prazo(public.garante_hoje() + 1) + interval '10 minutes', 'amanhã já usa a nova');
 select is((select fecha_em from garante_execucoes where id = '00000000-0000-0000-0000-0000000a7004'),
-  pg_temp.prazo(public.garante_hoje() - 1) + interval '60 minutes', 'execução já gravada não muda');
+  public.garante_fim_do_dia(public.garante_hoje() - 1), 'execução já gravada não muda');
 select is((select nota::text from public.garante_nota('org-n-a-loja', public.garante_hoje() - 6, public.garante_hoje() - 3) where nivel = 'unidade'),
   (select valor from t where nome = 'nota_antes'), 'nota passada não muda');
 select is((select min(vigente_desde) from garante_regras_unidade where unidade_id = 'org-n-a-loja'), public.garante_hoje() - 20,

@@ -78,7 +78,7 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
 
       {!editavel && execucao.situacao === "em_andamento" && (
         <p className="rounded-md bg-cinza-claro/50 px-3 py-2 text-xs text-cinza">
-          Só para consulta: este checklist é de outra pessoa ou já passou da tolerância de atraso da unidade para mexer.
+          Só para consulta: este checklist é de outra pessoa ou a janela para mexer já acabou (fim do dia, ou a tolerância de atraso que a gestão definiu).
         </p>
       )}
 

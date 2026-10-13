@@ -71,7 +71,7 @@ export function CartaoAgenda({
                 ? `abre às ${horaOperacao(linha.abreEm, hojeDoPrazo(linha.prazo))}`
                 : janela === "aberta"
                   ? `aceita até ${horaOperacao(linha.fechaEm, hojeDoPrazo(linha.prazo))}`
-                  : "tolerância de atraso encerrada"}
+                  : "janela encerrada"}
               <DicaCalculo rotulo="janela do checklist" texto={DICA_GARANTE.janela} />
             </p>
           )}

@@ -66,7 +66,7 @@ export default async function GaranteHojePage() {
           <div>
             <h2 className="font-display text-lg font-bold text-azul-noite">Ficaram abertos ontem</h2>
             <p className="text-xs text-cinza-medio">
-              Ainda dá para terminar até o fim da tolerância de atraso de cada um (aparece no cartão). Depois disso ficam só para consulta no Quadro do dia.
+              Ainda dá para terminar até o fim da janela de cada um (aparece no cartão). Depois disso ficam só para consulta no Quadro do dia.
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">

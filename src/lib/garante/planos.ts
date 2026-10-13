@@ -105,9 +105,9 @@ export function calcularPaginacao(
 /** Textos do ícone (i) da tela de planos e do card do Painel. */
 export const DICA_PLANOS = {
   origem:
-    "O plano nasce sozinho: um para cada item fora da meta quando o checklist é concluído, e um para cada item crítico fora da meta quando o checklist passa do fim da tolerância de atraso sem ser concluído.",
+    "O plano nasce sozinho: um para cada item fora da meta quando o checklist é concluído, e um para cada item crítico fora da meta quando o checklist passa do fim da janela (fim do dia, ou a tolerância de atraso que a gestão definiu) sem ser concluído.",
   prazo:
-    "Prazo = hora da conclusão (ou do fim da tolerância de atraso, quando o checklist não foi concluído) + o prazo do plano de ação da regra da unidade naquela data. Atrasado = aberto depois do prazo.",
+    "Prazo = hora da conclusão (ou do fim da janela, quando o checklist não foi concluído) + o prazo do plano de ação da regra da unidade naquela data. Atrasado = aberto depois do prazo.",
   responsavel:
     "Responsável = quem é responsável pela programação do checklist. Programação sem responsável deixa o plano com a gestão da unidade.",
   abertos: "Planos de ação ainda abertos (no prazo + atrasados) que você pode ver.",
@@ -116,7 +116,7 @@ export const DICA_PLANOS = {
 
 export const DICA_CARD_GARANTE = {
   nota:
-    "Nota dos últimos 7 dias (contando hoje) = (P + E + Q) ÷ 3, igual à tela Nota. Conta só checklist fechado: concluído, ou com a tolerância de atraso vencida. Sem nenhum fechado, mostra \"-\".",
+    "Nota dos últimos 7 dias (contando hoje) = (P + E + Q) ÷ 3, igual à tela Nota. Conta só checklist fechado: concluído, ou com a janela vencida (fim do dia, ou a tolerância de atraso que a gestão definiu). Sem nenhum fechado, mostra \"-\".",
   atrasados: "Checklists de hoje que passaram do horário limite sem ser concluídos.",
   criticos:
     "Respostas fora da meta em itens críticos nos checklists dos últimos 7 dias (contando hoje), concluídos ou não.",

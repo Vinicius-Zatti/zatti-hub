@@ -13,7 +13,7 @@ export default async function ExecucaoPage({ params }: { params: Promise<{ id: s
 
   // Mesma regra do banco (`usuario_pode_cumprir_garante` + janela das RPCs):
   // gestão e master cumprem qualquer um; operacional, o dele ou o sem
-  // responsável; só até fecha_em (horário limite + tolerância de atraso
+  // responsável; só até fecha_em (fim do dia, ou horário limite + tolerância
   // gravados ao iniciar), e só enquanto não foi concluído. O banco
   // confere de novo em cada resposta, foto e conclusão.
   const gestao = acesso.role === "gestao" || acesso.role === "master";

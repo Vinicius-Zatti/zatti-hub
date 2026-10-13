@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { definirRegraAction, desmarcarDiaSemOperacaoAction, marcarDiaSemOperacaoAction } from "@/app/(app)/garante/actions";
 import type { RegraUnidade } from "@/app/(app)/garante/dados";
-import { textoMinutos } from "@/lib/garante/regras";
+import { textoAtraso, textoMinutos } from "@/lib/garante/regras";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { CampoNumero } from "@/components/campo-numero";
@@ -13,15 +13,16 @@ import { DicaCalculo } from "@/components/dica-calculo";
 const CAMPO = "mt-1 w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm";
 const ROTULO = "text-xs font-semibold text-cinza-medio";
 const DICA_PRAZO_PLANO =
-  "Prazo do plano de ação = hora da conclusão do checklist (ou do fim da tolerância de atraso, quando ele não foi concluído) + estas horas. Cada plano guarda o prazo com que nasceu: mudar aqui não muda plano já aberto.";
+  "Prazo do plano de ação = hora da conclusão do checklist (ou do fim da janela, quando ele não foi concluído) + estas horas. Cada plano guarda o prazo com que nasceu: mudar aqui não muda plano já aberto.";
 const DICA_JANELA =
-  "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o horário limite mais a tolerância de atraso. Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
+  "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância. Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
 
 type Resultado = { ok: true } | { erro: string };
 type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
 
-/** Regras da unidade (gestão, em Modelos): antecedência, tolerância de atraso e
- * prazo do plano de ação (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
+/** Regras da unidade (gestão, em Modelos): antecedência, até quando concluir
+ * (fim do dia, o padrão, ou uma tolerância de atraso menor) e prazo do plano de
+ * ação (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
  * confere tudo de novo (`garante_definir_regra`, `garante_marcar_dia_sem_operacao`). */
 export function RegrasUnidade({
   vigente,
@@ -68,7 +69,7 @@ export function RegrasUnidade({
             <DicaCalculo rotulo="janela do checklist" texto={DICA_JANELA} />
           </p>
           <p className="text-cinza">
-            Abre {textoMinutos(vigente.antecedenciaMin)} antes do horário limite e aceita até {textoMinutos(vigente.atrasoMaxMin)} de atraso.
+            Abre {textoMinutos(vigente.antecedenciaMin)} antes do horário limite e aceita concluir {textoAtraso(vigente.atrasoMaxMin)}.
           </p>
           <p className="flex items-center gap-1 text-cinza">
             Plano de ação: prazo de {vigente.prazoPlanoHoras} h.
@@ -76,8 +77,8 @@ export function RegrasUnidade({
           </p>
           {proxima && (
             <p className="text-xs text-cinza-medio">
-              A partir de {formatarDataBr(proxima.vigenteDesde as string)}: abre {textoMinutos(proxima.antecedenciaMin)} antes, aceita até{" "}
-              {textoMinutos(proxima.atrasoMaxMin)} de atraso e o plano de ação tem {proxima.prazoPlanoHoras} h.
+              A partir de {formatarDataBr(proxima.vigenteDesde as string)}: abre {textoMinutos(proxima.antecedenciaMin)} antes, aceita concluir{" "}
+              {textoAtraso(proxima.atrasoMaxMin)} e o plano de ação tem {proxima.prazoPlanoHoras} h.
             </p>
           )}
           <button
@@ -180,13 +181,15 @@ function FormRegra({
   aoCancelar: () => void;
 }) {
   const [antecedencia, setAntecedencia] = useState<number | null>(inicial.antecedenciaMin);
+  // Até quando concluir: o fim do dia (padrão, atraso nulo) ou uma tolerância em minutos.
+  const [ateFimDoDia, setAteFimDoDia] = useState(inicial.atrasoMaxMin === null);
   const [atraso, setAtraso] = useState<number | null>(inicial.atrasoMaxMin);
   const [prazoPlano, setPrazoPlano] = useState<number | null>(inicial.prazoPlanoHoras);
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        aoSalvar({ antecedenciaMin: antecedencia, atrasoMaxMin: atraso, prazoPlanoHoras: prazoPlano });
+        aoSalvar({ antecedenciaMin: antecedencia, atrasoMaxMin: ateFimDoDia ? null : atraso, prazoPlanoHoras: prazoPlano });
       }}
       className="flex flex-col gap-3"
     >
@@ -195,10 +198,20 @@ function FormRegra({
         Abre quantos minutos antes do horário limite (0 a 720)
         <CampoNumero value={antecedencia} onChange={setAntecedencia} decimais={0} className="mt-1 block w-full" />
       </label>
-      <label className={ROTULO}>
-        Aceita quantos minutos de atraso (0 a 1.440)
-        <CampoNumero value={atraso} onChange={setAtraso} decimais={0} className="mt-1 block w-full" />
-      </label>
+      <fieldset className="flex flex-col gap-1">
+        <legend className={ROTULO}>Aceita concluir até quando</legend>
+        <label className="flex items-center gap-2 text-sm text-cinza">
+          <input type="radio" name="ate" checked={ateFimDoDia} onChange={() => setAteFimDoDia(true)} />
+          O fim do dia do checklist (23h59)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-cinza">
+          <input type="radio" name="ate" checked={!ateFimDoDia} onChange={() => setAteFimDoDia(false)} />
+          Uma tolerância menor, em minutos depois do horário limite (0 a 1.440)
+        </label>
+        {!ateFimDoDia && (
+          <CampoNumero value={atraso} onChange={setAtraso} decimais={0} className="mt-1 block w-full" />
+        )}
+      </fieldset>
       <label className={ROTULO}>
         <span className="inline-flex items-center gap-1">
           Prazo do plano de ação, em horas (1 a 168)

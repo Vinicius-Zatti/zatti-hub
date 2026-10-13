@@ -61,7 +61,7 @@ export const DICA_GARANTE = {
     "Itens cuja resposta ficou fora da meta do modelo: \"não feito\" num item de feito/não feito, ou número e estrelas fora da faixa definida.",
   diaConcluido: "Checklists concluídos ÷ checklists programados para hoje (os seus, ou todos da unidade se você é da gestão).",
   janela:
-    "Começar: a partir do horário limite menos a antecedência da unidade. Responder, tirar foto e concluir: até o horário limite mais a tolerância de atraso. As duas ficam em Modelos e publicação > Regras da unidade (gestão).",
+    "Começar: a partir do horário limite menos a antecedência da unidade. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância. Concluir depois do horário limite conta como atraso na nota. Tudo em Modelos e publicação > Regras da unidade (gestão).",
   situacao:
     "Concluída = alguém concluiu com todos os itens feitos. Atrasada = passou do horário limite sem concluir. Em andamento = já começou. Pendente = ninguém começou.",
 } as const;
@@ -117,15 +117,17 @@ export function mostrarNaAgenda(
   return linha.execucaoId !== null || janela === "aberta";
 }
 
-export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: 60, prazoPlanoHoras: 24 } as const;
+/** Padrão da unidade sem regra cadastrada: abre 2 h antes e aceita concluir até
+ * o fim do dia (`atrasoMaxMin` nulo, decisão 3 de Vinícius em 13/10/2026). */
+export const REGRA_PADRAO = { antecedenciaMin: 120, atrasoMaxMin: null, prazoPlanoHoras: 24 } as const;
 
 export type ResultadoRegra =
-  | { ok: true; antecedenciaMin: number; atrasoMaxMin: number; prazoPlanoHoras?: number }
+  | { ok: true; antecedenciaMin: number; atrasoMaxMin: number | null; prazoPlanoHoras?: number }
   | { ok: false; erro: string };
 
-/** Antecedência (0 a 720 min), atraso (0 a 1.440 min) e, quando vier, o prazo do
- * plano de ação (1 a 168 h), inteiros. Mesmos limites do banco. Sem o prazo do
- * plano, o banco mantém o que valia. */
+/** Antecedência (0 a 720 min), tolerância de atraso (nulo = até o fim do dia, ou
+ * 0 a 1.440 min) e, quando vier, o prazo do plano de ação (1 a 168 h), inteiros.
+ * Mesmos limites do banco. Sem o prazo do plano, o banco mantém o que valia. */
 export function validarRegra(params: {
   antecedenciaMin: number | null;
   atrasoMaxMin: number | null;
@@ -135,8 +137,8 @@ export function validarRegra(params: {
   if (a === null || !Number.isInteger(a) || a < 0 || a > 720) {
     return { ok: false, erro: "Antecedência em minutos inteiros, de 0 a 720 (12 h)." };
   }
-  if (b === null || !Number.isInteger(b) || b < 0 || b > 1440) {
-    return { ok: false, erro: "Atraso em minutos inteiros, de 0 a 1.440 (24 h)." };
+  if (b !== null && (!Number.isInteger(b) || b < 0 || b > 1440)) {
+    return { ok: false, erro: "Tolerância de atraso em minutos inteiros, de 0 a 1.440 (24 h), ou \"até o fim do dia\"." };
   }
   if (c === undefined) return { ok: true, antecedenciaMin: a, atrasoMaxMin: b };
   if (c === null || !Number.isInteger(c) || c < 1 || c > 168) {
@@ -162,6 +164,13 @@ export function textoMinutos(min: number): string {
   const m = min % 60;
   if (h === 0) return `${m} min`;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+/** Até quando dá para concluir, para gente: nulo = "até o fim do dia (23h59)";
+ * 45 -> "até 45 min depois do horário limite". */
+export function textoAtraso(min: number | null): string {
+  if (min === null) return "até o fim do dia (23h59)";
+  return `até ${textoMinutos(min)} depois do horário limite`;
 }
 
 export function textoDias(dias: number[]): string {
@@ -255,11 +264,11 @@ export function textoMeta(tipo: TipoItemGarante, min: number | null, max: number
 export function mensagemErroGarante(mensagem: string): string {
   const mapa: Record<string, string> = {
     sem_permissao: "Esse checklist é de outra pessoa.",
-    data_fora_da_janela: "O prazo para mexer neste checklist já acabou (horário limite + tolerância de atraso da unidade). Ele fica só para consulta.",
+    data_fora_da_janela: "O prazo para mexer neste checklist já acabou (fim do dia, ou a tolerância de atraso que a gestão definiu). Ele fica só para consulta.",
     janela_ainda_nao_abriu: "Esse checklist ainda não abriu. Ele abre um tempo antes do horário limite (regra da unidade).",
     unidade_fechada_nesta_data: "A unidade não opera nesta data (dia sem operação).",
     so_data_futura: "Só dá para mudar daqui para a frente: escolha uma data a partir de amanhã.",
-    regra_invalida: "Antecedência vai de 0 a 720 minutos (12 h), atraso de 0 a 1.440 minutos (24 h) e prazo do plano de ação de 1 a 168 horas.",
+    regra_invalida: "Antecedência vai de 0 a 720 minutos (12 h); tolerância de atraso é \"até o fim do dia\" ou de 0 a 1.440 minutos (24 h); prazo do plano de ação de 1 a 168 horas.",
     motivo_obrigatorio: "Escreva o motivo (de 3 a 200 caracteres).",
     data_com_checklist: "Já tem checklist começado nesta data, então ela não pode virar dia sem operação.",
     periodo_invalido: "Período inválido (até 93 dias).",

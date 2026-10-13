@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { intervaloNota, lerPeriodoNota, normalizarLinhaNota, ordenarPorNota, textoNota } from "./nota";
-import { estadoJanela, horaOperacao, mensagemErroGarante, somarDias, textoMinutos, validarDiaSemOperacao, validarRegra } from "./regras";
+import {
+  REGRA_PADRAO,
+  estadoJanela,
+  horaOperacao,
+  mensagemErroGarante,
+  somarDias,
+  textoAtraso,
+  textoMinutos,
+  validarDiaSemOperacao,
+  validarRegra,
+} from "./regras";
 
 describe("período da nota", () => {
   it("só 7 ou 30 dias; o resto vira 7", () => {
@@ -92,6 +102,14 @@ describe("validarRegra", () => {
     expect(validarRegra({ antecedenciaMin: 120, atrasoMaxMin: 1441 }).ok).toBe(false);
     expect(validarRegra({ antecedenciaMin: 12.5, atrasoMaxMin: 60 }).ok).toBe(false);
     expect(validarRegra({ antecedenciaMin: -1, atrasoMaxMin: 60 }).ok).toBe(false);
+    expect(validarRegra({ antecedenciaMin: 120, atrasoMaxMin: 1.5 }).ok).toBe(false);
+  });
+  it("atraso nulo = até o fim do dia (padrão desde 13/10/2026)", () => {
+    expect(validarRegra({ antecedenciaMin: 120, atrasoMaxMin: null })).toEqual({ ok: true, antecedenciaMin: 120, atrasoMaxMin: null });
+    expect(REGRA_PADRAO.atrasoMaxMin).toBeNull();
+    expect(textoAtraso(null)).toBe("até o fim do dia (23h59)");
+    expect(textoAtraso(45)).toBe("até 45 min depois do horário limite");
+    expect(textoAtraso(90)).toBe("até 1 h 30 min depois do horário limite");
   });
 });
 

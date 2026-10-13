@@ -267,9 +267,10 @@ export async function encerrarPublicacaoAction(publicacaoId: string): Promise<Re
 
 // ── Regras da unidade (gestão) ───────────────────────────────────────────
 
-/** Muda a antecedência, a tolerância de atraso e o prazo do plano de ação da
- * unidade a partir de amanhã. Hoje e o passado continuam com a regra que valia
- * (o banco recusa data de hoje ou anterior: `garante_definir_regra`). */
+/** Muda a antecedência, a tolerância de atraso (nulo = até o fim do dia) e o
+ * prazo do plano de ação da unidade a partir de amanhã. Hoje e o passado
+ * continuam com a regra que valia (o banco recusa data de hoje ou anterior:
+ * `garante_definir_regra`). */
 export async function definirRegraAction(dados: {
   antecedenciaMin: number | null;
   atrasoMaxMin: number | null;

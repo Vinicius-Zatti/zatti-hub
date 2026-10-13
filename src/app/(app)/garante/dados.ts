@@ -366,11 +366,12 @@ export async function carregarNota(
   };
 }
 
-export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number; prazoPlanoHoras: number };
+/** `atrasoMaxMin` nulo = concluir até o fim do dia (23h59), o padrão desde 13/10/2026. */
+export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number | null; prazoPlanoHoras: number };
 
 /** Regra que vale hoje, a próxima já agendada e os dias sem operação de hoje
  * em diante (leitura pelo RLS: quem acessa a unidade). Sem regra cadastrada,
- * vale o padrão (120 min antes, 60 min de atraso, 24 h para o plano de ação). */
+ * vale o padrão (120 min antes, até o fim do dia, 24 h para o plano de ação). */
 export async function carregarRegras(acesso: AcessoAtual, hoje: string) {
   const supabase = await createClient();
   const [{ data: regras }, { data: dias }] = await Promise.all([
@@ -387,7 +388,7 @@ export async function carregarRegras(acesso: AcessoAtual, hoje: string) {
       .order("data"),
   ]);
   const lista = (
-    (regras ?? []) as { vigente_desde: string; antecedencia_min: number; atraso_max_min: number; prazo_plano_horas: number }[]
+    (regras ?? []) as { vigente_desde: string; antecedencia_min: number; atraso_max_min: number | null; prazo_plano_horas: number }[]
   ).map((r) => ({
     vigenteDesde: r.vigente_desde,
     antecedenciaMin: r.antecedencia_min,
