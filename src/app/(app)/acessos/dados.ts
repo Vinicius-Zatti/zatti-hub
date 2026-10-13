@@ -1,6 +1,8 @@
 import "server-only";
 import { requireMaster } from "@/lib/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { carregarResponsavelAvisos } from "@/lib/garante/avisos-servidor";
+import type { CandidatoAvisos, ResponsavelAvisosAtual } from "@/lib/garante/avisos";
 
 export type OrganizacaoPainel = {
   id: string;
@@ -132,4 +134,41 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
   });
 
   return { organizacoes, unidades, vinculos };
+}
+
+export type AvisosGaranteUnidade = {
+  unidadeId: string;
+  unidadeNome: string;
+  organizacaoNome: string;
+  atual: ResponsavelAvisosAtual | null;
+  candidatos: CandidatoAvisos[];
+};
+
+/** Quem acompanha o Garante (recebe os avisos pelo Vini) em cada unidade ativa com o módulo
+ * ligado. Candidatos: gestão da organização que alcança a unidade e masters, sempre com o
+ * WhatsApp só pelos 4 últimos dígitos. Barreira real: `requireMaster()` de novo aqui. */
+export async function carregarAvisosGaranteAcessos(): Promise<AvisosGaranteUnidade[]> {
+  await requireMaster();
+  const admin = createAdminClient();
+  const [{ data: unidades, error: erroUnidades }, { data: orgs, error: erroOrgs }] = await Promise.all([
+    admin.from("unidades").select("id, organizacao_id, nome, ativo, garante_habilitado").order("nome"),
+    admin.from("organizacoes").select("id, nome"),
+  ]);
+  if (erroUnidades || erroOrgs) throw new Error("Não foi possível carregar os responsáveis pelos avisos do Garante.");
+  const todas = (unidades ?? []) as { id: string; organizacao_id: string; nome: string; ativo: boolean; garante_habilitado: boolean }[];
+  const nomeUnidade = new Map(todas.map((u) => [u.id, u.nome]));
+  const nomeOrg = new Map(((orgs ?? []) as { id: string; nome: string }[]).map((o) => [o.id, o.nome]));
+  return Promise.all(
+    todas
+      .filter((u) => u.ativo && u.garante_habilitado)
+      .map(async (u) => {
+        const { atual, candidatos } = await carregarResponsavelAvisos({
+          unidadeId: u.id,
+          organizacaoId: u.organizacao_id,
+          incluirMaster: true,
+          nomeUnidade: (id) => (id ? nomeUnidade.get(id) ?? id : "Toda a organização"),
+        });
+        return { unidadeId: u.id, unidadeNome: u.nome, organizacaoNome: nomeOrg.get(u.organizacao_id) ?? u.organizacao_id, atual, candidatos };
+      }),
+  );
 }

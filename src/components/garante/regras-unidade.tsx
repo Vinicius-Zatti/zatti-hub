@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { definirRegraAction, desmarcarDiaSemOperacaoAction, marcarDiaSemOperacaoAction } from "@/app/(app)/garante/actions";
-import type { RegraUnidade } from "@/app/(app)/garante/dados";
+import type { AvisosDaUnidade, RegraUnidade } from "@/app/(app)/garante/dados";
+import { CardAvisosGarante } from "@/components/garante/responsavel-avisos";
 import { textoAtraso, textoMinutos } from "@/lib/garante/regras";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ModalFlutuante } from "@/components/modal-flutuante";
@@ -22,18 +23,23 @@ type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data
 
 /** Regras da unidade (gestão, em Modelos): antecedência, até quando concluir
  * (fim do dia, o padrão, ou uma tolerância de atraso em minutos) e prazo do plano de
- * ação (valem a partir de amanhã) e dias sem operação (só datas futuras). O banco
- * confere tudo de novo (`garante_definir_regra`, `garante_marcar_dia_sem_operacao`). */
+ * ação (valem a partir de amanhã), dias sem operação (só datas futuras) e quem recebe
+ * os avisos pelo WhatsApp. O banco confere tudo de novo (`garante_definir_regra`,
+ * `garante_marcar_dia_sem_operacao`, `garante_definir_responsavel_avisos`). */
 export function RegrasUnidade({
   vigente,
   agendadas,
   diasSemOperacao,
   amanha,
+  unidadeNome,
+  avisos,
 }: {
   vigente: RegraUnidade;
   agendadas: RegraUnidade[];
   diasSemOperacao: { data: string; motivo: string }[];
   amanha: string;
+  unidadeNome: string;
+  avisos: AvisosDaUnidade;
 }) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
@@ -118,6 +124,8 @@ export function RegrasUnidade({
             Marcar dia sem operação
           </button>
         </div>
+
+        <CardAvisosGarante unidadeNome={unidadeNome} avisos={avisos} />
       </div>
 
       <ModalFlutuante aberto={janela !== null} onFechar={() => !pendente && setJanela(null)}>

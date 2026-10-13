@@ -6,6 +6,8 @@ import type { TipoItemGarante } from "@/lib/garante/biblioteca";
 import { REGRA_PADRAO, type SituacaoAgenda } from "@/lib/garante/regras";
 import { intervaloNota, normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta } from "@/lib/garante/nota";
 import { calcularPaginacao, contarAtrasados, PLANOS_POR_PAGINA, textoRespostaOrigem, type SituacaoPlano } from "@/lib/garante/planos";
+import { carregarResponsavelAvisos } from "@/lib/garante/avisos-servidor";
+import type { CandidatoAvisos, ResponsavelAvisosAtual, SituacaoAvisos } from "@/lib/garante/avisos";
 
 export type LinhaAgenda = {
   publicacaoId: string;
@@ -598,5 +600,31 @@ export async function carregarResumoGarantePainel(acesso: AcessoAtual, agora: Da
     criticosFora: contagens?.criticos_fora ?? 0,
     planosAbertos: contagens?.planos_abertos ?? 0,
     planosAtrasados: contagens?.planos_atrasados ?? 0,
+  };
+}
+
+export type AvisosDaUnidade = { atual: ResponsavelAvisosAtual | null; candidatos: CandidatoAvisos[]; situacao: SituacaoAvisos };
+
+/** Responsável pelos avisos do Garante (quem recebe pelo Vini), quem pode ser marcado e a
+ * fila: pendentes (todos), incertos e falhas dos últimos 7 dias. Contagens pelo client do
+ * usuário (RLS da gestão); responsável e candidatos pelo client admin, recortados pela
+ * unidade da sessão. */
+export async function carregarAvisosGarante(acesso: AcessoAtual, agora: Date = new Date()): Promise<AvisosDaUnidade> {
+  const supabase = await createClient();
+  const desde = new Date(agora.getTime() - 7 * 86_400_000).toISOString();
+  const contar = (estado: string, soRecentes: boolean) => {
+    const consulta = supabase.from("garante_avisos").select("id", { count: "exact", head: true }).eq("unidade_id", acesso.unidadeId).eq("estado", estado);
+    return soRecentes ? consulta.gte("gerado_em", desde) : consulta;
+  };
+  const [{ atual, candidatos }, pendentes, incertos, falharam] = await Promise.all([
+    carregarResponsavelAvisos({ unidadeId: acesso.unidadeId, organizacaoId: acesso.organizacaoId, incluirMaster: false, nomeUnidade: () => acesso.unidadeNome }),
+    contar("pendente", false),
+    contar("incerto", true),
+    contar("falhou", true),
+  ]);
+  return {
+    atual,
+    candidatos,
+    situacao: { pendentes: pendentes.count ?? 0, incertos: incertos.count ?? 0, falharam: falharam.count ?? 0, motivoResponsavel: atual?.motivo ?? null },
   };
 }
