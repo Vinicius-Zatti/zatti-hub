@@ -35,6 +35,27 @@ export const EXPLICACAO_CALCULO: Record<string, string> = {
     "% = Receita Operacional Bruta do mês ÷ Ponto de Equilíbrio (100% = empatou; acima de 100% = passou do ponto). Com margem zero ou negativa não existe ponto de equilíbrio.",
   venda_produtos:
     "Venda de Produtos = valor dos produtos vendidos, produzidos ou entregues no mês, com ou sem entrada de dinheiro (inclui voucher, cortesia, bonificação e produção de conteúdo). Preenchido à mão; é só a base do % CMV (CMV ÷ Venda de Produtos) e não soma na receita.",
+  sugestao_contagem_estoque:
+    "Sugestão = valor da última contagem completa com data dentro do mês (contagem antiga, ou contagem por setor com todos os setores concluídos), a mais próxima do fim do mês. " +
+    "Valor = soma de quantidade × preço de todos os itens da contagem, o mesmo da Contagem > Visualização e da Calculadora de CMV. Item sem preço ou sem quantidade vale R$ 0 e deixa o valor parcial. " +
+    "A Contagem não separa embalagens, por isso a sugestão vai só para Mercadorias. Usar o valor só preenche o campo: nada é salvo sem você.",
+  painel_faturamento: "Faturamento = Receita Operacional Bruta da DRE no mês de competência (mesmo número da DRE).",
+  painel_cmv_percentual:
+    "% CMV da DRE no mês = CMV ÷ Venda de Produtos, quando o estoque final e a Venda de Produtos do mês estão informados. " +
+    "Enquanto não estão, a DRE mostra o % CMC provisório = CMC ÷ (Receita Operacional Bruta - receitas de entrega), e o farol fica sem cor.",
+  painel_margem:
+    "Margem de Contribuição = Resultado Operacional Bruto da DRE (Receita Operacional Líquida - CMV). % = Resultado Operacional Bruto ÷ Receita Operacional Bruta.",
+  painel_custo_fixo: "% Custos Fixos da DRE = (CMO + Custos Operacionais) ÷ Receita Operacional Bruta do mês.",
+  painel_ponto_equilibrio:
+    "Ponto de Equilíbrio da DRE = Custos Fixos ÷ % Margem de Contribuição do mês: a receita necessária para cobrir os custos fixos. " +
+    "% = Receita Operacional Bruta ÷ Ponto de Equilíbrio. Com margem zero ou negativa não existe ponto de equilíbrio.",
+  painel_resultado:
+    "Resultado = Resultado Líquido do Exercício da DRE (Resultado Operacional Bruto - Custos Fixos). % = Resultado Líquido ÷ Receita Operacional Bruta.",
+  painel_caixa_30:
+    "Caixa projetado em 30 dias = saldo do Fluxo de Caixa projetado, todas as contas, no fim do dia de hoje + 30 dias: saldos iniciais das contas + todas as parcelas não canceladas (valor cheio) pela data prevista até essa data. Não depende do mês escolhido.",
+  painel_farol:
+    "Farol = número da DRE comparado com a meta da unidade vigente no mês (a meta cadastrada com início no próprio mês ou no mês anterior mais recente). " +
+    "Faturamento e Resultado: verde quando o número é maior ou igual à meta. % CMV e % Custos Fixos: verde quando é menor ou igual à meta. Senão, vermelho. Sem meta cadastrada, o número fica sem cor.",
   produtos_sem_receita:
     "Valor dos produtos que saíram sem entrada de dinheiro, preenchido à mão por grupo. Não gera receita, não vira despesa e não altera o CMV: só explica consumo sem venda. Total = soma dos 12 meses.",
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { salvarEstoqueMensalAction } from "@/app/(app)/financeiro-gerencial/dre/actions";
 import { CampoNumero } from "@/components/campo-numero";
@@ -10,6 +10,7 @@ import { DicaCalculo } from "@/components/dica-calculo";
 import { EXPLICACAO_CALCULO } from "@/lib/financeiro-gerencial/explicacoes-dre";
 import { MESES_ABREVIADOS } from "@/lib/financeiro-gerencial/dre-anual";
 import type { EstoqueMensal } from "@/lib/financeiro-gerencial/tipos";
+import type { SugestaoEstoqueContagem } from "@/lib/financeiro-gerencial/sugestao-estoque-contagem";
 
 type CamposMes = {
   receitaVendasProdutos: number | null;
@@ -55,7 +56,58 @@ function formatarNumero(v: number | null): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-type Status = "salvando" | "salvo" | "erro" | undefined;
+/** "nao_salvo" = valor da Contagem posto no campo pelo "Usar este valor" e
+ * ainda não salvo (quem salva é a pessoa). */
+type Status = "salvando" | "salvo" | "erro" | "nao_salvo" | undefined;
+
+/** "DD/MM/AAAA" -> "DD/MM". */
+function diaMes(data: string): string {
+  return data.split("/").slice(0, 2).join("/");
+}
+
+/** Célula da linha "Sugestão da Contagem" de um mês (Fase 3, item 2): mostra a
+ * última contagem completa do mês e, para a Gestão, o botão que só preenche o
+ * campo de Estoque Final de Mercadorias. Nunca grava sozinho. */
+function CelulaSugestao({
+  sugestao,
+  podeGerir,
+  status,
+  jaIgual,
+  onUsar,
+  onSalvar,
+}: {
+  sugestao: SugestaoEstoqueContagem | null;
+  podeGerir: boolean;
+  status: Status;
+  jaIgual: boolean;
+  onUsar: () => void;
+  onSalvar: () => void;
+}) {
+  if (!sugestao) return <span className="text-[11px] leading-tight text-cinza-medio">Nenhuma contagem completa neste mês</span>;
+  return (
+    <span className="flex flex-col items-end gap-0.5 text-[11px] leading-tight">
+      <span className="text-cinza-medio">Contagem de {diaMes(sugestao.data)}:</span>
+      <span className="font-mono font-semibold text-cinza">R$ {formatarNumero(sugestao.valor)}</span>
+      {sugestao.itensSemValor > 0 && (
+        <span className="text-ambar" title="Itens sem preço no cadastro ou sem quantidade valem R$ 0: o valor é parcial.">
+          {sugestao.itensSemValor} {sugestao.itensSemValor === 1 ? "item" : "itens"} sem preço (parcial)
+        </span>
+      )}
+      {podeGerir && status === "nao_salvo" ? (
+        <button type="button" onClick={onSalvar} className="rounded bg-azul-noite px-1.5 py-0.5 font-bold text-branco">
+          Salvar mês
+        </button>
+      ) : (
+        podeGerir &&
+        !jaIgual && (
+          <button type="button" onClick={onUsar} className="rounded border border-azul-petroleo px-1.5 py-0.5 font-semibold text-azul-petroleo">
+            Usar este valor
+          </button>
+        )
+      )}
+    </span>
+  );
+}
 
 /** Exceção pontual e aprovada ao padrão de modal: estes 5 dados mensais são
  * editados direto na grade, célula a célula, como na planilha modelo (nunca
@@ -67,10 +119,14 @@ type Status = "salvando" | "salvo" | "erro" | undefined;
 export function DadosComplementaresDre({
   ano,
   estoquesDoAno,
+  sugestoesContagem = null,
   podeGerir,
 }: {
   ano: number;
   estoquesDoAno: (EstoqueMensal | null)[];
+  /** Fase 3 (13/10): sugestão de Estoque Final de Mercadorias vinda da
+   * Contagem, por mês. `null` = a Contagem não pôde ser lida agora. */
+  sugestoesContagem?: (SugestaoEstoqueContagem | null)[] | null;
   podeGerir: boolean;
 }) {
   const router = useRouter();
@@ -80,6 +136,12 @@ export function DadosComplementaresDre({
 
   function alterarCampo(indiceMes: number, campo: keyof CamposMes, valor: number | null) {
     setValores((atual) => atual.map((mes, i) => (i === indiceMes ? { ...mes, [campo]: valor } : mes)));
+  }
+
+  /** "Usar este valor": só preenche o campo; a pessoa confere e salva. */
+  function usarSugestao(indiceMes: number, valor: number) {
+    alterarCampo(indiceMes, "estoqueFinalMercadorias", Math.round(valor * 100) / 100);
+    setStatusPorMes((atual) => ({ ...atual, [indiceMes]: "nao_salvo" }));
   }
 
   async function salvarMes(indiceMes: number) {
@@ -119,6 +181,10 @@ export function DadosComplementaresDre({
           Operacional Bruta e não gera lançamento. O estoque final de um mês é o estoque inicial do mês seguinte: basta informar um dos dois
           (embalagens, se houver) para fechar o CMV do mês.
         </p>
+        <p className="mt-1 text-sm text-cinza-medio">
+          Sugestão da Contagem: valor da última contagem completa de cada mês. A Contagem não separa mercadorias de embalagens, então o
+          valor inteiro é sugerido só para o Estoque Final de Mercadorias: confira antes de usar. Nada é salvo sem você.
+        </p>
       </div>
       <TabelaRolavel ariaLabel="Tabela de dados complementares da DRE">
         <table className="w-full min-w-[1100px] text-sm">
@@ -136,7 +202,8 @@ export function DadosComplementaresDre({
           </thead>
           <tbody>
             {LINHAS.map(({ campo, rotulo }) => (
-              <tr key={campo} className="border-t border-cinza-claro">
+              <Fragment key={campo}>
+              <tr className="border-t border-cinza-claro">
                 <td className="sticky left-0 z-10 bg-branco py-2 pr-3 pl-3 font-semibold text-cinza">
                   <span className="flex items-center gap-1.5">
                     <span className="block min-w-0 truncate" title={rotulo}>
@@ -152,7 +219,13 @@ export function DadosComplementaresDre({
                       {podeGerir ? (
                         <div
                           className={`inline-block rounded ${
-                            status === "erro" ? "ring-2 ring-vermelho" : status === "salvo" ? "ring-2 ring-verde" : ""
+                            status === "erro"
+                              ? "ring-2 ring-vermelho"
+                              : status === "salvo"
+                                ? "ring-2 ring-verde"
+                                : status === "nao_salvo" && campo === "estoqueFinalMercadorias"
+                                  ? "ring-2 ring-ambar"
+                                  : ""
                           }`}
                           title={status === "erro" ? erroPorMes[indiceMes] : undefined}
                         >
@@ -165,6 +238,40 @@ export function DadosComplementaresDre({
                   );
                 })}
               </tr>
+              {campo === "estoqueFinalMercadorias" && (
+                <tr className="bg-off-white">
+                  <td className="sticky left-0 z-10 bg-off-white py-2 pr-3 pl-3 text-xs font-semibold text-cinza-medio">
+                    <span className="flex items-center gap-1.5">
+                      <span className="block min-w-0 truncate" title="Sugestão da Contagem (Mercadorias)">
+                        Sugestão da Contagem
+                      </span>
+                      <DicaCalculo texto={EXPLICACAO_CALCULO.sugestao_contagem_estoque} rotulo="Sugestão da Contagem" />
+                    </span>
+                  </td>
+                  {sugestoesContagem === null ? (
+                    <td colSpan={12} className="px-2 py-1.5 text-xs text-cinza-medio">
+                      Não foi possível ler a Contagem agora. Os campos continuam funcionando normalmente.
+                    </td>
+                  ) : (
+                    valores.map((mes, indiceMes) => {
+                      const sugestao = sugestoesContagem[indiceMes] ?? null;
+                      return (
+                        <td key={indiceMes} className="px-2 py-1.5 text-right align-top">
+                          <CelulaSugestao
+                            sugestao={sugestao}
+                            podeGerir={podeGerir}
+                            status={statusPorMes[indiceMes]}
+                            jaIgual={sugestao !== null && mes.estoqueFinalMercadorias === Math.round(sugestao.valor * 100) / 100}
+                            onUsar={() => sugestao && usarSugestao(indiceMes, sugestao.valor)}
+                            onSalvar={() => salvarMes(indiceMes)}
+                          />
+                        </td>
+                      );
+                    })
+                  )}
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
