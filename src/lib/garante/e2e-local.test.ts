@@ -73,6 +73,17 @@ describe.skipIf(!ativo)("Checklist Garante ponta a ponta local", () => {
     expect(unidade.previstas).toBe(1);
     expect(Number(unidade.execucao)).toBe(100);
     expect(unidade.versao_formula).toBe(1);
+
+    // Fase 2b: a conclusão abriu o plano do item fora da meta (temperatura 7); o
+    // operador não descarta, mas resolve; a gestão vê o plano resolvido.
+    const { data: planos } = await sb.from("garante_planos_acao").select("id, item_id, origem, situacao").eq("execucao_id", execucaoId);
+    expect(planos).toEqual([expect.objectContaining({ item_id: ITEM_TEMP, origem: "conclusao", situacao: "aberto" })]);
+    const planoId = (planos as { id: string }[])[0].id;
+    expect((await sb.rpc("garante_descartar_plano", { p_plano_id: planoId, p_motivo: "não precisa" })).error?.message).toContain("sem_permissao");
+    expect((await sb.rpc("garante_resolver_plano", { p_plano_id: planoId, p_resolucao: "Regulei a câmara fria" })).error).toBeNull();
+    expect((await sb.rpc("garante_gerar_planos_vencidos", { p_unidade_id: "uni-e2e-garante" })).error).toBeNull();
+    const { data: vistosGestao } = await gestao.from("garante_planos_acao").select("situacao, resolucao").eq("id", planoId);
+    expect(vistosGestao).toEqual([{ situacao: "resolvido", resolucao: "Regulei a câmara fria" }]);
   });
 });
 
