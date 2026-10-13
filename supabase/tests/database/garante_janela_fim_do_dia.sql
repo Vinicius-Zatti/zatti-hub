@@ -12,7 +12,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(38);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -37,16 +37,20 @@ insert into garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min,
 
 insert into garante_modelos (id, unidade_id, nome) values
   ('00000000-0000-0000-0000-0000000d3001', 'org-j-a-sem', 'Abertura'),
-  ('00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', 'Abertura');
+  ('00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', 'Abertura'),
+  ('00000000-0000-0000-0000-0000000d3003', 'org-j-a-com', 'Abertura');
 insert into garante_itens (id, modelo_id, unidade_id, ordem, titulo, tipo) values
   ('00000000-0000-0000-0000-0000000d4001', '00000000-0000-0000-0000-0000000d3001', 'org-j-a-sem', 1, 'Fogão', 'check'),
-  ('00000000-0000-0000-0000-0000000d4002', '00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', 1, 'Fogão', 'check');
+  ('00000000-0000-0000-0000-0000000d4002', '00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', 1, 'Fogão', 'check'),
+  ('00000000-0000-0000-0000-0000000d4003', '00000000-0000-0000-0000-0000000d3003', 'org-j-a-com', 1, 'Fogão', 'check');
 -- P1: todo dia até 10:00, há 20 dias. P2: todo dia até 00:00 (já passou, hoje, em qualquer hora).
 -- P3: unidade sem regra nenhuma, programação há 5 dias (a transição dá a regra antiga desde aí).
+-- P4: unidade com 60 min, todo dia até 10:00.
 insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario_limite, vigente_desde) values
   ('00000000-0000-0000-0000-0000000d6001', '00000000-0000-0000-0000-0000000d3001', 'org-j-a-sem', array[0,1,2,3,4,5,6]::smallint[], '10:00', public.garante_hoje() - 20),
   ('00000000-0000-0000-0000-0000000d6002', '00000000-0000-0000-0000-0000000d3001', 'org-j-a-sem', array[0,1,2,3,4,5,6]::smallint[], '00:00', public.garante_hoje()),
-  ('00000000-0000-0000-0000-0000000d6003', '00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', array[0,1,2,3,4,5,6]::smallint[], '10:00', public.garante_hoje() - 5);
+  ('00000000-0000-0000-0000-0000000d6003', '00000000-0000-0000-0000-0000000d3002', 'org-j-a-nen', array[0,1,2,3,4,5,6]::smallint[], '10:00', public.garante_hoje() - 5),
+  ('00000000-0000-0000-0000-0000000d6004', '00000000-0000-0000-0000-0000000d3003', 'org-j-a-com', array[0,1,2,3,4,5,6]::smallint[], '10:00', public.garante_hoje() - 20);
 
 create or replace function pg_temp.como(p_user_id uuid, p_aal text default 'aal1')
 returns void language sql as $$
@@ -86,7 +90,7 @@ insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, snaps
   ('00000000-0000-0000-0000-0000000d7001', '00000000-0000-0000-0000-0000000d6001', 'org-j-a-sem', public.garante_hoje() - 1,
    pg_temp.prazo(public.garante_hoje() - 1), '[]'::jsonb, 'Abertura');
 insert into garante_execucoes (id, publicacao_id, unidade_id, data, prazo, snapshot, modelo_nome) values
-  ('00000000-0000-0000-0000-0000000d7002', '00000000-0000-0000-0000-0000000d6001', 'org-j-a-com', public.garante_hoje(),
+  ('00000000-0000-0000-0000-0000000d7002', '00000000-0000-0000-0000-0000000d6004', 'org-j-a-com', public.garante_hoje(),
    pg_temp.prazo(public.garante_hoje()), '[]'::jsonb, 'Abertura');
 select is((select fecha_em from garante_execucoes where id = '00000000-0000-0000-0000-0000000d7001'),
   public.garante_fim_do_dia(public.garante_hoje() - 1), 'execução sem janela ganha o fim do dia da data dela');
@@ -115,6 +119,10 @@ select is((select fecha_em from garante_execucoes where id = '00000000-0000-0000
 select is(public.garante_definir_regra('org-j-a-com', 120, 0), public.garante_hoje() + 1, 'tolerância 0 é aceita');
 select is((select fecha_em from public.garante_janela('org-j-a-com', public.garante_hoje() + 1, '10:00')),
   pg_temp.prazo(public.garante_hoje() + 1), 'com tolerância 0 fecha no horário limite');
+-- Tolerância grande nunca passa do fim do dia (é sempre um limite menor que o dia).
+select is(public.garante_definir_regra('org-j-a-com', 120, 1440), public.garante_hoje() + 1, 'tolerância de 24 h é aceita');
+select is((select fecha_em from public.garante_janela('org-j-a-com', public.garante_hoje() + 1, '23:00')),
+  public.garante_fim_do_dia(public.garante_hoje() + 1), '23:00 + 24 h fecha às 23:59:59 do mesmo dia, nunca no dia seguinte');
 -- Master com segundo fator define a regra de qualquer unidade.
 select pg_temp.como('00000000-0000-0000-0000-0000000d2004', 'aal2');
 select is(public.garante_definir_regra('org-j-a-com', 120, null), public.garante_hoje() + 1, 'master com aal2 define a regra');

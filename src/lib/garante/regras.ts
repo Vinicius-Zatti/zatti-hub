@@ -61,7 +61,7 @@ export const DICA_GARANTE = {
     "Itens cuja resposta ficou fora da meta do modelo: \"não feito\" num item de feito/não feito, ou número e estrelas fora da faixa definida.",
   diaConcluido: "Checklists concluídos ÷ checklists programados para hoje (os seus, ou todos da unidade se você é da gestão).",
   janela:
-    "Começar: a partir do horário limite menos a antecedência da unidade. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância. Concluir depois do horário limite conta como atraso na nota. Tudo em Modelos e publicação > Regras da unidade (gestão).",
+    "Começar: a partir do horário limite menos a antecedência da unidade. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância (nunca depois das 23h59). Concluir depois do horário limite conta como atraso na nota. Tudo em Modelos e publicação > Regras da unidade (gestão).",
   situacao:
     "Concluída = alguém concluiu com todos os itens feitos. Atrasada = passou do horário limite sem concluir. Em andamento = já começou. Pendente = ninguém começou.",
 } as const;

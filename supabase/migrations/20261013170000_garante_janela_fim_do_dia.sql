@@ -6,7 +6,8 @@
 --
 --   garante_regras_unidade.atraso_max_min   passa a aceitar nulo = até o fim do dia
 --                                           (novo padrão; 0 a 1440 continua valendo
---                                           como tolerância em minutos)
+--                                           como tolerância em minutos, agora limitada
+--                                           ao fim do dia: é sempre um limite menor)
 --   garante_fim_do_dia(data)                23:59:59 do dia, no fuso da operação
 --   garante_janela / gatilho da execução    fecha_em = fim do dia quando a regra
 --                                           vigente não tem tolerância
@@ -30,7 +31,7 @@ begin;
 alter table public.garante_regras_unidade alter column atraso_max_min drop not null;
 alter table public.garante_regras_unidade alter column atraso_max_min drop default;
 comment on column public.garante_regras_unidade.atraso_max_min is
-  'Tolerância de atraso em minutos (0 a 1440) depois do horário limite. Nulo = até 23:59:59 do dia do checklist (padrão desde 13/10/2026).';
+  'Tolerância de atraso em minutos (0 a 1440) depois do horário limite, nunca além de 23:59:59 do dia. Nulo = até 23:59:59 do dia do checklist (padrão desde 13/10/2026).';
 
 -- ══ Fim do dia no fuso da operação ══════════════════════════════════════
 create or replace function public.garante_fim_do_dia(p_data date)
@@ -46,7 +47,10 @@ grant execute on function public.garante_fim_do_dia(date) to authenticated;
 
 -- ══ Janela de uma ocorrência ════════════════════════════════════════════
 -- Sem regra, ou regra sem tolerância: fecha no fim do dia. Com tolerância: prazo +
--- minutos (como antes). Antecedência padrão continua 120 min.
+-- minutos, nunca depois do fim do dia (a tolerância é um limite MENOR que o dia;
+-- checklist que termina de madrugada deve ser programado com a data e o horário
+-- do dia seguinte). Antecedência padrão continua 120 min. Execução já gravada
+-- mantém o fecha_em que tinha (inclusive os antigos que cruzavam a meia-noite).
 create or replace function public.garante_janela(p_unidade_id text, p_data date, p_horario time)
 returns table (prazo timestamptz, abre_em timestamptz, fecha_em timestamptz)
 language sql
@@ -57,7 +61,7 @@ as $$
   select b.prazo,
          b.prazo - make_interval(mins => coalesce(r.antecedencia_min, 120)),
          case when r.atraso_max_min is null then public.garante_fim_do_dia(p_data)
-              else b.prazo + make_interval(mins => r.atraso_max_min) end
+              else least(b.prazo + make_interval(mins => r.atraso_max_min), public.garante_fim_do_dia(p_data)) end
     from (select ((p_data + p_horario) at time zone 'America/Sao_Paulo') as prazo) b
     left join lateral (
       select g.antecedencia_min, g.atraso_max_min
@@ -88,7 +92,8 @@ begin
       ) g on true;
     new.abre_em := coalesce(new.abre_em, new.prazo - make_interval(mins => v_a));
     new.fecha_em := coalesce(new.fecha_em,
-      case when v_b is null then public.garante_fim_do_dia(new.data) else new.prazo + make_interval(mins => v_b) end);
+      case when v_b is null then public.garante_fim_do_dia(new.data)
+           else least(new.prazo + make_interval(mins => v_b), public.garante_fim_do_dia(new.data)) end);
   end if;
   return new;
 end;

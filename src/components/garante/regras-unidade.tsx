@@ -15,7 +15,7 @@ const ROTULO = "text-xs font-semibold text-cinza-medio";
 const DICA_PRAZO_PLANO =
   "Prazo do plano de ação = hora da conclusão do checklist (ou do fim da janela, quando ele não foi concluído) + estas horas. Cada plano guarda o prazo com que nasceu: mudar aqui não muda plano já aberto.";
 const DICA_JANELA =
-  "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância. Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
+  "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância, nunca depois das 23h59 (checklist que termina de madrugada é programado com o horário do dia seguinte). Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
 
 type Resultado = { ok: true } | { erro: string };
 type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
@@ -213,7 +213,7 @@ function FormRegra({
         </label>
         <label className="flex items-center gap-2 text-sm text-cinza">
           <input type="radio" name="ate" checked={!ateFimDoDia} onChange={() => setAteFimDoDia(false)} />
-          Uma tolerância em minutos depois do horário limite (0 a 1.440)
+          Uma tolerância em minutos depois do horário limite (0 a 1.440), sem passar das 23h59
         </label>
         {!ateFimDoDia && (
           <CampoNumero value={atraso} onChange={setAtraso} decimais={0} className="mt-1 block w-full" />
