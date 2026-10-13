@@ -110,6 +110,7 @@ export async function criarModeloAction(formData: FormData): Promise<void> {
         tipo: item.tipo ?? "check",
         meta_min: item.metaMin ?? null,
         meta_max: item.metaMax ?? null,
+        foto_obrigatoria: item.foto ?? false,
       })),
     );
     if (erroItens) {

@@ -105,6 +105,23 @@ describe("biblioteca de POPs", () => {
     expect(itens.find((i) => i.titulo.includes("refrigerados"))).toMatchObject({ tipo: "numero", metaMin: 0, metaMax: 5 });
     expect(itens.find((i) => i.titulo.includes("congelados"))).toMatchObject({ tipo: "numero", metaMax: -18 });
   });
+  it("itens de prova pedem foto; a Abertura igual à do Zatti Burger (7 de 15)", () => {
+    const abertura = modeloDaBiblioteca("pop-1-abertura")!.itens.filter((i) => i.foto).map((i) => i.titulo);
+    expect(abertura).toEqual([
+      "Temperatura das câmaras de refrigerados (°C)",
+      "Temperatura das câmaras de congelados (°C)",
+      "Verificar validade de itens que serão usados no dia",
+      "Salão limpo e mesas organizadas",
+      "Banheiros abastecidos e limpos",
+      "Lixeiras vazias",
+      "Confirmar presença e fardamento de todos",
+    ]);
+    for (const m of BIBLIOTECA_POPS) {
+      const comFoto = m.itens.filter((i) => i.foto).length;
+      expect(comFoto).toBeGreaterThan(0);
+      expect(comFoto).toBeLessThan(m.itens.length);
+    }
+  });
 });
 
 describe("mensagemErroGarante", () => {

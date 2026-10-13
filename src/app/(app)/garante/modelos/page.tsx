@@ -59,7 +59,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
               <span className="font-semibold text-azul-noite">{pop.nome}</span>
               <span className="text-xs text-cinza-medio">{pop.descricao}</span>
               <span className="text-xs text-cinza-medio">
-                {pop.itens.length} itens · {pop.quando}
+                {pop.itens.length} itens · {pop.itens.filter((i) => i.foto).length} com foto · {pop.quando}
               </span>
               <button
                 type="submit"
