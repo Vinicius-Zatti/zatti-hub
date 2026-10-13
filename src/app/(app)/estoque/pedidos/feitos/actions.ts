@@ -17,6 +17,7 @@ export async function marcarRecebidoAction(input: {
   recebido: boolean;
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
+  versaoItens: number;
 }): Promise<{ ok: true; mensagem: string } | { erro: string }> {
   const acesso = await getAcessoAtual();
 

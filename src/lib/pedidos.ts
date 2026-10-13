@@ -13,6 +13,7 @@ type PedidoRow = {
   recebido: boolean;
   criado_em: string;
   atualizado_em: string;
+  versao_itens: number;
 };
 
 type PedidoItemRow = {
@@ -38,6 +39,7 @@ function rowToPedido(row: PedidoRow, itens: PedidoItemRow[]): Pedido {
     recebido: row.recebido,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
+    versaoItens: Number(row.versao_itens ?? 0),
     itens: itens.map(
       (it): PedidoItem => ({
         sku: it.sku,
@@ -389,13 +391,15 @@ async function montarPedidosComItens(
  * Desde o extrato do estoque (13/10/2026) tudo vai numa transação só, na
  * função do banco `registrar_recebimento_pedido`: cabeçalho, itens e as
  * compras do extrato. Reenvio idêntico não muda nada; alteração cancela e
- * regrava; desmarcar só cancela (auditado). */
+ * regrava; desmarcar só cancela (auditado). A versão que a tela leu vai junto:
+ * se alguém mexeu no pedido no meio, o banco recusa e pede para recarregar. */
 export async function atualizarRecebimento(params: {
   unidadeId: string;
   pedidoId: string;
   recebido: boolean;
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
+  versaoItens: number;
 }): Promise<ResultadoRecebimento> {
   const supabase = await createClient();
 
@@ -415,5 +419,6 @@ export async function atualizarRecebimento(params: {
     recebido: params.recebido,
     observacaoEntrega: params.observacaoEntrega,
     itensRecebidos: params.itensRecebidos,
+    versaoItens: params.versaoItens,
   });
 }

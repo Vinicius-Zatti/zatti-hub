@@ -12,12 +12,15 @@ import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas"
 import { formatarQuantidade } from "@/lib/unidades";
 import { mensagemFalhaChamada } from "@/lib/erro-chamada";
 import {
+  DICA_EXCLUSOES_EXTRATO,
   DICA_SALDO,
+  ROTULO_SITUACAO_SALDO,
   ROTULO_TIPO,
   TAMANHO_PAGINA_EXTRATO,
   TIPOS_FILTRO,
   rotuloMotivoPerda,
   situacaoLinha,
+  textoInicioExtrato,
   totalPaginas,
   type FiltroExtrato,
   type LinhaExtrato,
@@ -37,6 +40,32 @@ function paramsDoFiltro(f: FiltroExtrato, pagina?: number): Record<string, strin
   if (f.incluirCancelados) p.cancelados = "1";
   if (pagina && pagina > 1) p.pagina = String(pagina);
   return p;
+}
+
+/** Explica, no "i" da célula, por que o saldo ficou sem número. */
+function dicaSemSaldo(s: SaldoSku): string | null {
+  if (s.situacao === "sem_historico_completo") {
+    return `${textoInicioExtrato(s.inicioExtrato)} A última contagem completa é anterior a isso, então ` +
+      "faltam compras e o saldo não seria confiável. Aparece com a primeira contagem completa a partir dessa data.";
+  }
+  if (s.situacao === "unidade_divergente") {
+    return `A contagem está em ${s.unidadePosicao ?? "?"} e o cadastro ou algum lançamento está em outra ` +
+      "unidade. Somar unidades diferentes daria um número errado.";
+  }
+  return null;
+}
+
+function CelulaSaldo({ saldo: s }: { saldo: SaldoSku }) {
+  if (s.situacao === "calculado" && s.saldo !== null) {
+    return <>{`${formatarQuantidade(s.saldo, s.unidadeBase)} ${s.unidadeBase}`}</>;
+  }
+  const dica = dicaSemSaldo(s);
+  return (
+    <span className="inline-flex items-center justify-end gap-1 font-normal text-cinza-medio">
+      {s.situacao === "calculado" ? ROTULO_SITUACAO_SALDO.sem_posicao : ROTULO_SITUACAO_SALDO[s.situacao]}
+      {dica && <DicaCalculo rotulo="Por que não tem saldo" texto={dica} />}
+    </span>
+  );
 }
 
 function detalheLinha(l: LinhaExtrato): string {
@@ -254,7 +283,9 @@ export function ExtratoMovimentacoes({
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-azul-noite">
           Saldo por SKU
           <DicaCalculo rotulo="Como o saldo é calculado" texto={DICA_SALDO} />
+          <DicaCalculo rotulo="O que fica fora das compras do extrato" texto={DICA_EXCLUSOES_EXTRATO} />
         </h2>
+        {saldos.length > 0 && <p className="text-xs text-cinza-medio">{textoInicioExtrato(saldos[0].inicioExtrato)}</p>}
         <TabelaRolavel ariaLabel="Saldo por SKU">
           <table className="w-full text-sm">
             <thead>
@@ -283,7 +314,7 @@ export function ExtratoMovimentacoes({
                   </td>
                   <td className="px-3 py-2 tabular-nums">
                     {s.dataPosicao
-                      ? `${formatarQuantidade(s.quantidadePosicao, s.unidadeBase)} ${s.unidadeBase} em ${formatarDataBr(s.dataPosicao)}`
+                      ? `${formatarQuantidade(s.quantidadePosicao, s.unidadePosicao ?? s.unidadeBase)} ${s.unidadePosicao ?? s.unidadeBase} em ${formatarDataBr(s.dataPosicao)}`
                       : "Sem contagem completa"}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -293,7 +324,7 @@ export function ExtratoMovimentacoes({
                     {s.dataPosicao ? formatarQuantidade(s.saidas, s.unidadeBase) : "—"}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-azul-noite">
-                    {s.saldo === null ? "Indeterminado" : `${formatarQuantidade(s.saldo, s.unidadeBase)} ${s.unidadeBase}`}
+                    <CelulaSaldo saldo={s} />
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {s.ultimoPrecoPago === null

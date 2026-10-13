@@ -246,6 +246,7 @@ export const recebimentoSchema = z
           .strict(),
       )
       .max(500),
+    versaoItens: z.number().int().min(0).max(2_147_483_647),
   })
   .strict();
 

@@ -95,6 +95,7 @@ export function PedidosFeitos({
             quantidadeRecebida: toNumeroBR(quantidadesRecebidasTexto[pedido.id]?.[it.sku]),
           }))
         : [],
+      versaoItens: pedido.versaoItens,
     });
     setSalvando((s) => ({ ...s, [pedido.id]: false }));
     setStatus((s) => ({ ...s, [pedido.id]: "erro" in resultado ? resultado.erro : resultado.mensagem }));

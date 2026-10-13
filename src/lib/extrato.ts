@@ -105,6 +105,9 @@ export function situacaoLinha(linha: Pick<LinhaExtrato, "canceladoEm" | "naturez
 
 export type ProdutoParaPerda = { id: string; sku: string; nome: string; unidadeBase: string };
 
+/** Por que o saldo tem (ou não tem) número - vem da view `estoque_saldos`. */
+export type SituacaoSaldo = "calculado" | "sem_posicao" | "sem_historico_completo" | "unidade_divergente";
+
 export type SaldoSku = {
   produtoId: string;
   sku: string;
@@ -115,11 +118,25 @@ export type SaldoSku = {
   ultimoPrecoPagoEm: string | null;
   dataPosicao: string | null;
   quantidadePosicao: number | null;
+  /** Unidade gravada na contagem (a da época), não a do cadastro de hoje. */
+  unidadePosicao: string | null;
   entradas: number;
   saidas: number;
-  /** Nulo = sem contagem elegível com esse SKU: saldo indeterminado. */
+  /** Nulo sempre que a situação não é "calculado": indeterminado, nunca zero. */
   saldo: number | null;
   lancamentosDesdePosicao: number;
+  /** Primeiro dia com todas as compras no extrato. Nulo = unidade fora do extrato. */
+  inicioExtrato: string | null;
+  situacao: SituacaoSaldo;
+};
+
+const SITUACOES_SALDO: SituacaoSaldo[] = ["calculado", "sem_posicao", "sem_historico_completo", "unidade_divergente"];
+
+/** Texto da célula de saldo quando não há número. */
+export const ROTULO_SITUACAO_SALDO: Record<Exclude<SituacaoSaldo, "calculado">, string> = {
+  sem_posicao: "Indeterminado",
+  sem_historico_completo: "Sem histórico completo",
+  unidade_divergente: "Unidade divergente",
 };
 
 /** Texto do "i" do saldo - linguagem simples, com a fórmula. */
@@ -127,7 +144,23 @@ export const DICA_SALDO =
   "Saldo = quantidade da última contagem completa em que o item foi contado + compras e entradas " +
   "− perdas e saídas lançadas a partir do dia dessa contagem. Não desconta o consumo que não foi " +
   "lançado (vendas e uso do dia a dia), então é o que deveria haver se nada mais tivesse saído. " +
-  "Item sem contagem completa fica sem saldo, nunca zero.";
+  "Fica sem número (nunca zero) quando: o item não tem contagem completa; a contagem é anterior " +
+  "ao início do extrato da unidade (as compras de antes não foram lançadas, então o número não " +
+  "seria confiável); ou a unidade da contagem, do cadastro ou de algum lançamento não bate.";
+
+/** O que fica fora das compras do extrato - mesmo quando o pedido está recebido. */
+export const DICA_EXCLUSOES_EXTRATO =
+  "Entram como compra só os itens de pedido recebido com vencedor confirmado e quantidade maior " +
+  "que zero. Ficam de fora: item sem vencedor confirmado, item sem cadastro de produto nesta " +
+  "unidade, item com unidade diferente da do cadastro, pedidos de outras unidades e pedidos " +
+  "recebidos antes do início do extrato. A Calculadora de CMV conta compras de outro jeito " +
+  "(ela não exige vencedor confirmado), então os totais podem não bater.";
+
+export function textoInicioExtrato(inicio: string | null): string {
+  return inicio
+    ? `O extrato desta unidade tem todas as compras a partir de ${formatarDataBr(inicio)}.`
+    : "Esta unidade não está com o estoque no banco: o extrato não tem as compras.";
+}
 
 export const DICA_CUSTO_PERDA =
   "Custo da perda = quantidade × último preço pago do item até a data da perda (compra recebida " +
@@ -199,6 +232,8 @@ export function linhaDaView(row: Record<string, unknown>): LinhaExtrato {
 
 export function saldoDaView(row: Record<string, unknown>): SaldoSku {
   const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+  // Valor desconhecido nunca vira "calculado": cai no caso mais conservador.
+  const situacao = SITUACOES_SALDO.find((s) => s === row.situacao_saldo) ?? "sem_posicao";
   return {
     produtoId: String(row.produto_id),
     sku: String(row.sku ?? ""),
@@ -209,10 +244,13 @@ export function saldoDaView(row: Record<string, unknown>): SaldoSku {
     ultimoPrecoPagoEm: (row.ultimo_preco_pago_em as string | null) ?? null,
     dataPosicao: (row.data_posicao as string | null) ?? null,
     quantidadePosicao: num(row.quantidade_posicao),
+    unidadePosicao: (row.unidade_posicao as string | null) ?? null,
     entradas: Number(row.entradas ?? 0),
     saidas: Number(row.saidas ?? 0),
-    saldo: num(row.saldo),
+    saldo: situacao === "calculado" ? num(row.saldo) : null,
     lancamentosDesdePosicao: Number(row.lancamentos_desde_posicao ?? 0),
+    inicioExtrato: (row.inicio_extrato as string | null) ?? null,
+    situacao,
   };
 }
 

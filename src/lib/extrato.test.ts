@@ -10,7 +10,7 @@ import {
   totalPaginas,
   type LinhaExtrato,
 } from "@/lib/extrato";
-import { perdaEstoqueSchema } from "@/lib/validacao";
+import { perdaEstoqueSchema, recebimentoSchema } from "@/lib/validacao";
 
 function linha(parcial: Partial<LinhaExtrato> = {}): LinhaExtrato {
   return {
@@ -107,6 +107,17 @@ describe("conversão das views", () => {
     const s = saldoDaView({ produto_id: "p", sku: "X", nome: "x", unidade_base: "UN", ativo: true, saldo: null, entradas: "3", saidas: "0" });
     expect(s.saldo).toBeNull();
     expect(s.entradas).toBe(3);
+    expect(s.situacao).toBe("sem_posicao");
+  });
+
+  it("número só aparece com situação 'calculado'; sem histórico completo fica nulo", () => {
+    const base = { produto_id: "p", sku: "X", nome: "x", unidade_base: "UN", ativo: true, entradas: "3", saidas: "1" };
+    expect(saldoDaView({ ...base, saldo: "12", situacao_saldo: "calculado" }).saldo).toBe(12);
+    const semHistorico = saldoDaView({ ...base, saldo: "12", situacao_saldo: "sem_historico_completo" });
+    expect(semHistorico.saldo).toBeNull();
+    expect(semHistorico.situacao).toBe("sem_historico_completo");
+    // Situação desconhecida nunca vira número.
+    expect(saldoDaView({ ...base, saldo: "12", situacao_saldo: "outra" }).saldo).toBeNull();
   });
 });
 
@@ -129,5 +140,20 @@ describe("perdaEstoqueSchema", () => {
     expect(perdaEstoqueSchema.safeParse({ ...base, motivo: "furto" }).success).toBe(false);
     expect(perdaEstoqueSchema.safeParse({ ...base, motivo: "outro", observacao: " " }).success).toBe(false);
     expect(perdaEstoqueSchema.safeParse({ ...base, motivo: "outro", observacao: "caiu no chão" }).success).toBe(true);
+  });
+});
+
+describe("recebimentoSchema", () => {
+  const base = {
+    pedidoId: "00000000-0000-4000-8000-000000000001",
+    recebido: true,
+    observacaoEntrega: null,
+    itensRecebidos: [],
+  };
+  it("exige a versão do pedido que a tela leu (recebimento desatualizado é recusado no banco)", () => {
+    expect(recebimentoSchema.safeParse(base).success).toBe(false);
+    expect(recebimentoSchema.safeParse({ ...base, versaoItens: 3 }).success).toBe(true);
+    expect(recebimentoSchema.safeParse({ ...base, versaoItens: -1 }).success).toBe(false);
+    expect(recebimentoSchema.safeParse({ ...base, versaoItens: 1.5 }).success).toBe(false);
   });
 });

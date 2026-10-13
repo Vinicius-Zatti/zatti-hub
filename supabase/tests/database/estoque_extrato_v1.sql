@@ -13,7 +13,19 @@
 --      último preço pago; cancelamento só Gestão/Master e só de lançamento manual;
 --   6. Operacional desmarcando recebimento fica auditado;
 --   7. saldo = última posição elegível + lançamentos desde o dia dela; sem
---      posição (ou quantidade nula) o saldo é nulo, nunca zero.
+--      posição (ou quantidade nula) o saldo é nulo, nunca zero;
+--   8. versão do pedido: edição de item pela Data API sobe a versão e o
+--      recebimento com versão desatualizada é recusado. Concorrência real entre
+--      duas sessões não cabe no pgTAP (uma transação só): a garantia vem da
+--      trava da linha do pedido, a mesma no gatilho dos itens e na RPC;
+--   9. INSERT direto não cria pedido já recebido nem item com quantidade recebida;
+--  10. posição usa produto e unidade da época (snapshot / linha gravada): produto
+--      recriado não herda contagem, unidade divergente não vira número, unidade
+--      de produto com lançamento não muda;
+--  11. cobertura por setor exata: SKU sem escopo, setor esperado sem linha ou
+--      linha fora do snapshot não viram posição;
+--  12. marco do extrato por unidade: contagem anterior a ele fica "sem histórico
+--      completo" (sem número).
 --
 -- Rodar com o Supabase local no ar: `npx supabase test db`. Sem dado real.
 
@@ -21,7 +33,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(65);
+select plan(94);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 
@@ -83,6 +95,80 @@ values
   ('00000000-0000-0000-0000-0000000e6001', 'HORLIM001', 'HOR', 'limao', 'KG', 10, 10, 100),
   ('00000000-0000-0000-0000-0000000e6001', 'BALCER001', 'BAL', 'cerveja', 'UN', null, 4, null);
 
+-- Produtos para identidade e unidade históricas. HORNOV001 faz o papel de um
+-- produto renomeado: no snapshot antigo ele aparece como HORANT001, e hoje outro
+-- produto usa HORANT001. MERNOV001 foi (re)criado depois da contagem de hoje.
+insert into produtos (id, unidade_id, sku, grupo, nome, unidade_base, preco_unitario, ativo)
+values
+  ('00000000-0000-0000-0000-0000000e5001', 'uni-extrato-a1', 'HORNOV001', 'HOR', 'limao renomeado', 'KG', 10, true),
+  ('00000000-0000-0000-0000-0000000e5002', 'uni-extrato-a1', 'HORANT001', 'HOR', 'novo com SKU antigo', 'KG', 10, true),
+  ('00000000-0000-0000-0000-0000000e5003', 'uni-extrato-a1', 'MERFEI001', 'MER', 'feijao', 'KG', 8, true);
+insert into produtos (unidade_id, sku, grupo, nome, unidade_base, preco_unitario, ativo, criado_em)
+values ('uni-extrato-a1', 'MERNOV001', 'MER', 'recriado depois', 'KG', 1, true, now() + interval '1 hour');
+
+-- Contagem legada de hoje (a unidade nasceu no banco hoje: marco = hoje).
+insert into contagens (id, unidade_id, data, mes, modalidade)
+values ('00000000-0000-0000-0000-0000000e6002', 'uni-extrato-a1',
+        (now() at time zone 'America/Sao_Paulo')::date, 'teste', 'legada');
+insert into contagem_itens (contagem_id, sku, grupo, nome, unidade_base, quantidade, preco_unitario, total)
+values
+  ('00000000-0000-0000-0000-0000000e6002', 'HORLIM001', 'HOR', 'limao', 'KG', 10, 10, 100),
+  ('00000000-0000-0000-0000-0000000e6002', 'MERFEI001', 'MER', 'feijao', 'SC', 3, null, null),
+  ('00000000-0000-0000-0000-0000000e6002', 'MERNOV001', 'MER', 'recriado', 'KG', 5, null, null);
+
+-- Contagens por setor (todas concluídas).
+insert into setores (id, unidade_id, nome, ordem, ativo)
+values
+  ('00000000-0000-0000-0000-0000000e4001', 'uni-extrato-a1', 'Bar', 0, true),
+  ('00000000-0000-0000-0000-0000000e4002', 'uni-extrato-a1', 'Cozinha', 1, true);
+
+insert into contagens (id, unidade_id, data, mes, modalidade, snapshot_criado_em)
+values
+  ('00000000-0000-0000-0000-0000000e6003', 'uni-extrato-a1',
+   (now() at time zone 'America/Sao_Paulo')::date - 2, 'teste', 'setor', now()),
+  ('00000000-0000-0000-0000-0000000e6004', 'uni-extrato-a1',
+   (now() at time zone 'America/Sao_Paulo')::date - 3, 'teste', 'setor', now());
+
+insert into contagem_setores (contagem_id, setor_id, situacao)
+values
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4001', 'concluido'),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4002', 'concluido'),
+  ('00000000-0000-0000-0000-0000000e6004', '00000000-0000-0000-0000-0000000e4001', 'concluido');
+
+-- C1 (anteontem): limão nos dois setores (completo); cerveja esperada só no Bar
+-- mas com linha também na Cozinha; arroz esperado nos dois, contado só no Bar;
+-- feijão contado sem estar no snapshot.
+insert into contagem_escopo (contagem_id, setor_id, sku, produto_id, nome, unidade_base)
+select '00000000-0000-0000-0000-0000000e6003'::uuid, s.setor::uuid, p.sku, p.id, p.nome, p.unidade_base
+from (values ('00000000-0000-0000-0000-0000000e4001', 'HORLIM001'),
+             ('00000000-0000-0000-0000-0000000e4002', 'HORLIM001'),
+             ('00000000-0000-0000-0000-0000000e4001', 'BALCER001'),
+             ('00000000-0000-0000-0000-0000000e4001', 'MERARR001'),
+             ('00000000-0000-0000-0000-0000000e4002', 'MERARR001')) s(setor, sku)
+join produtos p on p.unidade_id = 'uni-extrato-a1' and p.sku = s.sku;
+
+insert into contagem_itens (contagem_id, setor_id, sku, nome, unidade_base, quantidade)
+values
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4001', 'HORLIM001', 'limao', 'KG', 3),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4002', 'HORLIM001', 'limao', 'KG', 4),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4001', 'BALCER001', 'cerveja', 'UN', 5),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4002', 'BALCER001', 'cerveja', 'UN', 1),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4001', 'MERARR001', 'arroz', 'KG', 2),
+  ('00000000-0000-0000-0000-0000000e6003', '00000000-0000-0000-0000-0000000e4001', 'MERFEI001', 'feijao', 'KG', 2);
+
+-- C2 (três dias atrás): o snapshot diz que HORANT001 era o produto ...e5001
+-- (hoje HORNOV001); BALOLD001 ficou sem produto_id no snapshot.
+insert into contagem_escopo (contagem_id, setor_id, sku, produto_id, nome, unidade_base)
+values
+  ('00000000-0000-0000-0000-0000000e6004', '00000000-0000-0000-0000-0000000e4001', 'HORANT001',
+   '00000000-0000-0000-0000-0000000e5001', 'limao antigo', 'KG'),
+  ('00000000-0000-0000-0000-0000000e6004', '00000000-0000-0000-0000-0000000e4001', 'BALOLD001',
+   null, 'sem produto', 'UN');
+insert into contagem_itens (contagem_id, setor_id, sku, nome, unidade_base, quantidade)
+values
+  ('00000000-0000-0000-0000-0000000e6004', '00000000-0000-0000-0000-0000000e4001', 'HORANT001', 'limao antigo', 'KG', 9),
+  ('00000000-0000-0000-0000-0000000e6004', '00000000-0000-0000-0000-0000000e4001', 'BALOLD001', 'sem produto', 'UN', 1);
+
 -- ── Recebimento (Gestão) ─────────────────────────────────────────────────
 
 set local role authenticated;
@@ -91,7 +177,7 @@ set local request.jwt.claims to
 
 select lives_ok(
   $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'ok',
-      '[{"sku":"HORLIM001","quantidade_recebida":5},{"sku":"BALCER001","quantidade_recebida":null}]'::jsonb)$$,
+      '[{"sku":"HORLIM001","quantidade_recebida":5},{"sku":"BALCER001","quantidade_recebida":null}]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
   'Gestão marca o pedido como recebido pela RPC'
 );
 
@@ -125,15 +211,15 @@ select is(
 
 select is(
   registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'ok',
-    '[{"sku":"HORLIM001","quantidade_recebida":5},{"sku":"BALCER001","quantidade_recebida":null}]'::jsonb)
-  - 'pendencias' - 'recebido_dia' - 'recebido',
+    '[{"sku":"HORLIM001","quantidade_recebida":5},{"sku":"BALCER001","quantidade_recebida":null}]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))
+  - 'pendencias' - 'recebido_dia' - 'recebido' - 'versao_itens',
   '{"gravados":0,"cancelados":0,"ativos":2,"sem_preco":1}'::jsonb,
   'reenvio idêntico não grava nem cancela nada'
 );
 
 select is(
   (registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'faltou 1 kg',
-    '[{"sku":"HORLIM001","quantidade_recebida":4}]'::jsonb) ->> 'cancelados')::int,
+    '[{"sku":"HORLIM001","quantidade_recebida":4}]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001')) ->> 'cancelados')::int,
   1,
   'alteração da quantidade cancela o lançamento antigo...'
 );
@@ -155,7 +241,7 @@ select is(
 );
 
 select lives_ok(
-  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7002', true, null, '[]'::jsonb)$$,
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7002', true, null, '[]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7002'))$$,
   'segundo pedido recebido'
 );
 
@@ -166,7 +252,7 @@ select is(
 );
 
 select lives_ok(
-  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7002', false, null, '[]'::jsonb)$$,
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7002', false, null, '[]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7002'))$$,
   'Gestão desmarca o segundo pedido'
 );
 
@@ -190,7 +276,7 @@ select results_eq(
 );
 
 select is(
-  (registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7003', true, 'reenvio', '[]'::jsonb) ->> 'gravados')::int,
+  (registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7003', true, 'reenvio', '[]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7003')) ->> 'gravados')::int,
   0,
   'pedido recebido antes desta versão não ganha movimento retroativo no reenvio'
 );
@@ -203,20 +289,20 @@ select results_eq(
 
 select throws_ok(
   $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null,
-      '[{"sku":"HOROUT001","quantidade_recebida":1}]'::jsonb)$$,
+      '[{"sku":"HOROUT001","quantidade_recebida":1}]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
   'P0001', NULL,
   'item que não é do pedido é recusado'
 );
 
 select throws_ok(
   $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null,
-      '[{"sku":"HORLIM001","quantidade_recebida":-1}]'::jsonb)$$,
+      '[{"sku":"HORLIM001","quantidade_recebida":-1}]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
   'P0001', NULL,
   'quantidade negativa é recusada'
 );
 
 select throws_ok(
-  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7004', true, null, '[]'::jsonb)$$,
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7004', true, null, '[]'::jsonb, 0)$$,
   'P0001', NULL,
   'pedido de outra organização: não encontrado'
 );
@@ -281,13 +367,189 @@ select throws_ok(
   'produto com lançamento não é excluído (orienta desativar)'
 );
 
+-- ── Versão do pedido (P1 concorrência) ───────────────────────────────────
+-- Duas sessões ao mesmo tempo não cabem aqui: a garantia vem da trava da linha
+-- do pedido (gatilho dos itens e RPC usam a mesma). Aqui: a versão sobe na
+-- edição e o recebimento com a versão velha é recusado.
+
+select throws_ok(
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null, '[]'::jsonb,
+      (select versao_itens - 1 from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
+  'P0001', NULL,
+  'recebimento com versão desatualizada é recusado'
+);
+
+select throws_ok(
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null, '[]'::jsonb, null)$$,
+  'P0001', NULL,
+  'recebimento sem versão é recusado'
+);
+
+reset role;
+create temporary table versao_antes as
+  select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001';
+grant select on versao_antes to authenticated;
+set local role authenticated;
+
+select lives_ok(
+  $$update pedido_itens set nome = 'arroz tipo 1'
+    where pedido_id = '00000000-0000-0000-0000-0000000e7001' and sku = 'MERARR001'$$,
+  'Gestão edita item sem lançamento pela Data API'
+);
+
+select is(
+  (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'),
+  (select versao_itens + 1 from versao_antes),
+  'editar item sobe a versão do pedido (o gatilho trava o pedido antes de olhar o extrato)'
+);
+
+select throws_ok(
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'faltou 1 kg', '[]'::jsonb,
+      (select versao_itens from versao_antes))$$,
+  'P0001', NULL,
+  'tela que leu o pedido antes da edição não grava o recebimento'
+);
+
+select throws_ok(
+  $$update pedidos set versao_itens = 0 where id = '00000000-0000-0000-0000-0000000e7001'$$,
+  '42501', NULL,
+  'versão do pedido não se grava direto'
+);
+
+select is(
+  (registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'faltou 1 kg', '[]'::jsonb,
+     (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001')) ->> 'versao_itens')::int,
+  (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'),
+  'reenvio idêntico não sobe a versão (não desatualiza outra tela à toa)'
+);
+
+select is(
+  (registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, 'faltou 1 kg.', '[]'::jsonb,
+     (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001')) ->> 'versao_itens')::int,
+  (select versao_itens + 1 from pedidos where id = '00000000-0000-0000-0000-0000000e7001'),
+  'recebimento que muda algo sobe a versão'
+);
+
+-- ── INSERT direto (P1 escrita direta) ────────────────────────────────────
+
+select throws_ok(
+  $$insert into pedidos (unidade_id, fornecedor, data_contagem_base, criado_por, recebido, recebido_em, recebido_dia)
+    values ('uni-extrato-a1', 'FX', '2026-10-02', '00000000-0000-0000-0000-0000000e9101', true,
+            '2026-01-01 10:00-03', '2026-01-01')$$,
+  '42501', NULL,
+  'pedido não nasce recebido com data escolhida pela Data API'
+);
+
+select throws_ok(
+  $$insert into pedidos (unidade_id, fornecedor, data_contagem_base, criado_por, versao_itens)
+    values ('uni-extrato-a1', 'FX', '2026-10-02', '00000000-0000-0000-0000-0000000e9101', 7)$$,
+  '42501', NULL,
+  'pedido não nasce com versão escolhida'
+);
+
+select lives_ok(
+  $$insert into pedidos (id, unidade_id, fornecedor, data_contagem_base, criado_por)
+    values ('00000000-0000-0000-0000-0000000e7005', 'uni-extrato-a1', 'FX', '2026-10-02',
+            '00000000-0000-0000-0000-0000000e9101')$$,
+  'pedido como o app cria (não recebido) continua passando'
+);
+
+select throws_ok(
+  $$insert into pedido_itens (pedido_id, sku, nome, unidade_base, quantidade_pedida, quantidade_recebida, vencedor_confirmado)
+    values ('00000000-0000-0000-0000-0000000e7005', 'HORLIM001', 'limao', 'KG', 1, 1, true)$$,
+  '42501', NULL,
+  'item não nasce com quantidade recebida'
+);
+
+select lives_ok(
+  $$insert into pedido_itens (pedido_id, sku, nome, unidade_base, quantidade_pedida, preco_antigo, vencedor_confirmado)
+    values ('00000000-0000-0000-0000-0000000e7005', 'HORLIM001', 'limao', 'KG', 1, 10, true)$$,
+  'item como o app cria continua passando'
+);
+
+select is(
+  (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7005'),
+  1,
+  'item novo sobe a versão do pedido'
+);
+
+-- ── Identidade e unidade da época (P1) ───────────────────────────────────
+
+select throws_ok(
+  $$update produtos set unidade_base = 'G' where unidade_id = 'uni-extrato-a1' and sku = 'HORLIM001'$$,
+  'P0001', NULL,
+  'unidade de produto com lançamento no extrato não muda'
+);
+
+select lives_ok(
+  $$update produtos set unidade_base = 'SC' where unidade_id = 'uni-extrato-a1' and sku = 'MERARR001'$$,
+  'produto sem lançamento continua podendo mudar de unidade'
+);
+
+select results_eq(
+  $$select produto_id, sku, unidade_base, quantidade from estoque_posicoes
+    where contagem_id = '00000000-0000-0000-0000-0000000e6004'$$,
+  $$values ('00000000-0000-0000-0000-0000000e5001'::uuid, 'HORANT001'::text, 'KG'::text, 9::numeric)$$,
+  'posição por setor vai para o produto do snapshot; SKU sem produto no snapshot fica de fora'
+);
+
+select is(
+  (select data_posicao from estoque_saldos where unidade_id = 'uni-extrato-a1' and sku = 'HORANT001'),
+  null::date,
+  'produto que hoje usa o mesmo SKU não herda a contagem do outro'
+);
+
+select results_eq(
+  $$select data_posicao, saldo, situacao_saldo from estoque_saldos
+    where unidade_id = 'uni-extrato-a1' and sku = 'MERNOV001'$$,
+  $$values (null::date, null::numeric, 'sem_posicao'::text)$$,
+  'contagem legada não passa para produto criado depois da linha'
+);
+
+select results_eq(
+  $$select quantidade_posicao, unidade_posicao, saldo, situacao_saldo from estoque_saldos
+    where unidade_id = 'uni-extrato-a1' and sku = 'MERFEI001'$$,
+  $$values (3::numeric, 'SC'::text, null::numeric, 'unidade_divergente'::text)$$,
+  'contagem em SC com cadastro em KG: unidade divergente, sem número'
+);
+
+-- ── Cobertura por setor (P1) ─────────────────────────────────────────────
+
+select results_eq(
+  $$select quantidade from estoque_posicoes
+    where contagem_id = '00000000-0000-0000-0000-0000000e6003' and sku = 'HORLIM001'$$,
+  $$values (7::numeric)$$,
+  'SKU contado exatamente nos setores do snapshot vira posição (3 + 4)'
+);
+
+select is(
+  (select count(*)::int from estoque_posicoes
+   where contagem_id = '00000000-0000-0000-0000-0000000e6003' and sku = 'BALCER001'),
+  0,
+  'linha fora do snapshot (cerveja na Cozinha) derruba a posição: não soma'
+);
+
+select is(
+  (select count(*)::int from estoque_posicoes
+   where contagem_id = '00000000-0000-0000-0000-0000000e6003' and sku = 'MERARR001'),
+  0,
+  'setor esperado sem linha: sem posição'
+);
+
+select is(
+  (select count(*)::int from estoque_posicoes
+   where contagem_id = '00000000-0000-0000-0000-0000000e6003' and sku = 'MERFEI001'),
+  0,
+  'SKU sem escopo no snapshot: sem posição'
+);
+
 -- ── Operacional: desmarca (auditado) e registra perda ────────────────────
 
 set local request.jwt.claims to
   '{"sub":"00000000-0000-0000-0000-0000000e9102","role":"authenticated","aal":"aal1"}';
 
 select lives_ok(
-  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', false, null, '[]'::jsonb)$$,
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', false, null, '[]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
   'Operacional pode desmarcar o recebimento (exceção)'
 );
 
@@ -305,7 +567,7 @@ select is(
 );
 
 select lives_ok(
-  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null, '[]'::jsonb)$$,
+  $$select registrar_recebimento_pedido('00000000-0000-0000-0000-0000000e7001', true, null, '[]'::jsonb, (select versao_itens from pedidos where id = '00000000-0000-0000-0000-0000000e7001'))$$,
   'Operacional marca recebido de novo'
 );
 
@@ -503,10 +765,11 @@ set local request.jwt.claims to
   '{"sub":"00000000-0000-0000-0000-0000000e9101","role":"authenticated","aal":"aal1"}';
 
 select results_eq(
-  $$select quantidade_posicao, entradas, saidas, saldo from estoque_saldos
+  $$select data_posicao, quantidade_posicao, entradas, saidas, saldo, situacao_saldo from estoque_saldos
     where unidade_id = 'uni-extrato-a1' and sku = 'HORLIM001'$$,
-  $$values (10::numeric, 4::numeric, 2::numeric, 12::numeric)$$,
-  'saldo = posição de ontem 10 + compra 4 − perda ativa 2 (cancelada não conta)'
+  $$values ((now() at time zone 'America/Sao_Paulo')::date, 10::numeric, 4::numeric, 2::numeric,
+            12::numeric, 'calculado'::text)$$,
+  'saldo = posição de hoje 10 + compra 4 − perda ativa 2 (cancelada não conta)'
 );
 
 select results_eq(
@@ -518,7 +781,8 @@ select results_eq(
 
 select results_eq(
   $$select tipo, quantidade, valor from estoque_extrato_linhas
-    where unidade_id = 'uni-extrato-a1' and natureza = 'posicao'$$,
+    where unidade_id = 'uni-extrato-a1' and natureza = 'posicao'
+      and data = (now() at time zone 'America/Sao_Paulo')::date - 1$$,
   $$values ('posicao'::text, 10::numeric, 100::numeric)$$,
   'contagem elegível aparece no extrato como posição (só o SKU com quantidade conhecida)'
 );
@@ -575,6 +839,45 @@ select is(
      group by pedido_item_id having count(*) > 1) d),
   0,
   'nunca há dois lançamentos ativos para o mesmo item de pedido'
+);
+
+-- ── Marco do extrato (P1 histórico completo) ────────────────────────────
+
+select is(
+  (select inicio_dia from estoque_extrato_inicio where unidade_id = 'uni-extrato-a1'),
+  (now() at time zone 'America/Sao_Paulo')::date,
+  'unidade criada já no banco começa o extrato no dia da criação'
+);
+
+update unidades set fonte_dados_estoque = 'planilha' where id = 'uni-extrato-a1';
+
+select is(
+  (select inicio_dia from estoque_extrato_inicio where unidade_id = 'uni-extrato-a1'),
+  null::date,
+  'unidade que sai do banco perde o marco'
+);
+
+select results_eq(
+  $$select quantidade_posicao, saldo, situacao_saldo from estoque_saldos
+    where unidade_id = 'uni-extrato-a1' and sku = 'HORLIM001'$$,
+  $$values (10::numeric, null::numeric, 'sem_historico_completo'::text)$$,
+  'sem marco: a posição continua visível, o saldo fica sem número'
+);
+
+update unidades set fonte_dados_estoque = 'banco' where id = 'uni-extrato-a1';
+
+select is(
+  (select inicio_dia from estoque_extrato_inicio where unidade_id = 'uni-extrato-a1'),
+  (now() at time zone 'America/Sao_Paulo')::date + 1,
+  'unidade que volta ao banco recomeça no dia seguinte'
+);
+
+select results_eq(
+  $$select saldo, situacao_saldo, inicio_extrato from estoque_saldos
+    where unidade_id = 'uni-extrato-a1' and sku = 'HORLIM001'$$,
+  $$values (null::numeric, 'sem_historico_completo'::text,
+            (now() at time zone 'America/Sao_Paulo')::date + 1)$$,
+  'contagem anterior ao marco: sem histórico completo, sem número'
 );
 
 select * from finish();

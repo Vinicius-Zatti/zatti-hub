@@ -86,7 +86,8 @@ export async function listarSaldos(unidadeId: string, sku: string | null): Promi
       .from("estoque_saldos")
       .select(
         "produto_id, sku, nome, unidade_base, ativo, ultimo_preco_pago, ultimo_preco_pago_em, " +
-          "data_posicao, quantidade_posicao, entradas, saidas, saldo, lancamentos_desde_posicao",
+          "data_posicao, quantidade_posicao, unidade_posicao, entradas, saidas, saldo, " +
+          "lancamentos_desde_posicao, inicio_extrato, situacao_saldo",
       )
       .eq("unidade_id", unidadeId);
     if (sku) q = q.eq("sku", sku);
@@ -166,6 +167,7 @@ export type ResultadoRecebimento = {
   ativos: number;
   sem_preco: number;
   pendencias: { sku: string; nome: string; motivo: string }[];
+  versao_itens: number;
 };
 
 /** Recebimento numa transação só (cabeçalho, itens e extrato), na função do
@@ -175,6 +177,7 @@ export async function registrarRecebimentoBanco(params: {
   recebido: boolean;
   observacaoEntrega: string | null;
   itensRecebidos: { sku: string; quantidadeRecebida: number | null }[];
+  versaoItens: number;
 }): Promise<ResultadoRecebimento> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("registrar_recebimento_pedido", {
@@ -182,6 +185,7 @@ export async function registrarRecebimentoBanco(params: {
     p_recebido: params.recebido,
     p_observacao: params.observacaoEntrega,
     p_itens: params.itensRecebidos.map((i) => ({ sku: i.sku, quantidade_recebida: i.quantidadeRecebida })),
+    p_versao_itens: params.versaoItens,
   });
   if (error) throw erroDaFuncao(error, "Não foi possível atualizar o recebimento");
   return data as ResultadoRecebimento;

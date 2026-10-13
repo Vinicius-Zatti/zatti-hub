@@ -34,6 +34,7 @@ function pedido(fornecedor: string, atualizadoEm: string, itens: PedidoItem[]): 
     recebido: false,
     criadoEm: atualizadoEm,
     atualizadoEm,
+    versaoItens: 0,
     itens,
   };
 }
