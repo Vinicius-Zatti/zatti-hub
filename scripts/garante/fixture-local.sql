@@ -1,6 +1,7 @@
 -- Fixture do teste ponta a ponta LOCAL do Checklist Garante e da Equipe (nunca rodar em
 -- produção). Unidade com Garante ligado, um operador responsável com senha local, um
--- modelo com 3 itens (um crítico com foto) publicado todo dia até 23:59.
+-- modelo com 3 itens (um crítico com foto) publicado todo dia até 12:00, e uma regra de
+-- janela larga (abre 12 h antes, aceita 24 h de atraso) para o teste rodar a qualquer hora.
 -- Uso: docker exec -i supabase_db_zatti-hub-acessos psql -U postgres -d postgres < scripts/garante/fixture-local.sql
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -33,8 +34,11 @@ insert into public.garante_itens (id, modelo_id, unidade_id, ordem, titulo, tipo
 on conflict (id) do nothing;
 insert into public.garante_publicacoes (id, modelo_id, unidade_id, responsavel_id, dias_semana, horario_limite, vigente_desde)
 values ('00000000-0000-0000-0000-0000000e2ed1', '00000000-0000-0000-0000-0000000e2eb1', 'uni-e2e-garante',
-  '00000000-0000-0000-0000-0000000e2ea1', array[0,1,2,3,4,5,6]::smallint[], '23:59', current_date - 1)
+  '00000000-0000-0000-0000-0000000e2ea1', array[0,1,2,3,4,5,6]::smallint[], '12:00', current_date - 1)
 on conflict (id) do nothing;
+insert into public.garante_regras_unidade (unidade_id, vigente_desde, antecedencia_min, atraso_max_min)
+values ('uni-e2e-garante', current_date - 1, 720, 1440)
+on conflict (unidade_id, vigente_desde) do nothing;
 
 -- Gestão da mesma organização (telas de modelos, quadro e equipe).
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,

@@ -56,6 +56,23 @@ describe.skipIf(!ativo)("Checklist Garante ponta a ponta local", () => {
     expect((await sb.rpc("garante_concluir", { p_execucao_id: execucaoId })).data).toBe(0);
     const { error: erroDepois } = await responder(ITEM_CHECK, { p_valor_bool: false });
     expect(erroDepois?.message).toContain("execucao_concluida");
+
+    // Fase 2a: a execução guardou a janela; operacional não lê a nota.
+    const { data: agendaDepois } = await sb.rpc("garante_agenda", { p_unidade_id: "uni-e2e-garante", p_data: hoje() });
+    const linha = (agendaDepois as { publicacao_id: string; abre_em: string; fecha_em: string }[]).find((l) => l.publicacao_id === PUBLICACAO)!;
+    expect(new Date(linha.fecha_em).getTime() - new Date(linha.abre_em).getTime()).toBe((720 + 1440) * 60_000);
+    const { error: erroNotaOperador } = await sb.rpc("garante_nota", { p_unidade_id: "uni-e2e-garante", p_de: hoje(), p_ate: hoje() });
+    expect(erroNotaOperador?.message).toContain("sem_permissao");
+
+    // Gestão lê a nota de hoje: o checklist concluído no prazo dá 100 em P e E.
+    const gestao = createClient(url, anon, { auth: { persistSession: false } });
+    expect((await gestao.auth.signInWithPassword({ email: "e2e.garante.gestao@teste.local", password: "senha-local-e2e" })).error).toBeNull();
+    const { data: nota, error: erroNota } = await gestao.rpc("garante_nota", { p_unidade_id: "uni-e2e-garante", p_de: hoje(), p_ate: hoje() });
+    expect(erroNota).toBeNull();
+    const unidade = (nota as { nivel: string; previstas: number; execucao: number; versao_formula: number }[]).find((l) => l.nivel === "unidade")!;
+    expect(unidade.previstas).toBe(1);
+    expect(Number(unidade.execucao)).toBe(100);
+    expect(unidade.versao_formula).toBe(1);
   });
 });
 
