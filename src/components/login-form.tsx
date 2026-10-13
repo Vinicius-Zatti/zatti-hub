@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
+import { conferirProvisoriaAction } from "@/app/primeiro-acesso/actions";
+import { PrimeiroAcessoForm } from "@/components/equipe/primeiro-acesso-form";
 import {
   CaptchaTurnstile,
   turnstileHabilitado,
@@ -15,6 +17,8 @@ export function LoginForm() {
   const [erro, setErro] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
+  // Senha que não entrou pode ser a provisória do WhatsApp (primeiro acesso).
+  const [primeiroAcesso, setPrimeiroAcesso] = useState(false);
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +33,14 @@ export function LoginForm() {
     });
 
     if (error) {
+      if (error.message === "Invalid login credentials") {
+        const conferida = await conferirProvisoriaAction(email.trim(), senha);
+        if (conferida.primeiroAcesso) {
+          setPrimeiroAcesso(true);
+          setEstado("idle");
+          return;
+        }
+      }
       setEstado("erro");
       setCaptchaReset((valor) => valor + 1);
       setErro(
@@ -43,6 +55,8 @@ export function LoginForm() {
     // enxerga o cookie de sessão novo na primeira renderização.
     window.location.replace(new URL("/", window.location.origin).toString());
   }
+
+  if (primeiroAcesso) return <PrimeiroAcessoForm emailInicial={email.trim()} provisoriaInicial={senha} />;
 
   return (
     <form onSubmit={entrar} className="flex flex-col gap-3">

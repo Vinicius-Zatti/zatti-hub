@@ -29,20 +29,3 @@ export function createAdminClient() {
     },
   });
 }
-
-/** Mesmo client, com tempo limite em toda chamada. Usado onde a senha da
- * conta muda no Auth (Equipe e primeiro acesso): com limite, uma escrita
- * atrasada não sobrevive à trava de 15 minutos do banco. */
-export function createAdminClientComTempoLimite(ms = 10_000) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY (ou NEXT_PUBLIC_SUPABASE_URL) não configurada neste ambiente."
-    );
-  }
-  return createSupabaseClient(url, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(ms) }) },
-  });
-}

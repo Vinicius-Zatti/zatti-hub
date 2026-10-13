@@ -1,0 +1,303 @@
+-- Equipe, item 4 da revisão final do Codex (12/10/2026): conta pendente não tem sessão.
+--
+-- Antes: a senha provisória era a senha do Auth; a pessoa entrava com ela e trocava por
+-- chamada HTTP ao Auth, que podia ficar indeterminada e cair depois de outra troca.
+-- Agora:
+--   * a conta nasce no Auth com uma senha sorteada que ninguém conhece; a provisória só
+--     existe como hash em senhas_temporarias. Reenvio troca só esse hash (nenhuma
+--     escrita no Auth);
+--   * enquanto existe pendência, o banco recusa criar sessão (login, recuperação, link
+--     mágico) e recusa trocar a senha no Auth. Sem sessão, não há requisição autenticada
+--     antiga que possa cair depois da troca;
+--   * o primeiro acesso é feito sem sessão: e-mail + provisória + senha nova, numa
+--     transação só (`concluir_primeiro_acesso`), que grava o hash bcrypt em auth.users,
+--     apaga a pendência e limpa sessões, recuperação (tokens e PKCE) e links de uso único;
+--   * 10 tentativas erradas da provisória travam a pendência até a gestão reenviar.
+-- Idempotente: pode rodar de novo sem efeito colateral.
+
+-- Pré-requisito: quem roda (dono das funções e gatilhos) precisa destes privilégios.
+-- Sem eles, para aqui sem mudar nada.
+do $$
+begin
+  if not (has_table_privilege('auth.users', 'UPDATE') and has_table_privilege('auth.users', 'TRIGGER')
+          and has_table_privilege('auth.sessions', 'DELETE') and has_table_privilege('auth.sessions', 'TRIGGER')
+          and has_table_privilege('auth.flow_state', 'DELETE') and has_table_privilege('auth.flow_state', 'TRIGGER')) then
+    raise exception 'Sem permissão em auth.users/auth.sessions/auth.flow_state para este usuário. Nada foi alterado.';
+  end if;
+end $$;
+
+-- Contas pendentes do desenho antigo (provisória era a senha do Auth, com sessão e
+-- recuperação possíveis): uma autenticação já carregada pelo Auth antes desta migration
+-- poderia atravessar a conclusão. Elas não são convertidas: se existir alguma, a
+-- migration para aqui sem mudar nada, e a decisão (apagar e recadastrar) é de Vinícius.
+-- Contas do desenho novo nascem com `zh_v2` e não contam (a migration pode rodar de novo).
+do $$
+declare
+  v_qtd integer;
+begin
+  select count(*) into v_qtd from auth.users u
+   where (exists (select 1 from public.senhas_temporarias t where t.user_id = u.id)
+      or u.raw_app_meta_data ->> 'zh_pendente' = 'true')
+     and coalesce(u.raw_app_meta_data ->> 'zh_v2', '') <> 'true';
+  if v_qtd > 0 then
+    raise exception 'Há % conta(s) da Equipe ainda pendente(s) do desenho antigo. Apague e recadastre antes. Nada foi alterado.', v_qtd;
+  end if;
+end $$;
+
+alter table public.senhas_temporarias
+  add column if not exists tentativas integer not null default 0;
+
+-- O desenho antigo (trava com prazo + escrita HTTP no Auth) sai inteiro.
+drop function if exists public.iniciar_primeiro_acesso(uuid, text);
+drop function if exists public.liberar_trava_senha(uuid, uuid);
+drop function if exists public.concluir_primeiro_acesso(uuid, uuid);
+update public.senhas_temporarias set trava_token = null, trava_ate = null
+ where trava_token is not null or trava_ate is not null;
+comment on column public.senhas_temporarias.trava_token is 'Sem uso desde 12/10/2026.';
+comment on column public.senhas_temporarias.trava_ate is 'Sem uso desde 12/10/2026.';
+
+-- Hash da provisória: o mesmo do servidor (sha256 de "<user_id>:<senha>", em hex).
+create or replace function public.equipe_hash_provisoria(p_user_id uuid, p_senha text)
+returns text language sql immutable set search_path = '' as $$
+  select encode(extensions.digest(p_user_id::text || ':' || btrim(coalesce(p_senha, '')), 'sha256'), 'hex');
+$$;
+revoke all on function public.equipe_hash_provisoria(uuid, text) from public, anon, authenticated;
+
+-- Conta pendente pelo e-mail (só o servidor usa).
+create or replace function public.equipe_pendente_por_email(p_email text)
+returns uuid language sql stable security definer set search_path = '' as $$
+  select u.id
+    from auth.users u
+    join public.senhas_temporarias t on t.user_id = u.id
+   where lower(u.email) = lower(btrim(coalesce(p_email, '')))
+   limit 1;
+$$;
+revoke all on function public.equipe_pendente_por_email(text) from public, anon, authenticated;
+
+-- ── Proteção no Auth enquanto a conta está pendente ─────────────────────
+-- Pendente = tem senha provisória guardada OU nasceu marcada no Auth (zh_pendente), o que
+-- cobre a conta desde o primeiro instante, antes de a pendência ir para o banco, e o
+-- cadastro que ficou pela metade. Vale para QUALQUER escritor, inclusive o próprio Auth:
+-- enquanto pendente, nenhuma sessão é criada e nenhum fluxo que leva a sessão ou a troca
+-- de senha começa (recuperação, link mágico, PKCE, reautenticação, troca de e-mail).
+-- Como nada começa durante a pendência, não existe operação em andamento que atravesse a
+-- conclusão. Só passa a escrita marcada na própria transação por `concluir_primeiro_acesso`.
+create or replace function public.equipe_conta_pendente(p_user_id uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select p_user_id is not null and (
+    exists (select 1 from public.senhas_temporarias t where t.user_id = p_user_id)
+    or exists (select 1 from auth.users u where u.id = p_user_id and u.raw_app_meta_data ->> 'zh_pendente' = 'true')
+  );
+$$;
+revoke all on function public.equipe_conta_pendente(uuid) from public, anon, authenticated;
+
+create or replace function public.equipe_bloquear_sessao_pendente()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if public.equipe_conta_pendente(new.user_id) then
+    raise exception 'conta_pendente_sem_sessao' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.equipe_bloquear_sessao_pendente() from public, anon, authenticated, service_role;
+
+create or replace function public.equipe_proteger_senha()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if current_setting('zatti.troca_senha_equipe', true) = new.id::text then
+    return new;
+  end if;
+  if not public.equipe_conta_pendente(old.id) then
+    return new;
+  end if;
+  -- Exclusão lógica do próprio Auth (deleteUser com soft delete) troca e-mail e senha: deixa passar.
+  if new.deleted_at is not null and old.deleted_at is null then
+    return new;
+  end if;
+  if new.encrypted_password is distinct from old.encrypted_password then
+    raise exception 'senha_pendente_primeiro_acesso' using errcode = '42501';
+  end if;
+  -- Nenhum fluxo de acesso começa durante a pendência (tokens só podem ser apagados).
+  if (coalesce(new.recovery_token, '') <> '' and new.recovery_token is distinct from old.recovery_token)
+     or (coalesce(new.confirmation_token, '') <> '' and new.confirmation_token is distinct from old.confirmation_token)
+     or (coalesce(new.reauthentication_token, '') <> '' and new.reauthentication_token is distinct from old.reauthentication_token)
+     or (coalesce(new.email_change_token_new, '') <> '' and new.email_change_token_new is distinct from old.email_change_token_new)
+     or (coalesce(new.email_change_token_current, '') <> '' and new.email_change_token_current is distinct from old.email_change_token_current)
+     or (new.email is distinct from old.email) then
+    raise exception 'conta_pendente_sem_acesso' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.equipe_proteger_senha() from public, anon, authenticated, service_role;
+
+create or replace function public.equipe_bloquear_fluxo_pendente()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if public.equipe_conta_pendente(new.user_id) then
+    raise exception 'conta_pendente_sem_acesso' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.equipe_bloquear_fluxo_pendente() from public, anon, authenticated, service_role;
+
+drop trigger if exists equipe_bloquear_sessao_pendente on auth.sessions;
+create trigger equipe_bloquear_sessao_pendente
+  before insert on auth.sessions
+  for each row execute function public.equipe_bloquear_sessao_pendente();
+
+drop trigger if exists equipe_proteger_senha on auth.users;
+create trigger equipe_proteger_senha
+  before update on auth.users
+  for each row execute function public.equipe_proteger_senha();
+
+drop trigger if exists equipe_bloquear_fluxo_pendente on auth.flow_state;
+create trigger equipe_bloquear_fluxo_pendente
+  before insert or update on auth.flow_state
+  for each row execute function public.equipe_bloquear_fluxo_pendente();
+
+do $$
+begin
+  if to_regclass('auth.one_time_tokens') is not null then
+    execute 'drop trigger if exists equipe_bloquear_fluxo_pendente on auth.one_time_tokens';
+    execute 'create trigger equipe_bloquear_fluxo_pendente before insert or update on auth.one_time_tokens '
+         || 'for each row execute function public.equipe_bloquear_fluxo_pendente()';
+  end if;
+end $$;
+
+-- Limpa no Auth tudo o que dá acesso ou troca a senha: sessões (refresh tokens caem em
+-- cascata), recuperação e reautenticação pendentes, estado PKCE e links de uso único.
+create or replace function public.equipe_limpar_acessos_auth(p_user_id uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  update auth.users
+     set recovery_token = '', recovery_sent_at = null, reauthentication_token = '',
+         confirmation_token = '', email_change_token_new = '', email_change_token_current = ''
+   where id = p_user_id;
+  delete from auth.sessions where user_id = p_user_id;
+  delete from auth.flow_state where user_id = p_user_id;
+  if to_regclass('auth.one_time_tokens') is not null then
+    execute 'delete from auth.one_time_tokens where user_id = $1' using p_user_id;
+  end if;
+end;
+$$;
+revoke all on function public.equipe_limpar_acessos_auth(uuid) from public, anon, authenticated, service_role;
+
+-- ── Conferir a provisória (tela de login) ───────────────────────────────
+-- true = e-mail de conta pendente com a provisória vigente certa. Erro conta tentativa;
+-- com 10 erros a pendência trava até a gestão reenviar. Mesma resposta para e-mail
+-- inexistente, para não revelar quem tem conta.
+create or replace function public.equipe_conferir_provisoria(p_email text, p_provisoria text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  v_user uuid := public.equipe_pendente_por_email(p_email);
+  v_linha record;
+begin
+  if v_user is null then return false; end if;
+  select * into v_linha from public.senhas_temporarias where user_id = v_user for update;
+  if v_linha.tentativas >= 10 or v_linha.expira_em <= now() then return false; end if;
+  if v_linha.hash <> public.equipe_hash_provisoria(v_user, p_provisoria) then
+    update public.senhas_temporarias set tentativas = tentativas + 1 where user_id = v_user;
+    return false;
+  end if;
+  return true;
+end;
+$$;
+
+-- ── Primeiro acesso, sem sessão, numa transação só ──────────────────────
+-- Devolve 'ok', 'provisoria_invalida' (errada, vencida, travada ou conta sem pendência)
+-- ou levanta 'senha_invalida'. Com 'ok': senha nova no Auth (bcrypt), pendência apagada,
+-- acessos antigos limpos, corte de sessões e vínculos 'convidado' válidos ativados.
+create or replace function public.concluir_primeiro_acesso(p_email text, p_provisoria text, p_senha_nova text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid;
+  v_linha record;
+begin
+  -- bcrypt lê só 72 bytes: senha maior é recusada, nunca cortada em silêncio.
+  if p_senha_nova is null or length(p_senha_nova) < 12 or octet_length(p_senha_nova) > 72 then
+    raise exception 'senha_invalida' using errcode = '22023';
+  end if;
+  v_user := public.equipe_pendente_por_email(p_email);
+  if v_user is null then return 'provisoria_invalida'; end if;
+
+  select * into v_linha from public.senhas_temporarias where user_id = v_user for update;
+  if not found or v_linha.tentativas >= 10 or v_linha.expira_em <= now() then
+    return 'provisoria_invalida';
+  end if;
+  if v_linha.hash <> public.equipe_hash_provisoria(v_user, p_provisoria) then
+    update public.senhas_temporarias set tentativas = tentativas + 1 where user_id = v_user;
+    return 'provisoria_invalida';
+  end if;
+  if btrim(p_senha_nova) = btrim(p_provisoria) then
+    raise exception 'senha_invalida' using errcode = '22023';
+  end if;
+
+  perform set_config('zatti.troca_senha_equipe', v_user::text, true);
+  update auth.users
+     set encrypted_password = extensions.crypt(p_senha_nova, extensions.gen_salt('bf', 10)),
+         raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('zh_pendente', false),
+         updated_at = now()
+   where id = v_user;
+  perform set_config('zatti.troca_senha_equipe', '', true);
+  perform public.equipe_limpar_acessos_auth(v_user);
+
+  delete from public.senhas_temporarias where user_id = v_user;
+
+  insert into public.perfis (id, sessoes_validas_desde)
+  values (v_user, now())
+  on conflict (id) do update set sessoes_validas_desde = excluded.sessoes_validas_desde;
+
+  update public.vinculos v
+     set status = 'ativo'
+    from public.organizacoes o
+   where v.user_id = v_user
+     and v.status = 'convidado'
+     and v.role <> 'master'
+     and o.id = v.organizacao_id
+     and o.ativo = true
+     and (
+       v.unidade_id is null
+       or exists (
+         select 1 from public.unidades u
+         where u.id = v.unidade_id and u.organizacao_id = v.organizacao_id and u.ativo = true
+       )
+     );
+  return 'ok';
+end;
+$$;
+
+-- ── Reenvio: só o hash da provisória (nenhuma escrita no Auth) ─────────
+-- Só pelo vínculo que criou a conta, no máximo um a cada 2 minutos. Zera as tentativas.
+-- A versão antiga devolvia uuid (token da trava): troca de tipo exige recriar.
+drop function if exists public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz);
+create function public.rotacionar_senha_temporaria(
+  p_user_id uuid, p_vinculo_id uuid, p_hash text, p_expira_em timestamptz
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.senhas_temporarias
+     set hash = p_hash, expira_em = p_expira_em, versao = versao + 1, enviada_em = now(), tentativas = 0
+   where user_id = p_user_id
+     and vinculo_id = p_vinculo_id
+     and enviada_em < now() - interval '2 minutes';
+  return found;
+end;
+$$;
+
+revoke all on function public.equipe_conferir_provisoria(text, text) from public, anon, authenticated;
+revoke all on function public.concluir_primeiro_acesso(text, text, text) from public, anon, authenticated;
+revoke all on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.equipe_conferir_provisoria(text, text) to service_role;
+grant execute on function public.concluir_primeiro_acesso(text, text, text) to service_role;
+grant execute on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) to service_role;

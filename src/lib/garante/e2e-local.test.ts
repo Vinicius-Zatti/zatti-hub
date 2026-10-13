@@ -59,16 +59,16 @@ describe.skipIf(!ativo)("Checklist Garante ponta a ponta local", () => {
   });
 });
 
-describe.skipIf(!ativo)("Equipe ponta a ponta local (primeiro acesso)", () => {
-  it("conta pendente não vê nada; depois da troca a sessão antiga cai e a nova entra", async () => {
+describe.skipIf(!ativo)("Equipe ponta a ponta local (primeiro acesso sem sessão)", () => {
+  it("conta pendente não entra nem troca a senha por fora; o primeiro acesso sem sessão libera", async () => {
     const admin = createClient(url, service, { auth: { persistSession: false } });
     const email = `e2e.equipe.${Date.now()}@teste.local`;
     const provisoria = "abcDEF234xyz";
     const { data: criado, error: erroCriar } = await admin.auth.admin.createUser({
       email,
-      password: provisoria,
+      password: randomUUID() + randomUUID(),
       email_confirm: true,
-      app_metadata: { zh_pendente: true },
+      app_metadata: { zh_pendente: true, zh_v2: true },
     });
     expect(erroCriar).toBeNull();
     const userId = criado.user!.id;
@@ -79,32 +79,36 @@ describe.skipIf(!ativo)("Equipe ponta a ponta local (primeiro acesso)", () => {
       .select("id")
       .single();
     const hash = createHash("sha256").update(`${userId}:${provisoria}`).digest("hex");
-    await admin.from("senhas_temporarias").insert({
-      user_id: userId,
-      vinculo_id: vinculo!.id,
-      hash,
-      expira_em: new Date(Date.now() + 7 * 86400000).toISOString(),
-    });
+    expect(
+      (await admin.from("senhas_temporarias").insert({
+        user_id: userId,
+        vinculo_id: vinculo!.id,
+        hash,
+        expira_em: new Date(Date.now() + 7 * 86400000).toISOString(),
+      })).error,
+    ).toBeNull();
 
-    const antiga = createClient(url, anon, { auth: { persistSession: false } });
-    expect((await antiga.auth.signInWithPassword({ email, password: provisoria })).error).toBeNull();
-    expect((await antiga.from("unidades").select("id").eq("id", "uni-e2e-garante")).data).toEqual([]);
+    // Pendente: a provisória não é senha do Auth, e nenhum caminho cria sessão.
+    const anonimo = createClient(url, anon, { auth: { persistSession: false } });
+    expect((await anonimo.auth.signInWithPassword({ email, password: provisoria })).error).not.toBeNull();
+    // Nenhum fluxo de acesso começa: link mágico e recuperação são recusados pelo banco.
+    expect((await admin.auth.admin.generateLink({ type: "magiclink", email })).error).not.toBeNull();
+    expect((await admin.auth.admin.generateLink({ type: "recovery", email })).error).not.toBeNull();
+    // Nem o Auth troca a senha por fora do primeiro acesso.
+    expect((await admin.auth.admin.updateUserById(userId, { password: "por-fora-da-equipe-123" })).error).not.toBeNull();
 
-    const { data: trava } = await admin.rpc("iniciar_primeiro_acesso", { p_user_id: userId, p_hash: hash });
-    expect(trava).toBeTruthy();
+    // Login: a senha digitada era a provisória -> primeiro acesso sem sessão.
+    expect((await admin.rpc("equipe_conferir_provisoria", { p_email: email, p_provisoria: provisoria })).data).toBe(true);
     const nova = "senha-nova-da-pessoa-123";
-    expect((await admin.auth.admin.updateUserById(userId, { password: nova, app_metadata: { zh_pendente: false } })).error).toBeNull();
-    expect((await admin.rpc("concluir_primeiro_acesso", { p_user_id: userId, p_token: trava })).data).toBe(true);
+    expect((await admin.rpc("concluir_primeiro_acesso", { p_email: email, p_provisoria: provisoria, p_senha_nova: nova })).data).toBe("ok");
 
-    // Sessão aberta antes da troca: o banco recusa, mesmo com token ainda válido.
-    expect((await antiga.from("unidades").select("id").eq("id", "uni-e2e-garante")).data).toEqual([]);
-    expect((await antiga.rpc("sessao_vigente")).data).toBe(false);
-
-    await new Promise((r) => setTimeout(r, 1100));
     const atual = createClient(url, anon, { auth: { persistSession: false } });
     expect((await atual.auth.signInWithPassword({ email, password: nova })).error).toBeNull();
     expect((await atual.from("unidades").select("id").eq("id", "uni-e2e-garante")).data).toEqual([{ id: "uni-e2e-garante" }]);
     expect((await atual.rpc("sessao_vigente")).data).toBe(true);
+    expect((await anonimo.auth.signInWithPassword({ email, password: provisoria })).error).not.toBeNull();
+    // Troca normal de senha, com sessão nova, continua funcionando.
+    expect((await atual.auth.updateUser({ password: "outra-senha-legitima-1" })).error).toBeNull();
 
     await admin.auth.admin.deleteUser(userId);
   });

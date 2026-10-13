@@ -4,9 +4,9 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
-/** Hash da senha temporária guardado em `senhas_temporarias` (sha256 com o
- * id da pessoa). Serve só para recusar "senha nova igual à provisória"; a
- * senha de verdade quem guarda é o Auth. */
+/** Hash da senha provisória guardado em `senhas_temporarias` (sha256 de
+ * "<id>:<senha>", igual a `equipe_hash_provisoria` no banco). A provisória só
+ * existe assim: a senha do Auth da conta pendente é sorteada. */
 export function hashSenhaTemporaria(userId: string, senha: string): string {
   return createHash("sha256").update(`${userId}:${senha}`).digest("hex");
 }
@@ -26,14 +26,6 @@ export async function buscarUsuarioPorEmail(admin: Admin, email: string) {
     if (data.users.length < 1000) return null;
   }
   throw new Error("Limite de consulta de contas atingido. Avise o suporte da Zatti.");
-}
-
-/** Erro do Auth com resposta clara de recusa (4xx): a senha certamente não
- * mudou e a trava pode ser liberada. Rede, tempo esgotado ou 5xx ficam
- * indeterminados: a trava espera vencer (15 min), para uma escrita atrasada
- * nunca cruzar com a próxima operação. */
-export function recusaDefinitivaDoAuth(erro: { status?: number } | null): boolean {
-  return Boolean(erro && typeof erro.status === "number" && erro.status >= 400 && erro.status < 500);
 }
 
 type ContaAuth = { id: string; app_metadata?: Record<string, unknown> | null };
