@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(65);
+select plan(67);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -251,6 +251,12 @@ insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario
   ('00000000-0000-0000-0000-0000000a6105', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '23:59:59', public.garante_hoje()),
   -- P4 (outro modelo): 00:00 desde anteontem, para encerrar a programação.
   ('00000000-0000-0000-0000-0000000a6104', '00000000-0000-0000-0000-0000000a3102', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '00:00', public.garante_hoje() - 2);
+-- P6: 23:59:59 desde hoje (janela de hoje aberta), com o checklist de AMANHÃ já iniciado.
+insert into garante_publicacoes (id, modelo_id, unidade_id, dias_semana, horario_limite, vigente_desde) values
+  ('00000000-0000-0000-0000-0000000a6106', '00000000-0000-0000-0000-0000000a3101', 'org-n-a-par', array[0,1,2,3,4,5,6]::smallint[], '23:59:59', public.garante_hoje());
+insert into garante_execucoes (publicacao_id, unidade_id, data, prazo, snapshot, modelo_nome) values
+  ('00000000-0000-0000-0000-0000000a6106', 'org-n-a-par', public.garante_hoje() + 1,
+   ((public.garante_hoje() + 1) + time '23:59:59') at time zone 'America/Sao_Paulo', '[]'::jsonb, 'Fechamento');
 create or replace function pg_temp.nota_par()
 returns text language sql as $$
   select string_agg(n::text, ';' order by n.nivel, n.chave)
@@ -271,6 +277,10 @@ select is((select vigente_ate from garante_publicacoes where id = '00000000-0000
   'janela de hoje ainda aberta e sem início: termina ontem, como antes');
 select is((select count(*)::int from public.garante_agenda('org-n-a-par', public.garante_hoje())
             where publicacao_id = '00000000-0000-0000-0000-0000000a6103'), 0, 'e some da agenda de hoje (para a frente nada muda)');
+select is((select ativo::text || ' ' || vigente_ate::text from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6106'),
+  'true ' || (public.garante_hoje() + 1)::text, 'checklist de amanhã já iniciado: a programação termina amanhã, sem erro');
+select is((select count(*)::int from garante_execucoes where publicacao_id = '00000000-0000-0000-0000-0000000a6106'), 1,
+  'a execução de amanhã continua');
 select is((select ativo from garante_publicacoes where id = '00000000-0000-0000-0000-0000000a6105'), false,
   'programação de hoje sem nada fechado deixa de existir, como antes');
 select lives_ok($$ select public.garante_encerrar_publicacao('00000000-0000-0000-0000-0000000a6104') $$, 'gestão encerra a programação');

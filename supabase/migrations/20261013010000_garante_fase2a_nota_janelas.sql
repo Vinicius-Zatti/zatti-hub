@@ -633,6 +633,8 @@ grant execute on function public.garante_nota(text, date, date) to authenticated
 -- também fica (encerrada hoje) em vez de deixar de existir. Para a frente nada
 -- muda: amanhã em diante some como antes. garante_encerrar_publicacao já encerra
 -- em hoje, então não perde ocorrência fechada e fica como está.
+-- Execução já iniciada de amanhã (antecedência cruzando a meia-noite) também fica:
+-- a programação nunca termina antes da última execução que ela tem.
 create or replace function public.garante_parar_modelo(p_modelo_id uuid)
 returns void
 language plpgsql
@@ -658,13 +660,15 @@ begin
                            where now() > j.fecha_em));
 
   update public.garante_publicacoes p
-     set vigente_ate = case
-           when exists (select 1 from public.garante_execucoes e where e.publicacao_id = p.id and e.data = v_hoje)
-             or exists (select 1 from public.garante_janela(p.unidade_id, v_hoje, p.horario_limite) j
-                         where now() > j.fecha_em)
-             then v_hoje
-           else v_hoje - 1
-         end
+     set vigente_ate = greatest(
+           case
+             when exists (select 1 from public.garante_execucoes e where e.publicacao_id = p.id and e.data = v_hoje)
+               or exists (select 1 from public.garante_janela(p.unidade_id, v_hoje, p.horario_limite) j
+                           where now() > j.fecha_em)
+               then v_hoje
+             else v_hoje - 1
+           end,
+           (select max(e.data) from public.garante_execucoes e where e.publicacao_id = p.id))
    where p.modelo_id = p_modelo_id and p.ativo
      and (p.vigente_ate is null or p.vigente_ate >= v_hoje);
 
