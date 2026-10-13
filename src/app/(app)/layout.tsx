@@ -235,6 +235,7 @@ export default async function AppLayout({
                 label: "Gestão",
                 items: [
                   { label: "Quadro do dia", href: "/garante/quadro" },
+                  { label: "Nota", href: "/garante/nota" },
                   { label: "Modelos e publicação", href: "/garante/modelos" },
                 ],
               },

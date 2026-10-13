@@ -3,7 +3,8 @@ import type { AcessoAtual } from "@/lib/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { TipoItemGarante } from "@/lib/garante/biblioteca";
-import type { SituacaoAgenda } from "@/lib/garante/regras";
+import { REGRA_PADRAO, type SituacaoAgenda } from "@/lib/garante/regras";
+import { normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta } from "@/lib/garante/nota";
 
 export type LinhaAgenda = {
   publicacaoId: string;
@@ -19,6 +20,9 @@ export type LinhaAgenda = {
   respondidos: number;
   foraDaMeta: number;
   concluidaEm: string | null;
+  /** Janela (regra da unidade vigente na data, ou a gravada ao iniciar). */
+  abreEm: string;
+  fechaEm: string;
   ehMinha: boolean;
 };
 
@@ -41,6 +45,8 @@ export async function carregarAgenda(acesso: AcessoAtual, data: string): Promise
     respondidos: number;
     fora_da_meta: number;
     concluida_em: string | null;
+    abre_em: string;
+    fecha_em: string;
   }[];
 
   const responsaveis = [...new Set(brutas.map((l) => l.responsavel_id).filter(Boolean))] as string[];
@@ -68,6 +74,8 @@ export async function carregarAgenda(acesso: AcessoAtual, data: string): Promise
       respondidos: l.respondidos,
       foraDaMeta: l.fora_da_meta,
       concluidaEm: l.concluida_em,
+      abreEm: l.abre_em,
+      fechaEm: l.fecha_em,
       ehMinha: !l.responsavel_id || l.responsavel_id === acesso.userId,
     }))
     .filter((l) => gestao || l.ehMinha);
@@ -105,6 +113,8 @@ export type ExecucaoCompleta = {
   modeloNome: string;
   data: string;
   prazo: string;
+  /** Até quando dá para responder, fotografar e concluir (gravado ao iniciar). */
+  fechaEm: string;
   situacao: "em_andamento" | "concluida";
   unidadeId: string;
   /** Responsável da programação (null = qualquer pessoa da unidade). */
@@ -121,7 +131,7 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
   const supabase = await createClient();
   const { data: exec } = await supabase
     .from("garante_execucoes")
-    .select("id, publicacao_id, modelo_nome, data, prazo, situacao, unidade_id, snapshot, concluida_em, concluida_por")
+    .select("id, publicacao_id, modelo_nome, data, prazo, fecha_em, situacao, unidade_id, snapshot, concluida_em, concluida_por")
     .eq("id", id)
     .maybeSingle();
   if (!exec) return null;
@@ -164,6 +174,7 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
     modeloNome: exec.modelo_nome as string,
     data: exec.data as string,
     prazo: exec.prazo as string,
+    fechaEm: exec.fecha_em as string,
     situacao: exec.situacao as "em_andamento" | "concluida",
     unidadeId: exec.unidade_id as string,
     responsavelId: (pub?.responsavel_id as string | null) ?? null,
@@ -308,5 +319,86 @@ export async function carregarModelo(acesso: AcessoAtual, id: string) {
       })) as PublicacaoModelo[],
     setores,
     pessoas,
+  };
+}
+
+export type LinhaNotaTela = LinhaNota & { nome: string };
+
+/** Nota P-E-Q do período (RPC garante_nota, que confere a gestão da unidade
+ * dentro do banco). Nomes de pessoa e setor resolvidos aqui. */
+export async function carregarNota(
+  acesso: AcessoAtual,
+  de: string,
+  ate: string,
+): Promise<{ unidade: LinhaNotaTela | null; pessoas: LinhaNotaTela[]; setores: LinhaNotaTela[] }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("garante_nota", { p_unidade_id: acesso.unidadeId, p_de: de, p_ate: ate });
+  if (error) throw new Error("Não foi possível calcular a nota.");
+  const linhas = ((data ?? []) as LinhaNotaBruta[]).map(normalizarLinhaNota);
+
+  const pessoasIds = linhas.filter((l) => l.nivel === "pessoa" && l.chave).map((l) => l.chave as string);
+  const setoresIds = linhas.filter((l) => l.nivel === "setor" && l.chave).map((l) => l.chave as string);
+  const [{ data: perfis }, { data: setoresData }] = await Promise.all([
+    pessoasIds.length ? supabase.from("perfis").select("id, nome").in("id", pessoasIds) : Promise.resolve({ data: [] }),
+    setoresIds.length ? supabase.from("setores").select("id, nome").in("id", setoresIds) : Promise.resolve({ data: [] }),
+  ]);
+  const nomePessoa = new Map(((perfis ?? []) as { id: string; nome: string | null }[]).map((p) => [p.id, p.nome]));
+  const nomeSetor = new Map(((setoresData ?? []) as { id: string; nome: string }[]).map((x) => [x.id, x.nome]));
+
+  const comNome = (l: LinhaNota): LinhaNotaTela => ({
+    ...l,
+    nome:
+      l.nivel === "unidade"
+        ? acesso.unidadeNome
+        : l.nivel === "pessoa"
+          ? l.chave
+            ? nomePessoa.get(l.chave) ?? "Pessoa sem nome"
+            : "Qualquer pessoa da unidade"
+          : l.chave
+            ? nomeSetor.get(l.chave) ?? "Setor"
+            : "Sem setor",
+  });
+  return {
+    unidade: linhas.find((l) => l.nivel === "unidade") ? comNome(linhas.find((l) => l.nivel === "unidade") as LinhaNota) : null,
+    pessoas: linhas.filter((l) => l.nivel === "pessoa").map(comNome),
+    setores: linhas.filter((l) => l.nivel === "setor").map(comNome),
+  };
+}
+
+export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number };
+
+/** Regra que vale hoje, a próxima já agendada e os dias sem operação de hoje
+ * em diante (leitura pelo RLS: quem acessa a unidade). Sem regra cadastrada,
+ * vale o padrão (120 min antes, 60 min de atraso). */
+export async function carregarRegras(acesso: AcessoAtual, hoje: string) {
+  const supabase = await createClient();
+  const [{ data: regras }, { data: dias }] = await Promise.all([
+    supabase
+      .from("garante_regras_unidade")
+      .select("vigente_desde, antecedencia_min, atraso_max_min")
+      .eq("unidade_id", acesso.unidadeId)
+      .order("vigente_desde"),
+    supabase
+      .from("garante_dias_sem_operacao")
+      .select("data, motivo")
+      .eq("unidade_id", acesso.unidadeId)
+      .gte("data", hoje)
+      .order("data"),
+  ]);
+  const lista = ((regras ?? []) as { vigente_desde: string; antecedencia_min: number; atraso_max_min: number }[]).map((r) => ({
+    vigenteDesde: r.vigente_desde,
+    antecedenciaMin: r.antecedencia_min,
+    atrasoMaxMin: r.atraso_max_min,
+  }));
+  const vigente: RegraUnidade = [...lista].reverse().find((r) => r.vigenteDesde <= hoje) ?? {
+    vigenteDesde: null,
+    antecedenciaMin: REGRA_PADRAO.antecedenciaMin,
+    atrasoMaxMin: REGRA_PADRAO.atrasoMaxMin,
+  };
+  const agendadas: RegraUnidade[] = lista.filter((r) => r.vigenteDesde > hoje);
+  return {
+    vigente,
+    agendadas,
+    diasSemOperacao: ((dias ?? []) as { data: string; motivo: string }[]).map((d) => ({ data: d.data, motivo: d.motivo })),
   };
 }

@@ -5,7 +5,15 @@ import { redirect } from "next/navigation";
 import { requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { modeloDaBiblioteca } from "@/lib/garante/biblioteca";
-import { hojeOperacao, mensagemErroGarante, ontemOperacao, validarItem, validarPublicacao } from "@/lib/garante/regras";
+import {
+  hojeOperacao,
+  mensagemErroGarante,
+  ontemOperacao,
+  validarDiaSemOperacao,
+  validarItem,
+  validarPublicacao,
+  validarRegra,
+} from "@/lib/garante/regras";
 
 // Tudo pelo client do usuário: RLS e as RPCs garante_* conferem acesso, papel,
 // responsável e meta no banco. As barreiras aqui (requireGarante /
@@ -20,7 +28,9 @@ function revalidarGarante() {
 // ── Cumprir ──────────────────────────────────────────────────────────────
 
 /** Começa (ou continua) o checklist de hoje ou o de ontem (fechamento que
- * passou da meia-noite). A data sai daqui, nunca do navegador. */
+ * passou da meia-noite). A data sai daqui, nunca do navegador. O banco só
+ * deixa começar dentro da janela da unidade (prazo - antecedência até prazo
+ * + atraso) e fora de dia sem operação. */
 export async function iniciarChecklistAction(
   publicacaoId: string,
   dia: "hoje" | "ontem" = "hoje",
@@ -247,6 +257,53 @@ export async function encerrarPublicacaoAction(publicacaoId: string): Promise<Re
   const { error } = await supabase.rpc("garante_encerrar_publicacao", { p_publicacao_id: publicacaoId });
   if (error) return { erro: mensagemErroGarante(error.message) };
   await registrarAuditoria({ acesso, acao: "garante_encerrar_publicacao", entidade: "garante_publicacao", entidadeId: publicacaoId });
+  revalidarGarante();
+  return { ok: true };
+}
+
+// ── Regras da unidade (gestão) ───────────────────────────────────────────
+
+/** Muda a antecedência e a tolerância de atraso da unidade a partir de
+ * amanhã. Hoje e o passado continuam com a regra que valia (o banco recusa
+ * data de hoje ou anterior: `garante_definir_regra`). */
+export async function definirRegraAction(dados: { antecedenciaMin: number | null; atrasoMaxMin: number | null }): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  const r = validarRegra(dados);
+  if (!r.ok) return { erro: r.erro };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("garante_definir_regra", {
+    p_unidade_id: acesso.unidadeId,
+    p_antecedencia_min: r.antecedenciaMin,
+    p_atraso_max_min: r.atrasoMaxMin,
+  });
+  if (error) return { erro: mensagemErroGarante(error.message) };
+  await registrarAuditoria({ acesso, acao: "garante_definir_regra", entidade: "garante_regra_unidade", entidadeId: acesso.unidadeId, dadosNovos: { ...r, vigenteDesde: data } });
+  revalidarGarante();
+  return { ok: true };
+}
+
+/** Marca um dia futuro sem operação: os checklists daquele dia somem da lista
+ * e da nota. Recusado em data passada, hoje e data com checklist começado. */
+export async function marcarDiaSemOperacaoAction(dados: { data: string; motivo: string }): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  const r = validarDiaSemOperacao({ ...dados, hoje: hojeOperacao() });
+  if (!r.ok) return { erro: r.erro };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_marcar_dia_sem_operacao", { p_unidade_id: acesso.unidadeId, p_data: r.data, p_motivo: r.motivo });
+  if (error) return { erro: mensagemErroGarante(error.message) };
+  await registrarAuditoria({ acesso, acao: "garante_marcar_dia_sem_operacao", entidade: "garante_dia_sem_operacao", entidadeId: r.data, dadosNovos: { motivo: r.motivo } });
+  revalidarGarante();
+  return { ok: true };
+}
+
+/** Desfaz um dia sem operação futuro: os checklists daquele dia voltam. */
+export async function desmarcarDiaSemOperacaoAction(data: string): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { erro: "Data inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_desmarcar_dia_sem_operacao", { p_unidade_id: acesso.unidadeId, p_data: data });
+  if (error) return { erro: mensagemErroGarante(error.message) };
+  await registrarAuditoria({ acesso, acao: "garante_desmarcar_dia_sem_operacao", entidade: "garante_dia_sem_operacao", entidadeId: data });
   revalidarGarante();
   return { ok: true };
 }
