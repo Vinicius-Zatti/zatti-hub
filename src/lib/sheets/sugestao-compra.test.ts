@@ -186,3 +186,60 @@ describe("compatibilidade com contagem legada", () => {
     expect(resultado.itens[0].estoqueAtual).toBe(6);
   });
 });
+
+describe("varias contagens base (13/10/2026)", () => {
+  const D11 = "11/10/2026";
+  const D12 = "12/10/2026";
+  function itemEm(data: string, sku: string, quantidade: number, setor: { id: string; nome: string }) {
+    return { ...item(sku, quantidade, setor), data, id: `${sku}-${setor.id}-${data}` };
+  }
+
+  it("junta os setores que contaram em dias diferentes, sem somar o mesmo setor duas vezes", async () => {
+    // The House: bar fechou em 11/10 (cozinha pendente), cozinha fechou em
+    // 12/10 (bar pendente). Limão vive nos dois setores; arroz só na cozinha.
+    listProdutosMock.mockResolvedValue([produto("HORLTA001", 30), produto("MERARR001", 5, "MER")]);
+    listInventarioMock.mockResolvedValue([
+      itemEm(D11, "HORLTA001", 18, BAR),
+      itemEm(D11, "HORLTA001", 4, COZINHA), // cozinha contou de novo em 12/10: vale só a última
+      itemEm(D12, "HORLTA001", 5, COZINHA),
+      itemEm(D12, "MERARR001", 2, COZINHA),
+    ]);
+
+    const resultado = await gerarPedido(
+      {
+        datas: [D11, D12],
+        escopo: [...escopoLimao, { sku: "MERARR001", setorId: COZINHA.id, setorNome: COZINHA.nome }],
+        // Já consolidado pela página (`carregarEscopoEAndamentoBanco`).
+        andamento: andamento(true, true),
+      },
+      null,
+    );
+
+    expect(resultado.dataUsada).toBe(D12);
+    expect(resultado.datasUsadas).toEqual([D12, D11]);
+    expect(resultado.setoresPendentes).toEqual([]);
+
+    const limao = resultado.itens.find((i) => i.sku === "HORLTA001")!;
+    expect(limao.estoqueAtual).toBe(23);
+    expect(limao.quantidadeSugerida).toBe(7);
+    expect(limao.setoresQueNaoContaram).toEqual([]);
+    expect(limao.datasContagem).toEqual([D12, D11]);
+
+    const arroz = resultado.itens.find((i) => i.sku === "MERARR001")!;
+    expect(arroz.estoqueAtual).toBe(2);
+    expect(arroz.datasContagem).toEqual([D12]);
+  });
+
+  it("uma data so continua igual: so as linhas dela", async () => {
+    listProdutosMock.mockResolvedValue([produto("HORLTA001", 30)]);
+    listInventarioMock.mockResolvedValue([itemEm(D11, "HORLTA001", 18, BAR), itemEm(D12, "HORLTA001", 5, COZINHA)]);
+
+    const resultado = await gerarPedido({ datas: [D12], escopo: escopoLimao, andamento: andamento(false, true) }, null);
+
+    expect(resultado.datasUsadas).toEqual([D12]);
+    const limao = resultado.itens.find((i) => i.sku === "HORLTA001")!;
+    expect(limao.estoqueAtual).toBe(5);
+    expect(limao.setoresQueNaoContaram).toEqual(["Bar"]);
+    expect(resultado.setoresPendentes).toEqual(["Bar"]);
+  });
+});

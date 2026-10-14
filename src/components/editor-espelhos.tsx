@@ -6,6 +6,7 @@ import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CodigoSelect } from "@/components/codigo-select";
+import { SeletorContagens } from "@/components/seletor-contagens";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import {
   confirmarItemAction,
@@ -52,6 +53,7 @@ export function EditorEspelhos({
   itensPorFornecedor,
   fornecedores,
   dataUsada,
+  datasUsadas,
   datasDisponiveis,
   pedidoSalvoPorFornecedor,
   pedidoMinimoPorFornecedor,
@@ -60,7 +62,10 @@ export function EditorEspelhos({
 }: {
   itensPorFornecedor: Record<string, SugestaoCompra[]>;
   fornecedores: string[];
+  /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
   dataUsada: string;
+  /** Todas as contagens marcadas, mais recente primeiro (uma só é o padrão). */
+  datasUsadas: string[];
   datasDisponiveis: string[];
   pedidoSalvoPorFornecedor: Record<string, Pedido | null>;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
@@ -71,8 +76,9 @@ export function EditorEspelhos({
   const router = useRouter();
   const pathname = usePathname();
 
-  function trocarData(novaData: string) {
-    router.push(`${pathname}?data=${encodeURIComponent(novaData)}`);
+  // Mesma chave de Criar Cotação: várias contagens separadas por vírgula.
+  function trocarDatas(novasDatas: string[]) {
+    router.push(`${pathname}?data=${encodeURIComponent(novasDatas.join(","))}`);
   }
 
   // sku -> fornecedores que também cotam esse item - só existe disputa de
@@ -593,21 +599,15 @@ export function EditorEspelhos({
       </div>
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-          Contagem base
-          <select
-            value={dataUsada}
-            onChange={(e) => trocarData(e.target.value)}
-            className="rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none"
-          >
-            {datasDisponiveis.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SeletorContagens datasDisponiveis={datasDisponiveis} datasUsadas={datasUsadas} onChange={trocarDatas} />
       </div>
+
+      {datasUsadas.length > 1 && (
+        <p className="rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
+          Sugestão calculada juntando as contagens de {datasUsadas.join(" e ")} (cada setor com a
+          contagem mais recente dele). O pedido fica gravado na contagem base ({dataUsada}).
+        </p>
+      )}
 
       {fornecedores.length === 0 && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">

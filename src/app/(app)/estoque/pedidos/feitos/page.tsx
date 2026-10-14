@@ -31,7 +31,10 @@ export default async function PedidosFeitosPage({
   const datasDisponiveis = ordenarDatasContagemBase(
     Array.from(new Set(pedidosConfirmados.map((p) => p.dataContagemBase)))
   );
-  const dataUsada = params.data && datasDisponiveis.includes(params.data) ? params.data : (datasDisponiveis[0] ?? "");
+  // Criar Cotação pode propagar várias contagens ("12/10/2026,11/10/2026");
+  // aqui vale a base (a primeira), que é onde o pedido foi gravado.
+  const dataParam = params.data?.split(",")[0]?.trim();
+  const dataUsada = dataParam && datasDisponiveis.includes(dataParam) ? dataParam : (datasDisponiveis[0] ?? "");
   const pedidos = pedidosConfirmados.filter((p) => p.dataContagemBase === dataUsada);
 
   return (

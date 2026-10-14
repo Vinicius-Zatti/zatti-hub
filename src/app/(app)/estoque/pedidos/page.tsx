@@ -5,8 +5,9 @@ import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
-import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
+import { carregarEscopoEAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { escolherDatasContagem } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
 
@@ -23,29 +24,20 @@ export default async function PedidosPage({
   let datas;
   let fornecedores;
   try {
-    // A data precisa ser conhecida antes, pra buscar o snapshot e o andamento
-    // daquela contagem - é o que diz se a soma está completa ou parcial.
+    // As datas precisam ser conhecidas antes, pra buscar o snapshot e o
+    // andamento daquelas contagens - é o que diz se a soma está completa ou
+    // parcial. `data` aceita várias contagens separadas por vírgula (13/10):
+    // só entra o que existe na unidade, e a mais recente vira a contagem base.
     datas = await datasDisponiveis(acesso.spreadsheetId);
-    const dataEscolhida = params.data || datas[0];
+    const datasEscolhidas = escolherDatasContagem(params.data, datas);
 
-    const [escopo, andamentoPorData] =
-      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && dataEscolhida
-        ? await Promise.all([
-            listarEscopoBanco(acesso.unidadeId, dataEscolhida),
-            listarAndamentoBanco(acesso.unidadeId),
-          ])
-        : [[], new Map()];
+    const { escopo, andamento } =
+      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
+        ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
+        : { escopo: [], andamento: [] };
 
     [resultado, fornecedores] = await Promise.all([
-      gerarPedido(
-        {
-          data: dataEscolhida,
-          grupos,
-          escopo,
-          andamento: andamentoPorData.get(dataEscolhida ?? "") ?? [],
-        },
-        acesso.spreadsheetId,
-      ),
+      gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId),
       listFornecedores(acesso.spreadsheetId),
     ]);
   } catch {
@@ -79,6 +71,7 @@ export default async function PedidosPage({
     <PedidoCompras
       itens={resultado.itens}
       dataUsada={resultado.dataUsada}
+      datasUsadas={resultado.datasUsadas}
       datasDisponiveis={datas}
       gruposSelecionados={grupos}
       gruposContadosNoDia={resultado.gruposContadosNoDia}
