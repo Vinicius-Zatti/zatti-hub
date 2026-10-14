@@ -1,4 +1,5 @@
 import { Th } from "@/components/tabela";
+import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { AcoesVinculo } from "@/components/acoes-vinculo";
 import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
@@ -138,45 +139,47 @@ export default async function AcessosPage() {
         <p className="text-xs text-cinza-medio">
           Quem recebe no WhatsApp, pelo Vini, os avisos de checklist atrasado, não concluído e item crítico fora da meta. Só unidades com o Checklist Garante ligado; a gestão do cliente também troca em Garante &gt; Modelos &gt; Regras da unidade.
         </p>
-        <div className="mt-2 max-h-[40vh] overflow-auto rounded-lg border border-cinza-claro">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-branco">
-                <Th fixo>Unidade</Th>
-                <Th>Organização</Th>
-                <Th>Responsável</Th>
-                <Th align="right">Ações</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {avisosGarante.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-cinza-medio">
-                    Nenhuma unidade com o Checklist Garante ligado.
-                  </td>
+        <div className="mt-2">
+          <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Quem acompanha o Garante por unidade">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-azul-petroleo text-branco">
+                  <Th fixo>Unidade</Th>
+                  <Th>Organização</Th>
+                  <Th>Responsável</Th>
+                  <Th align="right">Ações</Th>
                 </tr>
-              )}
-              {avisosGarante.map((u) => (
-                <tr key={u.unidadeId} className="border-t border-cinza-claro odd:bg-off-white/50">
-                  <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-azul-noite">{u.unidadeNome}</td>
-                  <td className="px-3 py-2">{u.organizacaoNome}</td>
-                  <td className="px-3 py-2">
-                    <TextoResponsavelAvisos atual={u.atual} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end">
-                      <ResponsavelAvisos
-                        unidadeNome={u.unidadeNome}
-                        atual={u.atual}
-                        candidatos={u.candidatos}
-                        aoDefinir={definirResponsavelAvisosGaranteAction.bind(null, u.unidadeId)}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {avisosGarante.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-cinza-medio">
+                      Nenhuma unidade com o Checklist Garante ligado.
+                    </td>
+                  </tr>
+                )}
+                {avisosGarante.map((u) => (
+                  <tr key={u.unidadeId} className="border-t border-cinza-claro odd:bg-off-white/50">
+                    <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-azul-noite">{u.unidadeNome}</td>
+                    <td className="px-3 py-2">{u.organizacaoNome}</td>
+                    <td className="px-3 py-2">
+                      <TextoResponsavelAvisos atual={u.atual} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end">
+                        <ResponsavelAvisos
+                          unidadeNome={u.unidadeNome}
+                          atual={u.atual}
+                          candidatos={u.candidatos}
+                          aoDefinir={definirResponsavelAvisosGaranteAction.bind(null, u.unidadeId)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TabelaRolavel>
         </div>
       </section>
 
