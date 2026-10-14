@@ -15,16 +15,24 @@ import type { ItemInventario } from "@/lib/types";
 import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
 import { ordenarDatasContagemBase } from "@/lib/pedido";
 
-/** `?data=` aceita uma data ou várias separadas por vírgula. Só vale o que
- * existe na lista de contagens da unidade (entrada do usuário nunca é
- * confiada); vazio cai na mais recente. Devolve mais recente primeiro: a
- * primeira é a contagem base, que dá nome ao pedido gravado. */
-export function escolherDatasContagem(param: string | undefined, disponiveis: string[]): string[] {
-  const pedidas = (param ?? "")
-    .split(",")
-    .map((d) => d.trim())
-    .filter((d) => disponiveis.includes(d));
-  const unicas = Array.from(new Set(pedidas));
+/** Parâmetro de URL como o Next entrega: texto, lista (chave repetida, ex.
+ * `?data=11/10/2026&data=12/10/2026`) ou ausente. Vira a lista de valores
+ * separados por vírgula, sem vazios e sem repetir - ainda sem validar nada
+ * (`?data=`, `?grupos=`). */
+export function listaDoParametro(param: string | string[] | undefined): string[] {
+  const partes = (Array.isArray(param) ? param : [param ?? ""]).flatMap((valor) =>
+    typeof valor === "string" ? valor.split(",") : [],
+  );
+  return Array.from(new Set(partes.map((d) => d.trim()).filter(Boolean)));
+}
+
+/** `?data=` aceita uma data ou várias separadas por vírgula (ou a chave
+ * repetida). Só vale o que existe na lista de contagens da unidade (entrada
+ * do usuário nunca é confiada); vazio cai na mais recente. Devolve mais
+ * recente primeiro: a primeira é a contagem base, que dá nome ao pedido
+ * gravado. */
+export function escolherDatasContagem(param: string | string[] | undefined, disponiveis: string[]): string[] {
+  const unicas = listaDoParametro(param).filter((d) => disponiveis.includes(d));
   if (unicas.length === 0) return disponiveis.length > 0 ? [disponiveis[0]] : [];
   return ordenarDatasContagemBase(unicas);
 }

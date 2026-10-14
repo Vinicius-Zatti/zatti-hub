@@ -4,7 +4,6 @@ import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarFornecedores } from "@/lib/pedido";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
 import { carregarEscopoEAndamentoBanco } from "@/lib/banco/setores";
@@ -39,31 +38,29 @@ function produtoParaSugestao(produto: Produto, precoNaContagem: number | null): 
 export default async function EditorEspelhosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ data?: string }>;
+  searchParams: Promise<{ data?: string | string[] }>;
 }) {
   const acesso = await requireGestao();
   const params = await searchParams;
 
-  let resultado, datas, fornecedoresCadastro, produtos;
-  try {
-    datas = await datasDisponiveis(acesso.spreadsheetId);
-    // Mesma chave de Criar Cotação: `data` com várias contagens separadas
-    // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
-    const datasEscolhidas = escolherDatasContagem(params.data, datas);
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const datas = await datasDisponiveis(acesso.spreadsheetId);
+  // Mesma chave de Criar Cotação: `data` com várias contagens separadas
+  // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
+  const datasEscolhidas = escolherDatasContagem(params.data, datas);
 
-    const { escopo, andamento } =
-      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
-        ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
-        : { escopo: [], andamento: [] };
+  const { escopo, andamento } =
+    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
+      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
+      : { escopo: [], andamento: [] };
 
-    [resultado, fornecedoresCadastro, produtos] = await Promise.all([
-      gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId),
-      listFornecedores(acesso.spreadsheetId),
-      listProdutos(acesso.spreadsheetId),
-    ]);
-  } catch {
-    return <ConectarPlanilha erro="Nao foi possivel carregar as cotacoes." />;
-  }
+  const [resultado, fornecedoresCadastro, produtos] = await Promise.all([
+    gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId),
+    listFornecedores(acesso.spreadsheetId),
+    listProdutos(acesso.spreadsheetId),
+  ]);
 
   const nomesFornecedoresCadastro = fornecedoresCadastro
     .map((f) => f.nomeFantasia || f.razaoSocial)

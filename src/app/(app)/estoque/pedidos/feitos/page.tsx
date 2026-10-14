@@ -2,13 +2,14 @@ import { getAcessoAtual } from "@/lib/acesso";
 import { listPedidosFeitos } from "@/lib/pedidos";
 import { ordenarDatasContagemBase } from "@/lib/pedido";
 import { PedidosFeitos } from "@/components/pedidos-feitos";
+import { listaDoParametro } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
 
 export default async function PedidosFeitosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ data?: string }>;
+  searchParams: Promise<{ data?: string | string[] }>;
 }) {
   const acesso = await getAcessoAtual();
   const params = await searchParams;
@@ -31,9 +32,11 @@ export default async function PedidosFeitosPage({
   const datasDisponiveis = ordenarDatasContagemBase(
     Array.from(new Set(pedidosConfirmados.map((p) => p.dataContagemBase)))
   );
-  // Criar Cotação pode propagar várias contagens ("12/10/2026,11/10/2026");
-  // aqui vale a base (a primeira), que é onde o pedido foi gravado.
-  const dataParam = params.data?.split(",")[0]?.trim();
+  // Criar Cotação pode propagar várias contagens ("11/10/2026,12/10/2026",
+  // em qualquer ordem, ou a chave repetida); aqui vale a base - a MAIS
+  // RECENTE delas, mesma regra de `escolherDatasContagem` -, que é onde o
+  // pedido foi gravado.
+  const dataParam = ordenarDatasContagemBase(listaDoParametro(params.data))[0];
   const dataUsada = dataParam && datasDisponiveis.includes(dataParam) ? dataParam : (datasDisponiveis[0] ?? "");
   const pedidos = pedidosConfirmados.filter((p) => p.dataContagemBase === dataUsada);
 

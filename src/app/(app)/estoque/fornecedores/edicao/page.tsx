@@ -1,5 +1,4 @@
 import { garantirCodigos } from "@/lib/sheets/fornecedores";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { EdicaoFornecedoresGrid } from "@/components/edicao-fornecedores-grid";
 import { getAcessoAtual } from "@/lib/acesso";
 
@@ -7,12 +6,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EdicaoFornecedoresPage() {
   const acesso = await getAcessoAtual();
-  let fornecedores;
-  try {
-    fornecedores = await garantirCodigos(acesso.spreadsheetId);
-  } catch {
-    return <ConectarPlanilha erro="Nao foi possivel carregar os fornecedores." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const fornecedores = await garantirCodigos(acesso.spreadsheetId);
 
   return (
     <div className="flex flex-col gap-6">

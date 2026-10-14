@@ -19,7 +19,7 @@ function hojeBrasilIso(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 }
 
-export default async function AgendaDiaPage({ searchParams }: { searchParams: Promise<{ data?: string }> }) {
+export default async function AgendaDiaPage({ searchParams }: { searchParams: Promise<{ data?: string | string[] }> }) {
   const acesso = await requireAgenda();
   const params = await searchParams;
 
@@ -27,7 +27,8 @@ export default async function AgendaDiaPage({ searchParams }: { searchParams: Pr
   // mesma validação de calendário das Server Actions, não só o formato.
   // "2026-02-31" casa com a máscara e não existe. Data inválida não derruba a
   // página nem abre outro dia calado: volta pra hoje e a tela diz o porquê.
-  const dataPedida = params.data?.trim();
+  // Chave repetida (`?data=a&data=b`) chega como lista: vale a primeira.
+  const dataPedida = (Array.isArray(params.data) ? params.data[0] : params.data)?.trim();
   const dataValida = Boolean(dataPedida) && dataIsoValida(dataPedida as string);
   const data = dataValida ? (dataPedida as string) : hojeBrasilIso();
   const avisoData = dataPedida && !dataValida ? `"${dataPedida}" não é uma data válida. Abri o dia de hoje.` : null;
