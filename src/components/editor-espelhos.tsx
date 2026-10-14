@@ -6,7 +6,8 @@ import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CodigoSelect } from "@/components/codigo-select";
-import { SeletorContagens } from "@/components/seletor-contagens";
+import { AvisoVariasContagens, SeletorContagens } from "@/components/seletor-contagens";
+import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import {
   confirmarItemAction,
@@ -55,6 +56,7 @@ export function EditorEspelhos({
   dataUsada,
   datasUsadas,
   datasDisponiveis,
+  andamentoPorData,
   pedidoSalvoPorFornecedor,
   pedidoMinimoPorFornecedor,
   organizacaoNome,
@@ -67,6 +69,8 @@ export function EditorEspelhos({
   /** Todas as contagens marcadas, mais recente primeiro (uma só é o padrão). */
   datasUsadas: string[];
   datasDisponiveis: string[];
+  /** Setores de cada data, pra liberar só as contagens que se completam. */
+  andamentoPorData: Record<string, AndamentoSetor[]>;
   pedidoSalvoPorFornecedor: Record<string, Pedido | null>;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
   organizacaoNome: string;
@@ -599,15 +603,15 @@ export function EditorEspelhos({
       </div>
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">
-        <SeletorContagens datasDisponiveis={datasDisponiveis} datasUsadas={datasUsadas} onChange={trocarDatas} />
+        <SeletorContagens
+          datasDisponiveis={datasDisponiveis}
+          datasUsadas={datasUsadas}
+          andamentoPorData={andamentoPorData}
+          onChange={trocarDatas}
+        />
       </div>
 
-      {datasUsadas.length > 1 && (
-        <p className="rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
-          Sugestão calculada juntando as contagens de {datasUsadas.join(" e ")} (cada setor com a
-          contagem mais recente dele). O pedido fica gravado na contagem base ({dataUsada}).
-        </p>
-      )}
+      <AvisoVariasContagens datasUsadas={datasUsadas} />
 
       {fornecedores.length === 0 && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">

@@ -128,3 +128,75 @@ export function andamentoDeVariasDatas(
   }
   return Array.from(porSetor.values()).sort((a, b) => a.setorNome.localeCompare(b.setorNome));
 }
+
+/** Andamento por data como a tela recebe do servidor (dd/mm/aaaa -> setores). */
+export type AndamentoPorData = Map<string, AndamentoSetor[]> | Record<string, AndamentoSetor[]>;
+
+function comoMapa(andamento: AndamentoPorData): Map<string, AndamentoSetor[]> {
+  return andamento instanceof Map ? andamento : new Map(Object.entries(andamento));
+}
+
+function setoresPendentesDe(andamento: Map<string, AndamentoSetor[]>, datas: string[]): Set<string> {
+  return new Set(
+    andamentoDeVariasDatas(andamento, datas)
+      .filter((s) => s.situacao === "pendente")
+      .map((s) => s.setorId),
+  );
+}
+
+/** Uma data só complementa as já mantidas se elas ainda têm setor pendente
+ * e a data fechou pelo menos um desses setores. */
+function complementa(andamento: Map<string, AndamentoSetor[]>, mantidas: string[], data: string): boolean {
+  const pendentes = setoresPendentesDe(andamento, mantidas);
+  if (pendentes.size === 0) return false;
+  return (andamento.get(data) ?? []).some((s) => s.situacao === "concluido" && pendentes.has(s.setorId));
+}
+
+/** Juntar contagens só vale quando elas se completam (pedido de Vinícius,
+ * 13/10/2026): a mais recente é a base e cada data seguinte, da mais nova pra
+ * mais antiga, só fica se ainda há setor pendente e ela fechou pelo menos um
+ * deles. Contagem completa, ou sem setor (legada/planilha), vale sozinha.
+ * O servidor passa a lista da URL por aqui: data que não complementa some. */
+export function datasComplementares(datas: string[], andamentoPorData: AndamentoPorData): string[] {
+  const andamento = comoMapa(andamentoPorData);
+  const ordenadas = ordenarDatasContagemBase(Array.from(new Set(datas)));
+  if (ordenadas.length === 0) return [];
+  const mantidas = [ordenadas[0]];
+  for (const data of ordenadas.slice(1)) {
+    if (complementa(andamento, mantidas, data)) mantidas.push(data);
+  }
+  return mantidas;
+}
+
+function diaMes(data: string): string {
+  return data.slice(0, 5);
+}
+
+/** Por que a data não pode ser marcada junto com as já marcadas (texto curto
+ * pro filtro). Nulo = pode marcar. Sem nada marcado, qualquer data pode. */
+export function motivoBloqueioContagem(
+  marcadas: string[],
+  candidata: string,
+  andamentoPorData: AndamentoPorData,
+): string | null {
+  if (marcadas.length === 0 || marcadas.includes(candidata)) return null;
+  const andamento = comoMapa(andamentoPorData);
+  const juntas = [...marcadas, candidata];
+
+  const semSetor = juntas.find((d) => (andamento.get(d) ?? []).length === 0);
+  if (semSetor) return `contagem de ${diaMes(semSetor)} é sem setor e vale sozinha`;
+  // Contagem marcada que já está completa vale sozinha, mesmo que a outra
+  // data seja mais nova: não se junta nada a uma contagem completa.
+  if (setoresPendentesDe(andamento, marcadas).size === 0) {
+    return marcadas.length === 1
+      ? `contagem de ${diaMes(marcadas[0])} já está completa`
+      : "as contagens marcadas já estão completas";
+  }
+  if (!complementa(andamento, marcadas, candidata)) return "não completa nenhum setor pendente";
+  // Mesma conta do servidor: se juntar derrubaria uma data marcada (ex. a
+  // candidata é mais nova e já completa), não deixa marcar.
+  if (datasComplementares(juntas, andamento).length === juntas.length) return null;
+  return setoresPendentesDe(andamento, [candidata]).size === 0
+    ? `contagem de ${diaMes(candidata)} já está completa`
+    : "não completa nenhum setor pendente";
+}

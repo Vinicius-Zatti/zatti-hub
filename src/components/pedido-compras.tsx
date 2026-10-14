@@ -9,7 +9,8 @@ import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
 import { DicaCalculo } from "@/components/dica-calculo";
-import { DICA_VARIAS_CONTAGENS, SeletorContagens } from "@/components/seletor-contagens";
+import { AvisoVariasContagens, DICA_VARIAS_CONTAGENS, SeletorContagens } from "@/components/seletor-contagens";
+import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 
@@ -27,6 +28,7 @@ export function PedidoCompras({
   dataUsada,
   datasUsadas,
   datasDisponiveis,
+  andamentoPorData,
   gruposSelecionados,
   gruposContadosNoDia,
   organizacaoNome,
@@ -42,6 +44,8 @@ export function PedidoCompras({
   /** Todas as contagens marcadas, mais recente primeiro (uma só é o padrão). */
   datasUsadas: string[];
   datasDisponiveis: string[];
+  /** Setores de cada data, pra liberar só as contagens que se completam. */
+  andamentoPorData: Record<string, AndamentoSetor[]>;
   gruposSelecionados: string[];
   gruposContadosNoDia: string[];
   organizacaoNome: string;
@@ -225,6 +229,7 @@ export function PedidoCompras({
         <SeletorContagens
           datasDisponiveis={datasDisponiveis}
           datasUsadas={datasUsadas}
+          andamentoPorData={andamentoPorData}
           onChange={(novasDatas) => atualizarUrl(novasDatas, gruposSelecionados)}
         />
 
@@ -273,13 +278,7 @@ export function PedidoCompras({
         </div>
       </div>
 
-      {variasContagens && (
-        <p className="rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
-          Estoque atual junta as contagens de {listarDatas(datasUsadas)}: cada setor entra com a
-          contagem mais recente dele. A coluna Estoque atual mostra de qual data veio cada item. O
-          pedido fica gravado na contagem base ({dataUsada}).
-        </p>
-      )}
+      <AvisoVariasContagens datasUsadas={datasUsadas} />
 
       {gruposContadosNoDia.length > 0 && (
         <p className="rounded-md border border-cinza-claro bg-off-white px-3 py-2 text-xs text-cinza-medio">

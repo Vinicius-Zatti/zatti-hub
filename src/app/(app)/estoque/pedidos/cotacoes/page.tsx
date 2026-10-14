@@ -6,9 +6,9 @@ import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarFornecedores } from "@/lib/pedido";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
-import { carregarEscopoEAndamentoBanco } from "@/lib/banco/setores";
+import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
-import { escolherDatasContagem } from "@/lib/contagem/varias-datas";
+import { datasComplementares, escolherDatasContagem } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
 
@@ -49,11 +49,15 @@ export default async function EditorEspelhosPage({
   const datas = await datasDisponiveis(acesso.spreadsheetId);
   // Mesma chave de Criar Cotação: `data` com várias contagens separadas
   // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
-  const datasEscolhidas = escolherDatasContagem(params.data, datas);
+  // Datas extras da URL só ficam se complementam a base (setor pendente que
+  // elas fecharam); unidade sem contagem por setor fica com uma data só.
+  const porSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const andamentoPorData = porSetor ? await listarAndamentoBanco(acesso.unidadeId) : new Map();
+  const datasEscolhidas = datasComplementares(escolherDatasContagem(params.data, datas), andamentoPorData);
 
   const { escopo, andamento } =
-    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
-      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
+    porSetor && datasEscolhidas.length > 0
+      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
       : { escopo: [], andamento: [] };
 
   const [resultado, fornecedoresCadastro, produtos] = await Promise.all([
@@ -120,6 +124,7 @@ export default async function EditorEspelhosPage({
       dataUsada={resultado.dataUsada}
       datasUsadas={resultado.datasUsadas}
       datasDisponiveis={datas}
+      andamentoPorData={Object.fromEntries(andamentoPorData)}
       pedidoSalvoPorFornecedor={pedidoSalvoPorFornecedor}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}
       organizacaoNome={acesso.organizacaoNome}

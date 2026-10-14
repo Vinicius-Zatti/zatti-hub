@@ -4,9 +4,11 @@ import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
 import {
   andamentoDeVariasDatas,
   consolidarVariasDatas,
+  datasComplementares,
   escolherDatasContagem,
   escopoDeVariasDatas,
   listaDoParametro,
+  motivoBloqueioContagem,
 } from "./varias-datas";
 import { quantidadePorSku } from "./setor";
 
@@ -197,5 +199,58 @@ describe("andamentoDeVariasDatas", () => {
 
     const resultado = andamentoDeVariasDatas(porData, [D12, D11]);
     expect(resultado.find((s) => s.setorId === BAR.id)?.situacao).toBe("pendente");
+  });
+});
+
+describe("datasComplementares e motivoBloqueioContagem", () => {
+  const D10 = "10/10/2026";
+  // Como a The House está hoje: 12/10 fechou cozinha e falta o bar; 11/10
+  // fechou o bar; 05/10 fechou tudo; 10/10 é uma contagem sem setor.
+  const porData = new Map<string, AndamentoSetor[]>([
+    andamento(D12, { [BAR.id]: "pendente", [COZINHA.id]: "concluido" }),
+    andamento(D11, { [BAR.id]: "concluido", [COZINHA.id]: "pendente" }),
+    andamento(D05, { [BAR.id]: "concluido", [COZINHA.id]: "concluido" }),
+  ]);
+
+  it("12/10 incompleta junta com 11/10, que fecha o bar", () => {
+    expect(datasComplementares([D11, D12], porData)).toEqual([D12, D11]);
+    expect(motivoBloqueioContagem([D12], D11, porData)).toBeNull();
+  });
+
+  it("depois de completar, nenhuma outra data entra", () => {
+    expect(datasComplementares([D12, D11, D05], porData)).toEqual([D12, D11]);
+    expect(motivoBloqueioContagem([D12, D11], D05, porData)).toBe("as contagens marcadas já estão completas");
+  });
+
+  it("contagem completa vale sozinha", () => {
+    expect(motivoBloqueioContagem([D05], D11, porData)).toBe("contagem de 05/10 já está completa");
+    expect(motivoBloqueioContagem([D05], D12, porData)).toBe("contagem de 05/10 já está completa");
+  });
+
+  it("data mais nova completa não pode entrar e derrubar a marcada", () => {
+    const comNova = new Map(porData);
+    comNova.set("13/10/2026", andamento("13/10/2026", { [BAR.id]: "concluido", [COZINHA.id]: "concluido" })[1]);
+    expect(motivoBloqueioContagem([D11], "13/10/2026", comNova)).toBe("contagem de 13/10 já está completa");
+  });
+
+  it("data que não fecha nenhum setor pendente fica de fora", () => {
+    const outra = new Map(porData);
+    outra.set(D10, andamento(D10, { [BAR.id]: "pendente", [COZINHA.id]: "concluido" })[1]);
+    expect(datasComplementares([D12, D10], outra)).toEqual([D12]);
+    expect(motivoBloqueioContagem([D12], D10, outra)).toBe("não completa nenhum setor pendente");
+  });
+
+  it("contagem sem setor (legada ou planilha) vale sozinha", () => {
+    expect(datasComplementares([D12, D10], porData)).toEqual([D12]);
+    expect(datasComplementares([D10, D05], porData)).toEqual([D10]);
+    expect(motivoBloqueioContagem([D12], D10, porData)).toBe("contagem de 10/10 é sem setor e vale sozinha");
+    expect(datasComplementares([D12, D11], {})).toEqual([D12]);
+  });
+
+  it("aceita o andamento como objeto (vindo do servidor) e nada marcado libera tudo", () => {
+    const objeto = Object.fromEntries(porData);
+    expect(datasComplementares([D12, D11], objeto)).toEqual([D12, D11]);
+    expect(motivoBloqueioContagem([], D05, objeto)).toBeNull();
+    expect(datasComplementares([], objeto)).toEqual([]);
   });
 });

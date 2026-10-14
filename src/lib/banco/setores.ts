@@ -251,10 +251,12 @@ export async function listarEscopoBanco(
 export async function carregarEscopoEAndamentoBanco(
   unidadeId: string,
   datasBr: string[],
+  /** Andamento já lido (a tela lê antes pra validar as datas juntadas). */
+  andamentoLido?: Map<string, AndamentoSetor[]>,
 ): Promise<{ escopo: EscopoSetor[]; andamento: AndamentoSetor[] }> {
   const [escopos, andamentoPorData] = await Promise.all([
     Promise.all(datasBr.map((data) => listarEscopoBanco(unidadeId, data))),
-    listarAndamentoBanco(unidadeId),
+    andamentoLido ?? listarAndamentoBanco(unidadeId),
   ]);
   const escopoPorData = new Map(datasBr.map((data, i) => [data, escopos[i]]));
   return {
