@@ -248,7 +248,13 @@ export function PedidoCompras({
                 type="button"
                 onClick={() => alternarGrupo(g.codigo)}
                 disabled={!gruposContadosNoDia.includes(g.codigo)}
-                title={!gruposContadosNoDia.includes(g.codigo) ? "Não foi contado nessa data" : undefined}
+                title={
+                  !gruposContadosNoDia.includes(g.codigo)
+                    ? variasContagens
+                      ? "Não foi contado nessas contagens"
+                      : "Não foi contado nessa data"
+                    : undefined
+                }
                 className={`rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-30 ${
                   gruposSelecionados.includes(g.codigo)
                     ? "border-ambar bg-ambar/10 text-ambar"
