@@ -1,7 +1,6 @@
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listItensPendentes } from "@/lib/sheets/inventario";
 import { StatCard } from "@/components/stat-card";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { TabelaProdutos } from "@/components/tabela-produtos";
 import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { getAcessoAtual } from "@/lib/acesso";
@@ -11,12 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function ProdutosPage() {
   const acesso = await getAcessoAtual();
-  let produtos;
-  try {
-    produtos = await listProdutos(acesso.spreadsheetId);
-  } catch {
-    return <ConectarPlanilha erro="Nao foi possivel carregar os produtos." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const produtos = await listProdutos(acesso.spreadsheetId);
   const pendentes = await listItensPendentes(acesso.spreadsheetId);
 
   const ativos = produtos.filter((p) => p.ativo);

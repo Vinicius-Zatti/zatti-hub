@@ -1,51 +1,42 @@
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
 import { carregarEscopoEAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
-import { escolherDatasContagem } from "@/lib/contagem/varias-datas";
+import { escolherDatasContagem, listaDoParametro } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
 
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ data?: string; grupos?: string }>;
+  searchParams: Promise<{ data?: string | string[]; grupos?: string | string[] }>;
 }) {
   const acesso = await requireGestao();
   const params = await searchParams;
-  const grupos = params.grupos ? params.grupos.split(",").filter(Boolean) : [];
+  const grupos = listaDoParametro(params.grupos);
 
-  let resultado;
-  let datas;
-  let fornecedores;
-  try {
-    // As datas precisam ser conhecidas antes, pra buscar o snapshot e o
-    // andamento daquelas contagens - é o que diz se a soma está completa ou
-    // parcial. `data` aceita várias contagens separadas por vírgula (13/10):
-    // só entra o que existe na unidade, e a mais recente vira a contagem base.
-    datas = await datasDisponiveis(acesso.spreadsheetId);
-    const datasEscolhidas = escolherDatasContagem(params.data, datas);
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  // As datas precisam ser conhecidas antes, pra buscar o snapshot e o
+  // andamento daquelas contagens - é o que diz se a soma está completa ou
+  // parcial. `data` aceita várias contagens separadas por vírgula (13/10):
+  // só entra o que existe na unidade, e a mais recente vira a contagem base.
+  const datas = await datasDisponiveis(acesso.spreadsheetId);
+  const datasEscolhidas = escolherDatasContagem(params.data, datas);
 
-    const { escopo, andamento } =
-      CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
-        ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
-        : { escopo: [], andamento: [] };
+  const { escopo, andamento } =
+    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && datasEscolhidas.length > 0
+      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas)
+      : { escopo: [], andamento: [] };
 
-    [resultado, fornecedores] = await Promise.all([
-      gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId),
-      listFornecedores(acesso.spreadsheetId),
-    ]);
-  } catch {
-    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
-    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
-    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
-    return <ConectarPlanilha erro="Nao foi possivel carregar os dados do pedido." />;
-  }
+  const [resultado, fornecedores] = await Promise.all([
+    gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId),
+    listFornecedores(acesso.spreadsheetId),
+  ]);
 
   const pedidoMinimoPorFornecedor = Object.fromEntries(
     fornecedores

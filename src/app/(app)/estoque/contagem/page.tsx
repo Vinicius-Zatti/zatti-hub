@@ -1,5 +1,4 @@
 import { listProdutos } from "@/lib/sheets/produtos";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
 import { ContagemForm } from "@/components/contagem-form";
 import { getAcessoAtual } from "@/lib/acesso";
 import {
@@ -13,12 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function ContagemPage() {
   const acesso = await getAcessoAtual();
-  let produtos;
-  try {
-    produtos = await listProdutos(acesso.spreadsheetId);
-  } catch {
-    return <ConectarPlanilha erro="Nao foi possivel carregar os produtos." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const produtos = await listProdutos(acesso.spreadsheetId);
 
   // Unidade sem setor cadastrado (ou ainda na planilha) segue no fluxo antigo,
   // com escopo por grupo de produto. Vão TODOS os setores, inclusive os

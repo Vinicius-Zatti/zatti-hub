@@ -5,7 +5,7 @@ import { useUnidadeSuporte } from "@/components/contexto-suporte";
 import { MENSAGEM_ERRO_CARREGAMENTO } from "@/lib/erros";
 import { montarLinkSuporteWhatsApp } from "@/lib/suporte";
 
-/** Aviso de leitura que falhou - mesmo cartão de `ConectarPlanilha`, com o
+/** Aviso de leitura que falhou - cartão âmbar do app, com o
  * texto aprovado de erro do app. Nunca mostra dado parcial no lugar. O botão
  * de WhatsApp leva a mensagem pronta (unidade, tela, data/hora e
  * identificador do erro) - o usuário só clica e envia. */

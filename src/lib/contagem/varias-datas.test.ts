@@ -6,6 +6,7 @@ import {
   consolidarVariasDatas,
   escolherDatasContagem,
   escopoDeVariasDatas,
+  listaDoParametro,
 } from "./varias-datas";
 import { quantidadePorSku } from "./setor";
 
@@ -62,6 +63,21 @@ describe("escolherDatasContagem", () => {
   it("ignora data que nao existe na unidade (entrada do usuario nunca e confiada)", () => {
     expect(escolherDatasContagem(`${D11},31/12/2099,'; drop`, disponiveis)).toEqual([D11]);
     expect(escolherDatasContagem("31/12/2099", disponiveis)).toEqual([D12]);
+  });
+
+  it("aceita a chave repetida (?data=a&data=b chega como lista) sem quebrar", () => {
+    expect(escolherDatasContagem([D11, D12], disponiveis)).toEqual([D12, D11]);
+    expect(escolherDatasContagem([`${D05},${D11}`, D11], disponiveis)).toEqual([D11, D05]);
+    expect(escolherDatasContagem([], disponiveis)).toEqual([D12]);
+  });
+});
+
+describe("listaDoParametro", () => {
+  it("normaliza texto, lista e ausente numa lista sem vazios nem repeticao", () => {
+    expect(listaDoParametro(undefined)).toEqual([]);
+    expect(listaDoParametro("")).toEqual([]);
+    expect(listaDoParametro(" PRO , HOR,,PRO ")).toEqual(["PRO", "HOR"]);
+    expect(listaDoParametro(["PRO", "HOR,LIM", "PRO"])).toEqual(["PRO", "HOR", "LIM"]);
   });
 });
 

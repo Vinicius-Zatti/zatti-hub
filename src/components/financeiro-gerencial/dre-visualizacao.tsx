@@ -78,7 +78,7 @@ function QuadroResumo({
 }
 
 /** Aviso de pendência - mesmo visual de aviso âmbar já usado no app
- * (`calculadora-cmv.tsx`, `conectar-planilha.tsx`). */
+ * (`calculadora-cmv.tsx`, `erro-carregamento.tsx`). */
 function AvisoPendenciaDre({ titulo, texto }: { titulo: string; texto: string }) {
   return (
     <div role="status" className="rounded-lg border border-ambar bg-ambar/10 p-4 text-sm text-cinza">

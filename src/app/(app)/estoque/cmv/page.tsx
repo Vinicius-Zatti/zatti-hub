@@ -1,8 +1,6 @@
 import { requireGestao } from "@/lib/acesso";
 import { listInventario } from "@/lib/sheets/inventario";
 import { listPedidosFeitos } from "@/lib/pedidos";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { ErroCarregamento } from "@/components/erro-carregamento";
 import { CalculadoraCmv } from "@/components/calculadora-cmv";
 import { listarAndamentoBanco, listarModalidadesBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
@@ -12,15 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function CmvPage() {
   const acesso = await requireGestao();
 
-  let itensInventario;
-  try {
-    itensInventario = await listInventario(acesso.spreadsheetId);
-  } catch {
-    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
-    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
-    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
-    return <ConectarPlanilha erro="Nao foi possivel carregar os dados do estoque." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const itensInventario = await listInventario(acesso.spreadsheetId);
 
   const pedidos = await listPedidosFeitos(acesso.unidadeId);
   // Unidade na planilha não tem setor: mapa vazio mantém o comportamento antigo.

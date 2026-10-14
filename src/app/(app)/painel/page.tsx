@@ -1,5 +1,3 @@
-import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { ErroCarregamento } from "@/components/erro-carregamento";
 import { PainelGeral, type DadosPainelGeral } from "@/components/painel-geral";
 import { getAcessoAtual } from "@/lib/acesso";
 import { carregarResumoGarantePainel } from "@/app/(app)/garante/dados";
@@ -44,26 +42,17 @@ function saudacaoAtual(data: Date): string {
 
 export default async function PainelPage() {
   const acesso = await getAcessoAtual();
-  let produtos;
-  let inventario;
-  let fornecedores;
-  let pedidos;
-
-  try {
-    [produtos, inventario, fornecedores, pedidos] = await Promise.all([
-      listProdutos(acesso.spreadsheetId),
-      listInventario(acesso.spreadsheetId),
-      acesso.role === "operacional"
-        ? Promise.resolve(null)
-        : listFornecedores(acesso.spreadsheetId),
-      listPedidosFeitos(acesso.unidadeId),
-    ]);
-  } catch {
-    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
-    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
-    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
-    return <ConectarPlanilha erro="Nao foi possivel carregar o painel." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const [produtos, inventario, fornecedores, pedidos] = await Promise.all([
+    listProdutos(acesso.spreadsheetId),
+    listInventario(acesso.spreadsheetId),
+    acesso.role === "operacional"
+      ? Promise.resolve(null)
+      : listFornecedores(acesso.spreadsheetId),
+    listPedidosFeitos(acesso.unidadeId),
+  ]);
 
   const datas = Array.from(new Set(inventario.map((item) => item.data).filter(Boolean)));
   const ultimaContagem = datas.sort((a, b) => instanteData(b) - instanteData(a))[0] ?? null;

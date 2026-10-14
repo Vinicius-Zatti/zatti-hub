@@ -1,6 +1,4 @@
 import { listInventario } from "@/lib/sheets/inventario";
-import { ConectarPlanilha } from "@/components/conectar-planilha";
-import { ErroCarregamento } from "@/components/erro-carregamento";
 import { VisualizacaoContagens } from "@/components/visualizacao-contagens";
 import { getAcessoAtual } from "@/lib/acesso";
 import {
@@ -14,15 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function VisualizacaoContagensPage() {
   const acesso = await getAcessoAtual();
-  let itens;
-  try {
-    itens = await listInventario(acesso.spreadsheetId);
-  } catch {
-    // Unidade no banco: leitura falhou (inclusive no meio da paginação) - erro
-    // do app, nunca tela parcial. Unidade na planilha segue com o aviso antigo.
-    if (acesso.fonteDadosEstoque === "banco") return <ErroCarregamento />;
-    return <ConectarPlanilha erro="Nao foi possivel carregar as contagens." />;
-  }
+  // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
+  // (unidade, tela, data e identificador para o suporte), com o erro no log do
+  // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
+  const itens = await listInventario(acesso.spreadsheetId);
 
   // Andamento de todas as datas (barato) e snapshot só da última, que é a
   // data que a conferência corrige.
