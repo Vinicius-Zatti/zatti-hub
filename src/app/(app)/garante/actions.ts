@@ -346,3 +346,21 @@ export async function descartarPlanoAction(planoId: string, motivo: string): Pro
   revalidarGarante();
   return { ok: true };
 }
+
+// ── Avisos pelo WhatsApp ─────────────────────────────────────────────────
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Marca (ou, com nulo, desmarca) quem acompanha o Garante da unidade: essa pessoa recebe os
+ * avisos pelo Vini. O banco confere gestão/master, elegibilidade do vínculo (gestão que alcança
+ * a unidade, com WhatsApp) e grava a auditoria na própria unidade
+ * (`garante_definir_responsavel_avisos`), por isso não há `registrarAuditoria` aqui. */
+export async function definirResponsavelAvisosAction(vinculoId: string | null): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  if (vinculoId !== null && !UUID.test(vinculoId)) return { erro: "Pessoa inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_definir_responsavel_avisos", { p_unidade_id: acesso.unidadeId, p_vinculo_id: vinculoId });
+  if (error) return { erro: mensagemErroGarante(error.message) };
+  revalidarGarante();
+  return { ok: true };
+}

@@ -6,7 +6,7 @@ import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-br
 import { RegrasUnidade } from "@/components/garante/regras-unidade";
 import { hojeOperacao, somarDias } from "@/lib/garante/regras";
 import { criarModeloAction } from "../actions";
-import { carregarModelos, carregarRegras } from "../dados";
+import { carregarAvisosGarante, carregarModelos, carregarRegras } from "../dados";
 
 const ERROS: Record<string, string> = {
   nome: "Dê um nome ao checklist.",
@@ -20,7 +20,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
   const acesso = await requireGestaoGarante();
   const { erro } = await searchParams;
   const hoje = hojeOperacao();
-  const [modelos, regras] = await Promise.all([carregarModelos(acesso), carregarRegras(acesso, hoje)]);
+  const [modelos, regras, avisos] = await Promise.all([carregarModelos(acesso), carregarRegras(acesso, hoje), carregarAvisosGarante(acesso)]);
   const usados = new Set(modelos.map((m) => m.origemPop).filter(Boolean));
 
   return (
@@ -54,7 +54,14 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
         </div>
       </section>
 
-      <RegrasUnidade vigente={regras.vigente} agendadas={regras.agendadas} diasSemOperacao={regras.diasSemOperacao} amanha={somarDias(hoje, 1)} />
+      <RegrasUnidade
+        vigente={regras.vigente}
+        agendadas={regras.agendadas}
+        diasSemOperacao={regras.diasSemOperacao}
+        amanha={somarDias(hoje, 1)}
+        unidadeNome={acesso.unidadeNome}
+        avisos={avisos}
+      />
 
       <section className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-bold text-azul-noite">Biblioteca de POPs Zatti</h2>

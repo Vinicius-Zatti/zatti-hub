@@ -291,6 +291,8 @@ export function mensagemErroGarante(mensagem: string): string {
     plano_imutavel: "Origem, responsável e prazo do plano de ação não mudam.",
     resolucao_obrigatoria: "Escreva o que foi feito para resolver (de 3 a 500 caracteres).",
     motivo_descarte_obrigatorio: "Escreva o motivo do descarte (de 3 a 500 caracteres).",
+    vinculo_nao_elegivel: "Essa pessoa não é da gestão desta unidade, ou o acesso dela não está ativo.",
+    vinculo_sem_whatsapp: "Essa pessoa está sem WhatsApp cadastrado. Cadastre em Equipe antes de marcar.",
   };
   const chave = Object.keys(mapa).find((k) => mensagem.includes(k));
   return chave ? mapa[chave] : "Não foi possível salvar. Tente de novo.";

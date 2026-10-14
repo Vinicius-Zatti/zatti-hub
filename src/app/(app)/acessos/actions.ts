@@ -11,6 +11,7 @@ import {
   gerarIdUnidade,
   validarPapelVinculo,
 } from "@/lib/acessos/slug";
+import { mensagemErroGarante } from "@/lib/garante/regras";
 
 type Resultado<T = { ok: true }> = T | { erro: string };
 
@@ -415,6 +416,23 @@ export async function atualizarNomeUsuarioAction(userId: string, nome: string): 
     dadosNovos: { nome: nomeLimpo || null },
   });
 
+  revalidarAcessos();
+  return { ok: true };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Zatti marca (ou desmarca, com nulo) quem acompanha o Garante de uma unidade: essa pessoa
+ * recebe os avisos pelo Vini. Pelo client do usuário: a RPC
+ * `garante_definir_responsavel_avisos` confere master com segundo fator, módulo ligado e
+ * elegibilidade do vínculo, e grava a auditoria na unidade alterada. */
+export async function definirResponsavelAvisosGaranteAction(unidadeId: string, vinculoId: string | null): Promise<Resultado> {
+  await requireMaster();
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(unidadeId)) return { erro: "Unidade inválida." };
+  if (vinculoId !== null && !UUID.test(vinculoId)) return { erro: "Pessoa inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_definir_responsavel_avisos", { p_unidade_id: unidadeId, p_vinculo_id: vinculoId });
+  if (error) return { erro: mensagemErroGarante(error.message) };
   revalidarAcessos();
   return { ok: true };
 }

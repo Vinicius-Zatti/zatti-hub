@@ -45,7 +45,9 @@ select ok((select relrowsecurity from pg_class where oid = 'public.fin_metas_uni
 select ok(not has_table_privilege('authenticated', 'public.fin_metas_unidade', 'INSERT'), 'authenticated não insere direto');
 select ok(not has_table_privilege('authenticated', 'public.fin_metas_unidade', 'UPDATE'), 'authenticated não altera direto');
 select ok(not has_table_privilege('authenticated', 'public.fin_metas_unidade', 'DELETE'), 'authenticated não apaga direto');
-select ok(not has_function_privilege('anon', 'public.fin_meta_unidade_salvar(text, date, numeric, numeric, numeric, numeric)', 'EXECUTE'),
+-- Assinatura com 7 parâmetros desde 20261013190000 (custos variáveis, com default); as chamadas
+-- abaixo com 6 argumentos continuam valendo, igual ao app publicado antes dessa migração.
+select ok(not has_function_privilege('anon', 'public.fin_meta_unidade_salvar(text, date, numeric, numeric, numeric, numeric, numeric)', 'EXECUTE'),
   'anon não executa a RPC de metas');
 
 set local role authenticated;
