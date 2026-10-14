@@ -5,15 +5,17 @@
 -- janela, não concluído depois da janela, crítico fora da meta) a partir do primeiro responsável
 -- e só nos últimos 7 dias; concluído tarde não gera; revalidação cancela resolvido (concluído,
 -- corrigido, janela fechada) e expira velho; reserva única por ciclo, só das 7h às 23h, só com
--- responsável válido; reserva vencida (15 min) vira incerto e nunca volta; 'falhou' volta à
--- fila até 3 tentativas; confirmação repetida é inócua; isolamento entre unidades e papéis;
--- flag desligada esconde e trava tudo. Só fixtures, sem depender da hora em que roda.
+-- responsável válido; reserva vencida (15 min) vira incerto e nunca volta, também quando o
+-- 'falhou' chega tarde sem ciclo no meio (a confirmação confere a idade da reserva); 'falhou'
+-- no prazo volta à fila até 3 tentativas; 'enviado' tardio continua enviado; confirmação
+-- repetida é inócua; isolamento entre unidades e papéis; flag desligada esconde e trava tudo.
+-- Só fixtures, sem depender da hora em que roda (o relógio vai por parâmetro nas duas RPCs).
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(65);
+select plan(75);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -117,7 +119,7 @@ select ok(public.fin_integracao_token_valido('token-garante-0123456789abcdef0123
 select ok(not public.fin_integracao_token_valido('token-garante-0123456789abcdef0123456789', 'alertas'), 'token do garante não vale no alerta');
 select ok(not has_function_privilege('authenticated', 'public.garante_avisos_reservar(timestamptz)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.garante_avisos_reservar(timestamptz)', 'EXECUTE')
-  and not has_function_privilege('authenticated', 'public.garante_avisos_confirmar(uuid,text)', 'EXECUTE'),
+  and not has_function_privilege('authenticated', 'public.garante_avisos_confirmar(uuid,text,timestamptz)', 'EXECUTE'),
   'ciclo e confirmação são só do servidor');
 
 -- ── Marcar o responsável ────────────────────────────────────────────────
@@ -202,10 +204,10 @@ select is((select detalhes - 'data' from garante_avisos where chave like 'atrasa
 select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(0, '12:01'))), 0, 'ciclo logo depois: nada novo, reservado não repete');
 
 -- ── Confirmação 'falhou' volta à fila ───────────────────────────────────
-select is(public.garante_avisos_confirmar((select tentativa_id from c1), 'falhou'), 4, 'falhou: fecha a tentativa dos 4');
+select is(public.garante_avisos_confirmar((select tentativa_id from c1), 'falhou', pg_temp.agora(0, '12:02')), 4, 'falhou: fecha a tentativa dos 4');
 select is((select count(*)::int from garante_avisos where estado = 'pendente' and fechado_em is null and tentativas = 1 and motivo = 'falhou_1'), 4,
   'falhou: os 4 voltam para a fila com 1 tentativa');
-select is(public.garante_avisos_confirmar((select tentativa_id from c1), 'falhou'), 0, 'confirmar de novo é inócuo');
+select is(public.garante_avisos_confirmar((select tentativa_id from c1), 'falhou', pg_temp.agora(0, '12:03')), 0, 'confirmar de novo é inócuo');
 select throws_ok($$ select public.garante_avisos_confirmar((select tentativa_id from c1), 'ok') $$, '22023', 'resultado_invalido', 'resultado inválido é recusado');
 
 -- ── Revalidação: resolvido não se cobra ─────────────────────────────────
@@ -219,7 +221,7 @@ select is((select motivo from garante_avisos where chave like 'atrasado:%'), 'co
 select is((select motivo from garante_avisos where chave like 'critico:00000000-0000-0000-0000-0000000c7001%'), 'corrigido', 'crítico corrigido é cancelado');
 select is((select count(*)::int from garante_avisos where estado = 'reservado' and tentativas = 2 and tentativa_id = (select tentativa_id from c2)), 2,
   'ciclo 2: os 2 de ontem na 2ª tentativa');
-select is(public.garante_avisos_confirmar((select tentativa_id from c2), 'enviado'), 2, 'enviado: fecha os 2');
+select is(public.garante_avisos_confirmar((select tentativa_id from c2), 'enviado', pg_temp.agora(0, '12:12')), 2, 'enviado: fecha os 2');
 select is((select count(*)::int from garante_avisos where estado = 'enviado' and fechado_em is not null and motivo is null), 2, 'enviado fica fechado');
 
 -- ── Janela 7h-23h: fora dela gera mas não reserva ───────────────────────
@@ -239,7 +241,7 @@ select results_eq($$ select jsonb_array_length(avisos), avisos -> 0 ->> 'chave' 
 select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(1, '07:50'))), 0, '20 min depois sem confirmação: nada sai');
 select is((select estado || ':' || motivo from garante_avisos where tentativa_id = (select tentativa_id from c3)), 'incerto:reserva_vencida',
   'reserva vencida vira incerto');
-select is(public.garante_avisos_confirmar((select tentativa_id from c3), 'falhou'), 0, 'falhou tardio na reserva vencida é ignorado');
+select is(public.garante_avisos_confirmar((select tentativa_id from c3), 'falhou', pg_temp.agora(1, '07:51')), 0, 'falhou tardio na reserva já vencida pelo ciclo é ignorado');
 select is((select estado from garante_avisos where tentativa_id = (select tentativa_id from c3)), 'incerto', 'incerto não volta à fila');
 
 -- ── Responsável sem WhatsApp: pendência fica parada ─────────────────────
@@ -262,15 +264,43 @@ insert into garante_respostas (execucao_id, unidade_id, item_id, valor_numero, d
   ('00000000-0000-0000-0000-0000000c7002', 'org-v-a-loja', '00000000-0000-0000-0000-0000000c4004', 7, false, '00000000-0000-0000-0000-0000000c2003', pg_temp.agora(1, '08:25'));
 create temp table c4 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '08:30'));
 select is((select jsonb_array_length(avisos) from c4), 1, '1ª tentativa do crítico novo');
-select public.garante_avisos_confirmar((select tentativa_id from c4), 'falhou');
+select public.garante_avisos_confirmar((select tentativa_id from c4), 'falhou', pg_temp.agora(1, '08:31'));
 create temp table c5 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '08:40'));
-select public.garante_avisos_confirmar((select tentativa_id from c5), 'falhou');
+select public.garante_avisos_confirmar((select tentativa_id from c5), 'falhou', pg_temp.agora(1, '08:41'));
 create temp table c6 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '08:50'));
-select public.garante_avisos_confirmar((select tentativa_id from c6), 'falhou');
+select public.garante_avisos_confirmar((select tentativa_id from c6), 'falhou', pg_temp.agora(1, '08:51'));
 select is((select estado || ':' || motivo || ':' || tentativas::text || ':' || (fechado_em is not null)::text from garante_avisos
             where chave = 'critico:00000000-0000-0000-0000-0000000c7002:00000000-0000-0000-0000-0000000c4004'),
   'falhou:falhou_3:3:true', '3ª falha fecha de vez');
 select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(1, '09:00'))), 0, 'falhou definitivo não volta');
+
+-- ── Confirmação confere a idade da reserva (revisão do Codex) ───────────
+-- 'falhou' que chega com a reserva vencida (mais de 15 min), sem nenhum ciclo no meio, vira
+-- incerto na própria confirmação: não volta à fila. No limite dos 15 min ainda volta. 'enviado'
+-- tardio continua enviado (o Vini só confirma depois que o envio saiu).
+create temp table c7 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '10:30'));
+select results_eq($$ select jsonb_array_length(avisos), avisos -> 0 ->> 'chave' from c7 $$,
+  $$ values (1, 'atrasado:00000000-0000-0000-0000-0000000c6001:' || (public.garante_hoje() + 1)::text) $$,
+  '10:30 do dia seguinte: só o atrasado de P1 sai');
+select is(public.garante_avisos_confirmar((select tentativa_id from c7), 'falhou', pg_temp.agora(1, '10:46')), 1,
+  'falhou 16 min depois da reserva, sem ciclo no meio: a confirmação fecha a tentativa');
+select is((select estado || ':' || motivo || ':' || tentativas::text || ':' || (fechado_em is not null)::text from garante_avisos
+            where tentativa_id = (select tentativa_id from c7)),
+  'incerto:reserva_vencida:1:true', 'falhou tardio vira incerto na própria confirmação');
+select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(1, '10:50'))), 0, 'falhou tardio não volta à fila');
+create temp table c8 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '14:30'));
+select is((select avisos -> 0 ->> 'chave' from c8), 'atrasado:00000000-0000-0000-0000-0000000c6002:' || (public.garante_hoje() + 1)::text,
+  '14:30: atrasado de P2 sai');
+select is(public.garante_avisos_confirmar((select tentativa_id from c8), 'falhou', pg_temp.agora(1, '14:45')), 1,
+  'falhou exatamente 15 min depois da reserva ainda vale');
+select is((select estado || ':' || motivo from garante_avisos where tentativa_id = (select tentativa_id from c8)), 'pendente:falhou_1',
+  'no limite dos 15 min a pendência volta à fila');
+create temp table c9 as select * from public.garante_avisos_reservar(pg_temp.agora(1, '14:50'));
+select is((select tentativas from garante_avisos where tentativa_id = (select tentativa_id from c9)), 2, 'volta a sair na 2ª tentativa');
+select is(public.garante_avisos_confirmar((select tentativa_id from c9), 'enviado', pg_temp.agora(1, '15:10')), 1,
+  'enviado 20 min depois da reserva ainda fecha');
+select is((select estado || ':' || coalesce(motivo, '-') from garante_avisos where tentativa_id = (select tentativa_id from c9)), 'enviado:-',
+  'enviado tardio é fato: fica enviado, não incerto');
 
 -- ── Isolamento ──────────────────────────────────────────────────────────
 select pg_temp.como('00000000-0000-0000-0000-0000000c2001');
@@ -286,8 +316,8 @@ select is((select count(*)::int from garante_avisos), 0, 'outra organização n�
 select pg_temp.servidor();
 update unidades set garante_habilitado = false where id = 'org-v-a-loja';
 insert into garante_respostas (execucao_id, unidade_id, item_id, valor_numero, dentro_meta, respondido_por, respondido_em) values
-  ('00000000-0000-0000-0000-0000000c7002', 'org-v-a-loja', '00000000-0000-0000-0000-0000000c4001', 1, false, '00000000-0000-0000-0000-0000000c2003', pg_temp.agora(1, '09:05'));
-select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(1, '09:10'))), 0, 'flag desligada: nada sai');
+  ('00000000-0000-0000-0000-0000000c7002', 'org-v-a-loja', '00000000-0000-0000-0000-0000000c4001', 1, false, '00000000-0000-0000-0000-0000000c2003', pg_temp.agora(1, '16:05'));
+select is((select count(*)::int from public.garante_avisos_reservar(pg_temp.agora(1, '16:10'))), 0, 'flag desligada: nada sai');
 select pg_temp.como('00000000-0000-0000-0000-0000000c2001');
 select throws_ok($$ select public.garante_definir_responsavel_avisos('org-v-a-loja', '00000000-0000-0000-0000-0000000c8001') $$,
   '42501', 'sem_permissao', 'flag desligada: não marca responsável');

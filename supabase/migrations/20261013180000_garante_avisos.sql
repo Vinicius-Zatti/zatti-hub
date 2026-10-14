@@ -22,7 +22,8 @@
 --                                      unidade e ciclo) só das 7h às 23h e só com responsável
 --                                      válido; reserva sem confirmação em 15 min vira 'incerto'
 --   garante_avisos_confirmar           service role: fecha a tentativa ('enviado', 'incerto' ou
---                                      'falhou'; 'falhou' volta à fila até 3 tentativas)
+--                                      'falhou'; 'falhou' volta à fila até 3 tentativas, só com a
+--                                      reserva ainda válida: mais de 15 min vira 'incerto')
 --
 -- Sem token cadastrado nada é enviado: a rota responde 401 e o Vini fica desligado.
 -- Idempotente. O app em produção continua funcionando com isto aplicado antes da publicação
@@ -367,15 +368,22 @@ revoke all on function public.garante_avisos_reservar(timestamptz) from public, 
 grant execute on function public.garante_avisos_reservar(timestamptz) to service_role;
 
 -- ══ Confirmação do Vini ═════════════════════════════════════════════════
--- Fecha só o que ainda está reservado nessa tentativa (reserva já vencida ignora um 'falhou'
--- tardio; repetir é inócuo). 'falhou' (recusa clara, 4xx) volta à fila até a 3ª tentativa.
-create or replace function public.garante_avisos_confirmar(p_tentativa_id uuid, p_resultado text)
+-- Fecha só o que ainda está reservado nessa tentativa (repetir é inócuo). 'enviado' fecha como
+-- enviado mesmo tarde: o Vini só confirma depois que o envio saiu. 'incerto' fecha sem repetir.
+-- 'falhou' (recusa clara, 4xx) volta à fila até a 3ª tentativa, só enquanto a reserva vale (15 min,
+-- o mesmo prazo do ciclo): 'falhou' numa reserva mais velha que isso vira 'incerto' com motivo
+-- 'reserva_vencida' aqui mesmo, sem esperar o próximo ciclo expirar (revisão do Codex, 13/10).
+-- `p_agora` é o relógio: a rota não passa (now()); o pgTAP passa para não depender da hora.
+drop function if exists public.garante_avisos_confirmar(uuid, text);
+create or replace function public.garante_avisos_confirmar(p_tentativa_id uuid, p_resultado text, p_agora timestamptz default now())
 returns integer
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
+  v_agora timestamptz := coalesce(p_agora, now());
+  v_limite timestamptz := coalesce(p_agora, now()) - interval '15 minutes';
   v_n integer;
 begin
   if p_tentativa_id is null or p_resultado is null or p_resultado not in ('enviado', 'falhou', 'incerto') then
@@ -383,18 +391,21 @@ begin
   end if;
   update public.garante_avisos a
      set estado = case when p_resultado = 'enviado' then 'enviado'
-                       when p_resultado = 'incerto' then 'incerto'
+                       when p_resultado = 'incerto' or a.reservado_em < v_limite then 'incerto'
                        when a.tentativas >= 3 then 'falhou'
                        else 'pendente' end,
-         fechado_em = case when p_resultado = 'falhou' and a.tentativas < 3 then null else now() end,
-         motivo = case when p_resultado = 'falhou' then 'falhou_' || a.tentativas::text else null end
+         fechado_em = case when p_resultado = 'falhou' and a.tentativas < 3 and a.reservado_em >= v_limite then null
+                           else v_agora end,
+         motivo = case when p_resultado <> 'falhou' then null
+                       when a.reservado_em < v_limite then 'reserva_vencida'
+                       else 'falhou_' || a.tentativas::text end
    where a.tentativa_id = p_tentativa_id and a.estado = 'reservado';
   get diagnostics v_n = row_count;
   return v_n;
 end;
 $$;
-revoke all on function public.garante_avisos_confirmar(uuid, text) from public, anon, authenticated;
-grant execute on function public.garante_avisos_confirmar(uuid, text) to service_role;
+revoke all on function public.garante_avisos_confirmar(uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.garante_avisos_confirmar(uuid, text, timestamptz) to service_role;
 
 -- ══ Service role: só leitura das duas tabelas (telas de Acessos e Regras da unidade, depois de
 -- requireMaster / requireGestaoGarante) e as duas RPCs do ciclo. Escrita só pelas RPCs. ═══════
