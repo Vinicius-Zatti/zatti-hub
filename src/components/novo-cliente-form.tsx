@@ -101,10 +101,10 @@ export function NovoClienteForm() {
         />
       )}
 
-      <label className="mt-1 flex items-center gap-2 text-sm text-cinza">
-        <input type="checkbox" name="consolidadoVendasHabilitado" className="h-4 w-4" />
-        Habilitar Consolidado de Vendas pra essa unidade
-      </label>
+      <p className="mt-1 text-sm text-cinza">
+        A unidade já nasce com todos os módulos: Estoque, Compras, Desempenho, Financeiro,
+        Precificação, Equipe e Checklist Garante. Marketing entra quando for lançado.
+      </p>
 
       {erro && <p className="text-sm text-vermelho">{erro}</p>}
 

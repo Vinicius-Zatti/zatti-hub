@@ -6,6 +6,7 @@ import { expiracaoSenhaTemporaria, gerarSenhaTemporaria } from "@/lib/equipe/reg
 import { buscarUsuarioPorEmail, hashSenhaTemporaria } from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 import { chaveEnvio, idLivre, MODULOS_UNIDADE_NOVA, whatsappDoCrm, type PedidoProvisionamento } from "./regras";
+import { ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
 // Cadastro automático de quem compra o Zatti Hub (15/10/2026). Cada passo grava o que criou em
 // `zh_provisionamentos` antes do próximo: se a tentativa cair no meio, a seguinte continua de
@@ -51,7 +52,7 @@ async function criarOrganizacao(admin: Admin, reg: Registro): Promise<string> {
     if (!id) throw new PassoFalhou("nome do restaurante sem id livre");
     const { error: erroInsert } = await admin
       .from("organizacoes")
-      .insert({ id, nome: reg.restaurante, tipo_cliente: "saas", ativo: true });
+      .insert({ id, nome: reg.restaurante, tipo_cliente: "saas", ativo: true, ...ORGANIZACAO_NOVA });
     if (!erroInsert) return id;
     if (erroInsert.code !== "23505") throw new PassoFalhou("não criou a organização");
     // Corrida com outro cadastro do mesmo nome: tenta o próximo id livre.

@@ -12,6 +12,7 @@ import {
   validarPapelVinculo,
 } from "@/lib/acessos/slug";
 import { mensagemErroGarante } from "@/lib/garante/regras";
+import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
 type Resultado<T = { ok: true }> = T | { erro: string };
 
@@ -69,7 +70,6 @@ export async function criarClienteAction(formData: FormData): Promise<
   const nomeUnidade = String(formData.get("nomeUnidade") ?? "").trim();
   const fonteDadosEstoque = String(formData.get("fonteDadosEstoque") ?? "");
   const spreadsheetId = String(formData.get("spreadsheetId") ?? "").trim();
-  const consolidadoVendasHabilitado = formData.get("consolidadoVendasHabilitado") === "on";
 
   if (!nomeCliente) return { erro: "Nome do cliente é obrigatório." };
   if (!TIPOS_CLIENTE.includes(tipoCliente as TipoCliente)) {
@@ -115,6 +115,7 @@ export async function criarClienteAction(formData: FormData): Promise<
     nome: nomeCliente,
     tipo_cliente: tipoCliente,
     ativo: true,
+    ...ORGANIZACAO_NOVA,
   });
   if (erroInsertOrg) return { erro: `Falha ao criar organização: ${erroInsertOrg.message}` };
 
@@ -123,8 +124,8 @@ export async function criarClienteAction(formData: FormData): Promise<
     organizacao_id: organizacaoId,
     nome: nomeUnidade,
     spreadsheet_id: fonteDadosEstoque === "planilha" ? spreadsheetId : null,
-    fonte_dados_estoque: fonteDadosEstoque,
-    consolidado_vendas_habilitado: consolidadoVendasHabilitado,
+    // Todos os módulos desde 15/10/2026 (`@/lib/modulos-padrao`).
+    ...modulosUnidadeNova(fonteDadosEstoque),
     ativo: true,
   });
   if (erroInsertUnidade) {
@@ -148,7 +149,7 @@ export async function criarClienteAction(formData: FormData): Promise<
     acao: "criar",
     entidade: "unidade",
     entidadeId: unidadeId,
-    dadosNovos: { nome: nomeUnidade, fonteDadosEstoque, consolidadoVendasHabilitado },
+    dadosNovos: { nome: nomeUnidade, fonteDadosEstoque, modulos: "todos (15/10/2026)" },
   });
 
   revalidarAcessos();

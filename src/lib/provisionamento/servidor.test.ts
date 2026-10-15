@@ -106,9 +106,9 @@ describe("executarProvisionamento", () => {
     const b = bancoFalso({ zh_provisionamentos: [registro() as never], zh_leads: [{ id: "lead-1", whatsapp: "31999991111", organizacao_id: null }] });
     const r = await executarProvisionamento(b.admin, registro());
     expect(r).toEqual({ status: "concluido", envio: "aceito", organizacaoId: "burger-da-joana" });
-    expect(b.tabelas.organizacoes).toEqual([{ id: "burger-da-joana", nome: "Burger da Joana", tipo_cliente: "saas", ativo: true }]);
+    expect(b.tabelas.organizacoes).toEqual([{ id: "burger-da-joana", nome: "Burger da Joana", tipo_cliente: "saas", ativo: true, equipe_habilitado: true }]);
     const unidade = b.tabelas.unidades[0];
-    expect(unidade).toMatchObject({ organizacao_id: "burger-da-joana", nome: "Burger da Joana", fonte_dados_estoque: "banco", fichas_tecnicas_habilitado: true, financeiro_gerencial_habilitado: false });
+    expect(unidade).toMatchObject({ organizacao_id: "burger-da-joana", nome: "Burger da Joana", fonte_dados_estoque: "banco", fichas_tecnicas_habilitado: true, financeiro_gerencial_habilitado: true, financeiro_liberado_equipe: true, garante_habilitado: true });
     expect(b.tabelas.vinculos[0]).toMatchObject({ role: "gestao", status: "convidado", unidade_id: null, whatsapp: "+5531999991111" });
     expect(b.usuarios[0].app_metadata).toEqual({ zh_pendente: true, zh_v2: true });
     // Só o hash vai ao banco; a senha só aparece no pedido ao Vini.

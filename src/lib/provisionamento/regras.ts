@@ -2,6 +2,7 @@
  * banco. Plano e decisões: _execucao/zatti-hub/compra-cadastro-automatico-plano.md. */
 
 import { normalizarWhatsapp } from "@/lib/equipe/regras";
+import { modulosUnidadeNova } from "@/lib/modulos-padrao";
 
 export type PedidoProvisionamento = {
   pagamentoId: string;
@@ -58,15 +59,10 @@ export function idLivre(candidato: string, existentes: ReadonlySet<string>, limi
   return null;
 }
 
-/** Módulos que a unidade nova recebe (decisão 1 de 15/10/2026): Estoque e Compras (estoque no
- * banco), Precificação (fichas técnicas). Financeiro, Desempenho e Checklist Garante desligados. */
-export const MODULOS_UNIDADE_NOVA = {
-  fonte_dados_estoque: "banco",
-  fichas_tecnicas_habilitado: true,
-  financeiro_gerencial_habilitado: false,
-  consolidado_vendas_habilitado: false,
-  garante_habilitado: false,
-} as const;
+/** Módulos que a unidade nova recebe: todos, desde 15/10/2026 (Vinícius: "todos os acessos a
+ * partir de hoje têm todos os módulos"). A regra mora em `@/lib/modulos-padrao`, a mesma da
+ * criação manual em /acessos. Marketing segue "em breve" no menu, sem flag. */
+export const MODULOS_UNIDADE_NOVA = modulosUnidadeNova("banco");
 
 /** WhatsApp do CRM (`zh_leads.whatsapp`): só dígitos, sem o 55. */
 export function whatsappDoCrm(e164: string): string | null {

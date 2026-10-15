@@ -55,10 +55,16 @@ describe("idLivre", () => {
 });
 
 describe("módulos da unidade nova (decisão de 15/10)", () => {
-  it("Estoque e Compras no banco, Precificação ligada, Financeiro desligado", () => {
-    expect(MODULOS_UNIDADE_NOVA.fonte_dados_estoque).toBe("banco");
-    expect(MODULOS_UNIDADE_NOVA.fichas_tecnicas_habilitado).toBe(true);
-    expect(MODULOS_UNIDADE_NOVA.financeiro_gerencial_habilitado).toBe(false);
+  it("todos os módulos ligados, estoque no banco (decisão de 15/10/2026)", () => {
+    expect(MODULOS_UNIDADE_NOVA).toMatchObject({
+      fonte_dados_estoque: "banco",
+      consolidado_vendas_habilitado: true,
+      financeiro_gerencial_habilitado: true,
+      financeiro_liberado_equipe: true,
+      fichas_tecnicas_habilitado: true,
+      garante_habilitado: true,
+      extrato_estoque_habilitado: true,
+    });
   });
 });
 
