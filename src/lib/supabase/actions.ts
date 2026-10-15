@@ -33,7 +33,7 @@ export async function trocarOrganizacaoAction(formData: FormData) {
   // master saia de uma organizacao ainda sem planilha configurada.
   const { data: organizacao } = await supabase
     .from("organizacoes")
-    .select("id")
+    .select("id, area_interna")
     .eq("id", organizacaoId)
     .eq("ativo", true)
     .maybeSingle();
@@ -47,5 +47,6 @@ export async function trocarOrganizacaoAction(formData: FormData) {
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 365,
   });
-  redirect("/painel");
+  // Zatti HUB (área do Vinícius) abre no Início dela; cliente, no Painel geral.
+  redirect(organizacao.area_interna ? "/inicio" : "/painel");
 }
