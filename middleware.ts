@@ -9,6 +9,8 @@ const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/sem-ac
 const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/financeiro/caixa-entrada", "/api/financeiro/caixa-entrada/config", "/api/financeiro/caixa-entrada/pastas",
   "/api/financeiro/alertas/diario", "/api/financeiro/alertas/enviados",
+  // Compra do app com cadastro automático (15/10/2026): token do escopo 'provisionamento'.
+  "/api/provisionamento/compra",
 ]);
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
