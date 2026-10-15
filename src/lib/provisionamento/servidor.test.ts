@@ -104,9 +104,9 @@ beforeEach(() => {
 describe("executarProvisionamento", () => {
   it("cria organização SaaS, unidade com os módulos decididos, conta de gestão e manda o acesso", async () => {
     const b = bancoFalso({ zh_provisionamentos: [registro() as never], zh_leads: [{ id: "lead-1", whatsapp: "31999991111", organizacao_id: null }] });
-    const r = await executarProvisionamento(b.admin, registro());
+    const r = await executarProvisionamento(b.admin, registro(), new Date("2026-10-15T15:00:00Z"));
     expect(r).toEqual({ status: "concluido", envio: "aceito", organizacaoId: "burger-da-joana" });
-    expect(b.tabelas.organizacoes).toEqual([{ id: "burger-da-joana", nome: "Burger da Joana", tipo_cliente: "saas", ativo: true, equipe_habilitado: true }]);
+    expect(b.tabelas.organizacoes).toEqual([{ id: "burger-da-joana", nome: "Burger da Joana", tipo_cliente: "saas", ativo: true, equipe_habilitado: true, vigencia_fim: "2027-10-15", renovacao_token: expect.stringMatching(/^[A-Za-z0-9_-]{32}$/) }]);
     const unidade = b.tabelas.unidades[0];
     expect(unidade).toMatchObject({ organizacao_id: "burger-da-joana", nome: "Burger da Joana", fonte_dados_estoque: "banco", fichas_tecnicas_habilitado: true, financeiro_gerencial_habilitado: true, financeiro_liberado_equipe: true, garante_habilitado: true });
     expect(b.tabelas.vinculos[0]).toMatchObject({ role: "gestao", status: "convidado", unidade_id: null, whatsapp: "+5531999991111" });

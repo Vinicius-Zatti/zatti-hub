@@ -24,8 +24,16 @@ describe("validarPedido", () => {
         restaurante: "Burger da Joana",
         valor: 718.8,
         leadSiteId: "0b6f1c1e-1111-4111-8111-111111111111",
+        aprovadoEm: null,
       },
     });
+  });
+  it("aprovado_em vira data, e data impossível ou distante é recusada", () => {
+    const agora = new Date().toISOString();
+    const r = validarPedido({ ...PEDIDO, aprovado_em: agora });
+    expect(r.ok && r.pedido.aprovadoEm?.toISOString()).toBe(agora);
+    expect(validarPedido({ ...PEDIDO, aprovado_em: "ontem" })).toEqual({ ok: false, erro: "aprovado_em_invalido" });
+    expect(validarPedido({ ...PEDIDO, aprovado_em: "2020-01-01T00:00:00Z" })).toEqual({ ok: false, erro: "aprovado_em_invalido" });
   });
   it("lead e valor são opcionais", () => {
     const r = validarPedido({ ...PEDIDO, lead_id: undefined, valor: null });

@@ -10,6 +10,9 @@ import { getAcessoAtual } from "@/lib/acesso";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { CABECALHO_CAMINHO, ehCaminhoRestaurante } from "@/lib/area-interna/caminhos";
+import { FaixaAssinatura } from "@/components/assinatura/faixa-assinatura";
+import { getAssinaturaAtual } from "@/lib/assinatura/app";
+import { faixaAssinatura } from "@/lib/assinatura/regras";
 
 export default async function AppLayout({
   children,
@@ -23,6 +26,11 @@ export default async function AppLayout({
     redirect("/inicio");
   }
   const podeGerir = acesso.role !== "operacional";
+  // Vigência anual (15/10/2026): depois da carência o cliente trava, sem perder dado. O master
+  // nunca trava (vê a faixa para saber a situação do cliente).
+  const assinatura = acesso.areaInterna ? null : await getAssinaturaAtual(acesso.organizacaoId);
+  if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
+  const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir) : null;
   const nomeUnidadeSuporte =
     acesso.organizacaoNome && acesso.organizacaoNome !== acesso.unidadeNome
       ? `${acesso.organizacaoNome} - ${acesso.unidadeNome}`
@@ -302,7 +310,10 @@ export default async function AppLayout({
           usuarioNome={acesso.usuarioNome}
         >
           {/* Nome da unidade para a mensagem de suporte do cartão de erro. */}
-          <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>{children}</UnidadeSuporteProvider>
+          <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
+            {faixa ? <FaixaAssinatura faixa={faixa} link={assinatura?.link ?? null} /> : null}
+            {children}
+          </UnidadeSuporteProvider>
         </EstruturaAplicativo>
       </GuardaEdicaoProvider>
     </GuardaContagemProvider>

@@ -13,6 +13,8 @@ export type PedidoProvisionamento = {
   restaurante: string;
   valor: number | null;
   leadSiteId: string | null;
+  /** Quando o Mercado Pago aprovou: a vigência anual conta a partir daqui. */
+  aprovadoEm: Date | null;
 };
 
 export type ResultadoValidacao = { ok: true; pedido: PedidoProvisionamento } | { ok: false; erro: string };
@@ -26,7 +28,7 @@ const texto = (v: unknown, max: number) =>
 export function validarPedido(corpo: unknown): ResultadoValidacao {
   if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) return { ok: false, erro: "pedido_invalido" };
   const c = corpo as Record<string, unknown>;
-  const aceitos = new Set(["pagamento_id", "email", "nome", "whatsapp", "restaurante", "valor", "lead_id"]);
+  const aceitos = new Set(["pagamento_id", "email", "nome", "whatsapp", "restaurante", "valor", "lead_id", "aprovado_em"]);
   if (Object.keys(c).some((k) => !aceitos.has(k))) return { ok: false, erro: "campo_nao_aceito" };
 
   const pagamentoId = String(c.pagamento_id ?? "");
@@ -44,7 +46,16 @@ export function validarPedido(corpo: unknown): ResultadoValidacao {
   const lead = c.lead_id === undefined || c.lead_id === null ? null : texto(c.lead_id, 80);
   if (lead !== null && !/^[A-Za-z0-9-]{1,64}$/.test(lead)) return { ok: false, erro: "lead_invalido" };
 
-  return { ok: true, pedido: { pagamentoId, email, nome, whatsapp, restaurante, valor, leadSiteId: lead } };
+  let aprovadoEm: Date | null = null;
+  if (c.aprovado_em !== undefined && c.aprovado_em !== null) {
+    aprovadoEm = new Date(String(c.aprovado_em));
+    // Data impossível ou longe de hoje (mais de 60 dias) não vale: a vigência conta de agora.
+    if (Number.isNaN(aprovadoEm.getTime()) || Math.abs(Date.now() - aprovadoEm.getTime()) > 60 * 86_400_000) {
+      return { ok: false, erro: "aprovado_em_invalido" };
+    }
+  }
+
+  return { ok: true, pedido: { pagamentoId, email, nome, whatsapp, restaurante, valor, leadSiteId: lead, aprovadoEm } };
 }
 
 /** Primeiro id livre a partir do candidato: "burger-x", "burger-x-2", "burger-x-3"...

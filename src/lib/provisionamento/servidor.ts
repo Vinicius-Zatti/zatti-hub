@@ -7,6 +7,7 @@ import { buscarUsuarioPorEmail, hashSenhaTemporaria } from "@/lib/equipe/servido
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 import { chaveEnvio, idLivre, MODULOS_UNIDADE_NOVA, whatsappDoCrm, type PedidoProvisionamento } from "./regras";
 import { ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
+import { fimDaVigencia } from "@/lib/assinatura/regras";
 
 // Cadastro automático de quem compra o Zatti Hub (15/10/2026). Cada passo grava o que criou em
 // `zh_provisionamentos` antes do próximo: se a tentativa cair no meio, a seguinte continua de
@@ -44,7 +45,9 @@ async function gravar(admin: Admin, id: string, campos: Partial<Registro> & Reco
   if (error) throw new PassoFalhou("não gravou o andamento");
 }
 
-async function criarOrganizacao(admin: Admin, reg: Registro): Promise<string> {
+/** Conta da compra nasce com vigência de 12 meses e o token do link de renovação. */
+async function criarOrganizacao(admin: Admin, reg: Registro, aprovadoEm: Date): Promise<string> {
+  const vigencia = { vigencia_fim: fimDaVigencia(aprovadoEm), renovacao_token: randomBytes(24).toString("base64url") };
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     const { data, error } = await admin.from("organizacoes").select("id");
     if (error) throw new PassoFalhou("não leu as organizações");
@@ -52,7 +55,7 @@ async function criarOrganizacao(admin: Admin, reg: Registro): Promise<string> {
     if (!id) throw new PassoFalhou("nome do restaurante sem id livre");
     const { error: erroInsert } = await admin
       .from("organizacoes")
-      .insert({ id, nome: reg.restaurante, tipo_cliente: "saas", ativo: true, ...ORGANIZACAO_NOVA });
+      .insert({ id, nome: reg.restaurante, tipo_cliente: "saas", ativo: true, ...ORGANIZACAO_NOVA, ...vigencia });
     if (!erroInsert) return id;
     if (erroInsert.code !== "23505") throw new PassoFalhou("não criou a organização");
     // Corrida com outro cadastro do mesmo nome: tenta o próximo id livre.
@@ -158,7 +161,7 @@ async function ligarLead(admin: Admin, reg: Registro, organizacaoId: string) {
 }
 
 /** Executa (ou retoma) o cadastro de um registro já reservado. */
-export async function executarProvisionamento(admin: Admin, reg: Registro): Promise<Desfecho> {
+export async function executarProvisionamento(admin: Admin, reg: Registro, aprovadoEm: Date = new Date()): Promise<Desfecho> {
   try {
     // E-mail que já tem conta: nunca vincula sozinho (decisão do plano). Só na primeira vez:
     // na retomada a conta encontrada é a que este próprio registro criou.
@@ -173,7 +176,7 @@ export async function executarProvisionamento(admin: Admin, reg: Registro): Prom
       }
     }
 
-    const organizacaoId = reg.organizacao_id ?? (await criarOrganizacao(admin, reg));
+    const organizacaoId = reg.organizacao_id ?? (await criarOrganizacao(admin, reg, aprovadoEm));
     if (!reg.organizacao_id) await gravar(admin, reg.id, { organizacao_id: organizacaoId });
     if (!reg.unidade_id) await gravar(admin, reg.id, { unidade_id: await criarUnidade(admin, reg, organizacaoId) });
 

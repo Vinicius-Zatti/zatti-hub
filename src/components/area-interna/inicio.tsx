@@ -4,6 +4,8 @@ import type { Inicio } from "@/lib/area-interna/inicio";
 import { ROTULO_SAUDE, type Saude } from "@/lib/clientes/tipos";
 import { ROTULO_ETAPA } from "@/lib/comercial/funil";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
+import { CARENCIA_DIAS, dataBR } from "@/lib/assinatura/regras";
+import type { AssinaturaResumo } from "@/lib/assinatura/servidor";
 
 type Falhas = {
   agenda: boolean;
@@ -11,6 +13,7 @@ type Falhas = {
   comercial: boolean;
   clientes: boolean;
   conteudo: boolean;
+  assinaturas: boolean;
 };
 
 const COR_SAUDE: Record<Saude, string> = {
@@ -75,11 +78,13 @@ export function InicioAreaInterna({
   hoje,
   nome,
   inicio,
+  assinaturas,
   falhas,
 }: {
   hoje: string;
   nome: string | null;
   inicio: Inicio;
+  assinaturas: AssinaturaResumo[];
   falhas: Falhas;
 }) {
   const { agenda, comercial, clientes, conteudo } = inicio;
@@ -235,6 +240,44 @@ export function InicioAreaInterna({
                 <DicaCalculo
                   rotulo="Jornada e alertas"
                   texto="Jornada = etapas concluídas mais a parte feita do checklist das etapas em andamento, sobre o total de etapas. Alertas: tarefa vencida, risco aberto, etapa bloqueada ou com prazo vencido, onboarding esperando decisão e marco atrasado. A saúde é a que você avaliou na ficha do cliente."
+                />
+              </p>
+            </>
+          )}
+        </Cartao>
+
+        <Cartao titulo="Assinaturas do app" link="/acessos" rotuloLink="Abrir acessos">
+          {falhas.assinaturas ? (
+            <Falhou />
+          ) : assinaturas.length === 0 ? (
+            <Vazio texto="Nenhuma assinatura vencendo nos próximos 30 dias." />
+          ) : (
+            <>
+              <ul className="flex flex-col divide-y divide-cinza-claro">
+                {assinaturas.map((a) => (
+                  <li key={a.organizacao_id} className="flex items-center justify-between gap-3 py-2">
+                    <span className="min-w-0 truncate text-sm font-semibold text-azul-noite">{a.restaurante}</span>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        a.dias < 0 ? "bg-vermelho/10 text-vermelho" : a.dias <= 7 ? "bg-ambar/15 text-azul-noite" : "bg-cinza-claro text-cinza-medio"
+                      }`}
+                    >
+                      {a.dias < -CARENCIA_DIAS
+                        ? `Travada desde ${dataBR(a.vigencia_fim)}`
+                        : a.dias < 0
+                          ? `Venceu em ${dataBR(a.vigencia_fim)}`
+                          : a.dias === 0
+                            ? "Vence hoje"
+                            : `Vence em ${a.dias} dia(s)`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 flex items-center gap-1 text-xs text-cinza-medio">
+                Como ler
+                <DicaCalculo
+                  rotulo="Assinaturas do app"
+                  texto={`Contas da compra pelo site com fim da vigência em até 30 dias ou já vencidas, as mais urgentes primeiro. Depois de vencer, o cliente usa por mais ${CARENCIA_DIAS} dias com aviso e depois o app trava, sem apagar dado. Os avisos de renovação saem sozinhos pelo WhatsApp 30, 7 e 1 dia antes e no dia.`}
                 />
               </p>
             </>

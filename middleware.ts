@@ -12,6 +12,8 @@ const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/financeiro/alertas/diario", "/api/financeiro/alertas/enviados",
   // Compra do app com cadastro automático (15/10/2026): token do escopo 'provisionamento'.
   "/api/provisionamento/compra",
+  // Vigência anual (15/10/2026): avisos de renovação e renovação paga, mesmo token.
+  "/api/provisionamento/avisos", "/api/provisionamento/renovacao", "/api/provisionamento/renovacao/consulta",
 ]);
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado

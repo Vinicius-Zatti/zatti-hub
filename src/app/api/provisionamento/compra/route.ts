@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   }
   if (!reserva.registro) return NextResponse.json({ erro: "indisponivel" }, { status: 503 });
 
-  const desfecho = await executarProvisionamento(admin, reserva.registro);
+  const desfecho = await executarProvisionamento(admin, reserva.registro, validado.pedido.aprovadoEm ?? new Date());
   if (desfecho.status === "concluido") {
     return NextResponse.json({ status: "concluido", envio: desfecho.envio, organizacao_id: desfecho.organizacaoId }, semCache);
   }

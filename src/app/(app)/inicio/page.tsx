@@ -9,6 +9,8 @@ import { carregarClientes } from "@/lib/banco/clientes";
 import { carregarLeads } from "@/lib/banco/comercial";
 import { carregarPecas } from "@/lib/banco/conteudo";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
+import { assinaturasParaAcompanhar } from "@/lib/assinatura/servidor";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,7 @@ export default async function InicioPage() {
   const acesso = await requireEscritorio();
   const hoje = hojeIsoBrasil();
 
-  const [rotinas, tarefas, execucoes, calendario, leads, clientes, pecas] = await Promise.all([
+  const [rotinas, tarefas, execucoes, calendario, leads, clientes, pecas, assinaturas] = await Promise.all([
     ouNull("rotinas", listarRotinasDoDia(acesso.userId, diaDaSemanaIso(hoje))),
     ouNull("tarefas", listarTarefasDoDia(acesso.userId, hoje)),
     ouNull("execuções", listarExecucoesDoDia(acesso.userId, hoje)),
@@ -35,6 +37,7 @@ export default async function InicioPage() {
     ouNull("leads", carregarLeads()),
     ouNull("clientes", carregarClientes()),
     ouNull("peças", carregarPecas()),
+    ouNull("assinaturas", assinaturasParaAcompanhar(createAdminClient(), hoje)),
   ]);
 
   const agendaOk = rotinas !== null && tarefas !== null && execucoes !== null;
@@ -59,12 +62,14 @@ export default async function InicioPage() {
       hoje={hoje}
       nome={acesso.usuarioNome}
       inicio={inicio}
+      assinaturas={assinaturas ?? []}
       falhas={{
         agenda: !agendaOk,
         calendario: calendario.ok ? null : calendario.motivo,
         comercial: leads === null,
         clientes: clientes === null,
         conteudo: pecas === null,
+        assinaturas: assinaturas === null,
       }}
     />
   );
