@@ -1,9 +1,10 @@
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ehTitularFinanceiro } from "@/lib/acesso-financeiro";
 import { ordenarVinculos, podeUsarEquipe } from "@/lib/equipe/regras";
+import { CABECALHO_CAMINHO, ehCaminhoAreaInterna, escolherOrganizacaoMaster } from "@/lib/area-interna/caminhos";
 
 export type Role = "gestao" | "operacional" | "master";
 export type FonteDadosEstoque = "planilha" | "banco";
@@ -66,6 +67,10 @@ export type AcessoAtual = {
    * são todas as organizações ativas da plataforma; pra role normal, só as
    * que têm vínculo. */
   organizacoesDisponiveis: { id: string; nome: string }[];
+  /** Organização escolhida é a área de trabalho do Vinícius ("Zatti HUB",
+   * `organizacoes.area_interna`): menu próprio, sem módulos de restaurante.
+   * Só master chega nela (não há vínculo de cliente com essa organização). */
+  areaInterna: boolean;
 };
 
 type VinculoRow = {
@@ -78,7 +83,7 @@ type VinculoRow = {
   organizacoes: { nome: string; equipe_habilitado: boolean } | null;
 };
 
-type OrganizacaoRow = { id: string; nome: string; equipe_habilitado?: boolean };
+type OrganizacaoRow = { id: string; nome: string; equipe_habilitado?: boolean; area_interna?: boolean };
 
 type UnidadeRow = {
   id: string;
@@ -96,6 +101,25 @@ type UnidadeRow = {
 const COLUNAS_UNIDADE =
   "id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, " +
   "financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado, extrato_estoque_habilitado";
+
+/** Organizações com alguma unidade pronta (estoque no banco ou planilha
+ * configurada). Sem preferência salva, o master não pode cair num cliente
+ * novo sem dado: ficaria preso na tela de "planilha pendente", sem seletor. */
+async function organizacoesComDados(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: string[],
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("unidades")
+    .select("organizacao_id, spreadsheet_id, fonte_dados_estoque")
+    .in("organizacao_id", ids)
+    .eq("ativo", true);
+  return new Set(
+    ((data as { organizacao_id: string; spreadsheet_id: string | null; fonte_dados_estoque: FonteDadosEstoque }[] | null) ?? [])
+      .filter((u) => u.fonte_dados_estoque === "banco" || Boolean(u.spreadsheet_id))
+      .map((u) => u.organizacao_id),
+  );
+}
 
 /** Resolve quem está logado e a que organização/unidade ele tem acesso,
  * direto da sessão - nunca a partir de um id vindo de formulário ou da URL.
@@ -150,6 +174,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   if (ehMaster && claims.claims.aal !== "aal2") redirect("/mfa");
   const cookieStore = await cookies();
   const orgEscolhida = cookieStore.get(COOKIE_ORGANIZACAO)?.value;
+  let areaInterna = false;
 
   let organizacoesDisponiveis: { id: string; nome: string }[];
   let organizacaoId: string;
@@ -162,46 +187,35 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     // acesso pra quem tem qualquer vínculo com role "master".
     const { data: todasOrgs } = await supabase
       .from("organizacoes")
-      .select("id, nome, equipe_habilitado")
+      .select("id, nome, equipe_habilitado, area_interna")
       .eq("ativo", true)
       .order("nome");
-    organizacoesDisponiveis = (todasOrgs as unknown as OrganizacaoRow[] | null) ?? [];
+    const orgsMaster = (todasOrgs as unknown as OrganizacaoRow[] | null) ?? [];
+    // Zatti HUB (área do Vinícius) no topo do seletor; os clientes seguem em ordem alfabética.
+    organizacoesDisponiveis = [...orgsMaster]
+      .sort((a, b) => Number(Boolean(b.area_interna)) - Number(Boolean(a.area_interna)))
+      .map((o) => ({ id: o.id, nome: o.nome }));
     if (organizacoesDisponiveis.length === 0) redirect("/sem-acesso");
+    const caminho = (await headers()).get(CABECALHO_CAMINHO) ?? "";
+    const organizacoesEscolha = orgsMaster.map((o) => ({ id: o.id, areaInterna: Boolean(o.area_interna) }));
 
-    if (organizacoesDisponiveis.some((o) => o.id === orgEscolhida)) {
-      organizacaoId = orgEscolhida!;
-    } else {
-      // Sem preferência salva ainda: não pode cair na primeira organização
-      // em ordem alfabética sem checar se ela já tem dado configurado, senão
-      // master fica preso na tela de "planilha pendente" de um cliente novo
-      // (sem seletor pra sair de lá) mesmo tendo outras organizações prontas.
-      const { data: unidadesProntas } = await supabase
-        .from("unidades")
-        .select("organizacao_id, spreadsheet_id, fonte_dados_estoque")
-        .in(
-          "organizacao_id",
-          organizacoesDisponiveis.map((o) => o.id),
-        )
-        .eq("ativo", true);
-
-      const orgsComDados = new Set(
-        ((unidadesProntas as {
-          organizacao_id: string;
-          spreadsheet_id: string | null;
-          fonte_dados_estoque: FonteDadosEstoque;
-        }[] | null) ?? [])
-          .filter((u) => u.fonte_dados_estoque === "banco" || Boolean(u.spreadsheet_id))
-          .map((u) => u.organizacao_id),
-      );
-      organizacaoId =
-        organizacoesDisponiveis.find((o) => orgsComDados.has(o.id))?.id ??
-        organizacoesDisponiveis[0].id;
-    }
+    // A consulta das unidades prontas só roda quando ainda é preciso achar o
+    // primeiro cliente com dado (sem preferência válida e fora da área interna).
+    const preferidaValida = organizacoesDisponiveis.some((o) => o.id === orgEscolhida);
+    const vaiParaAreaInterna = organizacoesEscolha.some((o) => o.areaInterna) && ehCaminhoAreaInterna(caminho);
+    organizacaoId = escolherOrganizacaoMaster({
+      organizacoes: organizacoesEscolha,
+      caminho,
+      preferida: orgEscolhida,
+      prontas:
+        preferidaValida || vaiParaAreaInterna
+          ? new Set()
+          : await organizacoesComDados(supabase, organizacoesDisponiveis.map((o) => o.id)),
+    });
     role = "master";
-    equipeHabilitado = Boolean(
-      ((todasOrgs as unknown as OrganizacaoRow[] | null) ?? []).find((o) => o.id === organizacaoId)
-        ?.equipe_habilitado,
-    );
+    const orgAtual = orgsMaster.find((o) => o.id === organizacaoId);
+    equipeHabilitado = Boolean(orgAtual?.equipe_habilitado);
+    areaInterna = Boolean(orgAtual?.area_interna);
   } else {
     // Uma linha por organização (pode haver mais de um vínculo na mesma).
     organizacoesDisponiveis = [
@@ -268,6 +282,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     unidadeFixa,
     equipeHabilitado,
     organizacoesDisponiveis,
+    areaInterna,
   };
 });
 

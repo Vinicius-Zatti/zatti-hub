@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { CABECALHO_CAMINHO } from "@/lib/area-interna/caminhos";
 
 // As rotas do relatório semanal de IA, dos eventos de leads e do Conteúdo se autenticam por token próprio (conferido
 // no banco), não por sessão: são chamadas pelo Vini, fora do navegador.
@@ -17,6 +18,9 @@ const ROTAS_PUBLICAS_EXATAS = new Set([
  * antes de qualquer página renderizar - primeira camada, não a única (cada
  * Server Action que grava dado confere de novo, ver src/lib/acesso.ts). */
 export async function middleware(request: NextRequest) {
+  // Caminho da página para o layout escolher o menu (área do Vinícius x
+  // restaurante). Sempre sobrescrito aqui: o valor do navegador não vale.
+  request.headers.set(CABECALHO_CAMINHO, request.nextUrl.pathname);
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

@@ -55,6 +55,9 @@ export function EstruturaAplicativo({
   const gatilhoRef = useRef<HTMLButtonElement>(null);
   const labelAberto = painelAberto?.caminho === pathname ? painelAberto.label : null;
   const itemAberto = items.find((item) => item.label === labelAberto && item.sections);
+  // Vale o prefixo mais longo: na área do Vinícius "/escritorio" (Time de IA)
+  // é prefixo de "/escritorio/comercial", que tem item próprio no menu.
+  const labelAtivo = itemAtivo(items, pathname);
   const variasOrganizacoes = organizacoes.length > 1;
 
   useEffect(() => {
@@ -159,8 +162,7 @@ export function EstruturaAplicativo({
         <nav aria-label="Módulos do sistema" className={`min-h-0 flex-1 overflow-y-auto px-2 py-4 ${ocultoNoMobile}`}>
           <div className="flex flex-col gap-1.5">
             {items.map((item) => {
-              const prefixos = [item.activePrefix ?? item.href].flat();
-              const ativo = !item.disabled && prefixos.some((prefixo) => pathname.startsWith(prefixo));
+              const ativo = item.label === labelAtivo;
               const painelDoItemAberto = labelAberto === item.label;
               const classeBase = `flex min-h-11 w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${alinhamentoItem}`;
 
@@ -399,4 +401,17 @@ function PainelDestinos({
       </div>
     </div>
   );
+}
+
+export function itemAtivo(items: ItemNavegacao[], pathname: string): string | undefined {
+  let melhor: { label: string; tamanho: number } | undefined;
+  for (const item of items) {
+    if (item.disabled) continue;
+    for (const prefixo of [item.activePrefix ?? item.href].flat()) {
+      if (pathname.startsWith(prefixo) && (!melhor || prefixo.length > melhor.tamanho)) {
+        melhor = { label: item.label, tamanho: prefixo.length };
+      }
+    }
+  }
+  return melhor?.label;
 }

@@ -84,7 +84,8 @@ export type OrganizacaoOpcao = { id: string; nome: string };
 /** Clientes já cadastrados no Painel de Acessos, para o "Virou cliente". */
 export async function listarOrganizacoesAtivas(): Promise<OrganizacaoOpcao[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("organizacoes").select("id, nome").eq("ativo", true).order("nome");
+  // A Zatti HUB (área do Vinícius) não é cliente: fica fora do "Virou cliente".
+  const { data, error } = await supabase.from("organizacoes").select("id, nome").eq("ativo", true).eq("area_interna", false).order("nome");
   if (error) falhou(error, "listar organizações");
   return (data ?? []).map((o) => ({ id: o.id as string, nome: o.nome as string }));
 }
