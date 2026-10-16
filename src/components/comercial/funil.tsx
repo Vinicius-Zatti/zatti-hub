@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import { acaoLeadAction } from "@/app/(app)/escritorio/comercial/actions";
 import { Selo, classeCampo } from "@/components/clientes/ui";
 import { ModalFichaLead } from "@/components/comercial/modal-ficha-lead";
 import { NovoLead } from "@/components/comercial/novo-lead";
@@ -19,6 +20,7 @@ import {
   linkInstagram,
   linkWhatsapp,
   type FiltroComercial,
+  type Etapa,
   type Lead,
 } from "@/lib/comercial/funil";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
@@ -28,14 +30,58 @@ import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
  * Clique no cartão abre a ficha em modal por cima do kanban (a rota
  * /escritorio/comercial/[id] continua valendo para link direto e nova aba).
  * O kanban do desktop usa o `TabelaRolavel`: mãozinha para arrastar, setas e
- * tela cheia com Esc, igual às tabelas do app. */
+ * tela cheia com Esc, igual às tabelas do app.
+ * Arrastar um cartão para outra coluna muda a etapa (16/10/2026), pela mesma
+ * ação do "Mudar etapa" da ficha. Perdido pede motivo, então soltar em Perdido
+ * abre a ficha em vez de mover. */
 export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
   const [filtro, setFiltro] = useState<FiltroComercial>({ origem: "", produto: "", desde: null });
-  const visiveis = useMemo(() => filtrarLeads(leads, filtro), [leads, filtro]);
+  // Etapa já mudada na tela enquanto o servidor grava; some quando a lista nova chega.
+  const [movidos, setMovidos] = useState<Record<string, Etapa>>({});
+  const [leadsBase, setLeadsBase] = useState(leads);
+  if (leadsBase !== leads) {
+    setLeadsBase(leads);
+    setMovidos({});
+  }
+  const [arrastado, setArrastado] = useState<string | null>(null);
+  const [colunaAlvo, setColunaAlvo] = useState<Etapa | null>(null);
+  const [avisoMover, setAvisoMover] = useState<string | null>(null);
+  const [, iniciarTransicao] = useTransition();
+  const leadsNaTela = useMemo(
+    () => leads.map((l) => (movidos[l.id] && movidos[l.id] !== l.etapa ? { ...l, etapa: movidos[l.id], etapaDesde: hoje } : l)),
+    [leads, movidos, hoje],
+  );
+  const visiveis = useMemo(() => filtrarLeads(leadsNaTela, filtro), [leadsNaTela, filtro]);
   const ind = calcularIndicadores(visiveis);
   const porEtapa = ETAPAS.map((etapa) => ({ etapa, leads: visiveis.filter((l) => l.etapa === etapa) }));
   const [leadAberto, setLeadAberto] = useState<string | null>(null);
   const fecharFicha = useCallback(() => setLeadAberto(null), []);
+
+  function soltarEm(etapa: Etapa) {
+    const id = arrastado;
+    setArrastado(null);
+    setColunaAlvo(null);
+    const lead = id ? leadsNaTela.find((l) => l.id === id) : null;
+    if (!lead || lead.etapa === etapa) return;
+    if (etapa === "perdido") {
+      setAvisoMover(`Para marcar ${lead.nome} como perdido, informe o motivo na ficha.`);
+      setLeadAberto(lead.id);
+      return;
+    }
+    setAvisoMover(null);
+    setMovidos((m) => ({ ...m, [lead.id]: etapa }));
+    iniciarTransicao(async () => {
+      const r = await acaoLeadAction({ acao: "etapa", leadId: lead.id, paraEtapa: etapa });
+      if (!r.ok) {
+        setMovidos((m) => {
+          const resto = { ...m };
+          delete resto[lead.id];
+          return resto;
+        });
+        setAvisoMover(`${lead.nome} não mudou de etapa: ${r.mensagem}`);
+      }
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-10">
@@ -113,16 +159,52 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
 
       {/* Desktop: colunas por etapa */}
       <div className="hidden md:block">
+        {avisoMover && (
+          <p role="alert" className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-ambar bg-ambar/10 px-3 py-2 text-sm text-azul-noite">
+            {avisoMover}
+            <button type="button" className="text-xs font-semibold text-cinza-medio hover:underline" onClick={() => setAvisoMover(null)}>Fechar aviso</button>
+          </p>
+        )}
         <TabelaRolavel ariaLabel="Funil do Comercial" className="max-h-[75vh] rounded-lg border border-cinza-claro bg-branco">
           <div className="flex w-max gap-3 p-2">
             {porEtapa.map(({ etapa, leads: lista }) => (
-              <section key={etapa} className="flex w-64 shrink-0 flex-col gap-2 rounded-xl bg-azul-noite/5 p-2">
+              <section
+                key={etapa}
+                onDragOver={(e) => {
+                  if (!arrastado) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (colunaAlvo !== etapa) setColunaAlvo(etapa);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null) && colunaAlvo === etapa) setColunaAlvo(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  soltarEm(etapa);
+                }}
+                className={`flex min-h-40 w-64 shrink-0 flex-col gap-2 rounded-xl p-2 transition-colors ${
+                  colunaAlvo === etapa ? "bg-ambar/15 ring-2 ring-ambar" : "bg-azul-noite/5"
+                }`}>
                 <h2 className="flex items-center justify-between px-1 text-xs font-bold uppercase tracking-wide text-azul-noite">
                   {ROTULO_ETAPA[etapa]}
                   <span className="rounded-full bg-branco px-2 text-cinza-medio">{lista.length}</span>
                 </h2>
                 {lista.map((l) => (
-                  <CartaoLead key={l.id} lead={l} hoje={hoje} aoAbrir={setLeadAberto} />
+                  <CartaoLead
+                    key={l.id}
+                    lead={l}
+                    hoje={hoje}
+                    aoAbrir={setLeadAberto}
+                    arraste={{
+                      aoIniciar: () => setArrastado(l.id),
+                      aoTerminar: () => {
+                        setArrastado(null);
+                        setColunaAlvo(null);
+                      },
+                      ativo: arrastado === l.id,
+                    }}
+                  />
                 ))}
               </section>
             ))}
@@ -164,7 +246,9 @@ function Indicador({ rotulo, valor, dica, pequeno }: { rotulo: string; valor: st
   );
 }
 
-function CartaoLead({ lead, hoje, aoAbrir }: { lead: Lead; hoje: string; aoAbrir: (id: string) => void }) {
+type Arraste = { aoIniciar: () => void; aoTerminar: () => void; ativo: boolean };
+
+function CartaoLead({ lead, hoje, aoAbrir, arraste }: { lead: Lead; hoje: string; aoAbrir: (id: string) => void; arraste?: Arraste }) {
   const dias = diasDesde(lead.etapaDesde, hoje);
   const atrasada = lead.proximaAcaoEm != null && lead.proximaAcaoEm < hoje;
   // Cartão em <div>: os links do Instagram e do WhatsApp não podem ficar dentro
@@ -172,8 +256,20 @@ function CartaoLead({ lead, hoje, aoAbrir }: { lead: Lead; hoje: string; aoAbrir
   // dois links de contato ficam por cima (relative z-10). Clique simples abre a
   // ficha em modal; Ctrl/Cmd/Shift ou botão do meio seguem o link (nova aba).
   return (
-    <div className="relative flex flex-col gap-1 rounded-lg border border-cinza-claro bg-branco p-3 text-sm hover:border-ambar">
+    <div
+      draggable={arraste ? true : undefined}
+      onDragStart={arraste ? (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", lead.id);
+        arraste.aoIniciar();
+      } : undefined}
+      onDragEnd={arraste?.aoTerminar}
+      title={arraste ? "Arraste para outra coluna para mudar a etapa" : undefined}
+      className={`relative flex flex-col gap-1 rounded-lg border border-cinza-claro bg-branco p-3 text-sm hover:border-ambar ${
+        arraste ? "cursor-grab active:cursor-grabbing" : ""
+      } ${arraste?.ativo ? "opacity-40" : ""}`}>
       <Link
+        draggable={false}
         href={`/escritorio/comercial/${lead.id}`}
         onClick={(e) => {
           if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
@@ -187,13 +283,13 @@ function CartaoLead({ lead, hoje, aoAbrir }: { lead: Lead; hoje: string; aoAbrir
       {(lead.instagram || lead.whatsapp) && (
         <span className="flex flex-wrap gap-x-2 text-xs">
           {lead.instagram && (
-            <a href={linkInstagram(lead.instagram)} target="_blank" rel="noopener noreferrer"
+            <a draggable={false} href={linkInstagram(lead.instagram)} target="_blank" rel="noopener noreferrer"
               className="relative z-10 truncate font-semibold text-azul-petroleo hover:underline" title={`Abrir o perfil @${lead.instagram}`}>
               @{lead.instagram}
             </a>
           )}
           {lead.whatsapp && (
-            <a href={linkWhatsapp(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
+            <a draggable={false} href={linkWhatsapp(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
               className="relative z-10 text-azul-petroleo hover:underline" title="Abrir o WhatsApp">
               {formatarWhatsapp(lead.whatsapp)}
             </a>
