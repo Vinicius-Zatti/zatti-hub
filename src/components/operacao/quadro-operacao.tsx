@@ -29,7 +29,7 @@ import { ROTULO_COLUNA, ROTULO_TIPO, TIPOS_ITEM, type Coluna, type ItemOperacao 
 
 /** Aba "Quadro": demandas, atas, pautas, ações e alertas do Vini por coluna.
  * Arrastar muda a coluna na hora (otimista) e volta com aviso se o Vini
- * recusar. Soltar em Resolvida pede a ação "resolver". No celular, lista
+ * recusar. Soltar em Resolvida manda a coluna; o Vini resolve quando o item permite. No celular, lista
  * agrupada sem arrastar: mover fica na ficha. */
 export function QuadroOperacao({ itens, hoje }: { itens: ItemOperacao[]; hoje: string }) {
   const [filtro, setFiltro] = useState<FiltroQuadro>({ tipo: "", cliente: "" });
@@ -62,7 +62,7 @@ export function QuadroOperacao({ itens, hoje }: { itens: ItemOperacao[]; hoje: s
     setAviso(null);
     setMovidos((m) => ({ ...m, [chave]: { coluna, em: Date.now() } }));
     iniciar(async () => {
-      const r = await acaoOperacaoAction(coluna === "resolvida" ? { chave, acao: "resolver" } : { chave, acao: "coluna", coluna });
+      const r = await acaoOperacaoAction({ chave, acao: "coluna", coluna });
       if (!r.ok) {
         setMovidos((m) => {
           const resto = { ...m };

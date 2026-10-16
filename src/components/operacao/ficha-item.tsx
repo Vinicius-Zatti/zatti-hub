@@ -158,7 +158,7 @@ export function FichaItemOperacao({ item, aoFechar }: { item: ItemOperacao; aoFe
               disabled={pendente || destino === item.coluna}
               onClick={() =>
                 executar(
-                  () => acaoOperacaoAction(destino === "resolvida" ? { chave: item.chave, acao: "resolver" } : { chave: item.chave, acao: "coluna", coluna: destino }),
+                  () => acaoOperacaoAction({ chave: item.chave, acao: "coluna", coluna: destino }),
                   aoFechar,
                 )
               }
