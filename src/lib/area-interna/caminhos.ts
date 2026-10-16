@@ -1,7 +1,7 @@
 /**
  * Área de trabalho do Vinícius (15/10/2026): organização própria "Zatti HUB"
  * (`organizacoes.area_interna = true`), separada das organizações de cliente.
- * Com ela escolhida, o menu mostra só Início, Agenda, Meu Tempo, Comercial,
+ * Com ela escolhida, o menu mostra só Início, Agenda, Operação, Meu Tempo, Comercial,
  * Clientes, Conteúdo, Time de IA e Acessos; nas organizações de cliente, o
  * master vê só os módulos do restaurante.
  *
