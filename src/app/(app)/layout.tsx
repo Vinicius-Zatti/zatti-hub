@@ -178,6 +178,8 @@ export default async function AppLayout({
         },
       ],
     },
+    // Painel de operação (16/10/2026): quadro do que vive no WhatsApp do Vini.
+    { label: "Operação", href: "/escritorio/operacao", icone: "tarefas", activePrefix: "/escritorio/operacao", disabled: false },
     {
       label: "Meu Tempo",
       href: "/meu-tempo/hoje",
@@ -199,7 +201,7 @@ export default async function AppLayout({
     { label: "Comercial", href: "/escritorio/comercial", icone: "financeiro", activePrefix: "/escritorio/comercial", disabled: false },
     { label: "Clientes", href: "/escritorio/clientes", icone: "organizacao", activePrefix: "/escritorio/clientes", disabled: false },
     { label: "Conteúdo", href: "/escritorio/conteudo", icone: "marketing", activePrefix: "/escritorio/conteudo", disabled: false },
-    // "/escritorio" é prefixo das três acima; o menu marca o prefixo mais longo.
+    // "/escritorio" é prefixo das quatro (Operação, Comercial, Clientes, Conteúdo); o menu marca o prefixo mais longo.
     { label: "Time de IA", href: "/escritorio", icone: "escritorio", activePrefix: "/escritorio", disabled: false },
     { label: "Acessos", href: "/acessos", icone: "acessos", activePrefix: "/acessos", disabled: false },
   ];
