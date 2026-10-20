@@ -57,16 +57,18 @@ select lives_ok($$ update fin_categorias set arquivado = true where id = pg_temp
   'Gestão remove (arquiva) conta padrão');
 select is((select arquivado from fin_categorias where id = pg_temp.cat('co_condominio')), true,
   'conta padrão removida fica arquivada');
-select throws_ok($$ delete from fin_categorias where id = pg_temp.cat('co_condominio') $$,
-  '42501', null, 'conta padrão não é apagada');
+delete from fin_categorias where id = pg_temp.cat('co_condominio');
+select is((select count(*)::int from fin_categorias where id = pg_temp.cat('co_condominio')), 1,
+  'conta padrão não é apagada');
 select throws_ok($$ update fin_categorias set arquivado = true where id = pg_temp.cat('cmo_fgts') $$,
   '42501', null, 'conta usada nas provisões não sai');
 select lives_ok($$ update fin_categorias set nome = 'FGTS mensal' where id = pg_temp.cat('cmo_fgts') $$,
   'conta usada nas provisões pode ser renomeada');
 select throws_ok($$ update fin_categorias set arquivado = true where id = pg_temp.cat('sno_equipamentos_investimentos') $$,
   '42501', null, 'conta de equipamentos (DFC) não sai');
-select throws_ok($$ update fin_categorias set nome = 'Outro nome' where id = pg_temp.cat('custos_ocupacao') $$,
-  '42501', null, 'grupo de contas não muda');
+update fin_categorias set nome = 'Outro nome' where id = pg_temp.cat('custos_ocupacao');
+select isnt((select nome from fin_categorias where id = pg_temp.cat('custos_ocupacao')), 'Outro nome',
+  'grupo de contas não muda');
 select throws_ok($$ update fin_categorias set papel_dre = 'cmo' where id = pg_temp.cat('co_aluguel') $$,
   'P0001', null, 'conta não muda de linha da DRE');
 
