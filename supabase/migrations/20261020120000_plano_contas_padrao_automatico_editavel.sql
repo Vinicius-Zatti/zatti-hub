@@ -84,6 +84,9 @@ begin
   end if;
 
   new.nome := trim(new.nome);
+  if tg_op = 'INSERT' and not (new.nivel = 'conta' and not new.padrao and new.codigo_sistema is null) then
+    raise exception 'Grupo de contas e conta padrao nao sao criados pelo app' using errcode = '42501';
+  end if;
   if tg_op = 'UPDATE' then
     if old.nivel <> 'conta' then
       raise exception 'Grupo de contas nao pode ser alterado' using errcode = '42501';

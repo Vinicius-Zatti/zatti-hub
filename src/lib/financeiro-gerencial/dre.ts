@@ -50,6 +50,9 @@ export type Dre = {
   resultadoOperacional: number;
   saidasNaoOperacionais: { contas: ContaValorDre[]; total: number };
   geracaoCaixaAposSaidas: number;
+  /** Contas removidas do plano (arquivadas). A forma mensal não muda (a DRE anual casa os meses por
+   * posição); `montarDreAnual` esconde a linha delas quando o ano todo está zerado (20/10/2026). */
+  contasArquivadas?: string[];
 };
 
 /** DRE única por competência (25/09): todo lançamento entra no mês da sua
@@ -222,11 +225,9 @@ export function calcularDre(params: {
    * `valoresDreProvisao` em provisoes.ts. Ausente = 0. */
   valoresProvisao?: Map<string, number>;
 }): Dre {
-  const { competencia, lancamentos, estoqueMensal, estoqueMesAnterior = null, estoqueMesSeguinte = null, valoresProvisao } = params;
+  const { competencia, lancamentos, categorias, estoqueMensal, estoqueMesAnterior = null, estoqueMesSeguinte = null, valoresProvisao } = params;
   const totais = somarPorCategoria(lancamentos, competencia);
   for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
-  // Conta removida do plano (arquivada) só aparece no mês em que tem valor: o histórico continua na DRE (20/10/2026).
-  const categorias = params.categorias.filter((c) => !(c.nivel === "conta" && c.arquivado && !totais.get(c.id)));
 
   const receitas = receitasPorSubgrupo(categorias, totais);
   const receitaEntregas = somarValores(
@@ -280,5 +281,6 @@ export function calcularDre(params: {
     resultadoOperacional,
     saidasNaoOperacionais,
     geracaoCaixaAposSaidas,
+    contasArquivadas: categorias.filter((c) => c.nivel === "conta" && c.arquivado).map((c) => c.id),
   };
 }

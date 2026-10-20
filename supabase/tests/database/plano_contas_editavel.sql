@@ -6,7 +6,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(17);
 
 -- ── Fixture ────────────────────────────────────────────────────────────────
 update fin_acesso_exclusivo set ativo = false where id;
@@ -76,6 +76,9 @@ with nova as (
   insert into fin_categorias (unidade_id, parent_id, nivel, papel_dre, nome, padrao, ordem)
   values ('uni-pc', pg_temp.cat('custos_ocupacao'), 'conta', 'custo_ocupacao', 'Alarme', false, 999) returning id)
 insert into propria_pc select id from nova;
+select throws_ok($$ insert into fin_categorias (unidade_id, parent_id, nivel, nome, padrao, ordem)
+    values ('uni-pc', pg_temp.cat('custos_operacionais'), 'subgrupo', 'Grupo novo', false, 9) $$,
+  '42501', null, 'grupo de contas não é criado pelo app');
 select lives_ok($$ delete from fin_categorias where id = (select id from propria_pc) $$,
   'Gestão apaga conta própria');
 select is((select count(*)::int from fin_categorias where id = (select id from propria_pc)), 0,

@@ -133,6 +133,15 @@ function combinarArvore(arvoresDoAno: LinhaDreMensal[][], mesesValidos: number, 
   });
 }
 
+/** Conta removida do plano (arquivada) sai da tabela quando não tem valor no ano; com valor, fica e o
+ * histórico aparece. Depois de `combinarArvore`, que casa os meses por posição (20/10/2026). */
+function semContasRemovidasZeradas(linhas: LinhaDreAnual[], arquivadas: Set<string>): LinhaDreAnual[] {
+  if (!arquivadas.size) return linhas;
+  return linhas
+    .filter((l) => !(arquivadas.has(l.id) && !l.filhos && l.valoresPorMes.every((v) => !v) && !l.total))
+    .map((l) => (l.filhos ? { ...l, filhos: semContasRemovidasZeradas(l.filhos, arquivadas) } : l));
+}
+
 // Nomes dos percentuais da Planilha Financeiro da Zatti (V1, 25/09).
 const ROTULOS_PERCENTUAL: Record<string, string> = {
   margem: "% Margem de Contribuição",
@@ -253,7 +262,10 @@ export function montarDreAnual(
   const mesesValidos = opcoes.incluirMesesFuturos ? 12 : mesesRealizados;
   const arvoresMensais = dresPorMes.map((dre) => montarArvoreMensal(dre));
 
-  const absoluto = combinarArvore(arvoresMensais, mesesValidos, divisorMedia, mesesRealizados);
+  const absoluto = semContasRemovidasZeradas(
+    combinarArvore(arvoresMensais, mesesValidos, divisorMedia, mesesRealizados),
+    new Set(dresPorMes.flatMap((dre) => dre.contasArquivadas ?? [])),
+  );
   const receitaVendasProdutos = montarLinhaReceitaVendasProdutos(receitaVendasProdutosPorMes, mesesValidos, divisorMedia, mesesRealizados);
 
   const receitaBruta = absoluto.find((l) => l.id === "receita_bruta")!;
