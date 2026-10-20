@@ -222,9 +222,11 @@ export function calcularDre(params: {
    * `valoresDreProvisao` em provisoes.ts. Ausente = 0. */
   valoresProvisao?: Map<string, number>;
 }): Dre {
-  const { competencia, lancamentos, categorias, estoqueMensal, estoqueMesAnterior = null, estoqueMesSeguinte = null, valoresProvisao } = params;
+  const { competencia, lancamentos, estoqueMensal, estoqueMesAnterior = null, estoqueMesSeguinte = null, valoresProvisao } = params;
   const totais = somarPorCategoria(lancamentos, competencia);
   for (const [categoriaId, valor] of valoresProvisao ?? []) totais.set(categoriaId, valor);
+  // Conta removida do plano (arquivada) só aparece no mês em que tem valor: o histórico continua na DRE (20/10/2026).
+  const categorias = params.categorias.filter((c) => !(c.nivel === "conta" && c.arquivado && !totais.get(c.id)));
 
   const receitas = receitasPorSubgrupo(categorias, totais);
   const receitaEntregas = somarValores(

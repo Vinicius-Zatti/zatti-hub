@@ -373,11 +373,9 @@ export async function criarCategoriaPersonalizada(params: {
   return categoriaDaLinha(data as CategoriaRow);
 }
 
-/** Renomeia categoria própria - nunca uma padrão. RLS (`padrao = false` no
- * WITH CHECK) e o gatilho `proteger_categoria_financeira` (bloqueia
- * qualquer campo além de nome/arquivado) já impedem tocar em grupo
- * principal, `papelDre` ou categoria padrão - esta função só evita a
- * viagem ao banco pra descobrir depois. */
+/** Renomeia uma conta do plano, padrão ou própria (desde 20/10/2026). Grupo de contas não muda: a RLS
+ * (`nivel = 'conta'`) e o gatilho `proteger_categoria_financeira` (só nome e arquivado mudam) barram o
+ * resto na base, esta função só evita a viagem ao banco pra descobrir depois. */
 export async function editarCategoriaPersonalizada(params: {
   unidadeId: string;
   id: string;
@@ -389,7 +387,7 @@ export async function editarCategoriaPersonalizada(params: {
     .update({ nome: params.nome })
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id)
-    .eq("padrao", false)
+    .eq("nivel", "conta")
     .select("id, parent_id, nivel, papel_dre, nome, codigo_sistema, padrao, ordem, arquivado")
     .single();
 
@@ -397,10 +395,9 @@ export async function editarCategoriaPersonalizada(params: {
   return categoriaDaLinha(data as CategoriaRow);
 }
 
-/** Arquiva/desarquiva categoria própria - nunca uma padrão (RLS e o trigger
- * `proteger_categoria_financeira` já bloqueiam isso na base, esta função só
- * evita a viagem ao banco pra descobrir depois). Histórico de lançamentos
- * antigos que usam essa categoria nunca é apagado. */
+/** Tira ou devolve uma conta ao plano (padrão ou própria). Arquivada some da lista de lançar, mas o
+ * histórico continua na DRE. Conta dos cálculos (`contaEssencial`) não sai: o gatilho
+ * `proteger_categoria_financeira` recusa. */
 export async function arquivarCategoriaPersonalizada(params: {
   unidadeId: string;
   id: string;
@@ -412,12 +409,40 @@ export async function arquivarCategoriaPersonalizada(params: {
     .update({ arquivado: params.arquivado })
     .eq("unidade_id", params.unidadeId)
     .eq("id", params.id)
-    .eq("padrao", false)
+    .eq("nivel", "conta")
     .select("id, parent_id, nivel, papel_dre, nome, codigo_sistema, padrao, ordem, arquivado")
     .single();
 
-  if (error || !data) throw new Error(error?.message ?? "Falha ao arquivar categoria");
+  if (error) throw new ErroPublico(error.code === "42501" ? "Essa conta é usada nos cálculos do app: pode renomear, não remover." : "Falha ao arquivar a conta.");
+  if (!data) throw new Error("Falha ao arquivar categoria");
   return categoriaDaLinha(data as CategoriaRow);
+}
+
+/** "Remover" da tela (20/10/2026): conta própria nunca usada é apagada; conta padrão (a semeadura a
+ * recriaria) ou já usada (lançamento, recorrência, regra) é arquivada e o histórico fica. */
+export async function removerCategoria(params: { unidadeId: string; id: string }): Promise<"apagada" | "arquivada"> {
+  const supabase = await createClient();
+  const { data: conta } = await supabase
+    .from("fin_categorias")
+    .select("id, padrao, nivel")
+    .eq("unidade_id", params.unidadeId)
+    .eq("id", params.id)
+    .maybeSingle();
+  const linha = conta as { id: string; padrao: boolean; nivel: string } | null;
+  if (!linha || linha.nivel !== "conta") throw new ErroPublico("Conta não encontrada no Plano de Contas.");
+  if (!linha.padrao) {
+    const { data: apagadas, error } = await supabase
+      .from("fin_categorias")
+      .delete()
+      .eq("unidade_id", params.unidadeId)
+      .eq("id", params.id)
+      .select("id");
+    if (!error && apagadas?.length) return "apagada";
+    // 23503 = conta já usada em algum registro: arquiva para não perder o histórico
+    if (error && error.code !== "23503") throw new Error(error.message);
+  }
+  await arquivarCategoriaPersonalizada({ ...params, arquivado: true });
+  return "arquivada";
 }
 
 // ── Lançamentos, parcelas e baixas ──────────────────────────────────────
