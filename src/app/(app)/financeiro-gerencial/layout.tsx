@@ -2,31 +2,25 @@ import { SubTabs } from "@/components/sub-tabs";
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
 
-// Ordem pedida por Vinícius em 25/08: Plano de Contas primeiro (é a base de
-// tudo o resto), depois Contas Financeiras, Receitas, Despesas. Rota de
-// Plano de Contas continua em `/financeiro-gerencial/categorias` (nome
-// técnico interno, só o rótulo do menu muda - item 2 da correção de 25/08).
+// Ordem do dia a dia (pedido de Vinícius em 20/10/2026, substitui a de 25/08): painel primeiro,
+// trabalho diário, relatórios e por último a configuração. Conciliação entra logo depois da
+// Caixa de Entrada quando a flag da unidade está ligada.
 const SUB_ITEMS = [
-  { label: "Plano de Contas", href: "/financeiro-gerencial/categorias" },
-  { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
+  { label: "Painel financeiro", href: "/financeiro-gerencial/visao-geral" },
+  { label: "Caixa de Entrada", href: "/financeiro-gerencial/caixa-entrada" },
+  { label: "Contas a pagar e receber", href: "/financeiro-gerencial/contas-pagar-receber" },
   { label: "Receitas", href: "/financeiro-gerencial/lancamentos/receitas" },
   { label: "Despesas", href: "/financeiro-gerencial/lancamentos/despesas" },
-  // Estoque mensal deixou de ser aba própria - dados complementares agora
-  // ficam dentro da própria DRE.
-  { label: "Recorrências", href: "/financeiro-gerencial/recorrencias" },
-  { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
-  { label: "DRE", href: "/financeiro-gerencial/dre" },
-  // V1 completa (22/09): ordem aprovada mantida, telas novas no fim.
-  { label: "DFC", href: "/financeiro-gerencial/dfc" },
-  { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
-  { label: "Fechamento", href: "/financeiro-gerencial/fechamento" },
-  { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
-  // Financeiro V2 (11/10/2026): novos no fim, como manda a ordem aprovada.
-  { label: "Contas a pagar e receber", href: "/financeiro-gerencial/contas-pagar-receber" },
   { label: "Cartões", href: "/financeiro-gerencial/cartoes" },
-  { label: "Caixa de Entrada", href: "/financeiro-gerencial/caixa-entrada" },
-  // Fase 3 (13/10/2026): novo no fim, como manda a ordem aprovada.
   { label: "Painel M.E.G.A.", href: "/financeiro-gerencial/painel-mega" },
+  { label: "DRE", href: "/financeiro-gerencial/dre" },
+  { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
+  { label: "DFC", href: "/financeiro-gerencial/dfc" },
+  { label: "Fechamento", href: "/financeiro-gerencial/fechamento" },
+  { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
+  { label: "Recorrências", href: "/financeiro-gerencial/recorrencias" },
+  { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
+  { label: "Plano de Contas", href: "/financeiro-gerencial/categorias" },
 ];
 
 // Contas financeiras e Plano de Contas são configuração - só Gestão/master
@@ -47,7 +41,7 @@ export default async function FinanceiroGerencialLayout({ children }: { children
   // Conciliação (piloto, 30/09): aparece só com a flag da unidade ligada.
   const conciliacao = await lerFlagsConciliacao(acesso.unidadeId);
   const todos = conciliacao.habilitada
-    ? [...SUB_ITEMS, { label: "Conciliação", href: "/financeiro-gerencial/conciliacao" }]
+    ? [...SUB_ITEMS.slice(0, 2), { label: "Conciliação", href: "/financeiro-gerencial/conciliacao" }, ...SUB_ITEMS.slice(2)]
     : SUB_ITEMS;
   const items = acesso.role === "operacional" ? todos.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : todos;
 
