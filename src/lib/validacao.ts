@@ -523,6 +523,8 @@ export const arquivarCategoriaFinanceiraEntradaSchema = z
   })
   .strict();
 
+export const removerCategoriaFinanceiraEntradaSchema = z.object({ id: idUuidSchema }).strict();
+
 const parcelaManualEntradaSchema = z
   .object({
     valor: dinheiroPositivo,

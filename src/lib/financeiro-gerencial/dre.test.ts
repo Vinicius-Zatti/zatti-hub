@@ -172,4 +172,17 @@ describe("calcularDre", () => {
     expect(ferias?.valor).toBe(0);
     expect(dre.cmo.total).toBe(1200);
   });
+
+  it("conta removida (arquivada) mantém a forma mensal e entra na lista de arquivadas", () => {
+    const categorias = [
+      ...CATEGORIAS,
+      categoria({ id: "co_condominio", parentId: "sub_ocupacao", papelDre: "custo_ocupacao", nome: "Condomínio", ordem: 2, arquivado: true }),
+    ];
+    const lancamentos = [lancamento({ categoriaId: "co_condominio", dataCompetencia: "2026-08-05", valor: 300 })];
+    const ocupacao = (competencia: string) =>
+      calcularDre({ competencia, lancamentos, categorias, estoqueMensal: null }).custosOperacionais.subgrupos.find((s) => s.id === "sub_ocupacao");
+    expect(ocupacao("2026-08")?.contas.find((c) => c.id === "co_condominio")?.valor).toBe(300);
+    expect(ocupacao("2026-09")?.contas.find((c) => c.id === "co_condominio")?.valor).toBe(0);
+    expect(calcularDre({ competencia: "2026-09", lancamentos, categorias, estoqueMensal: null }).contasArquivadas).toEqual(["co_condominio"]);
+  });
 });

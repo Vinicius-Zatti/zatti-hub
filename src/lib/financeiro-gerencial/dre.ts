@@ -50,6 +50,9 @@ export type Dre = {
   resultadoOperacional: number;
   saidasNaoOperacionais: { contas: ContaValorDre[]; total: number };
   geracaoCaixaAposSaidas: number;
+  /** Contas removidas do plano (arquivadas). A forma mensal não muda (a DRE anual casa os meses por
+   * posição); `montarDreAnual` esconde a linha delas quando o ano todo está zerado (20/10/2026). */
+  contasArquivadas?: string[];
 };
 
 /** DRE única por competência (25/09): todo lançamento entra no mês da sua
@@ -278,5 +281,6 @@ export function calcularDre(params: {
     resultadoOperacional,
     saidasNaoOperacionais,
     geracaoCaixaAposSaidas,
+    contasArquivadas: categorias.filter((c) => c.nivel === "conta" && c.arquivado).map((c) => c.id),
   };
 }

@@ -6,8 +6,9 @@ import {
   arquivarCategoriaFinanceiraAction,
   criarCategoriaFinanceiraAction,
   editarCategoriaFinanceiraAction,
+  removerCategoriaFinanceiraAction,
 } from "@/app/(app)/financeiro-gerencial/categorias/actions";
-import { CATEGORIAS_PAI_PERMITIDAS, caminhoCategoria, montarArvoreCategorias } from "@/lib/financeiro-gerencial/categorias";
+import { CATEGORIAS_PAI_PERMITIDAS, caminhoCategoria, contaEssencial, montarArvoreCategorias } from "@/lib/financeiro-gerencial/categorias";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import type { CategoriaFinanceira, NoArvoreCategoria } from "@/lib/financeiro-gerencial/tipos";
@@ -28,9 +29,9 @@ export function CategoriasFinanceirasGerenciador({ categorias }: { categorias: C
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">Plano de Contas</h1>
           <p className="text-sm text-cinza-medio">
-            As contas padrão (marcadas &ldquo;padrão&rdquo;) seguem o Método M.E.G.A. e não podem ser
-            editadas nem excluídas - você pode criar contas próprias dentro dos grupos de contas
-            permitidos, e arquivá-las depois sem perder o histórico de lançamentos.
+            Os grupos de contas seguem o Método M.E.G.A. e não mudam. Dentro deles, adicione, renomeie
+            ou remova as contas do seu jeito. Conta removida que já tem lançamento sai da lista, mas o
+            histórico continua na DRE.
           </p>
         </div>
         <button
@@ -232,10 +233,10 @@ function LinhaConta({ conta, onEditar }: { conta: NoArvoreCategoria; onEditar: (
   const [isPending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
-  function alternarArquivamento() {
+  function executar(acao: () => Promise<{ ok: true } | { ok: false; mensagem: string }>) {
     setErro(null);
     startTransition(async () => {
-      const resultado = await arquivarCategoriaFinanceiraAction({ id: conta.id, arquivado: !conta.arquivado });
+      const resultado = await acao();
       if (!resultado.ok) {
         setErro(resultado.mensagem);
         return;
@@ -244,32 +245,51 @@ function LinhaConta({ conta, onEditar }: { conta: NoArvoreCategoria; onEditar: (
     });
   }
 
+  const essencial = contaEssencial(conta);
+
   return (
     <div className="flex items-center justify-between gap-3 border-b border-cinza-claro py-1.5 pl-4 text-sm last:border-b-0">
       <span className={conta.arquivado ? "text-cinza-medio line-through" : "text-cinza"}>{conta.nome}</span>
       <div className="flex shrink-0 items-center gap-2">
         {erro && <span className="text-xs text-vermelho">{erro}</span>}
-        {conta.padrao ? (
+        {conta.padrao && (
           <span className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio">padrão</span>
+        )}
+        <button
+          type="button"
+          onClick={() => onEditar(conta)}
+          disabled={conta.arquivado || isPending}
+          className="text-xs font-semibold text-azul-petroleo disabled:opacity-50"
+        >
+          Editar
+        </button>
+        {conta.arquivado ? (
+          <button
+            type="button"
+            onClick={() => executar(() => arquivarCategoriaFinanceiraAction({ id: conta.id, arquivado: false }))}
+            disabled={isPending}
+            title="Volta a conta para o plano e para a lista de lançar"
+            className="text-xs font-semibold text-azul-petroleo disabled:opacity-50"
+          >
+            Restaurar
+          </button>
+        ) : essencial ? (
+          <span
+            title="O app usa essa conta nos cálculos (provisões ou fluxo de caixa): pode renomear, não remover"
+            className="text-[10px] font-semibold uppercase tracking-wide text-cinza-medio"
+          >
+            usada nos cálculos
+          </span>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => onEditar(conta)}
-              disabled={conta.arquivado}
-              className="text-xs font-semibold text-azul-petroleo disabled:opacity-50"
-            >
-              Editar
-            </button>
-            <button
-              type="button"
-              onClick={alternarArquivamento}
-              disabled={isPending}
-              className="text-xs font-semibold text-azul-petroleo disabled:opacity-50"
-            >
-              {conta.arquivado ? "Desarquivar" : "Arquivar"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => executar(() => removerCategoriaFinanceiraAction({ id: conta.id }))}
+            disabled={isPending}
+            title="Tira a conta do plano. Se já tiver lançamento, o histórico continua na DRE"
+            className="text-xs font-semibold text-vermelho disabled:opacity-50"
+          >
+            Remover
+          </button>
         )}
       </div>
     </div>

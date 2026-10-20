@@ -22,6 +22,18 @@ export const CATEGORIAS_PAI_PERMITIDAS: Record<string, PapelDre> = {
   saidas_nao_operacionais: "saida_nao_operacional",
 };
 
+/** Contas que o app usa nos cálculos (20/10/2026): podem ser renomeadas, nunca removidas. Folha, FGTS e
+ * INSS são a base das provisões, as 3 de provisão recebem o provisionamento e a de equipamentos separa
+ * investimento de financiamento no DFC. Mesma lista de `categoria_financeira_essencial` no banco. */
+export const CONTAS_ESSENCIAIS = ["cmo_folha_salarial", "cmo_fgts", "cmo_inss_folha", "sno_equipamentos_investimentos"];
+
+export function contaEssencial(categoria: CategoriaFinanceira): boolean {
+  return (
+    (!!categoria.codigoSistema && CONTAS_ESSENCIAIS.includes(categoria.codigoSistema)) ||
+    (!!categoria.papelDre && PAPEIS_DRE_SOMENTE_PROVISAO.includes(categoria.papelDre))
+  );
+}
+
 /** Monta a árvore (grupo principal → grupo/subgrupo → conta) a partir da
  * lista flat vinda do banco - a ordenação de cada nível de filhos respeita
  * `ordem`, categoria própria (`padrao = false`) sempre depois das padrão do
