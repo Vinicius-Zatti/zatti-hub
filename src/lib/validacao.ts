@@ -438,6 +438,18 @@ export const precosTodosCanaisFichaEntradaSchema = z
 // ── Financeiro gerencial ──────────────────────────────────────────────────
 
 const dinheiroPositivo = z.number().finite().min(0.01).max(LIMITE_DINHEIRO);
+
+/** Transferência entre contas próprias lançada à mão (20/10/2026): fora da DRE. */
+export const transferenciaManualEntradaSchema = z
+  .object({
+    contaOrigemId: z.string().uuid(),
+    contaDestinoId: z.string().uuid(),
+    valor: dinheiroPositivo,
+    data: dataIsoSchema,
+    descricao: texto(200),
+  })
+  .strict()
+  .refine((t) => t.contaOrigemId !== t.contaDestinoId, { message: "Origem e destino precisam ser contas diferentes." });
 export const tipoContaFinanceiraSchema = z.enum(["banco", "caixa", "carteira_digital", "cartao_credito"]);
 export const tipoLancamentoFinanceiroSchema = z.enum(["receita", "despesa"]);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { BotaoTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -237,6 +238,7 @@ export function LancamentosGerenciador({
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold text-azul-noite">{titulo}</h1>
         <div className="flex flex-wrap justify-end gap-2">
+          <BotaoTransferencia contas={contas} />
           <button
             type="button"
             onClick={() => setCriandoDocumento(true)}

@@ -6,6 +6,7 @@ import { criarContaFinanceiraAction, editarContaFinanceiraAction } from "@/app/(
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { BotaoTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { EXPLICACAO_FATURA_CARTAO, contasQuePagam } from "@/lib/financeiro-gerencial/cartao";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
@@ -41,13 +42,16 @@ export function ContasFinanceirasGerenciador({ contas }: { contas: ContaFinancei
             Conta bancária, caixa físico, carteira digital ou cartão de crédito - base do Fluxo de Caixa Realizado.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCriando(true)}
-          className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
-        >
-          + Nova conta
-        </button>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <BotaoTransferencia contas={contas} />
+          <button
+            type="button"
+            onClick={() => setCriando(true)}
+            className="shrink-0 rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite hover:brightness-95"
+          >
+            + Nova conta
+          </button>
+        </div>
       </div>
 
       {contas.length === 0 ? (
