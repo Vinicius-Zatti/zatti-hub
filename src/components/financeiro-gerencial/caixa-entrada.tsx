@@ -137,7 +137,13 @@ export function CaixaEntrada({
 
   return (
     <div className="flex flex-col gap-5 pb-10">
-      <h1 className="font-display text-2xl font-bold text-azul-noite">Caixa de Entrada</h1>
+      <div>
+        <h1 className="font-display text-2xl font-bold text-azul-noite">Caixa de Entrada</h1>
+        {/* 20/10/2026: extrato enviado aqui era lido como um documento só, sem as linhas do banco. */}
+        <p className="text-sm text-cinza-medio">
+          Notas, boletos e recibos. Extrato do banco não vai aqui: ele entra pela tela Conciliação, linha a linha.
+        </p>
+      </div>
 
       <AreaEnvio onResultado={setAviso} />
 

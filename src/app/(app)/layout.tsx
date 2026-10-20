@@ -7,6 +7,7 @@ import { UnidadeSuporteProvider } from "@/components/contexto-suporte";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
 import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
 import { getAcessoAtual } from "@/lib/acesso";
+import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { CABECALHO_CAMINHO, ehCaminhoRestaurante } from "@/lib/area-interna/caminhos";
@@ -29,6 +30,9 @@ export default async function AppLayout({
   // Vigência anual (15/10/2026): depois da carência o cliente trava, sem perder dado. O master
   // nunca trava (vê a faixa para saber a situação do cliente).
   const assinatura = acesso.areaInterna ? null : await getAssinaturaAtual(acesso.organizacaoId);
+  const conciliacaoHabilitada = acesso.financeiroGerencialHabilitado && !acesso.areaInterna
+    ? (await lerFlagsConciliacao(acesso.unidadeId)).habilitada
+    : false;
   if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
   const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir) : null;
   const nomeUnidadeSuporte =
@@ -101,12 +105,17 @@ export default async function AppLayout({
     },
   ];
 
+  // Ordem do dia a dia (pedido de Vinícius em 20/10/2026): painel primeiro, depois o trabalho diário
+  // (caixa de entrada, conciliação, contas a pagar e receber), relatórios e por último a configuração.
   const secoesFinanceiroGerencial: SecaoNavegacao[] = [
     {
-      label: "Caixa",
+      label: "Dia a dia",
       items: [
-        { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
-        { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
+        { label: "Painel financeiro", href: "/financeiro-gerencial/visao-geral" },
+        { label: "Caixa de Entrada", href: "/financeiro-gerencial/caixa-entrada" },
+        ...(conciliacaoHabilitada ? [{ label: "Conciliação", href: "/financeiro-gerencial/conciliacao" }] : []),
+        { label: "Contas a pagar e receber", href: "/financeiro-gerencial/contas-pagar-receber" },
+        { label: "Cartões", href: "/financeiro-gerencial/cartoes" },
       ],
     },
     {
@@ -120,10 +129,10 @@ export default async function AppLayout({
     {
       label: "Relatórios",
       items: [
-        { label: "Visão geral", href: "/financeiro-gerencial/visao-geral" },
-        { label: "DRE", href: "/financeiro-gerencial/dre" },
-        { label: "DFC", href: "/financeiro-gerencial/dfc" },
         { label: "Painel M.E.G.A.", href: "/financeiro-gerencial/painel-mega" },
+        { label: "DRE", href: "/financeiro-gerencial/dre" },
+        { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
+        { label: "DFC", href: "/financeiro-gerencial/dfc" },
       ],
     },
     ...(podeGerir
@@ -131,9 +140,10 @@ export default async function AppLayout({
           {
             label: "Configurações",
             items: [
-              { label: "Categorias", href: "/financeiro-gerencial/categorias" },
-              { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
               { label: "Fechamento", href: "/financeiro-gerencial/fechamento" },
+              { label: "Provisões", href: "/financeiro-gerencial/provisoes" },
+              { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
+              { label: "Plano de Contas", href: "/financeiro-gerencial/categorias" },
             ],
           },
         ]
@@ -235,10 +245,8 @@ export default async function AppLayout({
     },
     {
       label: "Financeiro",
-      // Contas financeiras é só Gestão/master (`requireGestaoFinanceiroGerencial`)
-      // - Operacional que clicar no item do menu precisa cair numa tela que
-      // ele realmente acessa, não ser redirecionado pra fora do módulo.
-      href: podeGerir ? "/financeiro-gerencial/contas" : "/financeiro-gerencial/lancamentos/despesas",
+      // Painel financeiro abre o módulo para todos os papéis (20/10/2026).
+      href: "/financeiro-gerencial/visao-geral",
       icone: "financeiroGerencial",
       activePrefix: "/financeiro-gerencial",
       disabled: !acesso.financeiroGerencialHabilitado,
