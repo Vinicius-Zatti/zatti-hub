@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(6);
+select plan(7);
 
 select is(
   (select area_interna from public.organizacoes where id = 'zatti-hub'),
@@ -41,9 +41,17 @@ select throws_ok(
 
 select is(
   (select count(*)::int from pg_policies
-    where schemaname = 'public' and tablename = 'organizacoes' and cmd in ('UPDATE', 'ALL')),
+    where schemaname = 'public' and tablename = 'organizacoes' and cmd in ('UPDATE', 'ALL')
+      and roles <> array['vini_operador']::name[]), -- operador do Vini não é o app
   0,
   'nenhuma policy deixa o app mudar organizações (área interna só por SQL)'
+);
+
+select is(
+  (select count(*)::int from pg_policies
+    where policyname = 'vini_operador_tudo' and roles <> array['vini_operador']::name[]),
+  0,
+  'a política do operador do Vini vale só para o papel vini_operador, nunca para o app'
 );
 
 select * from finish();

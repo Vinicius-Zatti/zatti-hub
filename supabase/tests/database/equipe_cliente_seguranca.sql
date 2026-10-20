@@ -34,12 +34,14 @@ select is(
   (select count(*)::int from pg_policies
     where schemaname in ('public', 'storage')
       and not ('vini_leitura' = any (roles))
+      and roles <> array['vini_operador']::name[] -- operador do Vini, fora do app (19/10/2026)
       and coalesce(qual, '') || coalesce(with_check, '') !~ '(usuario_|auth\.uid\(\)|^false$)'
       and policyname <> 'fin_regras_classificacao_versoes_select'),
   0, 'toda policy de usuário passa por helper de acesso ou pelo próprio usuário');
 
 select is(
-  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'vinculos'),
+  (select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'vinculos'
+    and roles <> array['vini_operador']::name[]),
   1, 'vinculos tem uma única policy (cada um lê só o próprio vínculo)');
 
 -- ── Fixture ──────────────────────────────────────────────────────────────

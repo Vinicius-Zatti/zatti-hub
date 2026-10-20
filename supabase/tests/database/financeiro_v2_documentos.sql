@@ -45,7 +45,8 @@ language sql as $$
 $$;
 
 select ok(not has_column_privilege('authenticated', 'public.unidades', 'financeiro_liberado_equipe', 'UPDATE')
-  or not exists (select 1 from pg_policies where tablename = 'unidades' and cmd in ('UPDATE', 'ALL')),
+  or not exists (select 1 from pg_policies where tablename = 'unidades' and cmd in ('UPDATE', 'ALL')
+    and roles <> array['vini_operador']::name[]),
   'liberação por unidade não tem caminho de escrita pela API');
 
 set local role authenticated;
