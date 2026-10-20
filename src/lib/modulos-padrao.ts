@@ -8,6 +8,8 @@
  * - Desempenho: `consolidado_vendas_habilitado`.
  * - Financeiro: `financeiro_gerencial_habilitado` + `financeiro_liberado_equipe` (sem a liberação,
  *   só o titular financeiro enxerga o módulo, e o cliente ficaria sem ele).
+ * - Conciliação com leitura de PDF: `conciliacao_habilitada` + `conciliacao_ia_documentos` (Vinícius,
+ *   20/10/2026: "todo mundo pode conciliar"). Classificação por IA continua desligada.
  * - Precificação: `fichas_tecnicas_habilitado`.
  * - Checklist Garante: `garante_habilitado`.
  * - Extrato do estoque: só com estoque no banco (a action de /acessos recusa ligar em planilha).
@@ -19,6 +21,8 @@ export function modulosUnidadeNova(fonteDadosEstoque: "banco" | "planilha") {
     consolidado_vendas_habilitado: true,
     financeiro_gerencial_habilitado: true,
     financeiro_liberado_equipe: true,
+    conciliacao_habilitada: true,
+    conciliacao_ia_documentos: true,
     fichas_tecnicas_habilitado: true,
     garante_habilitado: true,
     extrato_estoque_habilitado: fonteDadosEstoque === "banco",
