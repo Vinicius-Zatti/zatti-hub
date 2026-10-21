@@ -31,14 +31,26 @@ export function BotaoTransferencia({ contas }: { contas: ContaFinanceira[] }) {
   );
 }
 
-function FormularioTransferencia({ contas, onFechar }: { contas: ContaFinanceira[]; onFechar: () => void }) {
+/** Também usado pela Caixa de Entrada (21/10/2026): comprovante de Pix entre contas próprias vira transferência. */
+export function FormularioTransferencia({
+  contas,
+  onFechar,
+  inicial,
+  onSalvo,
+}: {
+  contas: ContaFinanceira[];
+  onFechar: () => void;
+  inicial?: { valor: number | null; data: string; descricao: string };
+  /** Chamado depois de gravar; a Caixa de Entrada usa para dar baixa no documento. */
+  onSalvo?: () => Promise<void>;
+}) {
   const router = useRouter();
   const opcoes = contas.map((c) => ({ id: c.id, label: c.nome }));
   const [origem, setOrigem] = useState(contas[0]?.id ?? "");
   const [destino, setDestino] = useState(contas[1]?.id ?? "");
-  const [valor, setValor] = useState<number | null>(null);
-  const [data, setData] = useState(hojeIsoBrasil());
-  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState<number | null>(inicial?.valor ?? null);
+  const [data, setData] = useState(inicial?.data ?? hojeIsoBrasil());
+  const [descricao, setDescricao] = useState(inicial?.descricao ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -65,6 +77,7 @@ function FormularioTransferencia({ contas, onFechar }: { contas: ContaFinanceira
     startTransition(async () => {
       const r = await criarTransferenciaAction({ contaOrigemId: origem, contaDestinoId: destino, valor, data, descricao });
       if (!r.ok) return setErro(r.mensagem);
+      if (onSalvo) await onSalvo();
       router.refresh();
       onFechar();
     });

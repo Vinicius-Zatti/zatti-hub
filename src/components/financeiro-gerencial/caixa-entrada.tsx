@@ -20,6 +20,7 @@ import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CaixaEntradaConfigurar } from "@/components/financeiro-gerencial/caixa-entrada-configurar";
 import { DocumentoModal, opcoesPlanoDeContas } from "@/components/financeiro-gerencial/documento-modal";
+import { FormularioTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import {
   formatarDataHoraBr,
   rotuloTipoDocumento,
@@ -95,6 +96,7 @@ export function CaixaEntrada({
   const [revisando, setRevisando] = useState<EntradaCaixa | null>(null);
   const [anexando, setAnexando] = useState<EntradaCaixa | null>(null);
   const [descartando, setDescartando] = useState<EntradaCaixa | null>(null);
+  const [transferindo, setTransferindo] = useState<EntradaCaixa | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -272,6 +274,14 @@ export function CaixaEntrada({
                         )}
                         <button
                           type="button"
+                          onClick={() => setTransferindo(e)}
+                          title="Pix ou TED entre duas contas da própria empresa. Não entra na DRE."
+                          className="rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+                        >
+                          Transferência
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setAnexando(e)}
                           className="rounded-md border border-cinza-claro px-2 py-1 text-xs font-semibold text-cinza-medio hover:bg-off-white"
                         >
@@ -334,6 +344,25 @@ export function CaixaEntrada({
             onFeito={(mensagem) => {
               setAnexando(null);
               setAviso({ ok: true, mensagem });
+            }}
+          />
+        )}
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={transferindo !== null} onFechar={() => setTransferindo(null)}>
+        {transferindo && (
+          <FormularioTransferencia
+            contas={contas.filter((c) => c.ativo && c.tipo !== "cartao_credito")}
+            onFechar={() => setTransferindo(null)}
+            inicial={{
+              valor: transferindo.extracao ? totalLido(transferindo.extracao) || null : null,
+              data: transferindo.extracao?.dataEmissao ?? hoje,
+              descricao: transferindo.nomeArquivo.slice(0, 200),
+            }}
+            onSalvo={async () => {
+              // A transferência já foi gravada; o documento sai de "Para lançar" com o motivo.
+              const r = await descartarEntradaAction({ entradaId: transferindo.id, motivo: "Lançado como transferência entre contas" });
+              setAviso({ ok: true, mensagem: r.ok ? "Transferência registrada." : "Transferência registrada. Descarte o documento da lista à mão." });
             }}
           />
         )}
