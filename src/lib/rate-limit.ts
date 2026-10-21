@@ -29,6 +29,7 @@ export type ChaveLimiteRequisicao =
   | "fin_categoria_criar"
   | "fin_categoria_editar"
   | "fin_lancamento_criar"
+  | "fin_transferencia_criar"
   | "fin_lancamento_editar"
   | "fin_baixa_registrar"
   | "fin_baixa_estornar"

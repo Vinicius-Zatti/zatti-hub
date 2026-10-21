@@ -10,6 +10,7 @@ import {
   excluirLancamento,
   listarBaixasDaParcela,
   obterRecorrenciaParaEdicao,
+  criarTransferenciaManual,
   registrarBaixa,
 } from "@/lib/banco/financeiro-gerencial";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
@@ -24,6 +25,7 @@ import {
   listarBaixasParcelaEntradaSchema,
   obterRecorrenciaEntradaSchema,
   recorrenciaFinanceiraEntradaSchema,
+  transferenciaManualEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -203,5 +205,21 @@ export async function editarRecorrenciaAction(input: unknown): Promise<Resultado
     return { ok: true, plano };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível editar a recorrência.") };
+  }
+}
+
+export async function criarTransferenciaAction(input: unknown): Promise<{ ok: true } | { ok: false; mensagem: string }> {
+  const acesso = await requireFinanceiroGerencial();
+  try {
+    await exigirLimiteRequisicao("fin_transferencia_criar");
+    const entrada = validarEntrada(transferenciaManualEntradaSchema, input);
+    await garantirMesesAbertos(acesso, [entrada.data]);
+    await criarTransferenciaManual({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
+    revalidarLancamentos();
+    revalidatePath("/financeiro-gerencial/contas");
+    revalidatePath("/financeiro-gerencial/fluxo-caixa");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível registrar a transferência.") };
   }
 }

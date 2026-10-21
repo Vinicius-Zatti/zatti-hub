@@ -1390,3 +1390,44 @@ export async function salvarSaidaSemReceita(params: {
   const nomes = await nomesPorUserId(supabase, [linha.criado_por]);
   return saidaSemReceitaDaLinha(linha, nomes.get(linha.criado_por) ?? "Usuário");
 }
+
+/** Transferência entre contas próprias lançada à mão (20/10/2026): sai de uma conta e entra na outra no
+ * Fluxo de Caixa e nos saldos, sem passar pela DRE. Cartão de crédito não entra (a fatura é paga em Cartões).
+ * Mês fechado o gatilho `bloquear_periodo_fechado_transferencia` recusa. */
+export async function criarTransferenciaManual(params: {
+  unidadeId: string;
+  criadoPor: string;
+  contaOrigemId: string;
+  contaDestinoId: string;
+  valor: number;
+  data: string;
+  descricao: string;
+}): Promise<{ id: string }> {
+  const supabase = await createClient();
+  const { data: contas } = await supabase
+    .from("fin_contas_financeiras")
+    .select("id, tipo, ativo")
+    .eq("unidade_id", params.unidadeId)
+    .in("id", [params.contaOrigemId, params.contaDestinoId]);
+  const linhas = (contas as { id: string; tipo: string; ativo: boolean }[] | null) ?? [];
+  if (linhas.length !== 2 || linhas.some((c) => !c.ativo)) throw new ErroPublico("Escolha duas contas ativas desta unidade.");
+  if (linhas.some((c) => c.tipo === "cartao_credito")) {
+    throw new ErroPublico("Cartão de crédito não recebe transferência: a fatura é paga pela tela Cartões.");
+  }
+  const { data, error } = await supabase
+    .from("fin_transferencias")
+    .insert({
+      unidade_id: params.unidadeId,
+      conta_origem_id: params.contaOrigemId,
+      conta_destino_id: params.contaDestinoId,
+      valor: params.valor,
+      data: params.data,
+      descricao: params.descricao.trim(),
+      origem: "manual",
+      criado_por: params.criadoPor,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw error?.code === "42501" ? new ErroPublico("Mês fechado: só Gestão altera esse período.") : new Error(error?.message ?? "Falha ao registrar a transferência");
+  return { id: (data as { id: string }).id };
+}
