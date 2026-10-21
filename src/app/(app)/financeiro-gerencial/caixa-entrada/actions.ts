@@ -129,7 +129,7 @@ export async function configurarCaixaAction(input: unknown): Promise<Resposta> {
     const mensagens: Record<string, string> = {
       adicionar_remetente: "Número cadastrado. Notas enviadas por ele no WhatsApp caem aqui.",
       remover_remetente: "Número removido.",
-      solicitar_pasta: "Pasta pedida. Em até 15 minutos o link aparece aqui.",
+      solicitar_pasta: "Pasta pedida. Em até 3 minutos o link aparece aqui.",
       desligar_pasta: "Leitura da pasta desligada.",
     };
     return { ok: true, mensagem: mensagens[config.acao] };

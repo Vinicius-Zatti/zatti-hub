@@ -181,7 +181,7 @@ function PastaDrive({ pasta }: { pasta: ConfigCaixa["pasta"] }) {
       {situacao === "solicitada" && (
         <div className="flex flex-col gap-2 rounded-md bg-ambar/10 p-2 text-sm">
           <span className="font-semibold text-azul-noite">Pasta pedida, aguardando o Vini criar</span>
-          <span className="text-xs text-cinza-medio">Em até 15 minutos o link aparece aqui.</span>
+          <span className="text-xs text-cinza-medio">Em até 3 minutos o link aparece aqui.</span>
           <button
             type="button"
             onClick={() => executar({ acao: "desligar_pasta" })}
