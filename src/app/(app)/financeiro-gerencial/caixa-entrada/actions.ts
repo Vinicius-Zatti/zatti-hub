@@ -115,6 +115,8 @@ export async function descartarEntradaAction(input: unknown): Promise<Resposta> 
 const configSchema = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("adicionar_remetente"), telefone: z.string().regex(/^[\d\s()+-]{10,20}$/), nome: z.string().trim().min(1).max(80) }).strict(),
   z.object({ acao: z.literal("remover_remetente"), id: uuid }).strict(),
+  z.object({ acao: z.literal("adicionar_email"), email: z.string().trim().toLowerCase().email().max(120), nome: z.string().trim().min(1).max(80) }).strict(),
+  z.object({ acao: z.literal("remover_email"), id: uuid }).strict(),
   z.object({ acao: z.literal("solicitar_pasta"), email: z.union([z.literal(""), z.string().email().max(120)]) }).strict(),
   z.object({ acao: z.literal("desligar_pasta") }).strict(),
 ]);
@@ -129,6 +131,8 @@ export async function configurarCaixaAction(input: unknown): Promise<Resposta> {
     const mensagens: Record<string, string> = {
       adicionar_remetente: "Número cadastrado. Notas enviadas por ele no WhatsApp caem aqui.",
       remover_remetente: "Número removido.",
+      adicionar_email: "E-mail autorizado. Notas encaminhadas por ele caem aqui.",
+      remover_email: "E-mail removido.",
       solicitar_pasta: "Pasta pedida. Em até 15 minutos o link aparece aqui.",
       desligar_pasta: "Leitura da pasta desligada.",
     };

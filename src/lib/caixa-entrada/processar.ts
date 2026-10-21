@@ -43,7 +43,7 @@ export type Recebimento = { id: string; novo: boolean; situacao: string; unidade
 /** Guarda o arquivo e registra a entrada (mesmo arquivo na mesma unidade reaproveita a entrada). */
 export async function receberArquivo(params: {
   unidadeId: string;
-  canal: "upload" | "whatsapp" | "drive";
+  canal: "upload" | "whatsapp" | "drive" | "email";
   remetente: string | null;
   nomeArquivo: string;
   bytes: Uint8Array;
