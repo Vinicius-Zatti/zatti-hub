@@ -2,12 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  cliqueAbreOutraAba,
-  ehVoltaDaEntradaExtra,
-  empurrarMarcaHistorico,
-  registrarSaidaDaEntradaExtra,
-} from "@/lib/guarda-historico";
+import { cliqueAbreOutraAba } from "@/lib/guarda-clique";
 
 type GuardaContagemContextType = {
   ativar: () => void;
@@ -28,9 +23,6 @@ export function useGuardaContagem() {
  * tela de Contagem escuta isso pra focar no primeiro item que falta. */
 export const EVENTO_CONTINUAR_CONTAGEM = "guarda-contagem:continuar";
 
-/** Valor de `hrefPendente` quando o aviso veio do botão "voltar" do navegador. */
-const VOLTAR = "__voltar__";
-
 /** Intercepta QUALQUER navegação (clique em link, fechar aba) enquanto uma
  * contagem está em andamento, porque o progresso só existe em memória até
  * clicar em "Enviar Inventário" - sair sem avisar perde tudo. Montado uma
@@ -43,7 +35,6 @@ export function GuardaContagemProvider({ children }: { children: React.ReactNode
 
   const ativar = useCallback(() => {
     ativoRef.current = true;
-    empurrarMarcaHistorico();
   }, []);
   const desativar = useCallback(() => {
     ativoRef.current = false;
@@ -76,34 +67,14 @@ export function GuardaContagemProvider({ children }: { children: React.ReactNode
     return () => window.removeEventListener("beforeunload", aoFechar);
   }, []);
 
-  // Botão "voltar" (inclusive o gesto do trackpad no Mac): o navegador já saiu
-  // da entrada extra do histórico, a tela continua a mesma; mostra o aviso.
-  useEffect(() => {
-    function aoVoltar() {
-      if (!ativoRef.current) return;
-      // Popstate de fragmento (#conteudo-principal) ou de outra página não é
-      // a saída da entrada extra: sem aviso.
-      if (!ehVoltaDaEntradaExtra()) return;
-      registrarSaidaDaEntradaExtra();
-      setHrefPendente(VOLTAR);
-    }
-    window.addEventListener("popstate", aoVoltar);
-    return () => window.removeEventListener("popstate", aoVoltar);
-  }, []);
-
   function sair() {
     ativoRef.current = false;
     const href = hrefPendente;
     setHrefPendente(null);
-    if (href === VOLTAR) {
-      registrarSaidaDaEntradaExtra();
-      window.history.back();
-    }
-    else if (href) router.push(href);
+    if (href) router.push(href);
   }
 
   function continuarContagem() {
-    if (hrefPendente === VOLTAR) empurrarMarcaHistorico();
     setHrefPendente(null);
     window.dispatchEvent(new Event(EVENTO_CONTINUAR_CONTAGEM));
   }
