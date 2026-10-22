@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { registrarBaixaAction } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
 import { baixarVencimentoDocumentoAction } from "@/app/(app)/financeiro-gerencial/lancamentos/documentos-actions";
 import { CampoNumero } from "@/components/campo-numero";
@@ -595,7 +594,6 @@ function BaixaEmLote({
   onConcluido: () => void;
   onFechar: () => void;
 }) {
-  const router = useRouter();
   // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
   const opcoesConta = useMemo(() => contasQuePagam(contas).map((c) => ({ id: c.id, label: c.nome })), [contas]);
   // Congela a lista ao abrir: o refresh da página no meio do lote não muda o que está sendo baixado.
@@ -622,7 +620,6 @@ function BaixaEmLote({
       }
       setProgresso({ feitos, erros });
       onConcluido();
-      router.refresh();
     });
   }
 
@@ -716,7 +713,6 @@ function BaixaIndividual({
   hoje: string;
   onFechar: () => void;
 }) {
-  const router = useRouter();
   // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
   const opcoesConta = useMemo(() => contasQuePagam(contas).map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const [contaFinanceiraId, setContaFinanceiraId] = useState(() => contaPadrao([grupo], contas));
@@ -740,7 +736,6 @@ function BaixaIndividual({
         setErro(r.mensagem);
         return;
       }
-      router.refresh();
       onFechar();
     });
   }

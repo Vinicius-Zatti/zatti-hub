@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { ItemInventario, ItemPendente, Produto } from "@/lib/types";
@@ -39,11 +40,14 @@ async function listInventarioPlanilha(spreadsheetId: string): Promise<ItemInvent
   return rows.filter((r) => r[2]).map(rowToItem);
 }
 
-export async function listInventario(spreadsheetId: string | null): Promise<ItemInventario[]> {
+/** Cacheada por request (React `cache`): layout, página e funções auxiliares
+ * que pedem a mesma lista na mesma renderização leem a fonte uma vez só.
+ * Quem receber o resultado não deve alterar o array no lugar. */
+export const listInventario = cache(async (spreadsheetId: string | null): Promise<ItemInventario[]> => {
   const fonte = await resolverFonteDadosEstoque(spreadsheetId);
   if (fonte.fonte === "banco") return listarInventarioBanco(fonte.unidadeId);
   return listInventarioPlanilha(fonte.spreadsheetId!);
-}
+});
 
 /** Mesma regra combinada com o Vinícius em 18/07: alto = suspeita de erro de
  * contagem; baixo (abaixo do estoque mínimo) = alerta de compra emergencial,
