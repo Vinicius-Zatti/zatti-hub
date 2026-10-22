@@ -4,6 +4,8 @@
  * propósito: zero dependência nova e zero risco de a lib não entender as
  * cores do Tailwind v4. */
 
+import { baixarArquivo } from "@/lib/baixar-arquivo";
+
 const CORES = {
   azulNoite: "#0d1f2d",
   azulPetroleo: "#1a3a52",
@@ -14,8 +16,6 @@ const CORES = {
   cinzaClaro: "#dfdad0",
   offWhite: "#f5f0e8",
 };
-
-import { baixarArquivo } from "@/lib/baixar-arquivo";
 
 export type LinhaCotacao = { item: string; und: string; qtd: string };
 

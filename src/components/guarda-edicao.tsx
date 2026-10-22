@@ -2,7 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cliqueAbreOutraAba, empurrarMarcaHistorico } from "@/lib/guarda-historico";
+import {
+  cliqueAbreOutraAba,
+  ehVoltaDaEntradaExtra,
+  empurrarMarcaHistorico,
+  registrarSaidaDaEntradaExtra,
+} from "@/lib/guarda-historico";
 
 type GuardaEdicaoContextType = {
   /** `aoSalvar` opcional - quando informado, o aviso ganha um 3º botão
@@ -94,6 +99,10 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     function aoVoltar() {
       if (!ativoRef.current) return;
+      // Popstate de fragmento (#conteudo-principal) ou de outra página não é
+      // a saída da entrada extra: sem aviso.
+      if (!ehVoltaDaEntradaExtra()) return;
+      registrarSaidaDaEntradaExtra();
       setMensagem(mensagemRef.current);
       setTemSalvar(aoSalvarRef.current !== null);
       setErroSalvar(null);
@@ -107,7 +116,10 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
     ativoRef.current = false;
     const href = hrefPendente;
     setHrefPendente(null);
-    if (href === VOLTAR) window.history.back();
+    if (href === VOLTAR) {
+      registrarSaidaDaEntradaExtra();
+      window.history.back();
+    }
     else if (href) router.push(href);
   }
 
