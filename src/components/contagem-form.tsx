@@ -78,7 +78,10 @@ function skuAvulso(nome: string): string {
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+    .replace(/(^-|-$)/g, "")
+    // O código vai no limite de 80 caracteres da validação do envio: nome
+    // longo fazia o setor inteiro ser recusado.
+    .slice(0, 40);
   return `${PENDENTE_PREFIX}${slug}-${Date.now()}`;
 }
 

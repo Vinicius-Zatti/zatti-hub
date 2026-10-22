@@ -42,6 +42,8 @@ export function BlocoFornecedorCotacao({
   legenda,
   valorAtual,
   onConfirmarValor,
+  confirmando,
+  erroConfirmar,
   podeEditar,
   fornecedoresCadastro,
   onFornecedorAtribuido,
@@ -52,6 +54,10 @@ export function BlocoFornecedorCotacao({
   legenda: string;
   valorAtual: (item: SugestaoCompra) => number;
   onConfirmarValor: (item: SugestaoCompra, valorBase: number) => void;
+  /** Mesmo estado de gravação da tabela por Grupo: sem ele, quem editava
+   * aqui via o número aplicado mesmo com a gravação recusada. */
+  confirmando: Record<string, boolean>;
+  erroConfirmar: Record<string, string>;
   podeEditar: boolean;
   fornecedoresCadastro: Fornecedor[];
   onFornecedorAtribuido: (sku: string, fornecedor: string) => void;
@@ -277,22 +283,29 @@ export function BlocoFornecedorCotacao({
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-end gap-1.5">
-                        {precisa ? (
-                          <span className="font-bold tabular-nums text-ambar">
-                            {formatarQuantidade(qtdExibida, modo === "interno" ? item.unidadeBase : "UN")}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-cinza-medio">não precisa comprar</span>
-                        )}
-                        {podeEditar && (
-                          <button
-                            type="button"
-                            onClick={() => iniciarEdicao(item)}
-                            className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                          >
-                            {precisa ? "Editar" : "Adicionar"}
-                          </button>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {confirmando[item.sku] ? (
+                            <span className="text-xs text-cinza-medio">salvando...</span>
+                          ) : precisa ? (
+                            <span className="font-bold tabular-nums text-ambar">
+                              {formatarQuantidade(qtdExibida, modo === "interno" ? item.unidadeBase : "UN")}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-cinza-medio">não precisa comprar</span>
+                          )}
+                          {podeEditar && (
+                            <button
+                              type="button"
+                              onClick={() => iniciarEdicao(item)}
+                              className="rounded-md border border-cinza-claro px-2 py-1 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                            >
+                              {precisa ? "Editar" : "Adicionar"}
+                            </button>
+                          )}
+                        </div>
+                        {erroConfirmar[item.sku] && (
+                          <span className="text-[10px] text-vermelho">{erroConfirmar[item.sku]}</span>
                         )}
                       </div>
                     )}

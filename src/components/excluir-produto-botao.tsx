@@ -17,7 +17,11 @@ export function ExcluirProdutoBotao({ sku }: { sku: string }) {
   function excluir() {
     setErro(null);
     startTransition(async () => {
-      const resultado = await excluirProdutoAction(sku);
+      // Queda de rede no celular não pode derrubar a tela no cartão de erro
+      // (mesma mensagem da Edição de Dados).
+      const resultado = await excluirProdutoAction(sku).catch(() => ({
+        erro: "Não foi possível falar com o servidor. Confira a conexão e tente de novo.",
+      }));
       if ("erro" in resultado) {
         setErro(resultado.erro);
         setConfirmando(false);
