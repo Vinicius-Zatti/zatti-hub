@@ -255,7 +255,7 @@ export function VisualizacaoContagens({
                 {setor.enviadoEm && (
                   <span className="text-xs">
                     {" "}
-                    ({new Date(setor.enviadoEm).toLocaleString("pt-BR")})
+                    ({new Date(setor.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })})
                   </span>
                 )}
               </li>

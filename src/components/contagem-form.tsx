@@ -13,6 +13,7 @@ import type { Setor } from "@/lib/types";
 import type { AndamentoSetor, ModalidadeContagem } from "@/lib/contagem/setor";
 import { useGuardaContagem, EVENTO_CONTINUAR_CONTAGEM } from "@/components/guarda-contagem";
 import { WHATSAPP_VINICIUS } from "@/lib/suporte";
+import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { mensagemFalhaChamada } from "@/lib/erro-chamada";
 import {
   chaveRascunho,
@@ -569,7 +570,7 @@ export function ContagemForm({
               guardado,
               semGuarda:
                 "O app foi atualizado e este aparelho não conseguiu guardar os números. Toque em " +
-                "Baixar CSV (backup) antes de recarregar a página (F5), depois envie de novo.",
+                "Baixar CSV (backup) antes de recarregar a página (Cmd+R no Mac, F5 no Windows), depois envie de novo.",
             },
           ),
         );
@@ -600,14 +601,7 @@ export function ContagemForm({
     });
     const csv = "﻿" + linhas.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a2 = document.createElement("a");
-    a2.href = url;
-    a2.download = `inventario-${slugArquivo(unidadeNome)}-${dataISO}.csv`;
-    document.body.appendChild(a2);
-    a2.click();
-    document.body.removeChild(a2);
-    URL.revokeObjectURL(url);
+    baixarArquivo(blob, `inventario-${slugArquivo(unidadeNome)}-${dataISO}.csv`);
   }
 
   // ── TELA 1: DATA ──────────────────────────────────────────────────────

@@ -211,7 +211,7 @@ export function NovoLancamentoForm({
               guardado,
               semGuarda:
                 "O app foi atualizado e este aparelho não guardou os valores. Anote os valores, " +
-                "recarregue a página (F5) e salve de novo.",
+                "recarregue a página (Cmd+R no Mac, F5 no Windows) e salve de novo.",
             },
           ),
         );

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { cliqueAbreOutraAba, empurrarMarcaHistorico } from "@/lib/guarda-historico";
 
 type GuardaEdicaoContextType = {
   /** `aoSalvar` opcional - quando informado, o aviso ganha um 3º botão
@@ -13,6 +14,9 @@ type GuardaEdicaoContextType = {
 };
 
 const GuardaEdicaoContext = createContext<GuardaEdicaoContextType | null>(null);
+
+/** Valor de `hrefPendente` quando o aviso veio do botão "voltar" do navegador. */
+const VOLTAR = "__voltar__";
 
 const MENSAGEM_PADRAO = "Você tem alterações que ainda não foram salvas. Se sair agora, elas se perdem.";
 
@@ -43,6 +47,7 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
     ativoRef.current = true;
     mensagemRef.current = msg ?? MENSAGEM_PADRAO;
     aoSalvarRef.current = aoSalvar ?? null;
+    empurrarMarcaHistorico();
   }, []);
   const desativar = useCallback(() => {
     ativoRef.current = false;
@@ -54,6 +59,7 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
       if (!ativoRef.current) return;
       const alvo = (e.target as HTMLElement)?.closest?.("a");
       if (!alvo) return;
+      if (cliqueAbreOutraAba(e, alvo)) return;
       const href = alvo.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("http")) return;
       if (href === window.location.pathname) return;
@@ -83,14 +89,30 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener("beforeunload", aoFechar);
   }, []);
 
+  // Botão "voltar" (inclusive o gesto do trackpad no Mac): o navegador já saiu
+  // da entrada extra do histórico, a tela continua a mesma; mostra o aviso.
+  useEffect(() => {
+    function aoVoltar() {
+      if (!ativoRef.current) return;
+      setMensagem(mensagemRef.current);
+      setTemSalvar(aoSalvarRef.current !== null);
+      setErroSalvar(null);
+      setHrefPendente(VOLTAR);
+    }
+    window.addEventListener("popstate", aoVoltar);
+    return () => window.removeEventListener("popstate", aoVoltar);
+  }, []);
+
   function sair() {
     ativoRef.current = false;
     const href = hrefPendente;
     setHrefPendente(null);
-    if (href) router.push(href);
+    if (href === VOLTAR) window.history.back();
+    else if (href) router.push(href);
   }
 
   function continuarEditando() {
+    if (hrefPendente === VOLTAR) empurrarMarcaHistorico();
     setHrefPendente(null);
   }
 

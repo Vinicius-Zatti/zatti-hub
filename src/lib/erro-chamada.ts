@@ -4,9 +4,9 @@ import { unstable_isUnrecognizedActionError } from "next/navigation";
  * com a tela aberta: a aba guarda referências da versão anterior, que o
  * servidor novo não reconhece mais. Recarregar resolve. */
 export const MENSAGEM_APP_ATUALIZADO_GUARDADO =
-  "O app foi atualizado. Seus números estão guardados: recarregue a página (F5) e envie de novo.";
+  "O app foi atualizado. Seus números estão guardados: recarregue a página (Cmd+R no Mac, F5 no Windows) e envie de novo.";
 export const MENSAGEM_APP_ATUALIZADO =
-  "O app foi atualizado. Recarregue a página (F5) e tente de novo.";
+  "O app foi atualizado. Recarregue a página (Cmd+R no Mac, F5 no Windows) e tente de novo.";
 
 /** Mensagem para o catch de uma Server Action chamada pelo navegador.
  * `guardado`: o rascunho foi gravado e confirmado agora, então dá pra dizer

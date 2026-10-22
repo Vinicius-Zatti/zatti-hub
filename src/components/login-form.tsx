@@ -64,6 +64,7 @@ export function LoginForm() {
         Email
         <input
           type="email"
+          autoComplete="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -75,6 +76,7 @@ export function LoginForm() {
         Senha
         <input
           type="password"
+          autoComplete="current-password"
           required
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
