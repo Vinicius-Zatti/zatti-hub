@@ -8,6 +8,7 @@ import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
@@ -46,13 +47,19 @@ export default async function EditorEspelhosPage({
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const datas = await datasDisponiveis(acesso.spreadsheetId);
   // Mesma chave de Criar Cotação: `data` com várias contagens separadas
   // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
   // Datas extras da URL só ficam se complementam a base (setor pendente que
   // elas fecharam); unidade sem contagem por setor fica com uma data só.
   const porSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
-  const andamentoPorData = porSetor ? await listarAndamentoBanco(acesso.unidadeId) : new Map();
+  // Datas, andamento, fornecedores e produtos não dependem um do outro: saem
+  // juntos. O inventário lido aqui é reaproveitado por `gerarPedido` (cache do request).
+  const [datas, andamentoPorData, fornecedoresCadastro, produtos] = await Promise.all([
+    datasDisponiveis(acesso.spreadsheetId),
+    porSetor ? listarAndamentoBanco(acesso.unidadeId) : new Map<string, AndamentoSetor[]>(),
+    listFornecedores(acesso.spreadsheetId),
+    listProdutos(acesso.spreadsheetId),
+  ]);
   const datasEscolhidas = datasComplementares(escolherDatasContagem(params.data, datas), andamentoPorData);
 
   const { escopo, andamento } =
@@ -60,11 +67,7 @@ export default async function EditorEspelhosPage({
       ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
       : { escopo: [], andamento: [] };
 
-  const [resultado, fornecedoresCadastro, produtos] = await Promise.all([
-    gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId),
-    listFornecedores(acesso.spreadsheetId),
-    listProdutos(acesso.spreadsheetId),
-  ]);
+  const resultado = await gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId);
 
   const nomesFornecedoresCadastro = fornecedoresCadastro
     .map((f) => f.nomeFantasia || f.razaoSocial)

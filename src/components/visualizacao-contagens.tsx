@@ -214,8 +214,9 @@ export function VisualizacaoContagens({
   }
 
   async function onSalvarClick(chave: string) {
-    const ok = await salvarUm(chave);
-    if (ok) router.refresh();
+    // A action já revalida /estoque/contagem/visualizacao: um refresh aqui
+    // renderizaria a página duas vezes.
+    await salvarUm(chave);
   }
 
   async function salvarTodos() {

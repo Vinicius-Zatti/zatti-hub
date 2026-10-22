@@ -100,11 +100,11 @@ export function CaixaEntrada({
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Atualiza a cada 10 s enquanto algum documento ainda está sendo lido.
+  // Atualiza a cada 30 s enquanto algum documento ainda está sendo lido.
   const lendo = pendentes.some((e) => e.situacao === "recebido" || e.situacao === "lendo");
   useEffect(() => {
     if (!lendo) return;
-    const id = window.setInterval(() => router.refresh(), 10_000);
+    const id = window.setInterval(() => router.refresh(), 30_000);
     return () => window.clearInterval(id);
   }, [lendo, router]);
 
@@ -133,7 +133,8 @@ export function CaixaEntrada({
       const r = await lerDeNovoAction(entrada.id);
       setAviso(r);
       setOcupado(null);
-      router.refresh();
+      // Sucesso já vem revalidado pela action; só a falha busca a lista de novo.
+      if (!r.ok) router.refresh();
     });
   }
 
@@ -420,7 +421,8 @@ function AreaEnvio({ onResultado }: { onResultado: (r: { ok: boolean; mensagem: 
       }
       setProgresso(null);
       onResultado({ ok: !algumErro, mensagem: mensagens.join(" ") });
-      router.refresh();
+      // Cada parte enviada com sucesso já revalida a página; só a falha busca de novo.
+      if (algumErro) router.refresh();
     });
   }
 
@@ -517,7 +519,6 @@ function CabecalhoRevisao({ entrada }: { entrada: EntradaCaixa }) {
 }
 
 function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaixa; onFechar: () => void; onFeito: (mensagem: string) => void }) {
-  const router = useRouter();
   const [lancamentos, setLancamentos] = useState<LancamentoParaAnexar[] | null>(null);
   const [busca, setBusca] = useState(entrada.extracao?.contraparteNome ?? "");
   const [escolhido, setEscolhido] = useState("");
@@ -559,7 +560,6 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
         setErro(r.mensagem);
         return;
       }
-      router.refresh();
       onFeito(r.mensagem);
     });
   }
@@ -629,7 +629,6 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
 }
 
 function Descartar({ entrada, onFechar, onFeito }: { entrada: EntradaCaixa; onFechar: () => void; onFeito: (mensagem: string) => void }) {
-  const router = useRouter();
   const [motivo, setMotivo] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -643,7 +642,6 @@ function Descartar({ entrada, onFechar, onFeito }: { entrada: EntradaCaixa; onFe
         setErro(r.mensagem);
         return;
       }
-      router.refresh();
       onFeito(r.mensagem);
     });
   }

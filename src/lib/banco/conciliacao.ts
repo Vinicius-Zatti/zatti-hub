@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
@@ -62,8 +63,9 @@ export type FlagsConciliacao = { habilitada: boolean; iaDocumentos: boolean; iaC
 
 /** Lida à parte do `getAcessoAtual`: se a migração ainda não estiver no banco,
  * a coluna não existe e a Conciliação fica simplesmente desligada, sem
- * derrubar o resto do app. */
-export async function lerFlagsConciliacao(unidadeId: string): Promise<FlagsConciliacao> {
+ * derrubar o resto do app. Cacheada por request (React `cache`): layout e
+ * página leem a mesma linha uma vez só. */
+export const lerFlagsConciliacao = cache(async (unidadeId: string): Promise<FlagsConciliacao> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("unidades")
@@ -77,7 +79,7 @@ export async function lerFlagsConciliacao(unidadeId: string): Promise<FlagsConci
     iaDocumentos: linha.conciliacao_ia_documentos === true,
     iaClassificacao: linha.conciliacao_ia_classificacao === true,
   };
-}
+});
 
 // ── Escrita atestada ───────────────────────────────────────────────────────
 
@@ -213,10 +215,11 @@ export async function baixarArquivo(caminho: string): Promise<Uint8Array> {
 
 // ── Contexto do motor ──────────────────────────────────────────────────────
 
-export async function carregarContextoMotor(unidadeId: string, organizacaoId: string): Promise<{
-  categorias: (CategoriaMotor & { caminho: string })[];
-  regras: RegraMotor[];
-}> {
+type CategoriaComCaminho = CategoriaMotor & { caminho: string };
+
+/** Só o plano de contas da unidade, com o caminho ("CMO > Folha"): é o que a
+ * tela da Conciliação usa. As regras do motor ficam para quem classifica. */
+export async function carregarCategoriasMotor(unidadeId: string): Promise<CategoriaComCaminho[]> {
   const supabase = await createClient();
   type CatRow = { id: string; parent_id: string | null; nome: string; codigo_sistema: string | null; nivel: string; papel_dre: string | null; arquivado: boolean };
   const cats = await buscarTudo<CatRow>((de, ate) =>
@@ -236,6 +239,21 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
     }
     return partes.join(" > ");
   };
+  return cats.map((c) => ({
+    id: c.id,
+    codigoSistema: c.codigo_sistema,
+    nivel: c.nivel,
+    papelDre: c.papel_dre,
+    arquivado: c.arquivado,
+    caminho: caminho(c),
+  }));
+}
+
+export async function carregarContextoMotor(unidadeId: string, organizacaoId: string): Promise<{
+  categorias: CategoriaComCaminho[];
+  regras: RegraMotor[];
+}> {
+  const supabase = await createClient();
   type RegraRow = {
     id: string;
     escopo: "unidade" | "organizacao";
@@ -254,7 +272,8 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
   };
   const colunas =
     "id, escopo, padrao_normalizado, versao_normalizacao, direcao, categoria_id, codigo_sistema_alvo, situacao, versao, nome, condicao, valor_min, valor_max, prioridade";
-  const [locais, organizacionais] = await Promise.all([
+  const [categorias, locais, organizacionais] = await Promise.all([
+    carregarCategoriasMotor(unidadeId),
     buscarTudo<RegraRow>((de, ate) =>
       supabase.from("fin_regras_classificacao").select(colunas).eq("escopo", "unidade").eq("unidade_id", unidadeId)
         .in("situacao", ["ativa", "conflitante"]).order("id").range(de, ate),
@@ -265,14 +284,7 @@ export async function carregarContextoMotor(unidadeId: string, organizacaoId: st
     ),
   ]);
   return {
-    categorias: cats.map((c) => ({
-      id: c.id,
-      codigoSistema: c.codigo_sistema,
-      nivel: c.nivel,
-      papelDre: c.papel_dre,
-      arquivado: c.arquivado,
-      caminho: caminho(c),
-    })),
+    categorias,
     regras: [...locais, ...organizacionais].map((r) => ({
       id: r.id,
       escopo: r.escopo,

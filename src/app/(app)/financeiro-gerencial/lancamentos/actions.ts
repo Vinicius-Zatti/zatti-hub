@@ -60,9 +60,13 @@ export type ResultadoRecorrencia =
   | { ok: false; mensagem: string };
 export type ResultadoExclusao = { ok: true } | { ok: false; mensagem: string };
 
+// Contas a pagar e receber também lista parcelas e dá baixa por aqui
+// (`registrarBaixaAction`): revalidar a tela dela dispensa o `router.refresh()`
+// no cliente, que renderizava a página uma segunda vez.
 function revalidarLancamentos() {
   revalidatePath("/financeiro-gerencial/lancamentos/receitas");
   revalidatePath("/financeiro-gerencial/lancamentos/despesas");
+  revalidatePath("/financeiro-gerencial/contas-pagar-receber");
 }
 
 export async function criarLancamentoAction(input: unknown): Promise<ResultadoLancamento> {

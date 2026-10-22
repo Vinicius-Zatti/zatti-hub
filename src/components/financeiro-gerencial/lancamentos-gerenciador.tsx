@@ -2,7 +2,6 @@
 
 import { BotaoTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   criarLancamentoAction,
   criarRecorrenciaAction,
@@ -453,7 +452,6 @@ function FormularioLancamento({
   onSalvo: () => void;
   onCancelar: () => void;
 }) {
-  const router = useRouter();
   const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias, { incluirProvisao: tipo === "despesa" }), [categorias, tipo]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const rotuloData = rotuloDataParcela(tipo);
@@ -511,7 +509,6 @@ function FormularioLancamento({
           setErro(resultado.mensagem);
           return;
         }
-        router.refresh();
         onSalvo();
         return;
       }
@@ -529,7 +526,6 @@ function FormularioLancamento({
         setErro(resultado.mensagem);
         return;
       }
-      router.refresh();
       onSalvo();
     });
   }
@@ -797,7 +793,6 @@ function FormularioEditarRecorrencia({
   onSalvo: () => void;
   onCancelar: () => void;
 }) {
-  const router = useRouter();
   const opcoesCategoria = useMemo(() => listarContasComCaminho(categorias).map((c) => ({ id: c.id, label: c.rotulo })), [categorias]);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
   const rotuloData = rotuloDataParcela(tipo);
@@ -847,7 +842,6 @@ function FormularioEditarRecorrencia({
         setErro(resultado.mensagem);
         return;
       }
-      router.refresh();
       onSalvo();
     });
   }
@@ -1020,7 +1014,6 @@ function FormularioEditarLancamento({
   onSalvo: () => void;
   onCancelar: () => void;
 }) {
-  const router = useRouter();
   // Liquidação só troca por outra conta de provisão; despesa comum nunca vira
   // liquidação na edição (o servidor barra - é excluir e lançar de novo).
   const ehLiquidacao = lancamento.origem === "liquidacao_provisao";
@@ -1057,7 +1050,6 @@ function FormularioEditarLancamento({
         setErro(resultado.mensagem);
         return;
       }
-      router.refresh();
       onSalvo();
     });
   }
@@ -1306,7 +1298,6 @@ function ConfirmarExclusaoLancamento({
   onExcluido: () => void;
   onCancelar: () => void;
 }) {
-  const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -1318,7 +1309,6 @@ function ConfirmarExclusaoLancamento({
         setErro(resultado.mensagem);
         return;
       }
-      router.refresh();
       onExcluido();
     });
   }
@@ -1369,7 +1359,6 @@ function FormularioBaixa({
   onSalvo: () => void;
   onCancelar: () => void;
 }) {
-  const router = useRouter();
   // Baixa nunca sai do cartão: a compra no cartão é paga pela fatura (tela Cartões).
   const pagadoras = useMemo(() => contasQuePagam(contas), [contas]);
   const opcoesConta = useMemo(() => pagadoras.map((c) => ({ id: c.id, label: c.nome })), [pagadoras]);
@@ -1397,7 +1386,6 @@ function FormularioBaixa({
         setErro(resultado.mensagem);
         return;
       }
-      router.refresh();
       onSalvo();
     });
   }
@@ -1474,7 +1462,6 @@ function HistoricoBaixas({
   podeGerir: boolean;
   onFechar: () => void;
 }) {
-  const router = useRouter();
   const [baixas, setBaixas] = useState<Baixa[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState<string | null>(null);
@@ -1508,7 +1495,6 @@ function HistoricoBaixas({
       }
       setConfirmando(null);
       setBaixas(null);
-      router.refresh();
     });
   }
 

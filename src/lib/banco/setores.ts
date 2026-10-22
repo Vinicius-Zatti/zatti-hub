@@ -4,6 +4,7 @@
  * por grupo, como sempre - a tela decide pelo que esta camada devolve: sem
  * setor cadastrado, o fluxo antigo segue valendo. */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { buscarTudo } from "@/lib/banco/paginacao";
@@ -145,10 +146,11 @@ export async function salvarDesignacoesBanco(
 }
 
 /** Andamento de cada data: quais setores fecharam e quais estão pendentes.
- * Data sem nenhuma linha aqui é contagem legada e conta como completa. */
-export async function listarAndamentoBanco(
+ * Data sem nenhuma linha aqui é contagem legada e conta como completa.
+ * Cacheada por request (React `cache`); não alterar o Map devolvido. */
+export const listarAndamentoBanco = cache(async (
   unidadeId: string,
-): Promise<Map<string, AndamentoSetor[]>> {
+): Promise<Map<string, AndamentoSetor[]>> => {
   const supabase = await createClient();
   // Uma linha por setor de cada contagem: acumula com o tempo - leitura completa.
   const linhas = await buscarTudo<Record<string, unknown>>((de, ate) =>
@@ -179,7 +181,7 @@ export async function listarAndamentoBanco(
     porData.set(dataBr, lista.sort((a, b) => a.setorNome.localeCompare(b.setorNome)));
   }
   return porData;
-}
+});
 
 /** Modalidade gravada no cabeçalho de cada data (dd/mm/aaaa). É ela, e não a
  * ausência de andamento, que diz se a data é legada ou por setor. */

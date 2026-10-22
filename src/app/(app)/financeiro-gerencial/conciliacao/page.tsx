@@ -1,7 +1,7 @@
 import { requireConciliacao } from "@/lib/conciliacao/acesso";
 import { listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import {
-  carregarContextoMotor,
+  carregarCategoriasMotor,
   IMPORTACOES_POR_PAGINA,
   ITENS_FILA_POR_PAGINA,
   listarFila,
@@ -37,16 +37,18 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
 
   // Já conciliados: últimos 60 dias.
   const desde = inicioJanelaConciliados(new Date());
-  const [contas, importacoes, fila, motor, decisoes] = await Promise.all([
+  // A tela só precisa do plano de contas; as regras do motor (todas as ativas
+  // da unidade e da organização) só são lidas por quem classifica.
+  const [contas, importacoes, fila, categorias, decisoes] = await Promise.all([
     listarContasFinanceiras(acesso.unidadeId),
     listarImportacoes(acesso.unidadeId, paginaImportacoes),
     listarFila(acesso.unidadeId, filtros, pagina),
-    carregarContextoMotor(acesso.unidadeId, acesso.organizacaoId),
+    carregarCategoriasMotor(acesso.unidadeId),
     listarDecisoesAtivas(acesso.unidadeId, desde),
   ]);
   // Só contas (nível folha) não arquivadas; entrada concilia com receita, saída com despesa.
   const plano = (direcao: "entrada" | "saida") =>
-    motor.categorias
+    categorias
       .filter((c) => categoriaCompativel(c, direcao))
       .map((c) => ({ id: c.id, label: c.caminho }))
       .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
@@ -65,7 +67,7 @@ export default async function ConciliacaoPage({ searchParams }: { searchParams: 
       pagina={pagina}
       itensPorPagina={ITENS_FILA_POR_PAGINA}
       filtros={filtros}
-      planoDeContas={Object.fromEntries(motor.categorias.map((c) => [c.id, c.caminho]))}
+      planoDeContas={Object.fromEntries(categorias.map((c) => [c.id, c.caminho]))}
       iaDocumentos={flags.iaDocumentos}
       ehMaster={acesso.titularFinanceiro}
       planoReceita={plano("entrada")}

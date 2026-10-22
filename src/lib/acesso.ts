@@ -133,13 +133,20 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   const userId = claims?.claims.sub;
   if (erroClaims || !userId) redirect("/login");
 
-  const [{ data: vinculosData, error: erroVinculos }, { data: perfil }] = await Promise.all([
+  // Vínculos, perfil e sessão vigente saem juntos (uma ida ao banco em vez de
+  // duas em sequência); as checagens abaixo continuam na mesma ordem.
+  const [
+    { data: vinculosData, error: erroVinculos },
+    { data: perfil },
+    { data: sessaoVigente, error: erroSessao },
+  ] = await Promise.all([
     supabase
       .from("vinculos")
       .select("id, organizacao_id, unidade_id, role, status, created_at, organizacoes(nome, equipe_habilitado)")
       .eq("user_id", userId)
       .in("status", ["ativo", "convidado"]),
     supabase.from("perfis").select("nome").eq("id", userId).maybeSingle(),
+    supabase.rpc("sessao_vigente"),
   ]);
 
   if (erroVinculos) {
@@ -153,7 +160,6 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
 
   // Sessão aberta antes da troca de senha do primeiro acesso: o banco já não
   // devolve dado nenhum para ela; aqui a recusa é explícita e manda entrar de novo.
-  const { data: sessaoVigente, error: erroSessao } = await supabase.rpc("sessao_vigente");
   if (erroSessao) throw new Error("Não foi possível validar a sessão do usuário.");
   if (sessaoVigente === false) redirect("/login");
 

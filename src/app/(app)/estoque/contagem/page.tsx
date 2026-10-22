@@ -15,19 +15,22 @@ export default async function ContagemPage() {
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const produtos = await listProdutos(acesso.spreadsheetId);
-
   // Unidade sem setor cadastrado (ou ainda na planilha) segue no fluxo antigo,
   // com escopo por grupo de produto. Vão TODOS os setores, inclusive os
   // desativados: data já aberta precisa deixar o setor dela fechar.
+  // Produtos e dados de setor não dependem um do outro: saem juntos.
   const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
-  const [setores, andamentoPorData, modalidadePorData] = comSetor
-    ? await Promise.all([
-        listarSetoresBanco(acesso.unidadeId),
-        listarAndamentoBanco(acesso.unidadeId),
-        listarModalidadesBanco(acesso.unidadeId),
-      ])
-    : [[], new Map(), new Map()];
+  const [produtos, dadosSetor] = await Promise.all([
+    listProdutos(acesso.spreadsheetId),
+    comSetor
+      ? Promise.all([
+          listarSetoresBanco(acesso.unidadeId),
+          listarAndamentoBanco(acesso.unidadeId),
+          listarModalidadesBanco(acesso.unidadeId),
+        ])
+      : null,
+  ]);
+  const [setores, andamentoPorData, modalidadePorData] = dadosSetor ?? [[], new Map(), new Map()];
 
   return (
     <ContagemForm

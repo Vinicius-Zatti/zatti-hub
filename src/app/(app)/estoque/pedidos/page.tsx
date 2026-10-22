@@ -1,10 +1,12 @@
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
+import { listProdutos } from "@/lib/sheets/produtos";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao } from "@/lib/acesso";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem, listaDoParametro } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
@@ -25,11 +27,18 @@ export default async function PedidosPage({
   // andamento daquelas contagens - é o que diz se a soma está completa ou
   // parcial. `data` aceita várias contagens separadas por vírgula (13/10):
   // só entra o que existe na unidade, e a mais recente vira a contagem base.
-  const datas = await datasDisponiveis(acesso.spreadsheetId);
   // Datas extras da URL só ficam se complementam a base (setor pendente que
   // elas fecharam); unidade sem contagem por setor fica com uma data só.
   const porSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
-  const andamentoPorData = porSetor ? await listarAndamentoBanco(acesso.unidadeId) : new Map();
+  // Datas, andamento, fornecedores e produtos não dependem um do outro: saem
+  // juntos. Inventário e produtos lidos aqui são reaproveitados por
+  // `gerarPedido` (cache do request), sem segunda leitura.
+  const [datas, andamentoPorData, fornecedores] = await Promise.all([
+    datasDisponiveis(acesso.spreadsheetId),
+    porSetor ? listarAndamentoBanco(acesso.unidadeId) : new Map<string, AndamentoSetor[]>(),
+    listFornecedores(acesso.spreadsheetId),
+    listProdutos(acesso.spreadsheetId),
+  ]);
   const datasEscolhidas = datasComplementares(escolherDatasContagem(params.data, datas), andamentoPorData);
 
   const { escopo, andamento } =
@@ -37,10 +46,7 @@ export default async function PedidosPage({
       ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
       : { escopo: [], andamento: [] };
 
-  const [resultado, fornecedores] = await Promise.all([
-    gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId),
-    listFornecedores(acesso.spreadsheetId),
-  ]);
+  const resultado = await gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId);
 
   const pedidoMinimoPorFornecedor = Object.fromEntries(
     fornecedores

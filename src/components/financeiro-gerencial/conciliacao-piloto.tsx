@@ -431,7 +431,8 @@ function BotaoReprocessar({ importacaoId }: { importacaoId: string }) {
           iniciar(async () => {
             const r = await reprocessarImportacaoAction(importacaoId);
             setMensagem(r.ok ? null : r.mensagem);
-            router.refresh();
+            // Sucesso já vem revalidado pela action; só a falha busca de novo.
+            if (!r.ok) router.refresh();
           })
         }
         className="font-semibold text-azul-petroleo underline disabled:opacity-50"
@@ -467,7 +468,6 @@ function AlertaConta({ importacaoId, texto, onDescartar, onFechar }: {
   onDescartar: () => void;
   onFechar: () => void;
 }) {
-  const router = useRouter();
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<string | null>(null);
   return (
@@ -492,7 +492,6 @@ function AlertaConta({ importacaoId, texto, onDescartar, onFechar }: {
                 setMensagem(r.mensagem);
                 return;
               }
-              router.refresh();
               onFechar();
             })
           }
@@ -506,7 +505,6 @@ function AlertaConta({ importacaoId, texto, onDescartar, onFechar }: {
 }
 
 function Descartar({ importacao, nomeConta, onFechar }: { importacao: ImportacaoResumo; nomeConta: string; onFechar: () => void }) {
-  const router = useRouter();
   const [motivo, setMotivo] = useState(importacao.contaConferencia === "divergente" ? "conta_errada" : "");
   const [pendente, iniciar] = useTransition();
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -541,10 +539,7 @@ function Descartar({ importacao, nomeConta, onFechar }: { importacao: Importacao
               iniciar(async () => {
                 const r = await descartarImportacaoAction({ importacaoId: importacao.id, motivo });
                 setMensagem(r.mensagem);
-                if (r.ok) {
-                  setFeito(true);
-                  router.refresh();
-                }
+                if (r.ok) setFeito(true);
               })
             }
             className="rounded-md bg-vermelho px-3 py-1.5 text-sm font-bold text-branco disabled:opacity-50"
@@ -600,7 +595,8 @@ function FormularioImportacao({ contas, nomeConta, iaDocumentos, onFechar }: {
           }),
         });
       }
-      router.refresh();
+      // Sucesso já vem revalidado pela action; só a falha busca de novo.
+      if (!r.ok) router.refresh();
     });
   }
 
@@ -643,7 +639,7 @@ function FormularioImportacao({ contas, nomeConta, iaDocumentos, onFechar }: {
                   const r = await confirmarContaAction(alerta.importacaoId);
                   setMensagem(r.mensagem);
                   if (r.ok) setAlerta(null);
-                  router.refresh();
+                  else router.refresh();
                 })
               }
               className="rounded-md bg-ambar px-3 py-1.5 text-xs font-bold text-azul-noite disabled:opacity-50"

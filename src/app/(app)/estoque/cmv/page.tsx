@@ -13,17 +13,17 @@ export default async function CmvPage() {
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const itensInventario = await listInventario(acesso.spreadsheetId);
-
-  const pedidos = await listPedidosFeitos(acesso.unidadeId);
+  // As quatro leituras não dependem uma da outra: saem juntas.
   // Unidade na planilha não tem setor: mapa vazio mantém o comportamento antigo.
   const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
-  const [andamentoPorData, modalidadePorData] = comSetor
-    ? await Promise.all([
-        listarAndamentoBanco(acesso.unidadeId),
-        listarModalidadesBanco(acesso.unidadeId),
-      ])
-    : [new Map(), new Map()];
+  const [itensInventario, pedidos, dadosSetor] = await Promise.all([
+    listInventario(acesso.spreadsheetId),
+    listPedidosFeitos(acesso.unidadeId),
+    comSetor
+      ? Promise.all([listarAndamentoBanco(acesso.unidadeId), listarModalidadesBanco(acesso.unidadeId)])
+      : null,
+  ]);
+  const [andamentoPorData, modalidadePorData] = dadosSetor ?? [new Map(), new Map()];
 
   return (
     <CalculadoraCmv

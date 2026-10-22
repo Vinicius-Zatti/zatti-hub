@@ -13,8 +13,11 @@ export default async function ProdutosPage() {
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const produtos = await listProdutos(acesso.spreadsheetId);
-  const pendentes = await listItensPendentes(acesso.spreadsheetId);
+  // Juntas: `listItensPendentes` reaproveita os produtos lidos aqui (cache do request).
+  const [produtos, pendentes] = await Promise.all([
+    listProdutos(acesso.spreadsheetId),
+    listItensPendentes(acesso.spreadsheetId),
+  ]);
 
   const ativos = produtos.filter((p) => p.ativo);
   const semPreco = produtos.filter((p) => p.precoUnitario === null);

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
@@ -78,11 +79,14 @@ async function listProdutosPlanilha(spreadsheetId: string): Promise<Produto[]> {
     .map(rowToProduto);
 }
 
-export async function listProdutos(spreadsheetId: string | null): Promise<Produto[]> {
+/** Cacheada por request (React `cache`): layout, página e funções auxiliares
+ * que pedem a mesma lista na mesma renderização leem a fonte uma vez só.
+ * Quem receber o resultado não deve alterar o array no lugar. */
+export const listProdutos = cache(async (spreadsheetId: string | null): Promise<Produto[]> => {
   const fonte = await resolverFonteDadosEstoque(spreadsheetId);
   if (fonte.fonte === "banco") return listarProdutosBanco(fonte.unidadeId);
   return listProdutosPlanilha(fonte.spreadsheetId!);
-}
+});
 
 export async function upsertProduto(
   produto: Produto,

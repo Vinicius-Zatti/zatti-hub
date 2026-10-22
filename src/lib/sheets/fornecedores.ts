@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Fornecedor } from "@/lib/types";
@@ -69,11 +70,14 @@ async function listFornecedoresPlanilha(spreadsheetId: string): Promise<Forneced
   return rows.filter((r) => r[1] || r[2]).map(rowToFornecedor);
 }
 
-export async function listFornecedores(spreadsheetId: string | null): Promise<Fornecedor[]> {
+/** Cacheada por request (React `cache`): layout, página e funções auxiliares
+ * que pedem a mesma lista na mesma renderização leem a fonte uma vez só.
+ * Quem receber o resultado não deve alterar o array no lugar. */
+export const listFornecedores = cache(async (spreadsheetId: string | null): Promise<Fornecedor[]> => {
   const fonte = await resolverFonteDadosEstoque(spreadsheetId);
   if (fonte.fonte === "banco") return listarFornecedoresBanco(fonte.unidadeId);
   return listFornecedoresPlanilha(fonte.spreadsheetId!);
-}
+});
 
 /** Atualiza/insere um fornecedor. Exige `codigo` preenchido pra saber qual
  * linha é qual - fornecedor sem código ainda (cadastro antigo, direto na

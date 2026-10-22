@@ -29,10 +29,12 @@ export default async function AppLayout({
   const podeGerir = acesso.role !== "operacional";
   // Vigência anual (15/10/2026): depois da carência o cliente trava, sem perder dado. O master
   // nunca trava (vê a faixa para saber a situação do cliente).
-  const assinatura = acesso.areaInterna ? null : await getAssinaturaAtual(acesso.organizacaoId);
-  const conciliacaoHabilitada = acesso.financeiroGerencialHabilitado && !acesso.areaInterna
-    ? (await lerFlagsConciliacao(acesso.unidadeId)).habilitada
-    : false;
+  const [assinatura, conciliacaoHabilitada] = await Promise.all([
+    acesso.areaInterna ? null : getAssinaturaAtual(acesso.organizacaoId),
+    acesso.financeiroGerencialHabilitado && !acesso.areaInterna
+      ? lerFlagsConciliacao(acesso.unidadeId).then((f) => f.habilitada)
+      : false,
+  ]);
   if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
   const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir) : null;
   const nomeUnidadeSuporte =

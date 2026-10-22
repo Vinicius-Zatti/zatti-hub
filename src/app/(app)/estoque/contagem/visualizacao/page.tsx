@@ -15,17 +15,17 @@ export default async function VisualizacaoContagensPage() {
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const itens = await listInventario(acesso.spreadsheetId);
-
-  // Andamento de todas as datas (barato) e snapshot só da última, que é a
-  // data que a conferência corrige.
+  // Inventário, andamento de todas as datas (barato) e modalidades saem
+  // juntos; o snapshot só da última data (a que a conferência corrige)
+  // depende do inventário e vem depois.
   const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
-  const [andamentoPorData, modalidadePorData] = comSetor
-    ? await Promise.all([
-        listarAndamentoBanco(acesso.unidadeId),
-        listarModalidadesBanco(acesso.unidadeId),
-      ])
-    : [new Map(), new Map()];
+  const [itens, dadosSetor] = await Promise.all([
+    listInventario(acesso.spreadsheetId),
+    comSetor
+      ? Promise.all([listarAndamentoBanco(acesso.unidadeId), listarModalidadesBanco(acesso.unidadeId)])
+      : null,
+  ]);
+  const [andamentoPorData, modalidadePorData] = dadosSetor ?? [new Map(), new Map()];
 
   const ultimaData = itens.reduce((maior, item) => {
     const ts = (d: string) => {
