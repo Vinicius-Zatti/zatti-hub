@@ -1,5 +1,9 @@
 "use client";
 
+import { DicaCalculo } from "@/components/dica-calculo";
+import { DiferencaCaixa } from "@/components/diferenca-caixa";
+import { EXPLICACAO_DIFERENCA_CAIXA } from "@/lib/consolidado-diferenca";
+
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -33,9 +37,11 @@ export function AvisoDivergenciaModal({
             <span>Total dos canais de venda</span>
             <span className="font-semibold">{brl(totais.totalCanais)}</span>
           </div>
-          <div className="flex justify-between border-t border-cinza-claro pt-1.5">
-            <span className="font-semibold text-vermelho">Diferença</span>
-            <span className="font-bold text-vermelho">{brl(totais.diferenca)}</span>
+          <div className="flex items-center justify-between gap-2 border-t border-cinza-claro pt-1.5">
+            <span className="inline-flex items-center gap-1 font-semibold">
+              Diferença <DicaCalculo rotulo="Como a diferença é calculada" texto={EXPLICACAO_DIFERENCA_CAIXA} />
+            </span>
+            <DiferencaCaixa totalFormasPagamento={totais.totalFormasPagamento} totalCanais={totais.totalCanais} destaque />
           </div>
         </div>
         <p className="mt-3 text-sm text-cinza-medio">Confira os valores antes de continuar.</p>

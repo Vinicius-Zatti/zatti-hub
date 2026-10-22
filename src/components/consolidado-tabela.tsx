@@ -6,6 +6,9 @@ import type { ConsolidadoVenda } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { FiltroPeriodo, type PeriodoAplicado } from "@/components/filtro-periodo";
+import { DicaCalculo } from "@/components/dica-calculo";
+import { DiferencaCaixa } from "@/components/diferenca-caixa";
+import { EXPLICACAO_DIFERENCA_CAIXA } from "@/lib/consolidado-diferenca";
 
 function brl(n: number): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -95,7 +98,9 @@ export function ConsolidadoTabela({
               <Th align="right">99Food</Th>
               <Th align="right">Faturamento total</Th>
               <Th align="right">Total canais próprios</Th>
-              <Th align="right">Diferença</Th>
+              <Th align="right">
+                Diferença (sobra/falta) <DicaCalculo rotulo="Como a diferença é calculada" texto={EXPLICACAO_DIFERENCA_CAIXA} />
+              </Th>
               <Th>Status</Th>
               <Th>Responsável</Th>
               <Th>Última atualização</Th>
@@ -134,7 +139,9 @@ export function ConsolidadoTabela({
                   {brl(l.faturamentoTotal)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{brl(l.totalCanais)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{l.diferenca > 0 ? brl(l.diferenca) : "—"}</td>
+                <td className="px-3 py-2 text-right">
+                  <DiferencaCaixa totalFormasPagamento={l.totalFormasPagamento} totalCanais={l.totalCanais} />
+                </td>
                 <td className="px-3 py-2">
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
