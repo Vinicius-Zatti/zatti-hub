@@ -338,6 +338,8 @@ export function PedidoCompras({
                 legenda={legenda}
                 valorAtual={valorAtual}
                 onConfirmarValor={confirmarValor}
+                confirmando={confirmando}
+                erroConfirmar={erroConfirmar}
                 podeEditar={podeConfirmar}
                 fornecedoresCadastro={fornecedoresCadastro}
                 onFornecedorAtribuido={(sku, nome) =>

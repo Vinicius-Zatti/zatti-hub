@@ -94,6 +94,20 @@ async function garantirPedido(
     })
     .select("id")
     .single();
+  // Dois itens do mesmo fornecedor confirmados em sequência rápida: as duas
+  // chamadas não acham o pedido e a segunda bate na unicidade (unidade,
+  // fornecedor, contagem base). O pedido existe - devolve o dele.
+  if (error?.code === "23505") {
+    const { data: criadoAoLado, error: erroReleitura } = await supabase
+      .from("pedidos")
+      .select("id")
+      .eq("unidade_id", unidadeId)
+      .eq("fornecedor", fornecedor)
+      .eq("data_contagem_base", dataContagemBase)
+      .maybeSingle();
+    if (erroReleitura) throw new Error(erroReleitura.message);
+    if (criadoAoLado) return criadoAoLado.id;
+  }
   if (error || !novo) throw new Error(error?.message ?? "Falha ao criar pedido");
   return novo.id;
 }
@@ -155,20 +169,27 @@ export async function confirmarItem(params: {
     preco_confirmado: params.item.precoConfirmado,
   };
 
-  const { data: existente, error: erroExistente } = await supabase
+  // `limit(1)` em vez de `maybeSingle()`: o banco não tem unicidade em
+  // (pedido_id, sku) e já há SKU repetido no mesmo pedido em produção - com
+  // `maybeSingle()` toda confirmação seguinte daquele SKU dava erro e o item
+  // ficava impossível de editar.
+  const { data: existentes, error: erroExistente } = await supabase
     .from("pedido_itens")
     .select("id")
     .eq("pedido_id", pedidoId)
     .eq("sku", params.item.sku)
-    .maybeSingle();
+    .limit(1);
   // Leitura que falha não pode virar "item novo" (duplicaria o SKU no pedido).
   if (erroExistente) throw new Error(erroExistente.message);
 
-  if (existente) {
+  if (existentes && existentes.length > 0) {
+    // Atualiza todas as linhas do SKU no pedido, para as repetidas não
+    // ficarem com valores diferentes entre si.
     const { error } = await supabase
       .from("pedido_itens")
       .update(params.atualizarPreco ? linhaComPreco : linhaBase)
-      .eq("id", existente.id);
+      .eq("pedido_id", pedidoId)
+      .eq("sku", params.item.sku);
     if (error) throw erroGravacaoItem(error);
   } else {
     const { error } = await supabase
@@ -316,10 +337,12 @@ export async function atualizarPrevisaoEntrega(params: {
     params.dataContagemBase,
     params.criadoPor
   );
-  await supabase
+  const { error } = await supabase
     .from("pedidos")
     .update({ previsao_entrega: params.previsaoEntrega, atualizado_em: new Date().toISOString() })
     .eq("id", pedidoId);
+  // Sem isso a tela dizia "salvo" com a gravação recusada.
+  if (error) throw erroGravacaoItem(error);
 }
 
 /** Todos os pedidos já salvos (de qualquer fornecedor) pra uma contagem base
