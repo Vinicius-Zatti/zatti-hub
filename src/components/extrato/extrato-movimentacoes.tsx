@@ -10,6 +10,7 @@ import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-b
 import { exportarExtratoCsvAction } from "@/app/(app)/estoque/contagem/movimentacoes/actions";
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { formatarQuantidade } from "@/lib/unidades";
+import { baixarArquivo } from "@/lib/baixar-arquivo";
 import { mensagemFalhaChamada } from "@/lib/erro-chamada";
 import {
   DICA_EXCLUSOES_EXTRATO,
@@ -124,12 +125,7 @@ export function ExtratoMovimentacoes({
         setAviso(r.erro);
         return;
       }
-      const url = URL.createObjectURL(new Blob([r.csv], { type: "text/csv;charset=utf-8" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `extrato-estoque-${hojeIsoBrasil()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      baixarArquivo(new Blob([r.csv], { type: "text/csv;charset=utf-8" }), `extrato-estoque-${hojeIsoBrasil()}.csv`);
     } catch (erro) {
       setAviso(mensagemFalhaChamada(erro, "Não foi possível gerar o CSV do extrato."));
     } finally {

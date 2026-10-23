@@ -411,7 +411,7 @@ function CadastroSection({
         <div
           ref={scrollRef}
           {...handlers}
-          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco select-none ${
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto overscroll-x-contain rounded-lg border border-cinza-claro bg-branco select-none ${
             arrastando ? "cursor-grabbing" : "cursor-grab"
           }`}
         >
@@ -825,10 +825,13 @@ const LinhaProduto = memo(function LinhaProduto({
       <td className="px-2 py-1.5 font-mono text-cinza-medio">{sku}</td>
       <td className="px-2 py-1.5">
         <input
-          type="number"
-          step="1"
+          type="text"
+          inputMode="numeric"
           value={editado.posicao ?? ""}
-          onChange={(e) => campo("posicao", e.target.value === "" ? null : Number(e.target.value))}
+          onChange={(e) => {
+            const digitos = e.target.value.replace(/\D/g, "");
+            campo("posicao", digitos === "" ? null : Number(digitos));
+          }}
           className={`w-16 rounded border px-1.5 py-1 text-right ${editado.posicao === null ? VAZIO_CLASSE : NORMAL_CLASSE}`}
         />
       </td>

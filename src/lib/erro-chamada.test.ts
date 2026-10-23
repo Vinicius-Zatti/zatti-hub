@@ -11,7 +11,7 @@ describe("mensagemFalhaChamada", () => {
     const erro = new UnrecognizedActionError('Server Action "abc" was not found on the server.');
     expect(mensagemFalhaChamada(erro, "genérica")).toBe(MENSAGEM_APP_ATUALIZADO);
     expect(mensagemFalhaChamada(erro, "genérica", { guardado: true })).toBe(MENSAGEM_APP_ATUALIZADO_GUARDADO);
-    expect(MENSAGEM_APP_ATUALIZADO_GUARDADO).toContain("F5");
+    expect(MENSAGEM_APP_ATUALIZADO_GUARDADO).toContain("Cmd+R no Mac, F5 no Windows");
     // Não conseguiu guardar: nunca diz que está guardado.
     expect(mensagemFalhaChamada(erro, "genérica", { guardado: false, semGuarda: "baixe o CSV" })).toBe("baixe o CSV");
   });

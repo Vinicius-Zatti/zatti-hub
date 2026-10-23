@@ -4,6 +4,8 @@
  * propósito: zero dependência nova e zero risco de a lib não entender as
  * cores do Tailwind v4. */
 
+import { baixarArquivo } from "@/lib/baixar-arquivo";
+
 const CORES = {
   azulNoite: "#0d1f2d",
   azulPetroleo: "#1a3a52",
@@ -204,14 +206,7 @@ export async function copiarImagemParaAreaDeTransferencia(blob: Blob): Promise<v
 }
 
 export function baixarImagem(blob: Blob, nomeArquivo: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nomeArquivo;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  baixarArquivo(blob, nomeArquivo);
 }
 
 export class CompartilharCancelado extends Error {}
@@ -258,8 +253,12 @@ export async function compartilharOuCopiarImagem(
   }
 
   if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    return "copiado";
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return "copiado";
+    } catch {
+      // Safari recusa copiar fora do clique (a imagem já foi esperada aqui): baixa o arquivo
+    }
   }
 
   baixarImagem(blob, nomeArquivo);

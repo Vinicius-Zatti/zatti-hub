@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { cliqueAbreOutraAba } from "@/lib/guarda-clique";
 
 type GuardaContagemContextType = {
   ativar: () => void;
@@ -44,6 +45,7 @@ export function GuardaContagemProvider({ children }: { children: React.ReactNode
       if (!ativoRef.current) return;
       const alvo = (e.target as HTMLElement)?.closest?.("a");
       if (!alvo) return;
+      if (cliqueAbreOutraAba(e, alvo)) return;
       const href = alvo.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("http")) return;
       if (href === window.location.pathname) return;

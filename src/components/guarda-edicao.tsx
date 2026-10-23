@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { cliqueAbreOutraAba } from "@/lib/guarda-clique";
 
 type GuardaEdicaoContextType = {
   /** `aoSalvar` opcional - quando informado, o aviso ganha um 3º botão
@@ -54,6 +55,7 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
       if (!ativoRef.current) return;
       const alvo = (e.target as HTMLElement)?.closest?.("a");
       if (!alvo) return;
+      if (cliqueAbreOutraAba(e, alvo)) return;
       const href = alvo.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("http")) return;
       if (href === window.location.pathname) return;

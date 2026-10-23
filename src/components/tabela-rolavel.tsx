@@ -84,7 +84,7 @@ export function TabelaRolavel({
         role="region"
         aria-label={ariaLabel}
         tabIndex={0}
-        className={`${className} overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${
+        className={`${className} overflow-auto overscroll-x-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${
           expandido ? "!min-h-0 !max-h-none flex-1" : ""
         } ${arrastando ? "cursor-grabbing select-none" : "cursor-grab"}`}
       >
