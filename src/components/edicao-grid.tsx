@@ -238,7 +238,7 @@ function CadastroSection({
     for (const p of produtos) {
       const atual = estado[p.sku] ?? p;
       const razao = razaoEmbalagemDe(atual);
-      if (!razao) continue;
+      if (!razao || precoDaFicha.has(p.sku)) continue;
       const semBase = !atual.precoUnitario;
       const semFornecedor = !atual.precoFornecedor;
       if (semBase && !semFornecedor) {
@@ -266,7 +266,7 @@ function CadastroSection({
         return false;
       }
       setBaseline((b) => ({ ...b, [sku]: estado[sku] }));
-      setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok" } }));
+      setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok", msg: r.aviso } }));
       return true;
     },
     [estado]
@@ -301,9 +301,11 @@ function CadastroSection({
       for (const sku of skus) novo[sku] = estado[sku];
       return novo;
     });
+    // Aviso do pré-preparo (piloto): os produtos foram salvos, só a ficha
+    // de algum deles não foi ajustada - a mensagem cita o produto pelo nome.
     setStatusPorSku((s) => {
       const novo = { ...s };
-      for (const sku of skus) novo[sku] = { tipo: "ok" };
+      for (const sku of skus) novo[sku] = { tipo: "ok", msg: r.aviso };
       return novo;
     });
     return true;
@@ -833,7 +835,8 @@ const LinhaProduto = memo(function LinhaProduto({
 
   function aoMudarPrecoFornecedor(v: number | null) {
     campo("precoFornecedor", v);
-    if (v !== null && razaoEmbalagem) {
+    // Preço vindo da ficha (pré-preparo) não é recalculado pela embalagem.
+    if (v !== null && razaoEmbalagem && !precoVemDaFicha) {
       campo("precoUnitario", arredondarPreco(v / razaoEmbalagem));
     }
   }
@@ -843,7 +846,7 @@ const LinhaProduto = memo(function LinhaProduto({
     if (v) {
       if (editado.precoUnitario !== null) {
         campo("precoFornecedor", arredondarPreco(editado.precoUnitario * v));
-      } else if (editado.precoFornecedor !== null) {
+      } else if (editado.precoFornecedor !== null && !precoVemDaFicha) {
         campo("precoUnitario", arredondarPreco(editado.precoFornecedor / v));
       }
     }
@@ -1024,6 +1027,9 @@ const LinhaProduto = memo(function LinhaProduto({
         )}
         {pending && <span className="text-[10px] text-cinza-medio">Salvando...</span>}
         {status?.tipo === "ok" && !mudou && <span className="text-[10px] font-semibold text-verde">Salvo ✓</span>}
+        {status?.tipo === "ok" && !mudou && status.msg && (
+          <span className="block max-w-[220px] text-[10px] text-ambar">{status.msg}</span>
+        )}
         {status?.tipo === "erro" && <span className="block text-[10px] text-vermelho">{status.msg}</span>}
       </td>
       <td className="min-w-[80px] px-2 py-1.5 text-center">

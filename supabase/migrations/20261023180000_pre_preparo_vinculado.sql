@@ -197,31 +197,114 @@ create trigger validar_vinculo_pre_preparo
   before insert or update of ficha_pre_preparo_id, sku, unidade_base on public.produtos
   for each row execute function public.validar_vinculo_pre_preparo();
 
--- O pré-preparo não entra como ingrediente da própria ficha: o custo dela
--- viraria o preço do produto, que viraria o custo dela.
-create or replace function public.bloquear_pre_preparo_em_si_mesmo()
+-- Pré-preparo não entra, direta ou indiretamente, na própria receita: o
+-- custo dela viraria o preço do produto, que viraria o custo dela, e os dois
+-- inflariam a cada recálculo. A aresta "ficha usa produto vinculado" conta
+-- como "ficha usa a ficha daquele produto". Só roda em unidade que já tem
+-- algum produto vinculado (fora do piloto, nunca).
+create or replace function public.bloquear_ciclo_pre_preparo()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_alvo uuid;
+begin
+  if not exists (
+    select 1 from public.produtos p
+    where p.unidade_id = new.unidade_id and p.ficha_pre_preparo_id is not null
+  ) then
+    return new;
+  end if;
+
+  if new.produto_sku is not null then
+    select p.ficha_pre_preparo_id into v_alvo
+    from public.produtos p
+    where p.unidade_id = new.unidade_id and p.sku = new.produto_sku;
+  else
+    v_alvo := new.ficha_componente_id;
+  end if;
+  if v_alvo is null then return new; end if;
+
+  if exists (
+    with recursive alcance(id) as (
+      select v_alvo
+      union
+      select coalesce(c.ficha_componente_id, p.ficha_pre_preparo_id)
+      from alcance a
+      join public.ficha_componentes c on c.unidade_id = new.unidade_id and c.ficha_id = a.id
+      left join public.produtos p on p.unidade_id = c.unidade_id and p.sku = c.produto_sku
+      where coalesce(c.ficha_componente_id, p.ficha_pre_preparo_id) is not null
+    )
+    select 1 from alcance where id = new.ficha_id
+  ) then
+    raise exception 'O pre-preparo nao pode ser ingrediente da propria ficha, nem por dentro de outro pre-preparo';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.bloquear_ciclo_pre_preparo() from public, anon, authenticated;
+
+drop trigger if exists bloquear_ciclo_pre_preparo on public.ficha_componentes;
+create trigger bloquear_ciclo_pre_preparo
+  before insert or update on public.ficha_componentes
+  for each row execute function public.bloquear_ciclo_pre_preparo();
+
+-- Ficha excluída de propósito: o produto deixa de ser pré-preparo com ficha
+-- (senão a chave continuaria marcada e o próximo salvamento recriaria o
+-- rascunho sem ninguém pedir). Preço fica o último, manual dali pra frente.
+create or replace function public.soltar_produto_da_ficha_excluida()
 returns trigger
 language plpgsql
 security invoker
 set search_path = ''
 as $$
 begin
-  if new.produto_sku is not null and exists (
-    select 1 from public.produtos p
-    where p.unidade_id = new.unidade_id and p.sku = new.produto_sku and p.ficha_pre_preparo_id = new.ficha_id
-  ) then
-    raise exception 'O pre-preparo nao pode ser ingrediente da propria ficha';
-  end if;
-  return new;
+  update public.produtos
+  set pre_preparo = false, ficha_pre_preparo_id = null
+  where unidade_id = old.unidade_id and ficha_pre_preparo_id = old.id;
+  return old;
 end;
 $$;
 
-revoke all on function public.bloquear_pre_preparo_em_si_mesmo() from public, anon, authenticated;
+revoke all on function public.soltar_produto_da_ficha_excluida() from public, anon, authenticated;
 
-drop trigger if exists bloquear_pre_preparo_em_si_mesmo on public.ficha_componentes;
-create trigger bloquear_pre_preparo_em_si_mesmo
-  before insert or update on public.ficha_componentes
-  for each row execute function public.bloquear_pre_preparo_em_si_mesmo();
+drop trigger if exists soltar_produto_da_ficha_excluida on public.fichas_tecnicas;
+create trigger soltar_produto_da_ficha_excluida
+  before delete on public.fichas_tecnicas
+  for each row execute function public.soltar_produto_da_ficha_excluida();
+
+-- Desmarcar a chave: produto e ficha mudam juntos ou nada muda. A ficha fica
+-- inativa (nunca excluída) e o vínculo continua, para religar reaproveitar.
+create or replace function public.desmarcar_pre_preparo(
+  p_unidade_id text,
+  p_sku text
+)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_ficha_id uuid;
+begin
+  update public.produtos set pre_preparo = false
+  where unidade_id = p_unidade_id and sku = upper(trim(p_sku))
+  returning ficha_pre_preparo_id into v_ficha_id;
+  if not found then
+    raise exception 'Produto nao encontrado';
+  end if;
+  if v_ficha_id is not null then
+    update public.fichas_tecnicas set status = 'inativa'
+    where unidade_id = p_unidade_id and id = v_ficha_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.desmarcar_pre_preparo(text, text) from public, anon;
+grant execute on function public.desmarcar_pre_preparo(text, text) to authenticated;
 
 -- Caminho "produto primeiro": cria o rascunho da ficha PRE com o SKU, o nome
 -- e a unidade do produto, na categoria "Pré-preparos" (PPR, criada se faltar).

@@ -20,6 +20,8 @@ export async function prePreparoVinculadoHabilitado(unidadeId: string): Promise<
 export type VinculoContagemFicha = {
   /** Produto da lista de contagem que é esta ficha, `null` se ainda não entrou. */
   produto: { sku: string; nome: string; unidadeBase: string } | null;
+  /** Chave "Pré-preparo" ligada no produto: só então o preço vem da ficha. */
+  prePreparo: boolean;
 };
 
 /** `null` quando não se aplica: unidade fora do piloto ou ficha de Venda. */
@@ -31,10 +33,13 @@ export async function vinculoContagemDaFicha(
   const supabase = await createClient();
   const { data } = await supabase
     .from("produtos")
-    .select("sku, nome, unidade_base")
+    .select("sku, nome, unidade_base, pre_preparo")
     .eq("unidade_id", unidadeId)
     .eq("ficha_pre_preparo_id", ficha.id)
     .maybeSingle();
-  const produto = data as { sku: string; nome: string; unidade_base: string } | null;
-  return { produto: produto ? { sku: produto.sku, nome: produto.nome, unidadeBase: produto.unidade_base } : null };
+  const produto = data as { sku: string; nome: string; unidade_base: string; pre_preparo: boolean } | null;
+  return {
+    produto: produto ? { sku: produto.sku, nome: produto.nome, unidadeBase: produto.unidade_base } : null,
+    prePreparo: produto?.pre_preparo === true,
+  };
 }

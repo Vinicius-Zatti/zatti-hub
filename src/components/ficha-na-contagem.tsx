@@ -20,6 +20,7 @@ export function FichaNaContagem({
   podeGerir: boolean;
 }) {
   const [produto, setProduto] = useState(vinculo.produto);
+  const [prePreparo, setPrePreparo] = useState(vinculo.prePreparo);
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState(() => nomeContagemSugerido(ficha.nome));
   const [erro, setErro] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function FichaNaContagem({
         return;
       }
       setProduto({ sku: ficha.sku, nome: nome.trim(), unidadeBase: ficha.rendimentoUnidade });
+      setPrePreparo(true);
       setAberto(false);
     });
   }
@@ -46,11 +48,18 @@ export function FichaNaContagem({
         <div className="mt-1 text-sm font-semibold text-azul-noite">
           {produto.nome} · {produto.sku} · contado em {produto.unidadeBase}
         </div>
-        <p className="mt-1 text-xs text-cinza-medio">
-          O preço desse produto na contagem é o custo por {produto.unidadeBase} desta ficha, atualizado quando a
-          ficha ou o preço de um ingrediente muda. Enquanto faltar preço de algum ingrediente, vale o preço digitado
-          em Produtos.
-        </p>
+        {prePreparo ? (
+          <p className="mt-1 text-xs text-cinza-medio">
+            O preço desse produto na contagem é o custo por {produto.unidadeBase} desta ficha, atualizado quando a
+            ficha ou o preço de um ingrediente muda. Enquanto faltar preço de algum ingrediente, vale o preço digitado
+            em Produtos.
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-cinza-medio">
+            A chave &quot;Pré-preparo&quot; está desligada nesse produto (Produtos, Edição de Dados): o preço na
+            contagem é o digitado lá, não o desta ficha.
+          </p>
+        )}
       </div>
     );
   }

@@ -51,7 +51,8 @@ async function sincronizarRevendaMelhorEsforco(acesso: AcessoAtual, produtos: Pr
 /** Pré-preparo com ficha técnica (piloto): a chave só chega preenchida em
  * unidade habilitada. Depois recalcula o preço dos pré-preparos, que muda
  * quando o preço de um insumo deles foi salvo agora. Os produtos já estão
- * salvos quando isto roda - a mensagem devolvida diz só o que faltou. */
+ * salvos quando isto roda - a mensagem devolvida (aviso, não erro) diz só o
+ * que faltou. */
 async function sincronizarPrePreparoDaGrade(acesso: AcessoAtual, produtos: Produto[]): Promise<string | null> {
   if (!acesso.fichasTecnicasHabilitado) return null;
   let erros: string[] = [];
@@ -185,7 +186,7 @@ export async function criarProdutoPendenciaAction(
 /** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados. */
 export async function salvarProdutoAction(
   produto: Produto
-): Promise<{ ok: true } | { erro: string }> {
+): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("salvar_produtos");
@@ -201,8 +202,7 @@ export async function salvarProdutoAction(
     revalidarTudo();
     await sincronizarRevendaMelhorEsforco(acesso, [entrada]);
     const avisoPrePreparo = await sincronizarPrePreparoDaGrade(acesso, [entrada]);
-    if (avisoPrePreparo) return { erro: avisoPrePreparo };
-    return { ok: true };
+    return avisoPrePreparo ? { ok: true, aviso: avisoPrePreparo } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
   }
@@ -277,7 +277,7 @@ export async function excluirProdutoAction(
  * não importa quantas linhas mudaram. */
 export async function salvarProdutosAction(
   produtos: Produto[]
-): Promise<{ ok: true } | { erro: string }> {
+): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("salvar_produtos");
@@ -295,8 +295,7 @@ export async function salvarProdutosAction(
     revalidarTudo();
     await sincronizarRevendaMelhorEsforco(acesso, entradas);
     const avisoPrePreparo = await sincronizarPrePreparoDaGrade(acesso, entradas);
-    if (avisoPrePreparo) return { erro: avisoPrePreparo };
-    return { ok: true };
+    return avisoPrePreparo ? { ok: true, aviso: avisoPrePreparo } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar os produtos.") };
   }

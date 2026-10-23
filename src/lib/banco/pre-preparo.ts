@@ -76,6 +76,9 @@ export async function sincronizarPrePreparos(
     try {
       if (produto.prePreparo) {
         if (!atual?.fichaId) {
+          // Só cria quando a chave acabou de ser ligada (nunca para "recriar"
+          // uma ficha que alguém excluiu - o banco desmarca nesse caso).
+          if (atual?.prePreparo) continue;
           const { error } = await supabase.rpc("criar_ficha_pre_preparo_do_produto", {
             p_unidade_id: unidadeId,
             p_sku: produto.sku,
@@ -100,20 +103,11 @@ export async function sincronizarPrePreparos(
           if (error) throw error;
         }
       } else if (atual?.prePreparo) {
-        const { error } = await supabase
-          .from("produtos")
-          .update({ pre_preparo: false })
-          .eq("unidade_id", unidadeId)
-          .eq("sku", produto.sku);
+        const { error } = await supabase.rpc("desmarcar_pre_preparo", {
+          p_unidade_id: unidadeId,
+          p_sku: produto.sku,
+        });
         if (error) throw error;
-        if (atual.fichaId) {
-          const { error: erroFicha } = await supabase
-            .from("fichas_tecnicas")
-            .update({ status: "inativa" })
-            .eq("unidade_id", unidadeId)
-            .eq("id", atual.fichaId);
-          if (erroFicha) throw erroFicha;
-        }
       }
     } catch (err) {
       const e = err as { code?: string; message: string };
@@ -163,16 +157,27 @@ export async function sincronizarCustosPrePreparo(unidadeId: string): Promise<vo
     ]),
   );
 
-  for (const r of vinculados) {
-    const custo = await calcularCustoFicha(unidadeId, r.ficha_pre_preparo_id!);
-    const novo = precoDoCustoDaFicha(custo);
-    if (novo === null || precoAtual.get(r.sku) === novo) continue;
-    const { error } = await supabase
-      .from("produtos")
-      .update({ preco_unitario: novo, atualizado_em: new Date().toISOString() })
-      .eq("unidade_id", unidadeId)
-      .eq("sku", r.sku);
-    if (error) console.error(`Falha ao gravar o custo do pré-preparo ${r.sku}:`, error);
+  // Um pré-preparo pode ser ingrediente de outro (o banco impede ciclo):
+  // repete até nenhum preço mudar, para o de fora usar o preço novo do de
+  // dentro. Cada passada estabiliza ao menos um nível.
+  for (let passada = 0; passada <= vinculados.length; passada++) {
+    const custos = await Promise.all(
+      vinculados.map(async (r) => [r.sku, precoDoCustoDaFicha(await calcularCustoFicha(unidadeId, r.ficha_pre_preparo_id!))] as const),
+    );
+    const mudancas = custos.filter(([sku, novo]) => novo !== null && precoAtual.get(sku) !== novo);
+    if (mudancas.length === 0) return;
+    for (const [sku, novo] of mudancas) {
+      const { error } = await supabase
+        .from("produtos")
+        .update({ preco_unitario: novo, atualizado_em: new Date().toISOString() })
+        .eq("unidade_id", unidadeId)
+        .eq("sku", sku);
+      if (error) {
+        console.error(`Falha ao gravar o custo do pré-preparo ${sku}:`, error);
+        return;
+      }
+      precoAtual.set(sku, novo);
+    }
   }
 }
 
@@ -251,12 +256,15 @@ export async function dadosPrePreparoDaGrade(
   if (!(await prePreparoVinculadoHabilitado(unidadeId))) return null;
   const vinculos = await lerVinculosPrePreparo(unidadeId);
   const marcados = new Set<string>();
-  const skusPrecoDaFicha: string[] = [];
+  const comFicha: [string, string][] = [];
   for (const [sku, v] of vinculos) {
     if (!v.prePreparo) continue;
     marcados.add(sku);
-    if (!v.fichaId || v.fichaStatus === "inativa") continue;
-    if (precoDoCustoDaFicha(await calcularCustoFicha(unidadeId, v.fichaId)) !== null) skusPrecoDaFicha.push(sku);
+    if (v.fichaId && v.fichaStatus !== "inativa") comFicha.push([sku, v.fichaId]);
   }
+  const custos = await Promise.all(
+    comFicha.map(async ([sku, fichaId]) => [sku, precoDoCustoDaFicha(await calcularCustoFicha(unidadeId, fichaId))] as const),
+  );
+  const skusPrecoDaFicha = custos.filter(([, preco]) => preco !== null).map(([sku]) => sku);
   return { marcados, skusPrecoDaFicha };
 }
