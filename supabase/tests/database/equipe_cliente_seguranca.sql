@@ -18,14 +18,16 @@ grant select, insert, update on organizacoes, unidades, vinculos, perfis, setore
 -- ── Estrutura: helpers e policies ───────────────────────────────────────
 select is(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname like 'usuario\_%'
+    where n.nspname = 'public'
+      and (p.proname like 'usuario\_%' or p.proname in ('unidades_acessiveis', 'unidades_financeiro_acessiveis'))
       and pg_get_functiondef(p.oid) !~ 'status = ''ativo'''
-      and pg_get_functiondef(p.oid) !~ 'public\.usuario_(tem_acesso_(unidade|organizacao|pedido|contagem|setor)|e_master|e_titular_financeiro|pode_)'),
-  0, 'todo helper usuario_* exige vínculo ativo, direto ou por outro helper');
+      and pg_get_functiondef(p.oid) !~ 'public\.(usuario_(tem_acesso_(unidade|organizacao|pedido|contagem|setor)|e_master|e_titular_financeiro|pode_)|unidades_acessiveis)'),
+  0, 'todo helper usuario_* (e unidades_*acessiveis, RLS fase 2) exige vínculo ativo, direto ou por outro helper');
 
 select is(
   (select count(*)::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname like 'usuario\_%'
+    where n.nspname = 'public'
+      and (p.proname like 'usuario\_%' or p.proname in ('unidades_acessiveis', 'unidades_financeiro_acessiveis'))
       and pg_get_functiondef(p.oid) ~ 'status = ''ativo'''
       and pg_get_functiondef(p.oid) !~ 'sessao_vigente\(\)'),
   0, 'todo helper que confere vínculo direto também confere a sessão vigente');
@@ -35,7 +37,7 @@ select is(
     where schemaname in ('public', 'storage')
       and not ('vini_leitura' = any (roles))
       and roles <> array['vini_operador']::name[] -- operador do Vini, fora do app (19/10/2026)
-      and coalesce(qual, '') || coalesce(with_check, '') !~ '(usuario_|auth\.uid\(\)|^false$)'
+      and coalesce(qual, '') || coalesce(with_check, '') !~ '(usuario_|unidades_(financeiro_)?acessiveis\(|auth\.uid\(\)|^false$)'
       and policyname <> 'fin_regras_classificacao_versoes_select'),
   0, 'toda policy de usuário passa por helper de acesso ou pelo próprio usuário');
 
