@@ -90,7 +90,8 @@ export type SugestaoCompra = {
   /** null = produto ativo mas sem contagem na data escolhida (não dá pra
    * saber o estoque atual, não confundir com estoque zerado). */
   estoqueAtual: number | null;
-  estoqueNecessario: number;
+  /** null = produto sem ponto de reposição (estoque necessário da semana). */
+  estoqueNecessario: number | null;
   quantidadeSugerida: number;
   precisaComprar: boolean;
   fornecedores: string[];

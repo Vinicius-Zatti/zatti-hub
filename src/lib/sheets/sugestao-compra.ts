@@ -11,6 +11,10 @@ import {
 import { consolidarVariasDatas } from "@/lib/contagem/varias-datas";
 import type { SugestaoCompra } from "@/lib/types";
 
+/** Etiqueta do item sem estoque necessário da semana: ele aparece na cotação,
+ * mas sem sugestão de compra, porque não há ponto de reposição pra comparar. */
+export const ALERTA_SEM_PONTO_REPOSICAO = "Sem ponto de reposição";
+
 function parseDataBr(d: string): number {
   // "DD/MM/AAAA" -> timestamp, pra achar/ordenar contagens por data
   const [dia, mes, ano] = d.split("/").map(Number);
@@ -114,7 +118,6 @@ export async function gerarPedido(
   const itens: SugestaoCompra[] = [];
   for (const produto of produtos) {
     if (!produto.ativo) continue;
-    if (produto.estoqueNecessarioSemana === null) continue;
     if (usaSetor) {
       if (!skusDoEscopoConcluido.has(produto.sku)) continue;
     } else if (!gruposContados.has(produto.grupo)) {
@@ -122,9 +125,13 @@ export async function gerarPedido(
     }
     if (gruposEscolhidos && !gruposEscolhidos.has(produto.grupo)) continue;
 
+    // Sem ponto de reposição o item entra mesmo assim (antes sumia da cotação,
+    // 23/10/2026): sem sugestão, com etiqueta, e o comprador adiciona à mão.
+    const necessario = produto.estoqueNecessarioSemana;
     const estoqueAtual = contagemPorSku.get(produto.sku) ?? null;
     const quantidadeSugerida =
-      estoqueAtual === null ? 0 : Math.max(0, produto.estoqueNecessarioSemana - estoqueAtual);
+      estoqueAtual === null || necessario === null ? 0 : Math.max(0, necessario - estoqueAtual);
+    const alertaContagem = calcularAlerta(estoqueAtual, produto.precoUnitario, produto);
 
     itens.push({
       sku: produto.sku,
@@ -134,7 +141,7 @@ export async function gerarPedido(
       precoUnitario: produto.precoUnitario,
       precoNaContagem: precoNaContagemPorSku.get(produto.sku) ?? null,
       estoqueAtual,
-      estoqueNecessario: produto.estoqueNecessarioSemana,
+      estoqueNecessario: necessario,
       quantidadeSugerida,
       precisaComprar: quantidadeSugerida > 0,
       fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4].filter(
@@ -151,7 +158,11 @@ export async function gerarPedido(
       // mostrando o alerta histórico gravado - só Pedidos/Criar Cotação usa
       // o valor atual, porque é sobre decidir compra agora, não sobre o
       // registro daquele dia.
-      alerta: calcularAlerta(estoqueAtual, produto.precoUnitario, produto),
+      // Comprar emergencial (mínimo cadastrado) continua valendo acima da etiqueta.
+      alerta:
+        necessario === null && alertaContagem !== "Comprar emergencial"
+          ? ALERTA_SEM_PONTO_REPOSICAO
+          : alertaContagem,
       setoresQueNaoContaram: incompletosPorSku.get(produto.sku) ?? [],
       datasContagem: consolidado.datasPorSku.get(produto.sku) ?? [],
     });

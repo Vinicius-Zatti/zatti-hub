@@ -4,11 +4,12 @@ import type { AndamentoSetor, EscopoSetor } from "@/lib/contagem/setor";
 
 const listProdutosMock = vi.fn();
 const listInventarioMock = vi.fn();
+const calcularAlertaMock = vi.fn<(...args: unknown[]) => string>(() => "");
 
 vi.mock("./produtos", () => ({ listProdutos: () => listProdutosMock() }));
 vi.mock("./inventario", () => ({
   listInventario: () => listInventarioMock(),
-  calcularAlerta: () => "",
+  calcularAlerta: (...args: unknown[]) => calcularAlertaMock(...args),
 }));
 
 const { gerarPedido } = await import("./sugestao-compra");
@@ -95,6 +96,34 @@ beforeEach(() => {
 });
 
 describe("estoque atual com setor", () => {
+  it("item sem ponto de reposicao aparece, sem sugestao e com etiqueta", async () => {
+    listProdutosMock.mockResolvedValue([produto("HORLTA001", 5), produto("HORTOM001", null)]);
+    listInventarioMock.mockResolvedValue([item("HORLTA001", 2), item("HORTOM001", 1)]);
+
+    const { itens } = await gerarPedido({ data: DATA }, null);
+    const tomate = itens.find((i) => i.sku === "HORTOM001");
+
+    expect(itens).toHaveLength(2);
+    expect(tomate).toMatchObject({
+      estoqueAtual: 1,
+      estoqueNecessario: null,
+      quantidadeSugerida: 0,
+      precisaComprar: false,
+      alerta: "Sem ponto de reposição",
+    });
+    expect(itens.find((i) => i.sku === "HORLTA001")).toMatchObject({ quantidadeSugerida: 3, alerta: "" });
+  });
+
+  it("comprar emergencial vence a etiqueta de sem ponto de reposicao", async () => {
+    listProdutosMock.mockResolvedValue([produto("HORTOM001", null)]);
+    listInventarioMock.mockResolvedValue([item("HORTOM001", 1)]);
+    calcularAlertaMock.mockReturnValueOnce("Comprar emergencial");
+
+    const { itens } = await gerarPedido({ data: DATA }, null);
+
+    expect(itens[0]).toMatchObject({ quantidadeSugerida: 0, alerta: "Comprar emergencial" });
+  });
+
   it("soma os setores em vez de ficar com a ultima linha gravada", async () => {
     const itens = [item("HORLTA001", 2, BAR), item("HORLTA001", 4, COZINHA)];
     listProdutosMock.mockResolvedValue([produto("HORLTA001", 8)]);
