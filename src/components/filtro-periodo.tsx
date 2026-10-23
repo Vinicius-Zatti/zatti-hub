@@ -33,12 +33,15 @@ export type PeriodoAplicado = { de: string; ate: string };
 export function FiltroPeriodo({
   lancamentos,
   onAplicar,
+  inicial,
 }: {
   lancamentos: ConsolidadoVenda[];
   onAplicar: (periodo: PeriodoAplicado) => void;
+  /** Período já aplicado ao abrir (ex. link do aviso de divergências). */
+  inicial?: PeriodoAplicado;
 }) {
-  const [de, setDe] = useState("");
-  const [ate, setAte] = useState("");
+  const [de, setDe] = useState(inicial?.de ?? "");
+  const [ate, setAte] = useState(inicial?.ate ?? "");
   const [preset, setPreset] = useState("");
 
   const mesesDisponiveis = useMemo(() => {

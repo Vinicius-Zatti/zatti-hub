@@ -4,6 +4,12 @@ import { useMemo, useState } from "react";
 import type { ConsolidadoVenda } from "@/lib/types";
 import { StatCard } from "@/components/stat-card";
 import { FiltroPeriodo, type PeriodoAplicado } from "@/components/filtro-periodo";
+import { DicaCalculo } from "@/components/dica-calculo";
+import {
+  divergenciasDoAviso,
+  EXPLICACAO_AVISO_DIVERGENCIA,
+  type JanelaAvisoDivergencia,
+} from "@/lib/consolidado-divergencias";
 
 // Segunda primeiro, domingo por último (pedido do Vinícius) - o índice de
 // `Date.getDay()` (0=domingo...6=sábado) é convertido com `(getDay()+6)%7`.
@@ -30,7 +36,13 @@ function dataBR(iso: string): string {
  * A paleta Zatti continua nos dados próprios. iFood e 99Food são exceções
  * autorizadas: usam as cores oficiais das marcas para separar visualmente
  * receitas de marketplace que não participam da conciliação. */
-export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda[] }) {
+export function DashboardVendas({
+  lancamentos,
+  janelaAviso,
+}: {
+  lancamentos: ConsolidadoVenda[];
+  janelaAviso: JanelaAvisoDivergencia;
+}) {
   const [periodo, setPeriodo] = useState<PeriodoAplicado>({ de: "", ate: "" });
 
   const dados = useMemo(
@@ -45,7 +57,16 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
     (melhor, l) => (!melhor || l.faturamentoTotal > melhor.faturamentoTotal ? l : melhor),
     null
   );
-  const divergentes = dados.filter((l) => l.status === "divergente").length;
+  // Sem período filtrado, o aviso usa só o recorte (mês atual + anterior
+  // ainda não fechado); com período filtrado, conta todo o período.
+  const periodoFiltrado = Boolean(periodo.de || periodo.ate);
+  const janelaDivergencias = periodoFiltrado ? periodo : janelaAviso;
+  const divergentes = periodoFiltrado
+    ? dados.filter((l) => l.status === "divergente").length
+    : divergenciasDoAviso(dados, janelaAviso).length;
+  const paramsHistorico = new URLSearchParams({ status: "divergente" });
+  if (janelaDivergencias.de) paramsHistorico.set("de", janelaDivergencias.de);
+  if (janelaDivergencias.ate) paramsHistorico.set("ate", janelaDivergencias.ate);
 
   const evolucao = useMemo(
     () =>
@@ -134,7 +155,12 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
               value={melhorDia ? `${brl(melhorDia.faturamentoTotal)} · ${dataBR(melhorDia.data)}` : "—"}
             />
             <StatCard
-              label="Lançamentos com divergência"
+              label={
+                <span className="inline-flex items-center gap-1">
+                  Lançamentos com divergência
+                  <DicaCalculo rotulo="Quais divergências entram nesta contagem" texto={EXPLICACAO_AVISO_DIVERGENCIA} />
+                </span>
+              }
               value={String(divergentes)}
               tone={divergentes > 0 ? "alerta" : "neutral"}
             />
@@ -142,7 +168,7 @@ export function DashboardVendas({ lancamentos }: { lancamentos: ConsolidadoVenda
 
           {divergentes > 0 && (
             <a
-              href="/financeiro/consolidado?status=divergente"
+              href={`/financeiro/consolidado?${paramsHistorico.toString()}`}
               className="-mt-2 text-sm font-semibold text-azul-noite underline"
             >
               Ver os {divergentes} lançamentos com divergência no Histórico

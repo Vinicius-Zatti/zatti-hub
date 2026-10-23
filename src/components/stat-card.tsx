@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
+
 export function StatCard({
   label,
   value,
   tone = "neutral",
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   tone?: "neutral" | "ambar" | "alerta";
 }) {
