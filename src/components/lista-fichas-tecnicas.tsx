@@ -279,6 +279,7 @@ export function ListaFichasTecnicas({
               <FichaTecnicaDetalhe
                 ficha={dadosAbertos.dados.ficha}
                 fotoUrl={dadosAbertos.dados.fotoUrl}
+                vinculoContagem={dadosAbertos.dados.vinculoContagem}
                 podeGerir={dadosAbertos.podeGerir}
                 categorias={dadosAbertos.dados.categorias}
                 produtos={dadosAbertos.dados.produtos}

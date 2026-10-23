@@ -61,6 +61,7 @@ export const produtoSchema = z
     observacoes: texto(2_000),
     ativo: z.boolean(),
     revenda: z.boolean(),
+    prePreparo: z.boolean().optional(),
   })
   .strict();
 

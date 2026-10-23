@@ -3,6 +3,7 @@ import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
 import { ErroPublico } from "@/lib/erros";
 import { listarProdutosBanco } from "@/lib/banco/estoque";
 import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
+import { vinculoContagemDaFicha, type VinculoContagemFicha } from "@/lib/banco/pre-preparo-leitura";
 import {
   BUCKET_FOTOS_FICHA,
   caminhoFotoFicha,
@@ -1101,6 +1102,8 @@ export type FichaTecnicaParaExibir = {
   fichasDisponiveis: { id: string; nome: string; sku: string; rendimentoUnidade: UnidadeRendimentoFicha; custoPorUnidade: number | null }[];
   /** Link temporário da foto anexada, `null` sem foto. */
   fotoUrl: string | null;
+  /** Pré-preparo na contagem (piloto) - `null` fora do piloto ou em ficha de Venda. */
+  vinculoContagem: VinculoContagemFicha | null;
 };
 
 /** Tudo que a tela de detalhe (rota `/fichas-tecnicas/[id]` ou a janela
@@ -1119,10 +1122,14 @@ export async function carregarFichaTecnicaParaExibir(
     podeGerir ? listarFichasTecnicas(unidadeId) : Promise.resolve([]),
   ]);
   if (!ficha) return null;
-  const fotoUrl = await urlFotoFichaTecnica(unidadeId, ficha.id, ficha.fotoPath);
+  const [fotoUrl, vinculoContagem] = await Promise.all([
+    urlFotoFichaTecnica(unidadeId, ficha.id, ficha.fotoPath),
+    vinculoContagemDaFicha(unidadeId, ficha),
+  ]);
   return {
     ficha,
     fotoUrl,
+    vinculoContagem,
     categorias,
     produtos,
     fichasDisponiveis: fichas.map((f) => ({

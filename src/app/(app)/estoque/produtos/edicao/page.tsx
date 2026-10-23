@@ -4,6 +4,7 @@ import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { EdicaoGrid } from "@/components/edicao-grid";
 import { AreaRestrita } from "@/components/area-restrita";
 import { getAcessoAtual } from "@/lib/acesso";
+import { dadosPrePreparoDaGrade } from "@/lib/banco/pre-preparo";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,17 @@ export default async function EdicaoDadosPage() {
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
-  const produtos = await listProdutos(acesso.spreadsheetId);
-  const [pendentes, fornecedores] = await Promise.all([
+  const produtosCadastro = await listProdutos(acesso.spreadsheetId);
+  const [pendentes, fornecedores, prePreparo] = await Promise.all([
     listItensPendentes(acesso.spreadsheetId),
     listFornecedores(acesso.spreadsheetId),
+    acesso.fichasTecnicasHabilitado ? dadosPrePreparoDaGrade(acesso.unidadeId) : Promise.resolve(null),
   ]);
+  // Piloto do pré-preparo com ficha: a chave vai em todas as linhas (marcada
+  // ou não) só na unidade habilitada; nas outras o produto segue sem o campo.
+  const produtos = prePreparo
+    ? produtosCadastro.map((p) => ({ ...p, prePreparo: prePreparo.marcados.has(p.sku) }))
+    : produtosCadastro;
 
   return (
     <div className="flex flex-col gap-6">
@@ -33,6 +40,8 @@ export default async function EdicaoDadosPage() {
         pendentes={pendentes}
         fornecedores={fornecedores}
         mostrarRevenda={acesso.fichasTecnicasHabilitado}
+        mostrarPrePreparo={prePreparo !== null}
+        skusPrecoDaFicha={prePreparo?.skusPrecoDaFicha ?? []}
       />
     </div>
   );

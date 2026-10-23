@@ -23,6 +23,10 @@ export type Produto = {
    * Técnicas habilitado; unidade ainda na planilha guarda o valor mas nunca
    * cria ficha nenhuma (não tem onde salvar). */
   revenda: boolean;
+  /** Pré-preparo com ficha técnica (piloto, ver `sincronizarPrePreparos`):
+   * só vem preenchido em unidade com `pre_preparo_vinculado_habilitado`, e
+   * nunca é gravado pela grade - a sincronização cuida da coluna e da ficha. */
+  prePreparo?: boolean;
 };
 
 export type ItemInventario = {

@@ -32,11 +32,13 @@ import {
   editarCategoriaFichaEntradaSchema,
   fichaTecnicaEntradaSchema,
   idUuidSchema,
+  nomeProdutoSchema,
   precoVendaFichaEntradaSchema,
   precosCanalFichaEntradaSchema,
   precosTodosCanaisFichaEntradaSchema,
   validarEntrada,
 } from "@/lib/validacao";
+import { incluirFichaNaContagem, sincronizarCustosPrePreparoMelhorEsforco } from "@/lib/banco/pre-preparo";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { TAMANHO_MAXIMO_FOTO_FICHA } from "@/lib/foto-ficha";
@@ -83,6 +85,10 @@ export async function salvarFichaTecnicaAction(
       dadosAntigos: antes,
       dadosNovos: salva,
     });
+
+    // Pré-preparo na contagem (piloto): o custo novo desta ficha, ou de uma
+    // ficha que usa esta como ingrediente, vira o preço do produto.
+    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
 
     revalidarListagem();
     revalidatePath(`/fichas-tecnicas/${salva.id}`);
@@ -504,5 +510,35 @@ export async function prepararNovaFichaTecnicaAction(): Promise<ResultadoNovaFic
     return { ok: true, dados };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar o formulário de nova ficha.") };
+  }
+}
+
+/** Pré-preparo na contagem (piloto): a ficha PRE vira produto da lista de
+ * contagem, com o SKU dela, grupo PRE e a unidade de rendimento. Só
+ * Gestão/master; o banco recusa em unidade fora do piloto. */
+export async function incluirFichaNaContagemAction(fichaId: string, nome: string): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("salvar_produtos");
+    const idValidado = validarEntrada(idUuidSchema, fichaId);
+    const nomeValidado = validarEntrada(nomeProdutoSchema, nome).trim();
+    const produto = await incluirFichaNaContagem({ unidadeId: acesso.unidadeId, fichaId: idValidado, nome: nomeValidado });
+
+    await registrarAuditoria({
+      acesso,
+      acao: "criar",
+      entidade: "produto",
+      entidadeId: produto.sku,
+      dadosNovos: { ...produto, fichaPrePreparoId: idValidado },
+    });
+
+    revalidatePath(`/fichas-tecnicas/${idValidado}`);
+    revalidatePath("/estoque/produtos");
+    revalidatePath("/estoque/produtos/edicao");
+    revalidatePath("/estoque/contagem");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível incluir na lista de contagem.") };
   }
 }

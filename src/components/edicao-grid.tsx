@@ -11,6 +11,7 @@ import {
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import { UNIDADES, UNIDADES_EMBALAGEM, decimaisQuantidade } from "@/lib/unidades";
 import { arredondarPreco } from "@/lib/sheets/numero";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { CodigoSelect, type OpcaoCodigo } from "@/components/codigo-select";
 import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
@@ -77,6 +78,8 @@ export function EdicaoGrid({
   pendentes,
   fornecedores,
   mostrarRevenda = false,
+  mostrarPrePreparo = false,
+  skusPrecoDaFicha = [],
 }: {
   produtos: Produto[];
   pendentes: ItemPendente[];
@@ -84,6 +87,11 @@ export function EdicaoGrid({
   /** Coluna Revenda só faz sentido em unidade com Fichas Técnicas habilitado
    * - é lá que a ficha auto-criada aparece pra terminar de configurar. */
   mostrarRevenda?: boolean;
+  /** Coluna Pré-preparo (piloto): marcar cria o rascunho da ficha técnica
+   * com o SKU do produto (ver `sincronizarPrePreparos`). */
+  mostrarPrePreparo?: boolean;
+  /** Pré-preparos cujo preço vem do custo da ficha - célula só leitura. */
+  skusPrecoDaFicha?: string[];
 }) {
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -104,7 +112,13 @@ export function EdicaoGrid({
         </div>
       )}
 
-      <CadastroSection produtos={produtos} fornecedores={fornecedores} mostrarRevenda={mostrarRevenda} />
+      <CadastroSection
+        produtos={produtos}
+        fornecedores={fornecedores}
+        mostrarRevenda={mostrarRevenda}
+        mostrarPrePreparo={mostrarPrePreparo}
+        skusPrecoDaFicha={skusPrecoDaFicha}
+      />
     </div>
   );
 }
@@ -113,11 +127,16 @@ function CadastroSection({
   produtos,
   fornecedores,
   mostrarRevenda,
+  mostrarPrePreparo,
+  skusPrecoDaFicha,
 }: {
   produtos: Produto[];
   fornecedores: Fornecedor[];
   mostrarRevenda: boolean;
+  mostrarPrePreparo: boolean;
+  skusPrecoDaFicha: string[];
 }) {
+  const precoDaFicha = useMemo(() => new Set(skusPrecoDaFicha), [skusPrecoDaFicha]);
   const [busca, setBusca] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState<"todos" | "ativo" | "inativo">("todos");
@@ -487,6 +506,7 @@ function CadastroSection({
                 </div>
               </Th>
               {mostrarRevenda && <Th align="center">Revenda</Th>}
+              {mostrarPrePreparo && <Th align="center">Pré-preparo</Th>}
               <Th></Th>
               <Th></Th>
             </tr>
@@ -507,11 +527,13 @@ function CadastroSection({
                 onSalvar={salvarUm}
                 onPedirNovoFornecedor={(campoFornecedor) => setNovoFornecedorPara({ sku: p.sku, campo: campoFornecedor })}
                 mostrarRevenda={mostrarRevenda}
+                mostrarPrePreparo={mostrarPrePreparo}
+                precoVemDaFicha={precoDaFicha.has(p.sku)}
               />
             ))}
             {ordenados.length === 0 && (
               <tr>
-                <td colSpan={mostrarRevenda ? 21 : 20} className="px-3 py-8 text-center text-cinza-medio">
+                <td colSpan={20 + (mostrarRevenda ? 1 : 0) + (mostrarPrePreparo ? 1 : 0)} className="px-3 py-8 text-center text-cinza-medio">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -774,6 +796,8 @@ const LinhaProduto = memo(function LinhaProduto({
   onSalvar,
   onPedirNovoFornecedor,
   mostrarRevenda,
+  mostrarPrePreparo,
+  precoVemDaFicha,
 }: {
   sku: string;
   editado: Produto;
@@ -784,6 +808,8 @@ const LinhaProduto = memo(function LinhaProduto({
   onSalvar: (sku: string) => void;
   onPedirNovoFornecedor: (campo: "fornecedor1" | "fornecedor2" | "fornecedor3" | "fornecedor4") => void;
   mostrarRevenda: boolean;
+  mostrarPrePreparo: boolean;
+  precoVemDaFicha: boolean;
 }) {
   const pending = status?.tipo === "salvando";
 
@@ -853,7 +879,17 @@ const LinhaProduto = memo(function LinhaProduto({
         <CodigoSelect value={editado.unidadeBase} opcoes={UNIDADES} onChange={(v) => campo("unidadeBase", v)} className="w-14" />
       </td>
       <td className="px-2 py-1.5">
-        <CampoNumero value={editado.precoUnitario} onChange={aoMudarPrecoBase} className="w-16" />
+        {precoVemDaFicha ? (
+          <span className="flex w-16 items-center gap-1 whitespace-nowrap">
+            {editado.precoUnitario === null ? "-" : editado.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            <DicaCalculo
+              rotulo="Preço vindo da ficha técnica"
+              texto="Custo da ficha técnica deste pré-preparo: soma do custo dos ingredientes ÷ rendimento. Muda sozinho quando a ficha ou o preço de um ingrediente muda."
+            />
+          </span>
+        ) : (
+          <CampoNumero value={editado.precoUnitario} onChange={aoMudarPrecoBase} className="w-16" />
+        )}
       </td>
       <td className="px-2 py-1.5">
         <CampoNumero
@@ -963,6 +999,16 @@ const LinhaProduto = memo(function LinhaProduto({
             checked={editado.revenda}
             onChange={(e) => campo("revenda", e.target.checked)}
             title="Item revendido sem transformação - marca e a ficha técnica de venda é criada sozinha"
+          />
+        </td>
+      )}
+      {mostrarPrePreparo && (
+        <td className="px-2 py-1.5 text-center">
+          <input
+            type="checkbox"
+            checked={editado.prePreparo === true}
+            onChange={(e) => campo("prePreparo", e.target.checked)}
+            title="Produzido na cozinha (grupo PRE) - marca e a ficha técnica é criada como rascunho, com este SKU, para montar a receita"
           />
         </td>
       )}

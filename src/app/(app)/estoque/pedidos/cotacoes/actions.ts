@@ -4,6 +4,7 @@ import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEntrega } from "@/lib/pedidos";
 import { listProdutos, upsertProduto } from "@/lib/sheets/produtos";
 import { SEM_FORNECEDOR, vincularFornecedorAoProduto } from "@/lib/pedido";
+import { sincronizarCustosPrePreparoMelhorEsforco } from "@/lib/banco/pre-preparo";
 import type { PedidoItem } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import {
@@ -73,6 +74,8 @@ async function atualizarPrecoCadastroSeMudou(item: ItemConfirmar, acesso: Awaite
     dadosAntigos: { precoUnitario: precoAntes },
     dadosNovos: { precoUnitario: item.precoAtualizado },
   });
+  // Insumo de pré-preparo com ficha muda o preço do pré-preparo (piloto).
+  if (acesso.fichasTecnicasHabilitado) await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
 }
 
 /** Item trazido pelo "+ Adicionar item" de um fornecedor que não estava

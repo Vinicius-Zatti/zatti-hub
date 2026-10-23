@@ -29,6 +29,7 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
     <FichaTecnicaDetalhe
       ficha={dados.ficha}
       fotoUrl={dados.fotoUrl}
+      vinculoContagem={dados.vinculoContagem}
       podeGerir={podeGerir}
       categorias={dados.categorias}
       produtos={dados.produtos}

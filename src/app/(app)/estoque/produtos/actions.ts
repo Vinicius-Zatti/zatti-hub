@@ -6,6 +6,11 @@ import { listInventario } from "@/lib/sheets/inventario";
 import { salvarDesignacoesBanco } from "@/lib/banco/setores";
 import { setoresDaPendencia } from "@/lib/contagem/pendencia";
 import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
+import {
+  prePreparoVinculadoHabilitado,
+  sincronizarCustosPrePreparoMelhorEsforco,
+  sincronizarPrePreparos,
+} from "@/lib/banco/pre-preparo";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, type AcessoAtual } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
@@ -41,6 +46,29 @@ async function sincronizarRevendaMelhorEsforco(acesso: AcessoAtual, produtos: Pr
   } catch (err) {
     console.error("Falha ao sincronizar ficha técnica de revenda:", err);
   }
+}
+
+/** Pré-preparo com ficha técnica (piloto): a chave só chega preenchida em
+ * unidade habilitada. Depois recalcula o preço dos pré-preparos, que muda
+ * quando o preço de um insumo deles foi salvo agora. Os produtos já estão
+ * salvos quando isto roda - a mensagem devolvida diz só o que faltou. */
+async function sincronizarPrePreparoDaGrade(acesso: AcessoAtual, produtos: Produto[]): Promise<string | null> {
+  if (!acesso.fichasTecnicasHabilitado) return null;
+  let erros: string[] = [];
+  try {
+    const comChave = produtos.filter((p) => p.prePreparo !== undefined);
+    if (comChave.length > 0 && (await prePreparoVinculadoHabilitado(acesso.unidadeId))) {
+      erros = await sincronizarPrePreparos(
+        acesso.unidadeId,
+        comChave.map((p) => ({ sku: p.sku, nome: p.nome, prePreparo: p.prePreparo === true })),
+      );
+    }
+  } catch (err) {
+    console.error("Falha ao sincronizar pré-preparos:", err);
+    erros = ["não foi possível ajustar a ficha técnica agora, salve de novo"];
+  }
+  await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
+  return erros.length > 0 ? `Produto salvo, mas o pré-preparo não foi ajustado. ${erros.join("; ")}` : null;
 }
 
 export async function sugerirSkuAction(
@@ -172,6 +200,8 @@ export async function salvarProdutoAction(
     });
     revalidarTudo();
     await sincronizarRevendaMelhorEsforco(acesso, [entrada]);
+    const avisoPrePreparo = await sincronizarPrePreparoDaGrade(acesso, [entrada]);
+    if (avisoPrePreparo) return { erro: avisoPrePreparo };
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
@@ -264,6 +294,8 @@ export async function salvarProdutosAction(
     );
     revalidarTudo();
     await sincronizarRevendaMelhorEsforco(acesso, entradas);
+    const avisoPrePreparo = await sincronizarPrePreparoDaGrade(acesso, entradas);
+    if (avisoPrePreparo) return { erro: avisoPrePreparo };
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar os produtos.") };

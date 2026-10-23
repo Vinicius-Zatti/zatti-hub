@@ -113,7 +113,7 @@ export async function listarProdutosBanco(unidadeId: string): Promise<Produto[]>
   return linhas.map(produtoDaLinha);
 }
 
-function linhaProdutoBanco(produto: Produto, unidadeId: string) {
+export function linhaProdutoBanco(produto: Produto, unidadeId: string) {
   return {
     unidade_id: unidadeId,
     sku: produto.sku,
@@ -149,6 +149,9 @@ export async function salvarProdutosBanco(
     produtos.map((produto) => linhaProdutoBanco(produto, unidadeId)),
     { onConflict: "unidade_id,sku" },
   );
+  // Regra de negócio dos triggers (ex.: unidade de pré-preparo vinculado à
+  // ficha) vai pra tela como está.
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
 }
 
