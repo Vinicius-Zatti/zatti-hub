@@ -435,7 +435,9 @@ function TabelaItens({
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
-                    {formatarQuantidade(item.estoqueNecessario, item.unidadeBase)} {item.unidadeBase}
+                    {item.estoqueNecessario !== null
+                      ? `${formatarQuantidade(item.estoqueNecessario, item.unidadeBase)} ${item.unidadeBase}`
+                      : "-"}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {emEdicao ? (

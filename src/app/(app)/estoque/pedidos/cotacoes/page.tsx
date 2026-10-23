@@ -22,7 +22,7 @@ function produtoParaSugestao(produto: Produto, precoNaContagem: number | null): 
     precoUnitario: produto.precoUnitario,
     precoNaContagem,
     estoqueAtual: null,
-    estoqueNecessario: produto.estoqueNecessarioSemana ?? 0,
+    estoqueNecessario: produto.estoqueNecessarioSemana,
     quantidadeSugerida: 0,
     precisaComprar: true,
     fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4].filter(
