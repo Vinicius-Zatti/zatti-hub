@@ -28,10 +28,31 @@ type ItemConfirmar = Pick<
   | "precoConfirmado"
 >;
 
+// Confirmar item, vencedor e previsão NÃO revalidam (fase 3 de velocidade,
+// 23/10/2026). Toda tela daqui é force-dynamic e sem cache de dados, então
+// revalidatePath só servia pra renderizar de novo a tela aberta, e o Next
+// fazia isso a cada clique: relia contagens, produtos, fornecedores e pedidos
+// e recalculava a cotação inteira. Com as actions em fila, a The House
+// esperava esse recálculo item por item. Criar Cotação e Editor de Espelhos
+// já guardam o que foi confirmado no próprio estado; a próxima navegação lê
+// tudo fresco do banco. Exceção: voltar/avançar do navegador reaproveita a
+// tela guardada; por isso as duas telas chamam `sincronizarCotacaoAction`
+// depois de uma pausa nos cliques e ao sair (`use-sincronizar-cotacao.ts`).
+// Só o desfazer (raro, recria itens em outros blocos) revalida na hora.
 function revalidarPedidos() {
   revalidatePath("/estoque/pedidos");
   revalidatePath("/estoque/pedidos/cotacoes");
   revalidatePath("/estoque/pedidos/feitos");
+}
+
+/** Revalida as telas de pedido de uma vez, depois de uma sequência de
+ * Confirmar (ver comentário de `revalidarPedidos`). Produtos entra porque o
+ * vencedor pode ter atualizado preço e vínculo no Cadastro. */
+export async function sincronizarCotacaoAction(): Promise<void> {
+  await requireGestao();
+  revalidarPedidos();
+  revalidatePath("/estoque/produtos");
+  revalidatePath("/estoque/produtos/edicao");
 }
 
 /** Só o preço do fornecedor vencedor atualiza o Cadastro dali pra frente.
@@ -82,8 +103,6 @@ async function vincularFornecedorNoCadastro(
       dadosAntigos: { fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4] },
       dadosNovos: { fornecedores: [vinculado.fornecedor1, vinculado.fornecedor2, vinculado.fornecedor3, vinculado.fornecedor4] },
     });
-    revalidatePath("/estoque/produtos");
-    revalidatePath("/estoque/produtos/edicao");
     return undefined;
   } catch {
     return "Item salvo no pedido, mas não foi possível ligar o fornecedor ao produto no Cadastro.";
@@ -115,7 +134,6 @@ export async function confirmarItemAction(input: {
     const aviso = entrada.vincularFornecedor
       ? await vincularFornecedorNoCadastro(entrada.item.sku, entrada.fornecedor, acesso)
       : undefined;
-    revalidarPedidos();
     return aviso ? { ok: true, aviso } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o item.") };
@@ -147,9 +165,6 @@ export async function confirmarVencedorAction(input: {
     const aviso = entrada.vincularFornecedor
       ? await vincularFornecedorNoCadastro(entrada.item.sku, entrada.fornecedorVencedor, acesso)
       : undefined;
-    revalidarPedidos();
-    revalidatePath("/estoque/produtos");
-    revalidatePath("/estoque/produtos/edicao");
     return aviso ? { ok: true, aviso } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o fornecedor.") };
@@ -202,7 +217,6 @@ export async function atualizarPrevisaoEntregaAction(input: {
       previsaoEntrega: entrada.previsaoEntrega,
       criadoPor: acesso.userId,
     });
-    revalidatePath("/estoque/pedidos/cotacoes");
     return { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel atualizar a previsao.") };
