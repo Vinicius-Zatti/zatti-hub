@@ -20,6 +20,7 @@ export function CodigoSelect({
   className = "",
   extra,
   busca = false,
+  semResultado = "Nenhum fornecedor encontrado.",
 }: {
   value: string;
   opcoes: OpcaoCodigo[];
@@ -30,6 +31,8 @@ export function CodigoSelect({
   extra?: { label: string; onClick: () => void };
   /** Lista longa (ex: fornecedores): mostra um campo de busca no topo, filtrando por código ou descrição. */
   busca?: boolean;
+  /** Texto da busca sem resultado. */
+  semResultado?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [posicao, setPosicao] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -143,7 +146,7 @@ export function CodigoSelect({
                 </button>
               ))}
               {busca && opcoesFiltradas.length === 0 && (
-                <div className="px-3 py-2 text-xs text-cinza-medio">Nenhum fornecedor encontrado.</div>
+                <div className="px-3 py-2 text-xs text-cinza-medio">{semResultado}</div>
               )}
             </div>
             {extra && (

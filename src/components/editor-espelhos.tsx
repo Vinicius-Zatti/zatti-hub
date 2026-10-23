@@ -23,6 +23,7 @@ import {
 } from "@/lib/canvas-tabela";
 import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
+import { somarItensAvulsos } from "@/lib/pedido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -51,7 +52,8 @@ const PRECO_EPSILON = 0.001;
  * item antes de contar como pedido de verdade, mesmo fornecedor único -
  * editar quantidade/preço sozinho nunca decide isso. */
 export function EditorEspelhos({
-  itensPorFornecedor,
+  itensPorFornecedor: itensPorFornecedorBase,
+  catalogo = [],
   fornecedores,
   dataUsada,
   datasUsadas,
@@ -63,6 +65,9 @@ export function EditorEspelhos({
   setoresPendentes = [],
 }: {
   itensPorFornecedor: Record<string, SugestaoCompra[]>;
+  /** Todos os produtos do Cadastro, pro "+ Adicionar item" trazer qualquer um
+   * pra qualquer fornecedor - não só os ligados a ele no Cadastro. */
+  catalogo?: SugestaoCompra[];
   fornecedores: string[];
   /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
   dataUsada: string;
@@ -84,6 +89,17 @@ export function EditorEspelhos({
   function trocarDatas(novasDatas: string[]) {
     router.push(`${pathname}?data=${encodeURIComponent(novasDatas.join(","))}`);
   }
+
+  // Item do Cadastro trazido pelo "+ Adicionar item" pra um fornecedor que não
+  // tem ele ligado no Cadastro (The House, 22/10/2026: carne a mais na Bahia
+  // Carnes e comestíveis na JM sem opção pra adicionar). Só entra no bloco
+  // desse fornecedor; o vínculo no Cadastro não muda. Depois de gravado, o
+  // pedido salvo traz o item de volta ao recarregar (ver `cotacoes/page.tsx`).
+  const [avulsos, setAvulsos] = useState<Record<string, SugestaoCompra[]>>({});
+  const itensPorFornecedor = useMemo(
+    () => somarItensAvulsos(itensPorFornecedorBase, avulsos),
+    [itensPorFornecedorBase, avulsos]
+  );
 
   // sku -> fornecedores que também cotam esse item - só existe disputa de
   // "fornecedor vencedor" quando o mesmo SKU aparece em mais de um bloco.
@@ -284,6 +300,44 @@ export function EditorEspelhos({
       const v = vencedor[item.sku];
       return v === undefined || v === null || v === fornecedor;
     });
+  }
+
+  /** Opções do "+ Adicionar item": primeiro os itens já ligados ao
+   * fornecedor que estão fora da tabela, depois o resto do Cadastro. Fica de
+   * fora item que já tem vencedor em outro fornecedor - a quantidade é uma só
+   * por item, então ele sumiria daqui assim que entrasse. */
+  function opcoesParaAdicionar(fornecedor: string, ocultos: SugestaoCompra[]): SugestaoCompra[] {
+    const noBloco = new Set((itensPorFornecedor[fornecedor] ?? []).map((i) => i.sku));
+    const doCadastro = catalogo.filter((item) => {
+      if (noBloco.has(item.sku)) return false;
+      const v = vencedor[item.sku];
+      return v === undefined || v === null;
+    });
+    return [...ocultos, ...doCadastro];
+  }
+
+  function adicionarItem(fornecedor: string, item: SugestaoCompra) {
+    const k = chave(fornecedor, item.sku);
+    if (!itemPorSku(fornecedor, item.sku)) {
+      setAvulsos((a) => ({ ...a, [fornecedor]: [...(a[fornecedor] ?? []), item] }));
+      const preco = precosTexto[k] ?? (item.precoUnitario !== null ? formatNumero(item.precoUnitario) : "");
+      setPrecosTexto((p) => (k in p ? p : { ...p, [k]: preco }));
+      const precoBase = toNumeroBR(preco);
+      setPrecosTextoEmbalagem((p) =>
+        k in p
+          ? p
+          : {
+              ...p,
+              [k]:
+                precoBase !== null && item.qtdUnidadeBasePorEmbalagem
+                  ? formatNumero(arredondarPreco(precoBase * item.qtdUnidadeBasePorEmbalagem))
+                  : "",
+            }
+      );
+      setQuantidadesTexto((q) => (item.sku in q ? q : { ...q, [item.sku]: textoEdicaoQuantidade(0, item.unidadeBase) }));
+      setQuantidadesTextoEmbalagem((q) => (item.sku in q ? q : { ...q, [item.sku]: item.qtdUnidadeBasePorEmbalagem ? "0" : "" }));
+    }
+    setRevelados((r) => ({ ...r, [k]: true }));
   }
 
   /** Grava um item no fornecedor informado - a
@@ -628,6 +682,7 @@ export function EditorEspelhos({
           const itensOcultos = todosItens.filter(
             (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
           );
+          const opcoesAdicionar = opcoesParaAdicionar(fornecedor, itensOcultos);
           const subtotal = itensExibidos.reduce((soma, item) => {
             const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;
@@ -924,17 +979,22 @@ export function EditorEspelhos({
                 </table>
               </TabelaRolavel>
 
-              {itensOcultos.length > 0 && (
+              {opcoesAdicionar.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-cinza-claro px-4 py-2">
                   <span className="text-xs text-cinza-medio">Precisa comprar mais alguma coisa desse fornecedor?</span>
                   <CodigoSelect
                     value=""
                     placeholder="+ Adicionar item"
-                    opcoes={itensOcultos.map((item) => ({
+                    opcoes={opcoesAdicionar.map((item) => ({
                       codigo: item.sku,
                       descricao: modoAtual === "interno" ? item.nome : item.nomeCompra || item.nome,
                     }))}
-                    onChange={(sku) => setRevelados((r) => ({ ...r, [chave(fornecedor, sku)]: true }))}
+                    onChange={(sku) => {
+                      const item = opcoesAdicionar.find((i) => i.sku === sku);
+                      if (item) adicionarItem(fornecedor, item);
+                    }}
+                    busca
+                    semResultado="Nenhum produto encontrado."
                     className="w-64"
                   />
                 </div>

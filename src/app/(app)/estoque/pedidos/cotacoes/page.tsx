@@ -116,13 +116,23 @@ export default async function EditorEspelhosPage({
     itensPorFornecedor[fornecedor] = [...itensFrescos, ...itensSalvosNaoFrescos];
   }
 
+  // Cadastro inteiro pro "+ Adicionar item": a pessoa pode pedir de um
+  // fornecedor um item que no Cadastro está ligado a outro (ou a nenhum).
+  const catalogo = produtos
+    .map((produto) => skuParaItemFresco.get(produto.sku) ?? produtoParaSugestao(produto, null))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
   const pedidoMinimoPorFornecedor = Object.fromEntries(
     fornecedoresCadastro.filter((f) => f.nomeFantasia).map((f) => [f.nomeFantasia, f.pedidoMinimo])
   );
 
   return (
+    // `key` pela contagem base: trocar de data monta o editor do zero, sem
+    // levar quantidade, preço, vencedor ou item avulso da data anterior.
     <EditorEspelhos
+      key={resultado.datasUsadas.join(",")}
       itensPorFornecedor={itensPorFornecedor}
+      catalogo={catalogo}
       fornecedores={fornecedores}
       dataUsada={resultado.dataUsada}
       datasUsadas={resultado.datasUsadas}
