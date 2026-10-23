@@ -9,6 +9,7 @@ import { CodigoSelect } from "@/components/codigo-select";
 import { AvisoVariasContagens, SeletorContagens } from "@/components/seletor-contagens";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
+import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
 import {
   confirmarItemAction,
   confirmarVencedorAction,
@@ -190,8 +191,19 @@ export function EditorEspelhos({
   // Item no bloco de um fornecedor que não está nos Fornecedor 1 a 4 do
   // produto: veio pelo "+ Adicionar item" (agora ou num pedido salvo antes).
   // O servidor confere de novo e nunca grava duas vezes.
+  // A tela não recarrega depois de confirmar (fase 3 de velocidade), então o
+  // vínculo gravado fica anotado aqui pra não reenviar a cada clique.
+  const [vinculados, setVinculados] = useState<Record<string, boolean>>({});
+  const agendarSincronizacao = useSincronizarCotacao();
   function semVinculo(fornecedor: string, item: SugestaoCompra): boolean {
+    if (vinculados[chave(fornecedor, item.sku)]) return false;
     return !item.fornecedores.some((f) => nomeFornecedorCanonico(f, [fornecedor]) === fornecedor);
+  }
+  // Falha passageira não marca: tenta de novo no próximo Confirmar. "Sem
+  // vaga" marca, pra não repetir o mesmo aviso a cada clique.
+  function marcarVinculado(fornecedor: string, sku: string, aviso?: string) {
+    if (aviso && !aviso.includes("4 fornecedores")) return;
+    setVinculados((v) => ({ ...v, [chave(fornecedor, sku)]: true }));
   }
 
   function itemPorSku(fornecedor: string, sku: string): SugestaoCompra | undefined {
@@ -385,6 +397,8 @@ export function EditorEspelhos({
       const aviso = resultado.aviso;
       setStatus((s) => ({ ...s, [fornecedor]: aviso }));
     }
+    marcarVinculado(fornecedor, item.sku, resultado.aviso);
+    agendarSincronizacao();
     return true;
   }
 
@@ -501,6 +515,8 @@ export function EditorEspelhos({
       const aviso = resultado.aviso;
       setStatus((s) => ({ ...s, [fornecedor]: aviso }));
     }
+    marcarVinculado(fornecedor, item.sku, resultado.aviso);
+    agendarSincronizacao();
     setVencedor((v) => ({ ...v, [item.sku]: fornecedor }));
   }
 
@@ -582,7 +598,9 @@ export function EditorEspelhos({
     });
     if ("erro" in resultado) {
       setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
+      return;
     }
+    agendarSincronizacao();
   }
 
   async function compartilhar(fornecedor: string) {

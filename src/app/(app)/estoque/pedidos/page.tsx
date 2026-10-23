@@ -41,10 +41,16 @@ export default async function PedidosPage({
   ]);
   const datasEscolhidas = datasComplementares(escolherDatasContagem(params.data, datas), andamentoPorData);
 
-  const { escopo, andamento } =
+  // Escopo e pedidos já salvos da contagem base saem juntos (fase 3 de
+  // velocidade): a base é a mais recente das datas escolhidas, a mesma que
+  // `gerarPedido` usa. Sem data na URL nem contagem, cai na leitura de depois.
+  const dataBase = datasEscolhidas[0];
+  const [{ escopo, andamento }, pedidosDaBase] = await Promise.all([
     porSetor && datasEscolhidas.length > 0
-      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
-      : { escopo: [], andamento: [] };
+      ? carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
+      : { escopo: [], andamento: [] },
+    dataBase ? listPedidosPorContagemBase(acesso.unidadeId, dataBase) : null,
+  ]);
 
   const resultado = await gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId);
 
@@ -60,7 +66,10 @@ export default async function PedidosPage({
   // certinho. Uma linha por SKU basta: o override é global por SKU aqui,
   // igual o resto da tela (quantidade é a mesma não importa qual fornecedor
   // acaba fornecendo).
-  const pedidosSalvos = await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada);
+  const pedidosSalvos =
+    pedidosDaBase && dataBase === resultado.dataUsada
+      ? pedidosDaBase
+      : await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada);
   const quantidadesSalvas: Record<string, number> = {};
   for (const pedido of pedidosSalvos) {
     for (const item of pedido.itens) {

@@ -13,6 +13,7 @@ import { AvisoVariasContagens, DICA_VARIAS_CONTAGENS, SeletorContagens } from "@
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
+import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -88,6 +89,7 @@ export function PedidoCompras({
   const [editando, setEditando] = useState<Record<string, string>>({});
   const [confirmando, setConfirmando] = useState<Record<string, boolean>>({});
   const [erroConfirmar, setErroConfirmar] = useState<Record<string, string>>({});
+  const agendarSincronizacao = useSincronizarCotacao();
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
@@ -128,6 +130,7 @@ export function PedidoCompras({
     setConfirmando((c) => ({ ...c, [item.sku]: false }));
     const comErro = resultados.find((r) => "erro" in r);
     setErroConfirmar((e) => ({ ...e, [item.sku]: comErro && "erro" in comErro ? comErro.erro : "" }));
+    if (resultados.some((r) => !("erro" in r))) agendarSincronizacao();
   }
 
   function iniciarEdicao(item: SugestaoCompra) {

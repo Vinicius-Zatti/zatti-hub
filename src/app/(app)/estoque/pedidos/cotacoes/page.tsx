@@ -62,10 +62,16 @@ export default async function EditorEspelhosPage({
   ]);
   const datasEscolhidas = datasComplementares(escolherDatasContagem(params.data, datas), andamentoPorData);
 
-  const { escopo, andamento } =
+  // Escopo e pedidos já salvos da contagem base saem juntos (fase 3 de
+  // velocidade): a base é a mais recente das datas escolhidas, a mesma que
+  // `gerarPedido` usa. Sem data na URL nem contagem, cai na leitura de depois.
+  const dataBase = datasEscolhidas[0];
+  const [{ escopo, andamento }, pedidosDaBase] = await Promise.all([
     porSetor && datasEscolhidas.length > 0
-      ? await carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
-      : { escopo: [], andamento: [] };
+      ? carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
+      : { escopo: [], andamento: [] },
+    dataBase ? listPedidosPorContagemBase(acesso.unidadeId, dataBase) : null,
+  ]);
 
   const resultado = await gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId);
 
@@ -83,7 +89,9 @@ export default async function EditorEspelhosPage({
   // ou com variação de espaço/maiúscula) virava um segundo bloco vazio ao
   // lado do bloco com o pedido de verdade.
   const pedidosSalvos = mesclarPedidosPorFornecedorCanonico(
-    await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada),
+    pedidosDaBase && dataBase === resultado.dataUsada
+      ? pedidosDaBase
+      : await listPedidosPorContagemBase(acesso.unidadeId, resultado.dataUsada),
     nomesFornecedoresCadastro
   );
 
