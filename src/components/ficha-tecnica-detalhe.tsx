@@ -7,6 +7,8 @@ import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-bot
 import { FotoFichaTecnica } from "@/components/foto-ficha-tecnica";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
 import { PrecosCanalFicha } from "@/components/precos-canal-ficha";
+import { FichaNaContagem } from "@/components/ficha-na-contagem";
+import type { VinculoContagemFicha } from "@/lib/banco/pre-preparo-leitura";
 import type { CategoriaFicha, FichaTecnica } from "@/lib/types";
 
 const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" } as const;
@@ -25,6 +27,7 @@ const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" 
 export function FichaTecnicaDetalhe({
   ficha,
   fotoUrl,
+  vinculoContagem = null,
   podeGerir,
   categorias,
   produtos,
@@ -40,6 +43,8 @@ export function FichaTecnicaDetalhe({
   ficha: FichaTecnica;
   /** Link temporário da foto anexada (ver `carregarFichaTecnicaParaExibir`). */
   fotoUrl: string | null;
+  /** Pré-preparo na contagem (piloto) - `null` fora do piloto ou em ficha de Venda. */
+  vinculoContagem?: VinculoContagemFicha | null;
   podeGerir: boolean;
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
@@ -122,6 +127,15 @@ export function FichaTecnicaDetalhe({
           </div>
         </div>
       </div>
+
+      {vinculoContagem && (
+        <FichaNaContagem
+          key={ficha.id}
+          ficha={{ id: ficha.id, sku: ficha.sku, nome: ficha.nome, rendimentoUnidade: ficha.rendimentoUnidade }}
+          vinculo={vinculoContagem}
+          podeGerir={podeGerir}
+        />
+      )}
 
       <FotoFichaTecnica
         key={`${ficha.id}:${fotoUrl ?? ""}`}
