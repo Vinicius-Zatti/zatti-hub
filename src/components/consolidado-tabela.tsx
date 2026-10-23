@@ -23,6 +23,10 @@ function dataHoraBR(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function dataIsoValida(valor: string | null): string {
+  return valor && /^\d{4}-\d{2}-\d{2}$/.test(valor) ? valor : "";
+}
+
 type FiltroStatus = "todos" | "conferido" | "divergente";
 
 /** Histórico de fechamentos diários, com filtro por período (De/Até ou
@@ -38,7 +42,13 @@ export function ConsolidadoTabela({
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusInicial = searchParams.get("status");
-  const [periodo, setPeriodo] = useState<PeriodoAplicado>({ de: "", ate: "" });
+  // O link do aviso de divergências do Dashboard abre o Histórico já no
+  // mesmo recorte (`?de=&ate=`); sem isso, mostra o histórico inteiro.
+  const [periodoInicial] = useState<PeriodoAplicado>(() => ({
+    de: dataIsoValida(searchParams.get("de")),
+    ate: dataIsoValida(searchParams.get("ate")),
+  }));
+  const [periodo, setPeriodo] = useState<PeriodoAplicado>(periodoInicial);
   const [status, setStatus] = useState<FiltroStatus>(
     statusInicial === "conferido" || statusInicial === "divergente" ? statusInicial : "todos"
   );
@@ -61,7 +71,7 @@ export function ConsolidadoTabela({
         <p className="text-sm text-cinza-medio">Histórico dos fechamentos diários já registrados.</p>
       </div>
 
-      <FiltroPeriodo lancamentos={lancamentos} onAplicar={setPeriodo} />
+      <FiltroPeriodo lancamentos={lancamentos} onAplicar={setPeriodo} inicial={periodoInicial} />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
         <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
