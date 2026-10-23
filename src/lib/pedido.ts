@@ -136,3 +136,20 @@ export function ordenarDatasContagemBase(datas: string[]): string[] {
   }
   return [...datas].sort((a, b) => paraTimestamp(b) - paraTimestamp(a));
 }
+
+/** Soma aos blocos do Editor de Espelhos os itens trazidos do Cadastro pelo
+ * "+ Adicionar item". Item que já está no bloco (voltou pelo pedido salvo
+ * depois do primeiro Confirmar) fica só uma vez, valendo o do bloco - sem
+ * isso a linha duplicava na tabela e no Compartilhar (revisão de 23/10/2026). */
+export function somarItensAvulsos(
+  base: Record<string, SugestaoCompra[]>,
+  avulsos: Record<string, SugestaoCompra[]>
+): Record<string, SugestaoCompra[]> {
+  const mapa: Record<string, SugestaoCompra[]> = { ...base };
+  for (const [fornecedor, itens] of Object.entries(avulsos)) {
+    const doBloco = mapa[fornecedor] ?? [];
+    const skusDoBloco = new Set(doBloco.map((i) => i.sku));
+    mapa[fornecedor] = [...doBloco, ...itens.filter((i) => !skusDoBloco.has(i.sku))];
+  }
+  return mapa;
+}

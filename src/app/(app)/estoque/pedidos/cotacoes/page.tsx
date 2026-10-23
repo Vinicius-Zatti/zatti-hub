@@ -127,7 +127,10 @@ export default async function EditorEspelhosPage({
   );
 
   return (
+    // `key` pela contagem base: trocar de data monta o editor do zero, sem
+    // levar quantidade, preço, vencedor ou item avulso da data anterior.
     <EditorEspelhos
+      key={resultado.datasUsadas.join(",")}
       itensPorFornecedor={itensPorFornecedor}
       catalogo={catalogo}
       fornecedores={fornecedores}

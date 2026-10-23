@@ -23,6 +23,7 @@ import {
 } from "@/lib/canvas-tabela";
 import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
+import { somarItensAvulsos } from "@/lib/pedido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -95,13 +96,10 @@ export function EditorEspelhos({
   // desse fornecedor; o vínculo no Cadastro não muda. Depois de gravado, o
   // pedido salvo traz o item de volta ao recarregar (ver `cotacoes/page.tsx`).
   const [avulsos, setAvulsos] = useState<Record<string, SugestaoCompra[]>>({});
-  const itensPorFornecedor = useMemo(() => {
-    const mapa: Record<string, SugestaoCompra[]> = { ...itensPorFornecedorBase };
-    for (const [fornecedor, itens] of Object.entries(avulsos)) {
-      mapa[fornecedor] = [...(mapa[fornecedor] ?? []), ...itens];
-    }
-    return mapa;
-  }, [itensPorFornecedorBase, avulsos]);
+  const itensPorFornecedor = useMemo(
+    () => somarItensAvulsos(itensPorFornecedorBase, avulsos),
+    [itensPorFornecedorBase, avulsos]
+  );
 
   // sku -> fornecedores que também cotam esse item - só existe disputa de
   // "fornecedor vencedor" quando o mesmo SKU aparece em mais de um bloco.
@@ -336,6 +334,7 @@ export function EditorEspelhos({
                   : "",
             }
       );
+      setQuantidadesTexto((q) => (item.sku in q ? q : { ...q, [item.sku]: textoEdicaoQuantidade(0, item.unidadeBase) }));
       setQuantidadesTextoEmbalagem((q) => (item.sku in q ? q : { ...q, [item.sku]: item.qtdUnidadeBasePorEmbalagem ? "0" : "" }));
     }
     setRevelados((r) => ({ ...r, [k]: true }));
@@ -995,6 +994,7 @@ export function EditorEspelhos({
                       if (item) adicionarItem(fornecedor, item);
                     }}
                     busca
+                    semResultado="Nenhum produto encontrado."
                     className="w-64"
                   />
                 </div>

@@ -6,6 +6,7 @@ import {
   ordenarDatasContagemBase,
   ordenarFornecedores,
   SEM_FORNECEDOR,
+  somarItensAvulsos,
 } from "./pedido";
 import type { Pedido, PedidoItem, SugestaoCompra } from "@/lib/types";
 
@@ -142,5 +143,27 @@ describe("ordenarDatasContagemBase", () => {
       "17/07/2026",
       "01/01/2026",
     ]);
+  });
+});
+
+describe("somarItensAvulsos", () => {
+  it("põe o item do Cadastro no bloco do fornecedor escolhido, sem tocar nos outros", () => {
+    const base = { "Bahia Carnes": [item("PERNIL", ["Bahia Carnes"])], JM: [item("DETERGENTE", ["JM"])] };
+    const mapa = somarItensAvulsos(base, { "Bahia Carnes": [item("ALCATRA", ["Xavier"])] });
+    expect(mapa["Bahia Carnes"].map((i) => i.sku)).toEqual(["PERNIL", "ALCATRA"]);
+    expect(mapa.JM.map((i) => i.sku)).toEqual(["DETERGENTE"]);
+  });
+
+  it("não duplica o item quando ele volta pelo pedido salvo depois do primeiro Confirmar", () => {
+    // Revisão de 23/10/2026: a linha aparecia duas vezes e o Compartilhar
+    // saía com total dobrado. Vale o item do bloco (traz o preço da contagem).
+    const doPedido = { ...item("ALCATRA", ["Xavier"]), precoNaContagem: 40 };
+    const mapa = somarItensAvulsos({ "Bahia Carnes": [doPedido] }, { "Bahia Carnes": [item("ALCATRA", ["Xavier"])] });
+    expect(mapa["Bahia Carnes"]).toEqual([doPedido]);
+  });
+
+  it("cria o bloco se o fornecedor ainda não tinha nenhum item", () => {
+    const mapa = somarItensAvulsos({}, { Zuur: [item("SUCO", [])] });
+    expect(mapa.Zuur.map((i) => i.sku)).toEqual(["SUCO"]);
   });
 });
