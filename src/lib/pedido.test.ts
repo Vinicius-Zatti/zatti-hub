@@ -7,8 +7,9 @@ import {
   ordenarFornecedores,
   SEM_FORNECEDOR,
   somarItensAvulsos,
+  vincularFornecedorAoProduto,
 } from "./pedido";
-import type { Pedido, PedidoItem, SugestaoCompra } from "@/lib/types";
+import type { Pedido, PedidoItem, Produto, SugestaoCompra } from "@/lib/types";
 
 function pedidoItem(sku: string): PedidoItem {
   return {
@@ -165,5 +166,33 @@ describe("somarItensAvulsos", () => {
   it("cria o bloco se o fornecedor ainda não tinha nenhum item", () => {
     const mapa = somarItensAvulsos({}, { Zuur: [item("SUCO", [])] });
     expect(mapa.Zuur.map((i) => i.sku)).toEqual(["SUCO"]);
+  });
+});
+describe("vincularFornecedorAoProduto", () => {
+  function produto(fornecedores: string[]): Produto {
+    const [f1 = "", f2 = "", f3 = "", f4 = ""] = fornecedores;
+    return {
+      sku: "ALCATRA", posicao: null, grupo: "PRO", nome: "Alcatra", unidadeBase: "KG", precoUnitario: 40,
+      estoqueNecessarioSemana: null, estoqueMinimo: null, nomeCompra: "Alcatra", unidadeEmbalagemFornecedor: "",
+      qtdUnidadeBasePorEmbalagem: null, precoFornecedor: null,
+      fornecedor1: f1, fornecedor2: f2, fornecedor3: f3, fornecedor4: f4,
+      observacoes: "", ativo: true, revenda: false,
+    };
+  }
+
+  it("ocupa a primeira vaga livre sem mexer nas outras", () => {
+    const novo = vincularFornecedorAoProduto(produto(["Xavier", "", "Mercado"]), "Bahia Carnes");
+    expect(novo).not.toBeNull();
+    expect(novo).not.toBe("sem_vaga");
+    const p = novo as Produto;
+    expect([p.fornecedor1, p.fornecedor2, p.fornecedor3, p.fornecedor4]).toEqual(["Xavier", "Bahia Carnes", "Mercado", ""]);
+  });
+
+  it("não grava nada quando o fornecedor já está ligado, mesmo com grafia diferente", () => {
+    expect(vincularFornecedorAoProduto(produto(["", "bahia  carnes "]), "Bahia Carnes")).toBeNull();
+  });
+
+  it("nunca sobrescreve: com as 4 vagas ocupadas devolve sem_vaga", () => {
+    expect(vincularFornecedorAoProduto(produto(["A", "B", "C", "D"]), "Bahia Carnes")).toBe("sem_vaga");
   });
 });

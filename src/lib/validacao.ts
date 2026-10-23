@@ -202,6 +202,7 @@ export const confirmarItemSchema = z
     dataContagemBase: dataContagemSchema,
     item: itemPedidoSchema,
     atualizarPreco: z.boolean(),
+    vincularFornecedor: z.boolean().optional(),
   })
   .strict();
 
@@ -211,6 +212,7 @@ export const confirmarVencedorSchema = z
     fornecedorVencedor: textoObrigatorio(160),
     outrosFornecedores: z.array(textoObrigatorio(160)).max(50),
     item: itemPedidoSchema,
+    vincularFornecedor: z.boolean().optional(),
   })
   .strict();
 

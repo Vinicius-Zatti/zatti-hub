@@ -2,6 +2,9 @@
 
 import { excluirProduto, inserirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
+import { listInventario } from "@/lib/sheets/inventario";
+import { salvarDesignacoesBanco } from "@/lib/banco/setores";
+import { setoresDaPendencia } from "@/lib/contagem/pendencia";
 import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import type { Produto } from "@/lib/types";
 import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, type AcessoAtual } from "@/lib/acesso";
@@ -100,11 +103,36 @@ export async function criarProdutoAction(
   }
 }
 
+/** Produto criado de uma pendência entra nos setores que contaram o item -
+ * sem isso ficava sem setor e sumia da contagem seguinte e da Criar Cotação.
+ * O produto já foi gravado: falha aqui volta como aviso pra pessoa fazer a
+ * designação à mão em Setores. Planilha não tem setor. */
+async function designarSetoresDaPendencia(acesso: AcessoAtual, produto: Produto): Promise<string | undefined> {
+  if (acesso.fonteDadosEstoque !== "banco") return undefined;
+  try {
+    const inventario = await listInventario(acesso.spreadsheetId);
+    const setorIds = setoresDaPendencia(inventario, produto.nome);
+    if (setorIds.length === 0) return undefined;
+    await salvarDesignacoesBanco(acesso.unidadeId, [{ sku: produto.sku, setorIds }]);
+    await registrarAuditoria({
+      acesso,
+      acao: "designar_setor_via_pendencia",
+      entidade: "produto",
+      entidadeId: produto.sku,
+      dadosNovos: { setorIds },
+    });
+    return undefined;
+  } catch (err) {
+    console.error("[produtos] designar setor da pendência:", err);
+    return "Produto criado, mas sem setor. Defina o setor em Estoque > Setores para ele entrar na próxima contagem.";
+  }
+}
+
 /** Transforma uma pendência da contagem (item avulso) em produto. Só cria:
  * SKU já cadastrado é recusado, nunca sobrescrito. */
 export async function criarProdutoPendenciaAction(
   produto: Produto
-): Promise<{ ok: true } | { erro: string }> {
+): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("salvar_produtos");
@@ -117,9 +145,10 @@ export async function criarProdutoPendenciaAction(
       entidadeId: entrada.sku,
       dadosNovos: entrada,
     });
+    const aviso = await designarSetoresDaPendencia(acesso, entrada);
     revalidarTudo();
     await sincronizarRevendaMelhorEsforco(acesso, [entrada]);
-    return { ok: true };
+    return aviso ? { ok: true, aviso } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel salvar o produto.") };
   }

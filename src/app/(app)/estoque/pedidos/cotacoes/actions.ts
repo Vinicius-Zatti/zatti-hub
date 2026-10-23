@@ -3,6 +3,7 @@
 import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEntrega } from "@/lib/pedidos";
 import { listProdutos, upsertProduto } from "@/lib/sheets/produtos";
+import { SEM_FORNECEDOR, vincularFornecedorAoProduto } from "@/lib/pedido";
 import type { PedidoItem } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import {
@@ -53,6 +54,42 @@ async function atualizarPrecoCadastroSeMudou(item: ItemConfirmar, acesso: Awaite
   });
 }
 
+/** Item trazido pelo "+ Adicionar item" de um fornecedor que não estava
+ * ligado a ele: grava o vínculo no Cadastro (Vinícius, 23/10/2026), pra ele
+ * já aparecer nesse fornecedor nas próximas cotações. O pedido já foi salvo
+ * antes; falha aqui vira aviso, nunca desfaz a confirmação. */
+async function vincularFornecedorNoCadastro(
+  sku: string,
+  fornecedor: string,
+  acesso: Awaited<ReturnType<typeof requireGestao>>
+): Promise<string | undefined> {
+  if (fornecedor === SEM_FORNECEDOR) return undefined;
+  try {
+    const produtos = await listProdutos(acesso.spreadsheetId);
+    const produto = produtos.find((p) => p.sku === sku);
+    if (!produto) return undefined;
+    const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
+    if (vinculado === null) return undefined;
+    if (vinculado === "sem_vaga") {
+      return "Item salvo no pedido. O produto já tem 4 fornecedores no Cadastro, então este não ficou ligado a ele.";
+    }
+    await upsertProduto(vinculado, acesso.spreadsheetId);
+    await registrarAuditoria({
+      acesso,
+      acao: "vincular_fornecedor_via_cotacao",
+      entidade: "produto",
+      entidadeId: sku,
+      dadosAntigos: { fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4] },
+      dadosNovos: { fornecedores: [vinculado.fornecedor1, vinculado.fornecedor2, vinculado.fornecedor3, vinculado.fornecedor4] },
+    });
+    revalidatePath("/estoque/produtos");
+    revalidatePath("/estoque/produtos/edicao");
+    return undefined;
+  } catch {
+    return "Item salvo no pedido, mas não foi possível ligar o fornecedor ao produto no Cadastro.";
+  }
+}
+
 /** Confirma um item (quantidade e/ou preço) - grava na hora, sem esperar
  * nenhum botão "Salvar" (não existe mais). Usada por Criar Cotação e
  * Editor de Espelhos. */
@@ -61,7 +98,8 @@ export async function confirmarItemAction(input: {
   dataContagemBase: string;
   item: ItemConfirmar;
   atualizarPreco: boolean;
-}): Promise<{ ok: true } | { erro: string }> {
+  vincularFornecedor?: boolean;
+}): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("pedidos_cotacao");
@@ -74,8 +112,11 @@ export async function confirmarItemAction(input: {
       atualizarPreco: entrada.atualizarPreco,
       criadoPor: acesso.userId,
     });
+    const aviso = entrada.vincularFornecedor
+      ? await vincularFornecedorNoCadastro(entrada.item.sku, entrada.fornecedor, acesso)
+      : undefined;
     revalidarPedidos();
-    return { ok: true };
+    return aviso ? { ok: true, aviso } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o item.") };
   }
@@ -88,7 +129,8 @@ export async function confirmarVencedorAction(input: {
   fornecedorVencedor: string;
   outrosFornecedores: string[];
   item: ItemConfirmar;
-}): Promise<{ ok: true } | { erro: string }> {
+  vincularFornecedor?: boolean;
+}): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("pedidos_cotacao");
@@ -102,10 +144,13 @@ export async function confirmarVencedorAction(input: {
       criadoPor: acesso.userId,
     });
     await atualizarPrecoCadastroSeMudou(entrada.item, acesso);
+    const aviso = entrada.vincularFornecedor
+      ? await vincularFornecedorNoCadastro(entrada.item.sku, entrada.fornecedorVencedor, acesso)
+      : undefined;
     revalidarPedidos();
     revalidatePath("/estoque/produtos");
     revalidatePath("/estoque/produtos/edicao");
-    return { ok: true };
+    return aviso ? { ok: true, aviso } : { ok: true };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel confirmar o fornecedor.") };
   }

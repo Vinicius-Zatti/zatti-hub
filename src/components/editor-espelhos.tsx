@@ -23,7 +23,7 @@ import {
 } from "@/lib/canvas-tabela";
 import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
-import { somarItensAvulsos } from "@/lib/pedido";
+import { nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -92,9 +92,9 @@ export function EditorEspelhos({
 
   // Item do Cadastro trazido pelo "+ Adicionar item" pra um fornecedor que não
   // tem ele ligado no Cadastro (The House, 22/10/2026: carne a mais na Bahia
-  // Carnes e comestíveis na JM sem opção pra adicionar). Só entra no bloco
-  // desse fornecedor; o vínculo no Cadastro não muda. Depois de gravado, o
-  // pedido salvo traz o item de volta ao recarregar (ver `cotacoes/page.tsx`).
+  // Carnes e comestíveis na JM sem opção pra adicionar). Entra no bloco desse
+  // fornecedor e, no primeiro Confirmar, o fornecedor fica ligado ao produto
+  // no Cadastro (`vincularFornecedorNoCadastro` em `cotacoes/actions.ts`).
   const [avulsos, setAvulsos] = useState<Record<string, SugestaoCompra[]>>({});
   const itensPorFornecedor = useMemo(
     () => somarItensAvulsos(itensPorFornecedorBase, avulsos),
@@ -185,6 +185,13 @@ export function EditorEspelhos({
 
   function precoDe(fornecedor: string, sku: string): number | null {
     return toNumeroBR(precosTexto[chave(fornecedor, sku)]);
+  }
+
+  // Item no bloco de um fornecedor que não está nos Fornecedor 1 a 4 do
+  // produto: veio pelo "+ Adicionar item" (agora ou num pedido salvo antes).
+  // O servidor confere de novo e nunca grava duas vezes.
+  function semVinculo(fornecedor: string, item: SugestaoCompra): boolean {
+    return !item.fornecedores.some((f) => nomeFornecedorCanonico(f, [fornecedor]) === fornecedor);
   }
 
   function itemPorSku(fornecedor: string, sku: string): SugestaoCompra | undefined {
@@ -368,10 +375,15 @@ export function EditorEspelhos({
         precoConfirmado,
       },
       atualizarPreco,
+      vincularFornecedor: semVinculo(fornecedor, item),
     });
     if ("erro" in resultado) {
       setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
       return false;
+    }
+    if (resultado.aviso) {
+      const aviso = resultado.aviso;
+      setStatus((s) => ({ ...s, [fornecedor]: aviso }));
     }
     return true;
   }
@@ -466,6 +478,7 @@ export function EditorEspelhos({
       dataContagemBase: dataUsada,
       fornecedorVencedor: fornecedor,
       outrosFornecedores: outros,
+      vincularFornecedor: semVinculo(fornecedor, item),
       item: {
         sku: item.sku,
         nome: item.nome,
@@ -483,6 +496,10 @@ export function EditorEspelhos({
     if ("erro" in resultado) {
       setStatus((s) => ({ ...s, [fornecedor]: resultado.erro }));
       return;
+    }
+    if (resultado.aviso) {
+      const aviso = resultado.aviso;
+      setStatus((s) => ({ ...s, [fornecedor]: aviso }));
     }
     setVencedor((v) => ({ ...v, [item.sku]: fornecedor }));
   }
