@@ -1,4 +1,4 @@
-import type { Pedido, PedidoItem, SugestaoCompra } from "@/lib/types";
+import type { Pedido, PedidoItem, Produto, SugestaoCompra } from "@/lib/types";
 import { GRUPO_ORDEM } from "@/lib/grupos";
 
 export const SEM_FORNECEDOR = "Sem fornecedor cadastrado";
@@ -152,4 +152,18 @@ export function somarItensAvulsos(
     mapa[fornecedor] = [...doBloco, ...itens.filter((i) => !skusDoBloco.has(i.sku))];
   }
   return mapa;
+}
+
+const CAMPOS_FORNECEDOR = ["fornecedor1", "fornecedor2", "fornecedor3", "fornecedor4"] as const;
+
+/** Liga o fornecedor ao produto na primeira vaga livre (Fornecedor 1 a 4),
+ * quando o item entra num bloco pelo "+ Adicionar item" (Vinícius, 23/10/2026).
+ * Devolve null se já estava ligado (nada a gravar) e "sem_vaga" se as 4 vagas
+ * já têm outros fornecedores - nunca sobrescreve um vínculo existente. */
+export function vincularFornecedorAoProduto(produto: Produto, fornecedor: string): Produto | null | "sem_vaga" {
+  const chave = chaveNormalizada(fornecedor);
+  if (CAMPOS_FORNECEDOR.some((campo) => chaveNormalizada(produto[campo] ?? "") === chave)) return null;
+  const livre = CAMPOS_FORNECEDOR.find((campo) => !(produto[campo] ?? "").trim());
+  if (!livre) return "sem_vaga";
+  return { ...produto, [livre]: fornecedor };
 }

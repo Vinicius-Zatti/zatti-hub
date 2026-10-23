@@ -609,6 +609,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
   const [posicao, setPosicao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvo, setSalvo] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   function sugerir() {
@@ -663,6 +664,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
           setErro(r.erro);
           return;
         }
+        setAviso(r.aviso ?? null);
         setSalvo(true);
       });
   }
@@ -671,6 +673,7 @@ function LinhaPendencia({ pendente }: { pendente: ItemPendente }) {
     return (
       <div className="rounded-lg border border-verde/40 bg-verde/5 px-4 py-3 text-sm text-verde">
         {pendente.nome} cadastrado como {sku}.
+        {aviso && <div className="mt-1 text-ambar">{aviso}</div>}
       </div>
     );
   }
