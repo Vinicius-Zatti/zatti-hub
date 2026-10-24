@@ -9,6 +9,8 @@ export type NomeIconeNavegacao =
   | "escritorio"
   | "fichas"
   | "tarefas"
+  | "contagem"
+  | "pedidos"
   | "marketing"
   | "organizacao"
   | "acessos"
@@ -94,6 +96,21 @@ export function IconeNavegacao({
       <>
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="m8 12 2.5 2.5L16 9" />
+      </>
+    ),
+    // Barra inferior do celular (Navegação V2): prancheta da contagem e carrinho dos pedidos.
+    contagem: (
+      <>
+        <rect x="5" y="4" width="14" height="17" rx="2" />
+        <path d="M9 4V3h6v1" />
+        <path d="M9 10h6M9 14h6M9 18h3" />
+      </>
+    ),
+    pedidos: (
+      <>
+        <path d="M3 4h2l2.2 10.2a1.5 1.5 0 0 0 1.5 1.3h8.4a1.5 1.5 0 0 0 1.5-1.2L20 8H6.2" />
+        <circle cx="9.5" cy="19.5" r="1.2" />
+        <circle cx="16.5" cy="19.5" r="1.2" />
       </>
     ),
     marketing: (

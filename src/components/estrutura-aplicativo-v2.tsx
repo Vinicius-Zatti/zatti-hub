@@ -15,12 +15,17 @@ import { signOutAction } from "@/lib/supabase/actions";
 // Menu em sanfona: o módulo abre os subitens logo abaixo dele, dentro do próprio
 // menu (sem o painel flutuante à direita de `estrutura-aplicativo.tsx`), com o
 // grupo da tela atual já aberto e o campo "Filtrar menus" no topo.
-// Celular: barra no topo com o botão do menu, que abre uma gaveta com rótulos.
+// Celular (24/10): barra inferior fixa com 4 atalhos por papel
+// (`lib/navegacao/atalhos.ts`) + "Menu", que sobe o menu completo numa folha de
+// baixo para cima. Telas com botões fixos no rodapé marcam `data-modo-foco` e a
+// barra some enquanto elas estão abertas (Contagem e preenchimento do Garante).
 // Desktop (lg): menu fixo à esquerda, recolhível até ficar só com os ícones.
 
 type Props = {
   children: React.ReactNode;
   items: ItemNavegacao[];
+  /** Atalhos da barra inferior do celular, já filtrados por papel e flags. */
+  atalhos: ItemNavegacao[];
   organizacaoAtual: string;
   organizacaoNome: string;
   organizacoes: { id: string; nome: string }[];
@@ -31,6 +36,7 @@ type Props = {
 export function EstruturaAplicativoV2({
   children,
   items,
+  atalhos,
   organizacaoAtual,
   organizacaoNome,
   organizacoes,
@@ -40,7 +46,7 @@ export function EstruturaAplicativoV2({
   const pathname = usePathname();
   // Só vale no desktop: no celular o menu é a gaveta, sempre com rótulos.
   const [recolhido, setRecolhido] = useState(false);
-  // Gaveta do celular guarda o caminho em que abriu: trocou de tela, fecha sozinha.
+  // Folha do menu no celular guarda o caminho em que abriu: trocou de tela, fecha sozinha.
   const [gavetaEm, setGavetaEm] = useState<string | null>(null);
   const gavetaAberta = gavetaEm === pathname;
   const [filtro, setFiltro] = useState("");
@@ -50,9 +56,13 @@ export function EstruturaAplicativoV2({
   const [fechadosNoFiltro, setFechadosNoFiltro] = useState<Record<string, boolean>>({});
   const botaoMenuRef = useRef<HTMLButtonElement>(null);
   const botaoFecharRef = useRef<HTMLButtonElement>(null);
+  // Arrastar a folha para baixo pela alça: quanto já desceu, em px.
+  const [arrasto, setArrasto] = useState(0);
+  const inicioArrasto = useRef<number | null>(null);
 
   const labelAtivo = itemAtivo(items, pathname);
   const hrefAtivo = subitemAtivo(items, pathname);
+  const atalhoAtivo = itemAtivo(atalhos, pathname);
   const filtrando = normalizarBusca(filtro) !== "";
   const visiveis = filtrarMenus(items, filtro);
   const variasOrganizacoes = organizacoes.length > 1;
@@ -73,6 +83,24 @@ export function EstruturaAplicativoV2({
 
   function fecharGaveta() {
     setGavetaEm(null);
+    setArrasto(0);
+  }
+
+  function comecarArrasto(evento: React.TouchEvent) {
+    inicioArrasto.current = evento.touches[0].clientY;
+  }
+
+  function moverArrasto(evento: React.TouchEvent) {
+    if (inicioArrasto.current === null) return;
+    setArrasto(Math.max(0, evento.touches[0].clientY - inicioArrasto.current));
+  }
+
+  function terminarArrasto() {
+    inicioArrasto.current = null;
+    if (arrasto > 80) {
+      fecharGaveta();
+      botaoMenuRef.current?.focus();
+    } else setArrasto(0);
   }
 
   function grupoAberto(label: string) {
@@ -102,7 +130,7 @@ export function EstruturaAplicativoV2({
   const alinhamentoItem = recolhido ? "lg:justify-center" : "";
 
   return (
-    <div className="min-h-dvh">
+    <div className="group/app min-h-dvh">
       <a
         href="#conteudo-principal"
         className="fixed left-2 top-2 z-[60] -translate-y-20 rounded-md bg-ambar px-3 py-2 text-sm font-bold text-azul-noite transition-transform focus:translate-y-0 focus:outline-none"
@@ -114,14 +142,32 @@ export function EstruturaAplicativoV2({
         <div aria-hidden="true" onClick={fecharGaveta} className="fixed inset-0 z-40 bg-azul-noite/60 lg:hidden" />
       )}
 
+      {/* Celular: folha que sobe do rodapé. Desktop (lg): menu fixo à esquerda. */}
       <aside
         id="menu-lateral"
         aria-label="Menu lateral"
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-white/10 bg-azul-noite text-branco shadow-xl transition-[transform,width,visibility] duration-200 lg:z-40 lg:max-w-none lg:translate-x-0 lg:visible ${
-          gavetaAberta ? "translate-x-0" : "invisible -translate-x-full"
+        style={gavetaAberta && arrasto > 0 ? { transform: `translateY(${arrasto}px)`, transition: "none" } : undefined}
+        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-2xl bg-azul-noite pb-[env(safe-area-inset-bottom)] text-branco shadow-xl transition-[translate,width,visibility] duration-200 lg:inset-y-0 lg:right-auto lg:z-40 lg:max-h-none lg:translate-y-0 lg:visible lg:rounded-none lg:border-r lg:border-white/10 lg:pb-0 ${
+          gavetaAberta ? "translate-y-0" : "invisible translate-y-full"
         } ${recolhido ? "lg:w-[5.5rem]" : "lg:w-64"}`}
       >
-        <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2">
+        {/* Alça da folha (só celular): arrastar para baixo fecha. */}
+        <div
+          onTouchStart={comecarArrasto}
+          onTouchMove={moverArrasto}
+          onTouchEnd={terminarArrasto}
+          onTouchCancel={terminarArrasto}
+          className="flex h-5 shrink-0 touch-none items-end justify-center lg:hidden"
+        >
+          <span aria-hidden="true" className="h-1.5 w-10 rounded-full bg-white/25" />
+        </div>
+        <div
+          onTouchStart={comecarArrasto}
+          onTouchMove={moverArrasto}
+          onTouchEnd={terminarArrasto}
+          onTouchCancel={terminarArrasto}
+          className="relative flex h-14 shrink-0 items-center justify-center border-b border-white/10 px-2 lg:h-16"
+        >
           <Link
             href="/painel"
             aria-label="Ir para o início do Zatti Hub"
@@ -302,19 +348,26 @@ export function EstruturaAplicativoV2({
         </nav>
 
         <div className="shrink-0 border-t border-white/10 p-2">
-          <div className={`mb-2 rounded-lg bg-white/5 p-2 ${someRecolhido}`}>
-            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">Usuário</p>
-            <p className="mb-2 truncate text-xs font-medium text-branco" title={usuarioEmail}>
-              {usuarioNome || usuarioEmail || "Conta ativa"}
-            </p>
-            <p className="mb-1 truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">Organização</p>
-            {variasOrganizacoes ? (
-              <OrgSwitcher organizacoes={organizacoes} atual={organizacaoAtual} />
-            ) : (
-              <p className="truncate text-xs font-medium text-branco" title={organizacaoNome}>
-                {organizacaoNome}
-              </p>
-            )}
+          {/* Uma linha só (tela baixa): inicial de quem está logado + organização
+              com o seletor de troca. Nome e e-mail ficam no título da inicial. */}
+          <div className={`mb-1 flex min-h-11 items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 ${someRecolhido}`}>
+            <span
+              title={`${usuarioNome || "Conta ativa"}${usuarioEmail ? ` (${usuarioEmail})` : ""}`}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ambar text-xs font-bold text-azul-noite"
+            >
+              <span aria-hidden="true">{(usuarioNome || usuarioEmail || "?").charAt(0).toUpperCase()}</span>
+              <span className="sr-only">Usuário: {usuarioNome || usuarioEmail || "Conta ativa"}</span>
+            </span>
+            <div className="min-w-0 flex-1">
+              {variasOrganizacoes ? (
+                <OrgSwitcher organizacoes={organizacoes} atual={organizacaoAtual} />
+              ) : (
+                <p className="truncate text-xs font-medium text-branco" title={organizacaoNome}>
+                  <span className="sr-only">Organização: </span>
+                  {organizacaoNome}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Recolhido no desktop: a inicial da organização expande o menu para trocar de cliente. */}
@@ -347,28 +400,11 @@ export function EstruturaAplicativoV2({
         </div>
       </aside>
 
+      {/* Celular: espaço no fim para o conteúdo não ficar atrás da barra inferior
+          (sem barra no modo foco, onde a própria tela tem botões no rodapé). */}
       <div
-        className={`flex min-h-dvh flex-col transition-[padding-left] duration-200 ${recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64"}`}
+        className={`flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-200 group-has-[[data-modo-foco]]/app:pb-0 lg:pb-0 ${recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64"}`}
       >
-        {/* Barra do celular no fluxo da página (não fixa): Contagem e SubTabs já
-            usam `sticky top-0` e ficariam escondidas atrás de uma barra fixa. */}
-        <header className="flex h-14 shrink-0 items-center gap-2 bg-azul-noite px-2 text-branco lg:hidden">
-          <button
-            ref={botaoMenuRef}
-            type="button"
-            onClick={() => setGavetaEm(pathname)}
-            aria-label="Abrir menu"
-            aria-expanded={gavetaAberta}
-            aria-controls="menu-lateral"
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-branco transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
-          >
-            <IconeNavegacao nome="menu" className="h-6 w-6" />
-          </button>
-          <Link href="/painel" aria-label="Ir para o início do Zatti Hub" className="shrink-0 rounded-md">
-            <Image src="/brand/zatti-hub-simbolo.svg" alt="" width={96} height={96} className="h-9 w-9" />
-          </Link>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{labelAtivo ?? "Zatti Hub"}</span>
-        </header>
         <main
           id="conteudo-principal"
           tabIndex={-1}
@@ -380,8 +416,59 @@ export function EstruturaAplicativoV2({
           Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
         </footer>
       </div>
+
+      <nav
+        aria-label="Atalhos"
+        className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl border-t border-cinza-claro bg-branco pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_20px_rgba(13,31,45,0.08)] group-has-[[data-modo-foco]]/app:hidden lg:hidden"
+      >
+        <ul
+          className="mx-auto grid max-w-lg gap-1 px-2 pb-1.5 pt-1.5"
+          style={{ gridTemplateColumns: `repeat(${atalhos.length + 1}, minmax(0, 1fr))` }}
+        >
+          {atalhos.map((atalho) => {
+            const ativo = atalho.label === atalhoAtivo;
+            return (
+              <li key={atalho.href}>
+                <Link href={atalho.href} aria-current={ativo ? "page" : undefined} className={classeBotaoBarra(ativo)}>
+                  <IconeNavegacao nome={atalho.icone} className={classeIconeBarra(ativo)} />
+                  <span className={classeRotuloBarra(ativo)}>{atalho.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <button
+              ref={botaoMenuRef}
+              type="button"
+              onClick={() => setGavetaEm(pathname)}
+              aria-label="Abrir menu completo"
+              aria-expanded={gavetaAberta}
+              aria-controls="menu-lateral"
+              className={classeBotaoBarra(gavetaAberta)}
+            >
+              <IconeNavegacao nome="menu" className={classeIconeBarra(gavetaAberta)} />
+              <span className={classeRotuloBarra(gavetaAberta)}>Menu</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
     </div>
   );
+}
+
+// Barra inferior: ativo com fundo âmbar bem claro atrás do ícone e do rótulo.
+function classeBotaoBarra(ativo: boolean) {
+  return `flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${
+    ativo ? "bg-ambar/15" : "hover:bg-off-white"
+  }`;
+}
+
+function classeIconeBarra(ativo: boolean) {
+  return `h-6 w-6 shrink-0 ${ativo ? "text-ambar" : "text-azul-noite"}`;
+}
+
+function classeRotuloBarra(ativo: boolean) {
+  return `max-w-full truncate text-[11px] leading-tight ${ativo ? "font-bold text-azul-noite" : "font-medium text-cinza-medio"}`;
 }
 
 function SecaoSanfona({

@@ -762,8 +762,9 @@ export function ContagemForm({
   }
 
   // ── TELA 3: INVENTÁRIO ───────────────────────────────────────────────
+  // `data-modo-foco`: a barra inferior da Navegação V2 some, o rodapé fixo é desta tela.
   return (
-    <div className="pb-40">
+    <div className="pb-40" data-modo-foco>
       <div className="sticky top-0 z-10 -mx-3 rounded-t-lg bg-azul-noite px-3 py-3 sm:-mx-6 sm:px-6">
         <div className="text-[9px] font-bold uppercase tracking-widest text-ambar">
           Zatti Consultoria · M.E.G.A.
