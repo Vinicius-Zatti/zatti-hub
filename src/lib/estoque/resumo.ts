@@ -1,3 +1,4 @@
+import { situacaoDaData, type AndamentoSetor, type ModalidadeContagem } from "@/lib/contagem/setor";
 import type { ItemInventario, Pedido, Produto } from "@/lib/types";
 
 // Números do Estoque que o Painel geral (/painel) mostra. Saíram de
@@ -56,4 +57,15 @@ export function resumirEstoque(produtos: Produto[], inventario: ItemInventario[]
       0,
     ),
   };
+}
+
+/** Tipo da última contagem para a Visão geral, com os rótulos que o app já
+ * usa (Conferência: "completa"/"parcial"; Contagem: "Setor"). Só a contagem por
+ * setor deixa o tipo gravado (`contagens.modalidade` + andamento dos setores);
+ * a escolha de "Contagem completa" ou de grupos no fluxo antigo não é salva,
+ * então ali o tipo fica vazio em vez de ser deduzido. */
+export function tipoDaContagem(modalidade: ModalidadeContagem | undefined, andamento: AndamentoSetor[]): string {
+  const porSetor = modalidade === "setor" || (modalidade === undefined && andamento.length > 0);
+  if (!porSetor) return "";
+  return situacaoDaData(andamento, modalidade) === "completa" ? "Por setor (completa)" : "Por setor (parcial)";
 }
