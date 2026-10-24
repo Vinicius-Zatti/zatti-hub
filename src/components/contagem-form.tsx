@@ -109,6 +109,7 @@ export function ContagemForm({
   setores = [],
   andamentoPorData = new Map(),
   modalidadePorData = new Map(),
+  compacta = false,
 }: {
   /** Usuário e unidade da sessão: separam o rascunho guardado no navegador
    * (quem entra depois no mesmo aparelho não herda os números de outro). */
@@ -125,8 +126,13 @@ export function ContagemForm({
    * cadastro de hoje, que diz quem pode contar a data. */
   andamentoPorData?: Map<string, AndamentoSetor[]>;
   modalidadePorData?: Map<string, ModalidadeContagem>;
+  /** Navegação V2 (piloto, 24/10/2026): cabeçalho e rodapé numa linha cada e item numa linha só,
+   * para a lista ocupar a tela. Fora do piloto a tela segue como antes. */
+  compacta?: boolean;
 }) {
   const [tela, setTela] = useState<"data" | "aviso" | "inventario">("data");
+  // Rodapé compacto: a lista do que falta, o motivo de reenvio e o CSV ficam num painel que abre.
+  const [detalheAberto, setDetalheAberto] = useState(false);
   const [dataISO, setDataISO] = useState(hojeISO());
   const dataBr = isoParaBr(dataISO);
   const modalidadeDaData = modalidadePorData.get(dataBr);
@@ -764,17 +770,263 @@ export function ContagemForm({
 
   // ── TELA 3: INVENTÁRIO ───────────────────────────────────────────────
   // `data-modo-foco`: a barra inferior da Navegação V2 some, o rodapé fixo é desta tela.
+  // Lista de itens: a mesma nas duas versões da tela (padrão e compacta do piloto).
+  function renderLista() {
+    return (
+        <div className="mt-2 flex flex-col gap-4">
+          {comPosicao.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
+              <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
+                <span>Ordem de contagem</span>
+                <span className="font-normal text-cinza-claro">
+                  {comPosicao.length} {comPosicao.length === 1 ? "item" : "itens"}
+                </span>
+              </div>
+              <div className="divide-y divide-cinza-claro">
+                {comPosicao.map((p) => (
+                  <ItemRow
+                    key={p.sku}
+                    sku={p.sku}
+                    nome={p.nome}
+                    unidadeBase={p.unidadeBase}
+                    precoUnitario={p.precoUnitario}
+                    valor={valores[p.sku] ?? ""}
+                    confirmado={confirmados[p.sku]}
+                    onChangeValor={(v) => setValores((s) => ({ ...s, [p.sku]: v }))}
+                    onConfirmar={() => confirmarItem(p.sku)}
+                    onEditar={() => editarItem(p.sku)}
+                    compacta={compacta}
+                    registerRef={(el) => {
+                      if (el) inputRefs.current.set(p.sku, el);
+                      else inputRefs.current.delete(p.sku);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {gruposPresentes.map((g) => {
+            const itens = semPosicao.filter((p) => p.grupo === g);
+            if (itens.length === 0) return null;
+            return (
+              <div key={g} className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
+                <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
+                  <span>
+                    {nomeGrupo(g)} <span className="font-normal normal-case opacity-70">(sem posição)</span>
+                  </span>
+                  <span className="font-normal text-cinza-claro">
+                    {itens.length} {itens.length === 1 ? "item" : "itens"}
+                  </span>
+                </div>
+                <div className="divide-y divide-cinza-claro">
+                  {itens.map((p) => (
+                    <ItemRow
+                      key={p.sku}
+                      sku={p.sku}
+                      nome={p.nome}
+                      unidadeBase={p.unidadeBase}
+                      precoUnitario={p.precoUnitario}
+                      valor={valores[p.sku] ?? ""}
+                      confirmado={confirmados[p.sku]}
+                      onChangeValor={(v) => setValores((s) => ({ ...s, [p.sku]: v }))}
+                      onConfirmar={() => confirmarItem(p.sku)}
+                      onEditar={() => editarItem(p.sku)}
+                      compacta={compacta}
+                    registerRef={(el) => {
+                        if (el) inputRefs.current.set(p.sku, el);
+                        else inputRefs.current.delete(p.sku);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {customItens.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
+              <div className="bg-azul-noite px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
+                Itens Adicionados
+              </div>
+              <div className="divide-y divide-cinza-claro">
+                {customItens.map((c) => (
+                  <ItemRow
+                    key={c.sku}
+                    sku={c.sku}
+                    nome={c.nome}
+                    unidadeBase={c.unidadeBase}
+                    precoUnitario={c.precoUnitario}
+                    valor={valores[c.sku] ?? ""}
+                    confirmado={confirmados[c.sku]}
+                    onChangeValor={(v) => setValores((s) => ({ ...s, [c.sku]: v }))}
+                    onConfirmar={() => confirmarItem(c.sku)}
+                    onEditar={() => editarItem(c.sku)}
+                    compacta={compacta}
+                    registerRef={(el) => {
+                      if (el) inputRefs.current.set(c.sku, el);
+                      else inputRefs.current.delete(c.sku);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border-2 border-cinza-claro bg-branco">
+            <div className="border-b border-cinza-claro bg-off-white px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
+              Item não encontrado na lista? Adicione abaixo
+            </div>
+            <div className="flex flex-col gap-2 p-3.5">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Nome do produto"
+                  value={addNome}
+                  onChange={(e) => setAddNome(e.target.value)}
+                  className="min-w-0 flex-1 rounded-md border border-cinza-claro px-3 py-2 text-sm focus:border-ambar focus:outline-none"
+                />
+                <select
+                  value={addUnidade}
+                  onChange={(e) => setAddUnidade(e.target.value)}
+                  className="w-20 rounded-md border border-cinza-claro px-2 py-2 text-sm font-semibold focus:border-ambar focus:outline-none"
+                >
+                  <option>UN</option>
+                  <option>KG</option>
+                  <option>LT</option>
+                </select>
+              </div>
+              <button
+                onClick={adicionarItemAvulso}
+                className="w-full rounded-md bg-azul-noite px-4 py-2.5 text-sm font-bold text-off-white hover:bg-azul-petroleo"
+              >
+                + Adicionar item
+              </button>
+            </div>
+          </div>
+        </div>
+    );
+  }
+
+  // Versão compacta (piloto da Navegação V2): cabeçalho e rodapé de uma linha, para a lista
+  // ocupar a tela. O que é secundário (o que falta, motivo de reenvio, CSV) abre sob demanda.
+  function renderCompacta() {
+    const faltam = totalItens - confirmadosCount;
+    const temDetalhe = (!enviado && faltando.length > 0) || tudoConfirmado || (usaSetor && jaConcluido);
+    return (
+      <div className="pb-24" data-modo-foco>
+        <div className="sticky top-0 z-10 -mx-3 bg-azul-noite px-3 pb-1.5 pt-2 sm:-mx-6 sm:px-6">
+          <div className="flex items-center gap-2">
+            {/* O clique passa pela GuardaContagem, que avisa se houver contagem em andamento. */}
+            <Link
+              href="/painel"
+              aria-label="Sair da contagem"
+              title="Sair da contagem"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-lg text-branco hover:bg-white/20"
+            >
+              ‹
+            </Link>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-bold text-off-white">Inventário {unidadeNome}</div>
+              <div className="truncate text-[11px] capitalize text-cinza-claro">
+                {mesDisplay} · {escopoLabel}
+              </div>
+            </div>
+            <div className="shrink-0 text-right text-xs font-bold text-ambar">
+              {confirmadosCount}/{totalItens}
+            </div>
+          </div>
+          <div className="mt-1.5 h-[3px] overflow-hidden rounded bg-azul-petroleo">
+            <div className="h-full rounded bg-ambar transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+
+        {renderLista()}
+
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-azul-noite px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+          <div className="mx-auto max-w-3xl">
+            {detalheAberto && temDetalhe && (
+              <div className="mb-2 max-h-[40vh] space-y-2 overflow-y-auto border-b border-white/10 pb-2 text-[12px] text-cinza-claro">
+                {!enviado && faltando.length > 0 && <p>Falta: {faltandoTexto}</p>}
+                {usaSetor && jaConcluido && tudoConfirmado && !enviado && (
+                  <label className="block">
+                    Motivo do reenvio (este setor já foi enviado nesta data)
+                    <input
+                      type="text"
+                      value={motivoReenvio}
+                      maxLength={300}
+                      onChange={(e) => setMotivoReenvio(e.target.value)}
+                      placeholder="Ex.: esqueci a câmara fria"
+                      className="mt-1 w-full rounded-md border border-cinza-claro bg-branco px-3 py-2 text-base text-cinza"
+                    />
+                  </label>
+                )}
+                {tudoConfirmado && (
+                  <button
+                    onClick={handleCSV}
+                    className="block w-full rounded-lg border border-azul-petroleo px-3 py-2 text-xs font-semibold text-cinza-claro hover:bg-azul-petroleo"
+                  >
+                    Baixar CSV (backup)
+                  </button>
+                )}
+              </div>
+            )}
+            {erro && <div className="mb-1.5 text-center text-[11px] text-red-300">{erro}</div>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDetalheAberto((a) => !a)}
+                disabled={!temDetalhe}
+                aria-expanded={detalheAberto}
+                className="min-w-0 flex-1 text-left disabled:cursor-default"
+              >
+                <div className="font-display text-base font-bold leading-tight text-ambar">R$ {brl(totalMonetario)}</div>
+                <div className="truncate text-[11px] text-cinza-claro">
+                  {enviado
+                    ? "Inventário enviado"
+                    : tudoConfirmado
+                      ? "Tudo confirmado"
+                      : `${faltam} ${faltam === 1 ? "falta" : "faltam"}`}
+                  {temDetalhe && <span className="ml-1">{detalheAberto ? "▾" : "▸"}</span>}
+                </div>
+              </button>
+              {!tudoConfirmado && pendentesComValor.length > 0 && (
+                <button
+                  onClick={confirmarTodosPreenchidos}
+                  className="min-h-11 shrink-0 rounded-lg border border-ambar bg-ambar/10 px-3 text-sm font-bold text-ambar hover:bg-ambar/20"
+                >
+                  Confirmar preenchidos ({pendentesComValor.length})
+                </button>
+              )}
+              {tudoConfirmado && !enviado && (
+                <button
+                  onClick={handleEnviar}
+                  disabled={isPending}
+                  className="min-h-11 shrink-0 rounded-lg bg-ambar px-4 text-sm font-extrabold text-azul-noite disabled:opacity-60"
+                >
+                  {isPending ? "Enviando..." : "Enviar inventário"}
+                </button>
+              )}
+              {enviado && (
+                <button
+                  onClick={handleWhatsApp}
+                  className="min-h-11 shrink-0 rounded-lg bg-azul-petroleo px-3 text-sm font-bold text-off-white hover:bg-[#24506e]"
+                >
+                  Avisar Vinícius
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (compacta) return renderCompacta();
+
   return (
     <div className="pb-40" data-modo-foco>
       <div className="sticky top-0 z-10 -mx-3 rounded-t-lg bg-azul-noite px-3 py-3 sm:-mx-6 sm:px-6">
-        {/* Saída explícita só na Navegação V2 (`group/app`), onde o modo foco esconde a barra
-            inferior. O clique passa pela GuardaContagem, que avisa se houver contagem em andamento. */}
-        <Link
-          href="/painel"
-          className="mb-2 hidden items-center gap-1 text-xs font-semibold text-cinza-claro hover:text-branco [.group\/app_&]:inline-flex [.group\/app_&]:lg:hidden"
-        >
-          ← Sair da contagem
-        </Link>
         <div className="text-[9px] font-bold uppercase tracking-widest text-ambar">
           Zatti Consultoria · M.E.G.A.
         </div>
@@ -790,142 +1042,12 @@ export function ContagemForm({
         </div>
       </div>
 
-      {/* Na Navegação V2 não há seta lateral no celular: lá o aviso só sugere girar o celular. */}
       <div className="mt-3 rounded-lg border border-ambar/40 bg-ambar/10 px-3 py-2.5 text-xs leading-relaxed text-cinza sm:hidden">
         <span className="font-bold text-azul-noite">Tela estreita?</span>{" "}
-        <span className="[.group\/app_&]:hidden">Recolha o menu pela seta lateral para ver melhor os nomes. Se preferir, gire o celular.</span>
-        <span className="hidden [.group\/app_&]:inline">Gire o celular para ver melhor os nomes.</span>
+        Recolha o menu pela seta lateral para ver melhor os nomes. Se preferir, gire o celular.
       </div>
 
-      <div className="mt-2 flex flex-col gap-4">
-        {comPosicao.length > 0 && (
-          <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
-            <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
-              <span>Ordem de contagem</span>
-              <span className="font-normal text-cinza-claro">
-                {comPosicao.length} {comPosicao.length === 1 ? "item" : "itens"}
-              </span>
-            </div>
-            <div className="divide-y divide-cinza-claro">
-              {comPosicao.map((p) => (
-                <ItemRow
-                  key={p.sku}
-                  sku={p.sku}
-                  nome={p.nome}
-                  unidadeBase={p.unidadeBase}
-                  precoUnitario={p.precoUnitario}
-                  valor={valores[p.sku] ?? ""}
-                  confirmado={confirmados[p.sku]}
-                  onChangeValor={(v) => setValores((s) => ({ ...s, [p.sku]: v }))}
-                  onConfirmar={() => confirmarItem(p.sku)}
-                  onEditar={() => editarItem(p.sku)}
-                  registerRef={(el) => {
-                    if (el) inputRefs.current.set(p.sku, el);
-                    else inputRefs.current.delete(p.sku);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {gruposPresentes.map((g) => {
-          const itens = semPosicao.filter((p) => p.grupo === g);
-          if (itens.length === 0) return null;
-          return (
-            <div key={g} className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
-              <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
-                <span>
-                  {nomeGrupo(g)} <span className="font-normal normal-case opacity-70">(sem posição)</span>
-                </span>
-                <span className="font-normal text-cinza-claro">
-                  {itens.length} {itens.length === 1 ? "item" : "itens"}
-                </span>
-              </div>
-              <div className="divide-y divide-cinza-claro">
-                {itens.map((p) => (
-                  <ItemRow
-                    key={p.sku}
-                    sku={p.sku}
-                    nome={p.nome}
-                    unidadeBase={p.unidadeBase}
-                    precoUnitario={p.precoUnitario}
-                    valor={valores[p.sku] ?? ""}
-                    confirmado={confirmados[p.sku]}
-                    onChangeValor={(v) => setValores((s) => ({ ...s, [p.sku]: v }))}
-                    onConfirmar={() => confirmarItem(p.sku)}
-                    onEditar={() => editarItem(p.sku)}
-                    registerRef={(el) => {
-                      if (el) inputRefs.current.set(p.sku, el);
-                      else inputRefs.current.delete(p.sku);
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        {customItens.length > 0 && (
-          <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
-            <div className="bg-azul-noite px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
-              Itens Adicionados
-            </div>
-            <div className="divide-y divide-cinza-claro">
-              {customItens.map((c) => (
-                <ItemRow
-                  key={c.sku}
-                  sku={c.sku}
-                  nome={c.nome}
-                  unidadeBase={c.unidadeBase}
-                  precoUnitario={c.precoUnitario}
-                  valor={valores[c.sku] ?? ""}
-                  confirmado={confirmados[c.sku]}
-                  onChangeValor={(v) => setValores((s) => ({ ...s, [c.sku]: v }))}
-                  onConfirmar={() => confirmarItem(c.sku)}
-                  onEditar={() => editarItem(c.sku)}
-                  registerRef={(el) => {
-                    if (el) inputRefs.current.set(c.sku, el);
-                    else inputRefs.current.delete(c.sku);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-lg border-2 border-cinza-claro bg-branco">
-          <div className="border-b border-cinza-claro bg-off-white px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
-            Item não encontrado na lista? Adicione abaixo
-          </div>
-          <div className="flex flex-col gap-2 p-3.5">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Nome do produto"
-                value={addNome}
-                onChange={(e) => setAddNome(e.target.value)}
-                className="min-w-0 flex-1 rounded-md border border-cinza-claro px-3 py-2 text-sm focus:border-ambar focus:outline-none"
-              />
-              <select
-                value={addUnidade}
-                onChange={(e) => setAddUnidade(e.target.value)}
-                className="w-20 rounded-md border border-cinza-claro px-2 py-2 text-sm font-semibold focus:border-ambar focus:outline-none"
-              >
-                <option>UN</option>
-                <option>KG</option>
-                <option>LT</option>
-              </select>
-            </div>
-            <button
-              onClick={adicionarItemAvulso}
-              className="w-full rounded-md bg-azul-noite px-4 py-2.5 text-sm font-bold text-off-white hover:bg-azul-petroleo"
-            >
-              + Adicionar item
-            </button>
-          </div>
-        </div>
-      </div>
+      {renderLista()}
 
       <div className="fixed bottom-0 left-0 right-0 z-20 bg-azul-noite p-3">
         <div className="mx-auto max-w-3xl">
@@ -1016,6 +1138,7 @@ function ItemRow({
   onConfirmar,
   onEditar,
   registerRef,
+  compacta = false,
 }: {
   sku: string;
   nome: string;
@@ -1027,18 +1150,22 @@ function ItemRow({
   onConfirmar: () => void;
   onEditar: () => void;
   registerRef: (el: HTMLInputElement | null) => void;
+  /** Piloto: nome, quantidade e botão na mesma linha também no celular. */
+  compacta?: boolean;
 }) {
   const ok = confirmado !== undefined;
   const precoTxt = precoUnitario !== null ? `R$ ${brl(precoUnitario)}/${unidadeBase}` : "a calcular";
+  // Na versão compacta o botão não estica: fica do tamanho do texto, ao lado do campo.
+  const larguraBotao = compacta ? "flex-none px-3.5" : "flex-1 px-3 sm:flex-none";
 
   return (
     <div
       data-sku={sku}
-      className={`flex flex-col items-stretch gap-2.5 px-3.5 py-3 sm:flex-row sm:items-center sm:gap-3 ${
-        ok ? "bg-ambar/10" : "bg-branco"
-      }`}
+      className={`flex ${
+        compacta ? "flex-row items-center gap-2 px-3 py-2" : "flex-col items-stretch gap-2.5 px-3.5 py-3 sm:flex-row sm:items-center sm:gap-3"
+      } ${ok ? "bg-ambar/10" : "bg-branco"}`}
     >
-      <div className="w-full min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${compacta ? "" : "w-full"}`}>
         <div className={`break-words text-[15px] leading-snug ${ok ? "font-semibold text-azul-noite" : "font-medium text-cinza"}`}>
           {nome}
         </div>
@@ -1056,7 +1183,7 @@ function ItemRow({
           )}
         </div>
       </div>
-      <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+      <div className={`flex shrink-0 items-center justify-end gap-2 ${compacta ? "" : "w-full sm:w-auto"}`}>
         {ok ? (
           <>
             <input
@@ -1068,7 +1195,7 @@ function ItemRow({
             />
             <button
               onClick={onEditar}
-              className="min-h-11 flex-1 rounded-md border border-cinza-claro px-3 py-2.5 text-xs font-semibold text-cinza-medio hover:bg-off-white sm:min-h-0 sm:flex-none"
+              className={`min-h-11 ${larguraBotao} rounded-md border border-cinza-claro py-2.5 text-xs font-semibold text-cinza-medio hover:bg-off-white sm:min-h-0`}
             >
               Editar
             </button>
@@ -1097,11 +1224,11 @@ function ItemRow({
                   onConfirmar();
                 }
               }}
-              className="w-20 rounded-md border border-cinza-claro px-2 py-2.5 text-right text-base font-bold text-cinza focus:border-ambar focus:outline-none sm:w-16"
+              className={`${compacta ? "w-16" : "w-20 sm:w-16"} rounded-md border border-cinza-claro px-2 py-2 text-right text-base font-bold text-cinza focus:border-ambar focus:outline-none`}
             />
             <button
               onClick={onConfirmar}
-              className="min-h-11 flex-1 rounded-md bg-ambar px-3 py-2.5 text-xs font-bold text-azul-noite hover:bg-[#b07720] sm:min-h-0 sm:flex-none"
+              className={`min-h-11 ${larguraBotao} rounded-md bg-ambar py-2.5 text-xs font-bold text-azul-noite hover:bg-[#b07720] sm:min-h-0`}
             >
               Confirmar
             </button>

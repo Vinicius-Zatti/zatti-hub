@@ -7,6 +7,7 @@ import {
   listarSetoresBanco,
 } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function ContagemPage() {
       setores={setores}
       andamentoPorData={andamentoPorData}
       modalidadePorData={modalidadePorData}
+      compacta={usaNavegacaoV2(acesso)}
     />
   );
 }
