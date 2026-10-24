@@ -16,6 +16,7 @@ import {
   type ResultadoAbrirFicha,
 } from "@/app/(app)/fichas-tecnicas/actions";
 import type { DadosNovaFichaTecnica } from "@/lib/banco/fichas-tecnicas";
+import { normalizarBusca } from "@/lib/busca";
 
 const STATUS_TONE: Record<StatusFicha, string> = {
   ativa: "bg-verde/10 text-verde",
@@ -75,13 +76,13 @@ export function ListaFichasTecnicas({
 
   const daCamada = useMemo(() => fichas.filter((f) => f.camada === camada), [fichas, camada]);
   const filtradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     if (!termo) return daCamada;
     return daCamada.filter(
       (f) =>
-        f.nome.toLowerCase().includes(termo) ||
-        f.sku.toLowerCase().includes(termo) ||
-        f.categoriaNome.toLowerCase().includes(termo),
+        normalizarBusca(f.nome).includes(termo) ||
+        normalizarBusca(f.sku).includes(termo) ||
+        normalizarBusca(f.categoriaNome).includes(termo),
     );
   }, [daCamada, busca]);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { montarPrecosPorCanal } from "./fichas-tecnicas";
+import { explicacaoCustoComponente, montarPrecosPorCanal } from "./fichas-tecnicas";
 
 describe("montarPrecosPorCanal", () => {
   it("usa o custo base no Salão e no Delivery Próprio sem embalagem vinculada", () => {
@@ -170,5 +170,43 @@ describe("montarPrecosPorCanal", () => {
     });
 
     expect(canais.find((c) => c.canal === "ifood")!.precoSugerido).not.toBeNull();
+  });
+});
+
+describe("explicacaoCustoComponente", () => {
+  it("mostra o fator de correção na conta do produto", () => {
+    const texto = explicacaoCustoComponente(
+      { precoCadastro: 5.9, fatorUnidade: 1, fatorCorrecao: 11.05, custoUnitario: 65.195, custoTotal: 325.975 },
+      5,
+      "KG",
+    );
+    expect(texto).toContain("Preço no Cadastro R$ 5,90 × fator de correção 11,05 = R$ 65,20/KG");
+    expect(texto).toContain("× 5,000 KG = R$ 325,98");
+  });
+
+  it("produto sem fatores mostra só a conta do total", () => {
+    const texto = explicacaoCustoComponente(
+      { precoCadastro: 4.8, fatorUnidade: 1, fatorCorrecao: 1, custoUnitario: 4.8, custoTotal: 0.48 },
+      0.1,
+      "KG",
+    );
+    expect(texto).toBe("R$ 4,80/KG × 0,100 KG = R$ 0,48.");
+  });
+
+  it("sub-receita e item sem preço", () => {
+    expect(
+      explicacaoCustoComponente(
+        { precoCadastro: null, fatorUnidade: null, fatorCorrecao: null, custoUnitario: 10, custoTotal: 5 },
+        0.5,
+        "KG",
+      ),
+    ).toContain("outra ficha");
+    expect(
+      explicacaoCustoComponente(
+        { precoCadastro: null, fatorUnidade: 1, fatorCorrecao: 1, custoUnitario: null, custoTotal: null },
+        1,
+        "UN",
+      ),
+    ).toContain("Sem preço");
   });
 });

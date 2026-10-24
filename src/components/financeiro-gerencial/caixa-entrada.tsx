@@ -30,6 +30,7 @@ import {
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import type { ConfigCaixa, DestinatarioAlerta, EntradaCaixa, SituacaoEntrada } from "@/lib/banco/caixa-entrada";
 import type { CategoriaFinanceira, ContaFinanceira } from "@/lib/financeiro-gerencial/tipos";
+import { normalizarBusca } from "@/lib/busca";
 
 function formatarMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -540,11 +541,11 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
   }, []);
 
   const filtrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     const todos = lancamentos ?? [];
     const lista = termo
       ? todos.filter((l) =>
-          [l.descricao, l.contraparteNome ?? "", l.categoriaNome, l.documentoNumero ?? "", formatarMoeda(l.valor)].join(" ").toLowerCase().includes(termo),
+          normalizarBusca([l.descricao, l.contraparteNome ?? "", l.categoriaNome, l.documentoNumero ?? "", formatarMoeda(l.valor)].join(" ")).includes(termo),
         )
       : todos;
     return lista.slice(0, 50);

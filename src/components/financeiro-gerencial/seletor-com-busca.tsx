@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { normalizarBusca } from "@/lib/busca";
 
 export type OpcaoBusca = { id: string; label: string };
 
@@ -44,8 +45,8 @@ export function SeletorComBusca({
   const rotuloAtual = value === "" ? (vazioLabel ?? placeholder) : (selecionada?.label ?? placeholder);
 
   const opcoesFiltradas = opcoes.filter((o) => {
-    const alvo = termo.trim().toLowerCase();
-    return !alvo || o.label.toLowerCase().includes(alvo);
+    const alvo = normalizarBusca(termo);
+    return !alvo || normalizarBusca(o.label).includes(alvo);
   });
 
   function escolher(id: string) {

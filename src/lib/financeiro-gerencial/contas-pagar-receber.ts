@@ -9,6 +9,7 @@
 import type { Titulo } from "@/lib/banco/financeiro-documentos";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import type { TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
+import { normalizarBusca } from "@/lib/busca";
 
 export type AbaTitulo = "vencidos" | "hoje" | "a_vencer" | "quitados";
 
@@ -116,7 +117,7 @@ export type FiltroTitulos = {
 export const SEM_CONTRAPARTE = "sem";
 
 export function filtrarGrupos(grupos: GrupoTitulo[], filtro: FiltroTitulos): GrupoTitulo[] {
-  const termo = (filtro.busca ?? "").trim().toLowerCase();
+  const termo = normalizarBusca(filtro.busca ?? "");
   return grupos.filter((g) => {
     if (filtro.vencimentoDe && g.dataPrevista < filtro.vencimentoDe) return false;
     if (filtro.vencimentoAte && g.dataPrevista > filtro.vencimentoAte) return false;
@@ -125,9 +126,8 @@ export function filtrarGrupos(grupos: GrupoTitulo[], filtro: FiltroTitulos): Gru
     }
     if (filtro.categoriaId && !g.categorias.some((c) => c.id === filtro.categoriaId)) return false;
     if (termo) {
-      const alvo = [g.descricao, g.contraparteNome ?? "", g.documentoNumero ?? "", ...g.categorias.map((c) => c.nome)]
-        .join(" ")
-        .toLowerCase();
+      const alvo = normalizarBusca([g.descricao, g.contraparteNome ?? "", g.documentoNumero ?? "", ...g.categorias.map((c) => c.nome)]
+        .join(" "));
       if (!alvo.includes(termo)) return false;
     }
     return true;
