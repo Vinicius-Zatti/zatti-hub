@@ -121,7 +121,11 @@ export async function vincularFornecedorNoProduto(
       return "vinculado";
     }
   }
-  const produto = (await listProdutos(spreadsheetId)).find((p) => p.sku === sku);
+  // Leitura fresca, fora do `cache` da requisição: o vencedor acabou de gravar
+  // o preço novo e a lista cacheada ainda tem o antigo (regravaria por cima).
+  const lista =
+    fonte.fonte === "banco" ? await listarProdutosBanco(fonte.unidadeId) : await listProdutosPlanilha(fonte.spreadsheetId!);
+  const produto = lista.find((p) => p.sku === sku);
   if (!produto) return "sem_produto";
   const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
   if (vinculado === null) return "ja_vinculado";

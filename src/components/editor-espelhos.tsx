@@ -88,9 +88,10 @@ export function EditorEspelhos({
   // Mesma chave de Criar Cotação: várias contagens separadas por vírgula.
   // Trocar a contagem remonta o editor (nova `key`): com quantidade ou preço
   // em edição, passa pelo mesmo aviso da guarda (parecer do Codex, 24/10/2026),
-  // e o que já foi confirmado sincroniza antes de sair.
-  async function trocarDatas(novasDatas: string[]) {
-    await sincronizarAgora();
+  // e o que já foi confirmado sincroniza em paralelo (a contagem nova já vem
+  // fresca do banco; não espera o recálculo da atual).
+  function trocarDatas(novasDatas: string[]) {
+    void sincronizarAgora();
     navegarComGuarda(`${pathname}?data=${encodeURIComponent(novasDatas.join(","))}`);
   }
 

@@ -3,7 +3,8 @@
 -- ao mesmo tempo podiam escolher a mesma vaga e a segunda apagava o vínculo da primeira (ou uma
 -- edição de preço feita no meio). Aqui a linha fica travada, a duplicidade e a vaga são
 -- conferidas sob a trava e só a coluna da vaga muda. Mesma comparação de nome do app
--- (`chaveNormalizada` em src/lib/pedido.ts): sem espaço nas pontas, minúsculo, espaços juntos.
+-- (`chaveNormalizada` em src/lib/pedido.ts): espaços juntos (inclusive o não separável de texto
+-- colado), minúsculo, sem espaço nas pontas.
 -- Devolve 'ja_vinculado', 'sem_vaga', 'sem_produto' ou o nome da coluna gravada.
 begin;
 
@@ -19,7 +20,7 @@ set search_path = ''
 as $$
 declare
   v_produto public.produtos%rowtype;
-  v_chave text := lower(regexp_replace(trim(coalesce(p_fornecedor, '')), '\s+', ' ', 'g'));
+  v_chave text := btrim(lower(regexp_replace(coalesce(p_fornecedor, ''), '(\s|\u00a0)+', ' ', 'g')));
   v_campo text;
 begin
   if v_chave = '' then
@@ -35,10 +36,10 @@ begin
   end if;
 
   if v_chave in (
-    lower(regexp_replace(trim(v_produto.fornecedor_1), '\s+', ' ', 'g')),
-    lower(regexp_replace(trim(v_produto.fornecedor_2), '\s+', ' ', 'g')),
-    lower(regexp_replace(trim(v_produto.fornecedor_3), '\s+', ' ', 'g')),
-    lower(regexp_replace(trim(v_produto.fornecedor_4), '\s+', ' ', 'g'))
+    btrim(lower(regexp_replace(v_produto.fornecedor_1, '(\s|\u00a0)+', ' ', 'g'))),
+    btrim(lower(regexp_replace(v_produto.fornecedor_2, '(\s|\u00a0)+', ' ', 'g'))),
+    btrim(lower(regexp_replace(v_produto.fornecedor_3, '(\s|\u00a0)+', ' ', 'g'))),
+    btrim(lower(regexp_replace(v_produto.fornecedor_4, '(\s|\u00a0)+', ' ', 'g')))
   ) then
     return 'ja_vinculado';
   end if;

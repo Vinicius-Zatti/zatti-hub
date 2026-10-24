@@ -29,20 +29,34 @@ export function useSincronizarCotacao(): { agendar: () => void; sincronizarAgora
     agendado.current = null;
   }, []);
 
+  // Uma requisição por vez: timer, aba escondida, saída e troca de contagem
+  // podem chamar juntos; quem chega no meio espera a que está em voo e só
+  // abre outra se ainda sobrar confirmação pendente.
+  const emVoo = useRef<Promise<void> | null>(null);
+
   const sincronizarAgora = useCallback(async () => {
     limparTimer();
-    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
-      const alvo = geracao.current;
-      if (alvo <= sincronizada.current) return;
-      try {
-        await sincronizarCotacaoAction();
-        sincronizada.current = Math.max(sincronizada.current, alvo);
-        return;
-      } catch {
-        if (tentativa < MAX_TENTATIVAS) {
-          await new Promise((resolver) => setTimeout(resolver, ESPERA_NOVA_TENTATIVA_MS));
+    while (emVoo.current) await emVoo.current;
+    if (geracao.current <= sincronizada.current) return;
+    const rodada = (async () => {
+      for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
+        const alvo = geracao.current;
+        try {
+          await sincronizarCotacaoAction();
+          sincronizada.current = Math.max(sincronizada.current, alvo);
+          return;
+        } catch {
+          if (tentativa < MAX_TENTATIVAS) {
+            await new Promise((resolver) => setTimeout(resolver, ESPERA_NOVA_TENTATIVA_MS));
+          }
         }
       }
+    })();
+    emVoo.current = rodada;
+    try {
+      await rodada;
+    } finally {
+      emVoo.current = null;
     }
   }, [limparTimer]);
 

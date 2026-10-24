@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(9);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role)
 values ('00000000-0000-0000-0000-0000000f7001', 'gestao.vinculo@teste.local', 'x', now(),
@@ -36,6 +36,8 @@ select results_eq(
   'só a vaga muda; fornecedor 1 e preço ficam como estavam');
 select is(vincular_fornecedor_produto('uni-vinculo', 'HORTOM001', '  jm '), 'ja_vinculado',
   'mesmo fornecedor com espaço e minúscula não grava de novo');
+select is(vincular_fornecedor_produto('uni-vinculo', 'HORTOM001', E'JM\u00a0'), 'ja_vinculado',
+  'espaço não separável de texto colado também conta como espaço');
 select is(vincular_fornecedor_produto('uni-vinculo', 'HORTOM001', 'Bahia'), 'fornecedor_3',
   'o segundo fornecedor vai para a vaga seguinte, sem apagar o primeiro');
 select is(vincular_fornecedor_produto('uni-vinculo', 'HORCEB001', 'JM'), 'sem_vaga',
