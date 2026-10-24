@@ -247,7 +247,10 @@ export function NovoLancamentoForm({
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-5 pb-10">
       <div>
-        <h1 className="font-display text-2xl font-bold text-azul-noite">
+        <h1
+          data-titulo-proprio={existente ? "" : undefined}
+          className="font-display text-2xl font-bold text-azul-noite"
+        >
           {existente ? "Editar Lançamento" : "Novo Lançamento"}
         </h1>
         <p className="text-sm text-cinza-medio">

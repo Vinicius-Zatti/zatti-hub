@@ -40,3 +40,21 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/* Navegação V2 (24/10/2026): no piloto o cabeçalho de módulo
+   (`navegacao-v2/cabecalho-modulo.tsx`) já mostra o título da tela, então o
+   h1 da página sai da vista (continua para leitor de tela); a descrição embaixo
+   dele fica. Fora do piloto não existe `data-cabecalho-modulo` e nada muda.
+   h1 que traz dado próprio (nome da ficha, do modelo, "Nova ficha") leva
+   `data-titulo-proprio` e continua visível. */
+[data-cabecalho-modulo] h1:not([data-titulo-proprio]) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

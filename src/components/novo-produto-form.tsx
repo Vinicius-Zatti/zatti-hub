@@ -79,7 +79,7 @@ export function NovoProdutoForm({
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold text-azul-noite">Novo produto</h1>
+      <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">Novo produto</h1>
       {nomeInicial && (
         <p className="mt-1 text-xs text-cinza-medio">Preenchido a partir de um item contado como avulso.</p>
       )}

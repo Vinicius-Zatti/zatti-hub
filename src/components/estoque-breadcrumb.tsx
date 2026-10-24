@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useNavegacaoV2 } from "@/components/navegacao-v2/contexto";
 
 const CAMINHOS: Record<string, string[]> = {
   "/estoque/produtos": ["Estoque", "Produtos", "Consultar produtos"],
@@ -19,6 +20,9 @@ const CAMINHOS: Record<string, string[]> = {
 export function EstoqueBreadcrumb() {
   const pathname = usePathname();
   const caminho = CAMINHOS[pathname] ?? ["Estoque"];
+  // Piloto da Navegação V2: o cabeçalho do módulo já diz onde a pessoa está.
+  const navegacaoV2 = useNavegacaoV2();
+  if (navegacaoV2) return null;
 
   return (
     <nav aria-label="Caminho atual" className="text-xs text-cinza-medio">

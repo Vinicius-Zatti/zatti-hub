@@ -2,6 +2,7 @@ export type NomeIconeNavegacao =
   | "painel"
   | "estoque"
   | "cadastros"
+  | "relatorios"
   | "financeiro"
   | "financeiroGerencial"
   | "meuTempo"
@@ -51,6 +52,14 @@ export function IconeNavegacao({
         <rect x="4" y="3" width="16" height="18" rx="2" />
         <circle cx="9" cy="9" r="2" />
         <path d="M13 8h4M13 11h4M8 15h8M8 18h5" />
+      </>
+    ),
+    // Relatórios (Navegação V2): folha com gráfico de barras.
+    relatorios: (
+      <>
+        <path d="M6 3h9l4 4v14H6z" />
+        <path d="M14 3v5h5" />
+        <path d="M9.5 18v-3M12.5 18v-6M15.5 18v-4" />
       </>
     ),
     financeiro: (

@@ -85,7 +85,7 @@ export function EditorModelo({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="font-display text-2xl font-bold text-azul-noite">{modelo.nome}</h1>
+          <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">{modelo.nome}</h1>
           {modelo.descricao && <p className="text-sm text-cinza-medio">{modelo.descricao}</p>}
         </div>
         <button

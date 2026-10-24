@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { destinosVisiveis, escolherAtalhos } from "./atalhos";
-import { montarMenuRestaurantePiloto, type ContextoMenuRestaurante } from "./menu-restaurante";
-import { itemAtivo } from "./tipos";
+import { ROTULO_CARDAPIO, ROTULO_VENDAS, montarMenuRestaurantePiloto, type ContextoMenuRestaurante } from "./menu-restaurante";
 
 const CHAVES: (keyof ContextoMenuRestaurante)[] = [
   "podeGerir",
@@ -16,9 +15,10 @@ const CHAVES: (keyof ContextoMenuRestaurante)[] = [
 const tudoLigado = Object.fromEntries(CHAVES.map((c) => [c, true])) as ContextoMenuRestaurante;
 
 function atalhos(ctx: Partial<ContextoMenuRestaurante>) {
-  const completo = { ...tudoLigado, ...ctx };
-  return escolherAtalhos(montarMenuRestaurantePiloto(completo), completo.podeGerir);
+  return escolherAtalhos(montarMenuRestaurantePiloto({ ...tudoLigado, ...ctx }));
 }
+
+const rotulos = (ctx: Partial<ContextoMenuRestaurante>) => atalhos(ctx).map((a) => a.label);
 
 function todosOsContextos(): ContextoMenuRestaurante[] {
   return Array.from({ length: 2 ** CHAVES.length }, (_, n) =>
@@ -26,85 +26,69 @@ function todosOsContextos(): ContextoMenuRestaurante[] {
   );
 }
 
-describe("atalhos da barra inferior por papel", () => {
-  it("operacional: Início, Contagem, Pedidos e Garante", () => {
-    expect(atalhos({ podeGerir: false }).map((a) => [a.label, a.href])).toEqual([
-      ["Início", "/painel"],
-      ["Contagem", "/estoque/contagem"],
-      ["Pedidos", "/estoque/pedidos/feitos"],
-      ["Garante", "/garante"],
-    ]);
-  });
-
-  it("gestão e master (podeGerir): Início, Estoque, Financeiro e Desempenho", () => {
-    expect(atalhos({ podeGerir: true }).map((a) => [a.label, a.href])).toEqual([
-      ["Início", "/painel"],
-      ["Estoque", "/estoque/produtos"],
-      ["Financeiro", "/financeiro-gerencial/visao-geral"],
-      ["Desempenho", "/financeiro/consolidado/novo"],
-    ]);
+describe("barra inferior: Início, Estoque, Garante e Financeiro para todos os papéis", () => {
+  it("gestão/master e operacional têm a mesma barra, Estoque abre a Visão geral", () => {
+    for (const podeGerir of [true, false]) {
+      expect(atalhos({ podeGerir }).map((a) => [a.label, a.href])).toEqual([
+        ["Início", "/painel"],
+        ["Estoque", "/estoque/visao-geral"],
+        ["Garante", "/garante"],
+        ["Financeiro", "/financeiro-gerencial/visao-geral"],
+      ]);
+    }
   });
 });
 
-describe("módulo desligado sai e o próximo ocupa a vaga", () => {
-  it("operacional sem Garante ganha Desempenho", () => {
-    expect(atalhos({ podeGerir: false, garanteHabilitado: false }).map((a) => a.label)).toEqual([
+describe("destino que a pessoa não tem: a vaga vai para Vendas, Cardápio e Equipe", () => {
+  it("sem Garante: Vendas na vaga dele", () => {
+    expect(rotulos({ garanteHabilitado: false })).toEqual(["Início", "Estoque", ROTULO_VENDAS, "Financeiro"]);
+  });
+
+  it("sem Financeiro: Vendas na vaga dele", () => {
+    expect(rotulos({ financeiroGerencialHabilitado: false })).toEqual(["Início", "Estoque", "Garante", ROTULO_VENDAS]);
+  });
+
+  it("sem Garante e sem Financeiro: Vendas e Cardápio", () => {
+    expect(rotulos({ garanteHabilitado: false, financeiroGerencialHabilitado: false })).toEqual([
       "Início",
-      "Contagem",
-      "Pedidos",
-      "Desempenho",
+      "Estoque",
+      ROTULO_VENDAS,
+      ROTULO_CARDAPIO,
     ]);
   });
 
-  it("operacional sem Garante e sem Desempenho ganha Financeiro", () => {
+  it("sem Garante, Financeiro e Vendas: Cardápio e Equipe (gestão)", () => {
     expect(
-      atalhos({ podeGerir: false, garanteHabilitado: false, consolidadoVendasHabilitado: false }).map((a) => a.label),
-    ).toEqual(["Início", "Contagem", "Pedidos", "Financeiro"]);
+      rotulos({ garanteHabilitado: false, financeiroGerencialHabilitado: false, consolidadoVendasHabilitado: false }),
+    ).toEqual(["Início", "Estoque", ROTULO_CARDAPIO, "Equipe"]);
   });
 
-  it("operacional com tudo desligado cai em Produtos", () => {
+  it("operacional não tem Equipe: com tudo desligado fica Início e Estoque", () => {
     const desligado = {
       podeGerir: false,
       garanteHabilitado: false,
-      consolidadoVendasHabilitado: false,
       financeiroGerencialHabilitado: false,
+      consolidadoVendasHabilitado: false,
       fichasTecnicasHabilitado: false,
     };
-    expect(atalhos(desligado).map((a) => a.label)).toEqual(["Início", "Contagem", "Pedidos", "Produtos"]);
-  });
-
-  it("gestão sem Financeiro ganha Garante; sem Financeiro e Desempenho, Garante e Precificação", () => {
-    expect(atalhos({ financeiroGerencialHabilitado: false }).map((a) => a.label)).toEqual([
-      "Início",
-      "Estoque",
-      "Desempenho",
-      "Garante",
-    ]);
-    expect(
-      atalhos({ financeiroGerencialHabilitado: false, consolidadoVendasHabilitado: false }).map((a) => a.label),
-    ).toEqual(["Início", "Estoque", "Garante", "Precificação"]);
-  });
-
-  it("gestão com todos os módulos de flag desligados completa com Contagem e Pedidos", () => {
-    const desligado = {
-      consolidadoVendasHabilitado: false,
-      financeiroGerencialHabilitado: false,
-      fichasTecnicasHabilitado: false,
-      equipeHabilitado: false,
-      garanteHabilitado: false,
-    };
-    expect(atalhos(desligado).map((a) => a.label)).toEqual(["Início", "Estoque", "Contagem", "Pedidos"]);
+    expect(rotulos(desligado)).toEqual(["Início", "Estoque"]);
+    expect(rotulos({ ...desligado, fichasTecnicasHabilitado: true })).toEqual(["Início", "Estoque", ROTULO_CARDAPIO]);
   });
 });
 
 describe("nunca mostra destino que a pessoa não vê no menu", () => {
-  it("em toda combinação de papel e flag, todo atalho é destino visível do menu, sem repetir", () => {
+  it("em toda combinação de papel e flag: destino visível, sem repetir, Início e Estoque sempre", () => {
     for (const ctx of todosOsContextos()) {
       const menu = montarMenuRestaurantePiloto(ctx);
       const visiveis = destinosVisiveis(menu);
-      const lista = escolherAtalhos(menu, ctx.podeGerir);
-      expect(lista.length, JSON.stringify(ctx)).toBe(4);
-      for (const atalho of lista) expect(visiveis.has(atalho.href), `${atalho.href} ${JSON.stringify(ctx)}`).toBe(true);
+      const lista = escolherAtalhos(menu);
+      expect(lista.length, JSON.stringify(ctx)).toBeGreaterThanOrEqual(2);
+      expect(lista.length, JSON.stringify(ctx)).toBeLessThanOrEqual(4);
+      expect(lista.slice(0, 2).map((a) => a.label)).toEqual(["Início", "Estoque"]);
+      for (const atalho of lista) {
+        expect(visiveis.has(atalho.href), `${atalho.href} ${JSON.stringify(ctx)}`).toBe(true);
+        expect(atalho.sections).toBeUndefined();
+      }
       expect(new Set(lista.map((a) => a.href)).size).toBe(lista.length);
     }
   });
@@ -112,26 +96,5 @@ describe("nunca mostra destino que a pessoa não vê no menu", () => {
   it("módulo 'em breve' não conta como destino visível", () => {
     const menu = montarMenuRestaurantePiloto({ ...tudoLigado, garanteHabilitado: false });
     expect(destinosVisiveis(menu).has("/garante")).toBe(false);
-    expect(destinosVisiveis(menu).has("#")).toBe(false);
-  });
-});
-
-describe("ativo da barra usa a mesma regra do menu (prefixo mais longo)", () => {
-  it("operacional", () => {
-    const lista = atalhos({ podeGerir: false });
-    expect(itemAtivo(lista, "/painel")).toBe("Início");
-    expect(itemAtivo(lista, "/estoque/contagem/perdas")).toBe("Contagem");
-    expect(itemAtivo(lista, "/estoque/pedidos/feitos")).toBe("Pedidos");
-    expect(itemAtivo(lista, "/garante/execucao/abc")).toBe("Garante");
-    expect(itemAtivo(lista, "/estoque/produtos")).toBeUndefined();
-  });
-
-  it("gestão: Desempenho não acende no Financeiro gerencial", () => {
-    const lista = atalhos({ podeGerir: true });
-    expect(itemAtivo(lista, "/estoque/contagem")).toBe("Estoque");
-    expect(itemAtivo(lista, "/estoque/fornecedores/edicao")).toBe("Estoque");
-    expect(itemAtivo(lista, "/financeiro-gerencial/dre")).toBe("Financeiro");
-    expect(itemAtivo(lista, "/financeiro/consolidado")).toBe("Desempenho");
-    expect(itemAtivo(lista, "/garante")).toBeUndefined();
   });
 });

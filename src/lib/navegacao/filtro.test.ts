@@ -57,14 +57,17 @@ describe("filtrarMenus", () => {
     expect(hrefs(filtrarMenus(menu, "estoque contagem"))).toEqual([
       "/estoque/contagem",
       "/estoque/contagem/visualizacao",
+      "/estoque/contagem/movimentacoes",
+      "/estoque/contagem/perdas",
     ]);
     expect(hrefs(filtrarMenus(menu, "produtos editar"))).toEqual(["/estoque/produtos/edicao"]);
   });
 
   it("módulo sem seções e módulo em breve aparecem pelo nome", () => {
     expect(filtrarMenus(menu, "inicio").map((i) => i.label)).toEqual(["Início"]);
-    const [marketing] = filtrarMenus(menu, "marketing");
-    expect(marketing).toMatchObject({ label: "Marketing", disabled: true });
+    const semGarante = montarMenuRestaurantePiloto({ ...gestao, garanteHabilitado: false });
+    const [garante] = filtrarMenus(semGarante, "garante");
+    expect(garante).toMatchObject({ label: "Garante", disabled: true });
   });
 
   it("nada casa: lista vazia", () => {

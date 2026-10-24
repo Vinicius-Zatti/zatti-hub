@@ -257,42 +257,43 @@ export function montarMenuRestaurante(ctx: ContextoMenuRestaurante): ItemNavegac
   ];
 }
 
-/**
- * Menu do piloto da Navegação V2 (fase 1, 24/10/2026): mesmos destinos, mesmos
- * papéis e mesmas flags do menu atual, só agrupados por natureza. Cadastros
- * junta o que se cadastra (produtos, setores, fornecedores) e Estoque fica com
- * a rotina (contagem, pedidos, CMV Real). Nenhuma rota muda.
- */
-export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
-  const { podeGerir } = ctx;
-  const secoesCadastros: SecaoNavegacao[] = [
-    {
-      label: "Produtos",
-      items: [
-        { label: "Consultar produtos", href: "/estoque/produtos" },
-        ...(podeGerir ? [{ label: "Editar dados", href: "/estoque/produtos/edicao" }] : []),
-      ],
-    },
-    ...(podeGerir
-      ? [
-          { label: "Setores", items: [{ label: "Setores", href: "/estoque/setores" }] },
-          {
-            label: "Fornecedores",
-            items: [
-              { label: "Consultar fornecedores", href: "/estoque/fornecedores" },
-              { label: "Editar dados", href: "/estoque/fornecedores/edicao" },
-            ],
-          },
-        ]
-      : []),
-  ];
+// ---------------------------------------------------------------------------
+// Menu do piloto da Navegação V2 (estrutura de módulos, 24/10/2026)
+// ---------------------------------------------------------------------------
 
-  const secoesEstoque: SecaoNavegacao[] = [
+/** Rótulo provisório do módulo de fichas técnicas no piloto: Vinícius ainda
+ * escolhe o nome final. Trocar aqui troca no menu, nas abas e na barra. */
+export const ROTULO_CARDAPIO = "Cardápio";
+/** "Desempenho" vira "Vendas" no piloto (mesma rota /financeiro/consolidado). */
+export const ROTULO_VENDAS = "Vendas";
+
+/** Páginas de entrada novas do piloto. Só aparecem para quem tem ao menos uma
+ * tela de dentro delas no menu; fora do piloto redirecionam para a rota antiga. */
+export const ENTRADA_ESTOQUE = "/estoque/visao-geral";
+export const ENTRADA_RELATORIOS = "/relatorios";
+export const ENTRADA_CADASTROS = "/cadastros";
+
+/** Relatórios que saem do Financeiro e vão para o módulo Relatórios. */
+export const RELATORIOS_FINANCEIRO: readonly { label: string; href: string }[] = [
+  { label: "Painel M.E.G.A.", href: "/financeiro-gerencial/painel-mega" },
+  { label: "DRE", href: "/financeiro-gerencial/dre" },
+  { label: "Fluxo de Caixa", href: "/financeiro-gerencial/fluxo-caixa" },
+  { label: "DFC", href: "/financeiro-gerencial/dfc" },
+];
+
+const CADASTROS_DO_FINANCEIRO = new Set(["/financeiro-gerencial/contas", "/financeiro-gerencial/categorias"]);
+
+function secoesEstoquePiloto({ podeGerir }: ContextoMenuRestaurante): SecaoNavegacao[] {
+  return [
+    { label: "Visão geral", items: [{ label: "Visão geral", href: ENTRADA_ESTOQUE }] },
     {
       label: "Contagem",
       items: [
         { label: "Fazer contagem", href: "/estoque/contagem" },
         { label: "Conferir contagens", href: "/estoque/contagem/visualizacao" },
+        // Já abertas a todos os papéis pelas abas atuais da Contagem (getAcessoAtual).
+        { label: "Movimentações", href: "/estoque/contagem/movimentacoes" },
+        { label: "Perdas", href: "/estoque/contagem/perdas" },
       ],
     },
     {
@@ -307,31 +308,229 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
         { label: "Pedidos feitos", href: "/estoque/pedidos/feitos" },
       ],
     },
+    ...(podeGerir ? [{ label: "CMV Real", items: [{ label: "CMV Real", href: "/estoque/cmv" }] }] : []),
+    { label: "Produtos", items: [{ label: "Produtos", href: "/estoque/produtos" }] },
+  ];
+}
+
+/** Mesmo Financeiro de hoje, menos os relatórios (vão para Relatórios) e menos
+ * Contas financeiras e Plano de Contas (vão para Cadastros). */
+function secoesFinanceiroPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] {
+  return secoesFinanceiroGerencial(ctx)
+    .filter((secao) => secao.label !== "Relatórios")
+    .map((secao) =>
+      secao.label === "Configurações"
+        ? { label: "Fechamento do mês", items: secao.items.filter((i) => !CADASTROS_DO_FINANCEIRO.has(i.href)) }
+        : secao,
+    );
+}
+
+function secoesCardapioPiloto({ podeGerir }: ContextoMenuRestaurante): SecaoNavegacao[] {
+  return [
+    {
+      label: "Fichas técnicas",
+      items: [
+        { label: "Fichas técnicas", href: "/fichas-tecnicas" },
+        ...(podeGerir
+          ? [
+              { label: "Margem Ideal", href: "/fichas-tecnicas/calculadora" },
+              { label: "Precificação", href: "/fichas-tecnicas/precificacao" },
+            ]
+          : []),
+      ],
+    },
+  ];
+}
+
+function secoesGarantePiloto({ podeGerir }: ContextoMenuRestaurante): SecaoNavegacao[] {
+  return [
+    {
+      label: "Cumprir",
+      items: [
+        { label: "Hoje", href: "/garante" },
+        { label: "Planos de ação", href: "/garante/planos" },
+      ],
+    },
     ...(podeGerir
-      ? [{ label: "CMV Real", items: [{ label: "Consultar CMV", href: "/estoque/cmv" }] }]
+      ? [
+          {
+            label: "Gestão",
+            items: [
+              { label: "Quadro do dia", href: "/garante/quadro" },
+              { label: "Nota", href: "/garante/nota" },
+              { label: "Modelos e publicação", href: "/garante/modelos" },
+            ],
+          },
+        ]
       : []),
   ];
+}
 
+/** Cadastros: o que se cadastra uma vez e se consulta. Só gestão/master, como
+ * hoje; cada grupo segue a flag do módulo de origem. */
+function secoesCadastrosPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] {
+  if (!ctx.podeGerir) return [];
+  return [
+    { label: "Todos os cadastros", items: [{ label: "Todos os cadastros", href: ENTRADA_CADASTROS }] },
+    { label: "Produtos", items: [{ label: "Editar produtos", href: "/estoque/produtos/edicao" }] },
+    { label: "Setores", items: [{ label: "Setores", href: "/estoque/setores" }] },
+    {
+      label: "Fornecedores",
+      items: [
+        { label: "Consultar fornecedores", href: "/estoque/fornecedores" },
+        { label: "Editar fornecedores", href: "/estoque/fornecedores/edicao" },
+      ],
+    },
+    ...(ctx.fichasTecnicasHabilitado
+      ? [
+          {
+            label: "Fichas técnicas",
+            items: [
+              { label: "Categorias de fichas", href: "/fichas-tecnicas/categorias" },
+              { label: "Conversões de unidade", href: "/fichas-tecnicas/conversoes" },
+            ],
+          },
+        ]
+      : []),
+    ...(ctx.financeiroGerencialHabilitado
+      ? [
+          {
+            label: "Financeiro",
+            items: [
+              { label: "Contas financeiras", href: "/financeiro-gerencial/contas" },
+              { label: "Plano de Contas", href: "/financeiro-gerencial/categorias" },
+            ],
+          },
+        ]
+      : []),
+  ];
+}
+
+/** Painel de vendas = Dashboard do consolidado: só gestão/master com a flag. */
+export function temPainelVendas(ctx: ContextoMenuRestaurante): boolean {
+  return ctx.podeGerir && ctx.consolidadoVendasHabilitado;
+}
+
+/** Relatórios: os do Financeiro (com a flag) e a página de catálogo, que também
+ * lista o Painel de vendas (o Dashboard segue no menu de Vendas). Sem nenhum
+ * relatório acessível, o módulo não aparece. */
+function secoesRelatoriosPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] {
+  if (!ctx.financeiroGerencialHabilitado && !temPainelVendas(ctx)) return [];
+  return [
+    {
+      label: "Relatórios",
+      items: [
+        { label: "Todos os relatórios", href: ENTRADA_RELATORIOS },
+        ...(ctx.financeiroGerencialHabilitado ? RELATORIOS_FINANCEIRO.map((r) => ({ ...r })) : []),
+      ],
+    },
+  ];
+}
+
+/**
+ * Menu do piloto da Navegação V2 (módulos aprovados por Vinícius em 24/10/2026):
+ * Início, Estoque, Vendas, Financeiro, Cardápio, Garante, Equipe, Relatórios e
+ * Cadastros. Mesmos papéis e flags do menu atual. Destinos novos: só as três
+ * páginas de entrada (Estoque, Relatórios, Cadastros) e Movimentações e Perdas,
+ * que já abriam pelas abas da Contagem. Nenhuma rota, permissão ou flag muda.
+ * As abas de cada módulo saem daqui (`lib/navegacao/abas.ts`).
+ */
+export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
+  const cadastros = secoesCadastrosPiloto(ctx);
+  const relatorios = secoesRelatoriosPiloto(ctx);
   return [
     // Início = o Painel geral de hoje (o Início com atalhos é a fase 3).
     { label: "Início", href: "/painel", icone: "painel", activePrefix: "/painel", disabled: false },
     {
-      label: "Cadastros",
-      href: "/estoque/produtos",
-      icone: "cadastros",
-      // Prefixos mais longos que o "/estoque" do Estoque: o menu marca o mais longo.
-      activePrefix: ["/estoque/produtos", "/estoque/setores", "/estoque/fornecedores"],
-      disabled: false,
-      sections: secoesCadastros,
-    },
-    {
       label: "Estoque",
-      href: "/estoque/contagem",
+      href: ENTRADA_ESTOQUE,
       icone: "estoque",
       activePrefix: "/estoque",
       disabled: false,
-      sections: secoesEstoque,
+      sections: secoesEstoquePiloto(ctx),
     },
-    ...modulosComuns(ctx),
+    {
+      label: ROTULO_VENDAS,
+      href: "/financeiro/consolidado/novo",
+      icone: "financeiro",
+      activePrefix: "/financeiro",
+      disabled: !ctx.consolidadoVendasHabilitado,
+      sections: secoesDesempenho(ctx),
+    },
+    {
+      label: "Financeiro",
+      href: "/financeiro-gerencial/visao-geral",
+      icone: "financeiroGerencial",
+      activePrefix: "/financeiro-gerencial",
+      disabled: !ctx.financeiroGerencialHabilitado,
+      sections: secoesFinanceiroPiloto(ctx),
+    },
+    {
+      label: ROTULO_CARDAPIO,
+      href: "/fichas-tecnicas",
+      icone: "fichas",
+      activePrefix: "/fichas-tecnicas",
+      disabled: !ctx.fichasTecnicasHabilitado,
+      sections: secoesCardapioPiloto(ctx),
+    },
+    {
+      label: "Garante",
+      href: "/garante",
+      icone: "tarefas",
+      activePrefix: "/garante",
+      disabled: !ctx.garanteHabilitado,
+      sections: secoesGarantePiloto(ctx),
+    },
+    // Equipe: mesma regra de hoje (gestão + flag); a barreira é `requireEquipe()`.
+    ...(ctx.podeGerir && ctx.equipeHabilitado
+      ? [{ label: "Equipe", href: "/equipe", icone: "acessos" as const, activePrefix: "/equipe", disabled: false }]
+      : []),
+    ...(relatorios.length > 0
+      ? [
+          {
+            label: "Relatórios",
+            href: ENTRADA_RELATORIOS,
+            icone: "relatorios" as const,
+            activePrefix: ENTRADA_RELATORIOS,
+            disabled: false,
+            sections: relatorios,
+          },
+        ]
+      : []),
+    ...(cadastros.length > 0
+      ? [
+          {
+            label: "Cadastros",
+            href: ENTRADA_CADASTROS,
+            icone: "cadastros" as const,
+            activePrefix: ENTRADA_CADASTROS,
+            disabled: false,
+            sections: cadastros,
+          },
+        ]
+      : []),
   ];
+}
+
+/** Contexto do menu a partir do acesso logado (layout e páginas de entrada). */
+export function contextoMenuRestaurante(
+  acesso: {
+    role: string;
+    consolidadoVendasHabilitado: boolean;
+    financeiroGerencialHabilitado: boolean;
+    fichasTecnicasHabilitado: boolean;
+    equipeHabilitado: boolean;
+    garanteHabilitado: boolean;
+  },
+  conciliacaoHabilitada: boolean,
+): ContextoMenuRestaurante {
+  return {
+    podeGerir: acesso.role !== "operacional",
+    consolidadoVendasHabilitado: acesso.consolidadoVendasHabilitado,
+    financeiroGerencialHabilitado: acesso.financeiroGerencialHabilitado,
+    fichasTecnicasHabilitado: acesso.fichasTecnicasHabilitado,
+    equipeHabilitado: acesso.equipeHabilitado,
+    garanteHabilitado: acesso.garanteHabilitado,
+    conciliacaoHabilitada,
+  };
 }

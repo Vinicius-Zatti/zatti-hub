@@ -727,7 +727,7 @@ export function ContagemForm({
   if (tela === "aviso") {
     return (
       <div className="mx-auto max-w-md pb-10">
-        <h1 className="font-display text-2xl font-bold text-azul-noite">Inventário {unidadeNome}</h1>
+        <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">Inventário {unidadeNome}</h1>
         <p className="mt-1 text-sm text-cinza-medio capitalize">
           {mesDisplay} · {escopoLabel}
         </p>

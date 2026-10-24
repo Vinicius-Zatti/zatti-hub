@@ -6,7 +6,7 @@ import { escolherAtalhos } from "@/lib/navegacao/atalhos";
 import {
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
-  type ContextoMenuRestaurante,
+  contextoMenuRestaurante,
 } from "@/lib/navegacao/menu-restaurante";
 import { UnidadeSuporteProvider } from "@/components/contexto-suporte";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
@@ -100,15 +100,7 @@ export default async function AppLayout({
   // (`lib/navegacao/menu-restaurante.ts`). A unidade piloto da Navegação V2
   // (`lib/navegacao/piloto.ts`) vê o menu em sanfona; as demais, o atual.
   const navegacaoV2 = usaNavegacaoV2(acesso);
-  const contextoMenu: ContextoMenuRestaurante = {
-    podeGerir,
-    consolidadoVendasHabilitado: acesso.consolidadoVendasHabilitado,
-    financeiroGerencialHabilitado: acesso.financeiroGerencialHabilitado,
-    fichasTecnicasHabilitado: acesso.fichasTecnicasHabilitado,
-    equipeHabilitado: acesso.equipeHabilitado,
-    garanteHabilitado: acesso.garanteHabilitado,
-    conciliacaoHabilitada,
-  };
+  const contextoMenu = contextoMenuRestaurante(acesso, conciliacaoHabilitada);
   const itensRestaurante = navegacaoV2
     ? montarMenuRestaurantePiloto(contextoMenu)
     : montarMenuRestaurante(contextoMenu);
@@ -132,8 +124,12 @@ export default async function AppLayout({
     <GuardaContagemProvider>
       <GuardaEdicaoProvider>
         {navegacaoV2 ? (
-          // Barra inferior do celular: atalhos tirados do mesmo menu (papel e flags iguais).
-          <EstruturaAplicativoV2 {...propsEstrutura} atalhos={escolherAtalhos(itensRestaurante, podeGerir)}>
+          // Barra inferior do celular e abas dos módulos: tirados do mesmo menu (papel e flags iguais).
+          <EstruturaAplicativoV2
+            {...propsEstrutura}
+            atalhos={escolherAtalhos(itensRestaurante)}
+            unidadeNome={acesso.unidadeNome}
+          >
             {conteudo}
           </EstruturaAplicativoV2>
         ) : (

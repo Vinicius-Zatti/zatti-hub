@@ -49,3 +49,19 @@ export function subitemAtivo(items: ItemNavegacao[], pathname: string): string |
   }
   return melhor;
 }
+
+/** Módulo da tela atual no menu do piloto: primeiro o dono do subitem mais
+ * específico (o mesmo prefixo "/estoque" serve a Estoque e a Cadastros, e
+ * "/financeiro-gerencial/contas" é de Cadastros sem pegar
+ * "/financeiro-gerencial/contas-pagar-receber"); sem subitem, o prefixo mais
+ * longo (`itemAtivo`), como em "/financeiro-gerencial/estoque". */
+export function moduloAtivo(items: ItemNavegacao[], pathname: string): string | undefined {
+  const href = subitemAtivo(items, pathname);
+  if (href) {
+    const dono = items.find(
+      (item) => !item.disabled && item.sections?.some((secao) => secao.items.some((sub) => sub.href === href)),
+    );
+    if (dono) return dono.label;
+  }
+  return itemAtivo(items, pathname);
+}
