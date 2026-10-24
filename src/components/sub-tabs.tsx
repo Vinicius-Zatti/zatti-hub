@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useNavegacaoV2 } from "@/components/navegacao-v2/contexto";
 
 /** `fixoNoTopo`: o menu de abas acompanha a rolagem da página (sticky),
  * com o fundo da página por trás pra não sobrepor o conteúdo. */
 export function SubTabs({ items, fixoNoTopo = false }: { items: { label: string; href: string }[]; fixoNoTopo?: boolean }) {
   const pathname = usePathname();
+  // Piloto da Navegação V2: as abas do módulo vêm do cabeçalho novo, tirado do menu.
+  const navegacaoV2 = useNavegacaoV2();
 
   // Quando dois hrefs da lista são prefixo um do outro (ex: /estoque/contagem
   // e /estoque/contagem/visualizacao), só o match mais específico fica ativo.
@@ -19,6 +22,8 @@ export function SubTabs({ items, fixoNoTopo = false }: { items: { label: string;
       return pathname === base || pathname.startsWith(`${base}/`);
     })
     .sort((a, b) => b.href.split("?")[0].length - a.href.split("?")[0].length)[0]?.href;
+
+  if (navegacaoV2) return null;
 
   return (
     <div

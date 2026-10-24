@@ -5,15 +5,9 @@ import { listPedidosFeitos } from "@/lib/pedidos";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listInventario } from "@/lib/sheets/inventario";
 import { listProdutos } from "@/lib/sheets/produtos";
+import { resumirEstoque } from "@/lib/estoque/resumo";
 
 export const dynamic = "force-dynamic";
-
-function instanteData(valor: string): number {
-  const [dia, mes, ano] = valor.split("/").map(Number);
-  if (dia && mes && ano) return new Date(ano, mes - 1, dia).getTime();
-  const instante = Date.parse(valor);
-  return Number.isNaN(instante) ? 0 : instante;
-}
 
 function capitalizar(palavra: string): string {
   return palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase();
@@ -54,18 +48,7 @@ export default async function PainelPage() {
     listPedidosFeitos(acesso.unidadeId),
   ]);
 
-  const datas = Array.from(new Set(inventario.map((item) => item.data).filter(Boolean)));
-  const ultimaContagem = datas.sort((a, b) => instanteData(b) - instanteData(a))[0] ?? null;
-  const itensUltimaContagem = ultimaContagem
-    ? inventario.filter((item) => item.data === ultimaContagem)
-    : [];
-  const pedidosReais = pedidos
-    .map((pedido) => ({
-      ...pedido,
-      itens: pedido.itens.filter((item) => item.vencedorConfirmado),
-    }))
-    .filter((pedido) => pedido.itens.length > 0);
-  const pedidosPendentes = pedidosReais.filter((pedido) => !pedido.recebido);
+  const resumo = resumirEstoque(produtos, inventario, pedidos);
   const agora = new Date();
 
   // Card do Checklist Garante: só com a flag e só para a gestão (a nota é da
@@ -88,23 +71,8 @@ export default async function PainelPage() {
     }).format(agora),
     organizacaoNome: acesso.organizacaoNome,
     unidadeNome: acesso.unidadeNome,
-    produtosAtivos: produtos.filter((produto) => produto.ativo).length,
-    grupos: new Set(produtos.filter((produto) => produto.ativo).map((produto) => produto.grupo).filter(Boolean)).size,
+    ...resumo,
     fornecedores: fornecedores?.length ?? null,
-    ultimaContagem,
-    itensContados: itensUltimaContagem.length,
-    valorEstoque: itensUltimaContagem.reduce((total, item) => total + (item.total ?? 0), 0),
-    alertasCompra: itensUltimaContagem.filter((item) => item.alerta === "Comprar emergencial").length,
-    possiveisErros: itensUltimaContagem.filter((item) => item.alerta === "Possível erro de contagem").length,
-    produtosSemPreco: produtos.filter((produto) => produto.ativo && produto.precoUnitario === null).length,
-    pedidosPendentes: pedidosPendentes.length,
-    valorPedidosPendentes: pedidosPendentes.reduce(
-      (total, pedido) => total + pedido.itens.reduce(
-        (subtotal, item) => subtotal + item.quantidadePedida * (item.precoAtualizado ?? item.precoAntigo ?? 0),
-        0,
-      ),
-      0,
-    ),
     garante,
   };
 

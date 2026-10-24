@@ -17,7 +17,7 @@ describe("caminhos da área interna", () => {
   });
 
   it("reconhece as telas de restaurante, incluindo financeiro-gerencial", () => {
-    for (const c of ["/painel", "/estoque/contagem", "/financeiro/consolidado", "/financeiro-gerencial/dre", "/garante"]) {
+    for (const c of ["/painel", "/estoque/contagem", "/financeiro/consolidado", "/financeiro-gerencial/dre", "/garante", "/relatorios", "/cadastros"]) {
       expect(ehCaminhoRestaurante(c)).toBe(true);
     }
     expect(ehCaminhoRestaurante("/inicio")).toBe(false);

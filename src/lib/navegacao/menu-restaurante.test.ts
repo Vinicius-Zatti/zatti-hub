@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { destinosVisiveis } from "./atalhos";
 import {
+  ENTRADA_CADASTROS,
+  ENTRADA_ESTOQUE,
+  ENTRADA_RELATORIOS,
+  ROTULO_CARDAPIO,
+  ROTULO_VENDAS,
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
   type ContextoMenuRestaurante,
 } from "./menu-restaurante";
-import { itemAtivo, subitemAtivo, type ItemNavegacao } from "./tipos";
+import { moduloAtivo, subitemAtivo, type ItemNavegacao } from "./tipos";
 
 const CHAVES: (keyof ContextoMenuRestaurante)[] = [
   "podeGerir",
@@ -23,29 +29,34 @@ function todosOsContextos(): ContextoMenuRestaurante[] {
   );
 }
 
-/** Cada destino do menu com o estado do módulo que o leva ("em breve" ou não). */
-function destinos(itens: ItemNavegacao[]): string[] {
-  return itens
-    .flatMap((item) =>
-      item.sections
-        ? item.sections.flatMap((s) => s.items.map((i) => `${i.href}|${item.disabled}`))
-        : [`${item.href}|${item.disabled}`],
-    )
-    .sort();
-}
-
 const tudoLigado: ContextoMenuRestaurante = Object.fromEntries(CHAVES.map((c) => [c, true])) as ContextoMenuRestaurante;
 
-describe("menu do piloto x menu atual", () => {
-  it("mesmos destinos e mesmo 'em breve' em toda combinação de papel e flag", () => {
-    for (const ctx of todosOsContextos()) {
-      expect(destinos(montarMenuRestaurantePiloto(ctx)), JSON.stringify(ctx)).toEqual(
-        destinos(montarMenuRestaurante(ctx)),
-      );
-    }
-  });
+/** Destinos novos do piloto: as três páginas de entrada e as duas abas da
+ * Contagem que já abriam para todos os papéis pelas SubTabs de hoje. */
+const NOVOS_NO_MENU = new Set([
+  ENTRADA_ESTOQUE,
+  ENTRADA_RELATORIOS,
+  ENTRADA_CADASTROS,
+  "/estoque/contagem/movimentacoes",
+  "/estoque/contagem/perdas",
+]);
 
-  it("menu atual não mudou de forma (módulos e ordem)", () => {
+/** "Em breve" do menu atual com o nome que o módulo ganhou no piloto. */
+const RENOMEADOS: Record<string, string> = {
+  Desempenho: ROTULO_VENDAS,
+  Financeiro: "Financeiro",
+  Precificação: ROTULO_CARDAPIO,
+  "Checklist Garante": "Garante",
+};
+
+function hrefsDoMenu(itens: ItemNavegacao[]): string[] {
+  return itens.flatMap((item) =>
+    item.sections ? item.sections.flatMap((s) => s.items.map((i) => i.href)) : [item.href],
+  );
+}
+
+describe("menu atual (fora do piloto) não muda", () => {
+  it("módulos e ordem", () => {
     expect(montarMenuRestaurante(tudoLigado).map((i) => i.label)).toEqual([
       "Painel geral",
       "Estoque",
@@ -63,45 +74,206 @@ describe("menu do piloto x menu atual", () => {
       "Fornecedores",
       "CMV Real",
     ]);
-  });
-
-  it("piloto agrupa Início, Cadastros e Estoque e mantém os demais módulos", () => {
-    const piloto = montarMenuRestaurantePiloto(tudoLigado);
-    expect(piloto.map((i) => i.label)).toEqual([
-      "Início",
-      "Cadastros",
-      "Estoque",
-      "Desempenho",
-      "Financeiro",
-      "Precificação",
-      "Equipe",
-      "Checklist Garante",
-      "Marketing",
+    expect(montarMenuRestaurante(tudoLigado)[3].sections?.map((s) => s.label)).toEqual([
+      "Dia a dia",
+      "Lançamentos",
+      "Relatórios",
+      "Configurações",
     ]);
-    expect(piloto[1].sections?.map((s) => s.label)).toEqual(["Produtos", "Setores", "Fornecedores"]);
-    expect(piloto[2].sections?.map((s) => s.label)).toEqual(["Contagem", "Pedidos", "CMV Real"]);
-  });
-
-  it("gestão e master (podeGerir) veem o mesmo; operacional não vê Setores, Fornecedores, CMV e Equipe", () => {
-    const operacional = montarMenuRestaurantePiloto({ ...tudoLigado, podeGerir: false });
-    expect(operacional.map((i) => i.label)).not.toContain("Equipe");
-    expect(operacional[1].sections?.map((s) => s.label)).toEqual(["Produtos"]);
-    expect(operacional[2].sections?.map((s) => s.label)).toEqual(["Contagem", "Pedidos"]);
   });
 });
 
-describe("item e subitem ativos no menu do piloto", () => {
+describe("menu do piloto x menu atual, nas 128 combinações de papel e flag", () => {
+  it("mesmos destinos visíveis; a mais, só as entradas novas e Movimentações/Perdas", () => {
+    for (const ctx of todosOsContextos()) {
+      const piloto = destinosVisiveis(montarMenuRestaurantePiloto(ctx));
+      const atual = destinosVisiveis(montarMenuRestaurante(ctx));
+      const pilotoSemNovos = [...piloto].filter((href) => !NOVOS_NO_MENU.has(href)).sort();
+      expect(pilotoSemNovos, JSON.stringify(ctx)).toEqual([...atual].sort());
+    }
+  });
+
+  it("mesmos módulos 'em breve' (Marketing sai do piloto)", () => {
+    for (const ctx of todosOsContextos()) {
+      const atual = montarMenuRestaurante(ctx)
+        .filter((i) => i.disabled && i.label !== "Marketing")
+        .map((i) => RENOMEADOS[i.label]);
+      const piloto = montarMenuRestaurantePiloto(ctx)
+        .filter((i) => i.disabled)
+        .map((i) => i.label);
+      expect(piloto, JSON.stringify(ctx)).toEqual(atual);
+    }
+  });
+
+  it("entrada nova só existe com ao menos uma tela de dentro visível", () => {
+    for (const ctx of todosOsContextos()) {
+      const menu = montarMenuRestaurantePiloto(ctx);
+      const relatorios = menu.find((i) => i.label === "Relatórios");
+      const cadastros = menu.find((i) => i.label === "Cadastros");
+      const temRelatorio = ctx.financeiroGerencialHabilitado || (ctx.podeGerir && ctx.consolidadoVendasHabilitado);
+      expect(Boolean(relatorios), JSON.stringify(ctx)).toBe(temRelatorio);
+      expect(Boolean(cadastros), JSON.stringify(ctx)).toBe(ctx.podeGerir);
+      expect(destinosVisiveis(menu).has(ENTRADA_ESTOQUE)).toBe(true);
+    }
+  });
+
+  it("nenhum destino aparece em dois lugares do menu", () => {
+    for (const ctx of todosOsContextos()) {
+      const hrefs = hrefsDoMenu(montarMenuRestaurantePiloto(ctx).filter((i) => !i.disabled));
+      expect(new Set(hrefs).size, JSON.stringify(ctx)).toBe(hrefs.length);
+    }
+  });
+});
+
+describe("estrutura de módulos do piloto (24/10)", () => {
+  const piloto = montarMenuRestaurantePiloto(tudoLigado);
+  const modulo = (label: string) => piloto.find((i) => i.label === label);
+  const hrefs = (label: string) => hrefsDoMenu([modulo(label)!]);
+
+  it("ordem dos módulos, sem Configurações", () => {
+    expect(piloto.map((i) => i.label)).toEqual([
+      "Início",
+      "Estoque",
+      ROTULO_VENDAS,
+      "Financeiro",
+      ROTULO_CARDAPIO,
+      "Garante",
+      "Equipe",
+      "Relatórios",
+      "Cadastros",
+    ]);
+    expect(ROTULO_VENDAS).toBe("Vendas");
+    expect(ROTULO_CARDAPIO).toBe("Cardápio");
+  });
+
+  it("Estoque: Visão geral, Contagem, Pedidos, CMV Real e Produtos (consulta)", () => {
+    expect(modulo("Estoque")?.href).toBe(ENTRADA_ESTOQUE);
+    expect(modulo("Estoque")?.sections?.map((s) => s.label)).toEqual([
+      "Visão geral",
+      "Contagem",
+      "Pedidos",
+      "CMV Real",
+      "Produtos",
+    ]);
+    expect(hrefs("Estoque")).toEqual([
+      ENTRADA_ESTOQUE,
+      "/estoque/contagem",
+      "/estoque/contagem/visualizacao",
+      "/estoque/contagem/movimentacoes",
+      "/estoque/contagem/perdas",
+      "/estoque/pedidos",
+      "/estoque/pedidos/cotacoes",
+      "/estoque/pedidos/feitos",
+      "/estoque/cmv",
+      "/estoque/produtos",
+    ]);
+  });
+
+  it("Vendas é o Desempenho com outro nome: lançar, histórico e painel", () => {
+    expect(hrefs(ROTULO_VENDAS)).toEqual([
+      "/financeiro/consolidado/novo",
+      "/financeiro/consolidado",
+      "/financeiro/consolidado/dashboard",
+    ]);
+  });
+
+  it("Financeiro sem relatórios, sem Contas financeiras e sem Plano de Contas; com Fechamento e Provisões", () => {
+    const financeiro = hrefs("Financeiro");
+    for (const fora of [
+      "/financeiro-gerencial/dre",
+      "/financeiro-gerencial/fluxo-caixa",
+      "/financeiro-gerencial/dfc",
+      "/financeiro-gerencial/painel-mega",
+      "/financeiro-gerencial/contas",
+      "/financeiro-gerencial/categorias",
+    ]) {
+      expect(financeiro).not.toContain(fora);
+    }
+    expect(financeiro).toContain("/financeiro-gerencial/fechamento");
+    expect(financeiro).toContain("/financeiro-gerencial/provisoes");
+  });
+
+  it("Cardápio: fichas, margem ideal e precificação; categorias e conversões vão para Cadastros", () => {
+    expect(hrefs(ROTULO_CARDAPIO)).toEqual([
+      "/fichas-tecnicas",
+      "/fichas-tecnicas/calculadora",
+      "/fichas-tecnicas/precificacao",
+    ]);
+  });
+
+  it("Garante é módulo próprio; Equipe fica só com colaboradores", () => {
+    expect(hrefs("Garante")).toEqual([
+      "/garante",
+      "/garante/planos",
+      "/garante/quadro",
+      "/garante/nota",
+      "/garante/modelos",
+    ]);
+    expect(modulo("Equipe")?.href).toBe("/equipe");
+    expect(modulo("Equipe")?.sections).toBeUndefined();
+  });
+
+  it("Relatórios e Cadastros", () => {
+    expect(hrefs("Relatórios")).toEqual([
+      ENTRADA_RELATORIOS,
+      "/financeiro-gerencial/painel-mega",
+      "/financeiro-gerencial/dre",
+      "/financeiro-gerencial/fluxo-caixa",
+      "/financeiro-gerencial/dfc",
+    ]);
+    expect(hrefs("Cadastros")).toEqual([
+      ENTRADA_CADASTROS,
+      "/estoque/produtos/edicao",
+      "/estoque/setores",
+      "/estoque/fornecedores",
+      "/estoque/fornecedores/edicao",
+      "/fichas-tecnicas/categorias",
+      "/fichas-tecnicas/conversoes",
+      "/financeiro-gerencial/contas",
+      "/financeiro-gerencial/categorias",
+    ]);
+  });
+
+  it("operacional: sem CMV, sem criar cotação, sem Equipe e sem Cadastros", () => {
+    const operacional = montarMenuRestaurantePiloto({ ...tudoLigado, podeGerir: false });
+    expect(operacional.map((i) => i.label)).toEqual([
+      "Início",
+      "Estoque",
+      ROTULO_VENDAS,
+      "Financeiro",
+      ROTULO_CARDAPIO,
+      "Garante",
+      "Relatórios",
+    ]);
+    expect(operacional[1].sections?.map((s) => s.label)).toEqual(["Visão geral", "Contagem", "Pedidos", "Produtos"]);
+  });
+});
+
+describe("módulo e subitem ativos no piloto", () => {
   const piloto = montarMenuRestaurantePiloto(tudoLigado);
 
-  it("tela de cadastro abre Cadastros; rotina de estoque abre Estoque", () => {
-    expect(itemAtivo(piloto, "/estoque/produtos/edicao")).toBe("Cadastros");
-    expect(itemAtivo(piloto, "/estoque/setores")).toBe("Cadastros");
-    expect(itemAtivo(piloto, "/estoque/fornecedores/novo")).toBe("Cadastros");
-    expect(itemAtivo(piloto, "/estoque/contagem/perdas")).toBe("Estoque");
-    expect(itemAtivo(piloto, "/estoque/cmv")).toBe("Estoque");
-    expect(itemAtivo(piloto, "/painel")).toBe("Início");
-    expect(itemAtivo(piloto, "/financeiro-gerencial/dre")).toBe("Financeiro");
-    expect(itemAtivo(piloto, "/financeiro/consolidado")).toBe("Desempenho");
+  it("cada tela acende o módulo certo, inclusive quando o prefixo é de outro", () => {
+    const casos: [string, string][] = [
+      ["/painel", "Início"],
+      [ENTRADA_ESTOQUE, "Estoque"],
+      ["/estoque/contagem/perdas", "Estoque"],
+      ["/estoque/produtos", "Estoque"],
+      ["/estoque/produtos/edicao", "Cadastros"],
+      ["/estoque/setores", "Cadastros"],
+      ["/estoque/fornecedores/novo", "Cadastros"],
+      ["/financeiro/consolidado/abc/editar", ROTULO_VENDAS],
+      ["/financeiro-gerencial/contas-pagar-receber", "Financeiro"],
+      ["/financeiro-gerencial/contas", "Cadastros"],
+      ["/financeiro-gerencial/dre", "Relatórios"],
+      ["/financeiro-gerencial/estoque", "Financeiro"],
+      ["/fichas-tecnicas/abc", ROTULO_CARDAPIO],
+      ["/fichas-tecnicas/conversoes", "Cadastros"],
+      ["/garante/execucao/abc", "Garante"],
+      ["/equipe", "Equipe"],
+      [ENTRADA_RELATORIOS, "Relatórios"],
+      [ENTRADA_CADASTROS, "Cadastros"],
+    ];
+    for (const [caminho, esperado] of casos) expect(moduloAtivo(piloto, caminho), caminho).toBe(esperado);
   });
 
   it("subitem ativo é o mais específico, inclusive em tela de detalhe", () => {

@@ -6,8 +6,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
 import { OrgSwitcher } from "@/components/org-switcher";
+import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
+import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
+import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
 import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
-import { itemAtivo, subitemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
+import { moduloAtivo, subitemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
 import { limparTodosRascunhos } from "@/lib/rascunho-local";
 import { signOutAction } from "@/lib/supabase/actions";
 
@@ -20,12 +23,17 @@ import { signOutAction } from "@/lib/supabase/actions";
 // baixo para cima. Telas com botões fixos no rodapé marcam `data-modo-foco` e a
 // barra some enquanto elas estão abertas (Contagem e preenchimento do Garante).
 // Desktop (lg): menu fixo à esquerda, recolhível até ficar só com os ícones.
+// Módulos (24/10): cada módulo abre com cabeçalho e abas próprias
+// (`navegacao-v2/cabecalho-modulo.tsx`), tirados do mesmo menu; as `SubTabs`
+// antigas somem dentro desta estrutura (`navegacao-v2/contexto.tsx`).
 
 type Props = {
   children: React.ReactNode;
   items: ItemNavegacao[];
   /** Atalhos da barra inferior do celular, já filtrados por papel e flags. */
   atalhos: ItemNavegacao[];
+  /** Subtítulo do cabeçalho na página de entrada de cada módulo. */
+  unidadeNome: string;
   organizacaoAtual: string;
   organizacaoNome: string;
   organizacoes: { id: string; nome: string }[];
@@ -37,6 +45,7 @@ export function EstruturaAplicativoV2({
   children,
   items,
   atalhos,
+  unidadeNome,
   organizacaoAtual,
   organizacaoNome,
   organizacoes,
@@ -60,9 +69,12 @@ export function EstruturaAplicativoV2({
   const [arrasto, setArrasto] = useState(0);
   const inicioArrasto = useRef<number | null>(null);
 
-  const labelAtivo = itemAtivo(items, pathname);
+  // Módulo pelo subitem mais específico: "/estoque/setores" é de Cadastros, não do Estoque.
+  const labelAtivo = moduloAtivo(items, pathname);
   const hrefAtivo = subitemAtivo(items, pathname);
-  const atalhoAtivo = itemAtivo(atalhos, pathname);
+  // Atalho da barra = módulo do menu: acende o do módulo da tela atual.
+  const atalhoAtivo = atalhos.some((atalho) => atalho.label === labelAtivo) ? labelAtivo : undefined;
+  const cabecalho = cabecalhoDoModulo(items, pathname);
   const filtrando = normalizarBusca(filtro) !== "";
   const visiveis = filtrarMenus(items, filtro);
   const variasOrganizacoes = organizacoes.length > 1;
@@ -410,7 +422,10 @@ export function EstruturaAplicativoV2({
           tabIndex={-1}
           className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 lg:py-6"
         >
-          {children}
+          <NavegacaoV2Provider>
+            {cabecalho && <CabecalhoModuloV2 cabecalho={cabecalho} unidadeNome={unidadeNome} />}
+            {children}
+          </NavegacaoV2Provider>
         </main>
         <footer className="border-t border-cinza-claro bg-branco px-3 py-4 text-center text-xs text-cinza-medio">
           Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
