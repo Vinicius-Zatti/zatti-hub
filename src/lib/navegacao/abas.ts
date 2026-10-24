@@ -1,9 +1,9 @@
 import { moduloAtivo, subitemAtivo, type ItemNavegacao } from "./tipos";
 
 // Navegação V2 (24/10/2026): cabeçalho de módulo e abas do piloto. Uma fonte
-// só: as abas de cada módulo são os subitens que o menu do piloto já mostra
-// para a pessoa (`montarMenuRestaurantePiloto`), então papel e flags valem
-// igual no menu, na barra inferior e nas abas.
+// só: as abas de cada módulo saem das seções e subitens que o menu do piloto
+// já mostra para a pessoa (`montarMenuRestaurantePiloto`), então papel e flags
+// valem igual no menu, na barra inferior e nas abas.
 
 export type AbaModulo = { label: string; href: string };
 
@@ -12,9 +12,16 @@ export type CabecalhoModulo = {
   modulo: string;
   /** Página de entrada do módulo: destino da seta de voltar. */
   entrada: string;
-  /** Telas irmãs do módulo, na ordem do menu (vazio = módulo de uma tela só). */
+  /** Nível 1: as seções do módulo, cada uma abrindo na primeira tela dela.
+   * Módulo de uma seção só lista as telas direto (sem nível 2). Vazio =
+   * módulo de uma tela só. */
   abas: AbaModulo[];
+  /** Href da aba de nível 1 acesa. */
   abaAtiva: string | undefined;
+  /** Nível 2: as telas da seção atual, só quando ela tem mais de uma. */
+  subAbas: AbaModulo[];
+  /** Href da tela acesa no nível 2. */
+  subAbaAtiva: string | undefined;
   /** Na própria página de entrada não há seta de voltar. */
   naEntrada: boolean;
   titulo: string;
@@ -23,22 +30,38 @@ export type CabecalhoModulo = {
 /** Módulos sem cabeçalho: o Início já abre com a saudação dele. */
 const SEM_CABECALHO = new Set(["Início"]);
 
+/**
+ * Abas em dois níveis (pedido de Vinícius, 24/10/2026: uma aba por tela
+ * deixava Estoque com ~9 e Financeiro com ~11). Nível 1 = seções do menu, na
+ * ordem do menu; nível 2 = telas da seção atual, só quando ela tem mais de uma.
+ * Módulo com uma seção só (Vendas, Cardápio, Relatórios) mostra as telas no
+ * nível 1, como antes: uma aba única com o nome da seção não diria nada.
+ */
 export function cabecalhoDoModulo(items: ItemNavegacao[], pathname: string): CabecalhoModulo | null {
   const label = moduloAtivo(items, pathname);
   const modulo = items.find((item) => item.label === label && !item.disabled);
   if (!modulo || SEM_CABECALHO.has(modulo.label)) return null;
 
-  const abas = (modulo.sections ?? []).flatMap((secao) => secao.items.map(({ label, href }) => ({ label, href })));
-  const abaAtiva = abas.length > 0 ? subitemAtivo([modulo], pathname) : undefined;
+  const secoes = (modulo.sections ?? []).filter((secao) => secao.items.length > 0);
+  const telas = secoes.flatMap((secao) => secao.items.map(({ label, href }) => ({ label, href })));
+  const telaAtiva = telas.length > 0 ? subitemAtivo([modulo], pathname) : undefined;
   const naEntrada = pathname === modulo.href;
-  const tituloAba = abas.find((aba) => aba.href === abaAtiva)?.label;
+  const tituloTela = telas.find((tela) => tela.href === telaAtiva)?.label;
+  const titulo = naEntrada || !tituloTela ? modulo.label : tituloTela;
+  const base = { modulo: modulo.label, entrada: modulo.href, naEntrada, titulo };
+
+  if (secoes.length <= 1) {
+    return { ...base, abas: telas, abaAtiva: telaAtiva, subAbas: [], subAbaAtiva: undefined };
+  }
+
+  const secaoAtual = secoes.find((secao) => secao.items.some((item) => item.href === telaAtiva));
+  const comVarias = secaoAtual && secaoAtual.items.length > 1;
   return {
-    modulo: modulo.label,
-    entrada: modulo.href,
-    abas,
-    abaAtiva,
-    naEntrada,
-    titulo: naEntrada || !tituloAba ? modulo.label : tituloAba,
+    ...base,
+    abas: secoes.map((secao) => ({ label: secao.label, href: secao.items[0].href })),
+    abaAtiva: secaoAtual?.items[0].href,
+    subAbas: comVarias ? secaoAtual.items.map(({ label, href }) => ({ label, href })) : [],
+    subAbaAtiva: comVarias ? telaAtiva : undefined,
   };
 }
 

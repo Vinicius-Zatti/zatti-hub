@@ -24,14 +24,17 @@ function todosOsContextos(): ContextoMenuRestaurante[] {
 const gestao = montarMenuRestaurantePiloto(tudoLigado);
 const operacional = montarMenuRestaurantePiloto({ ...tudoLigado, podeGerir: false });
 
+const rotulos = (abas: { label: string }[] | undefined) => abas?.map((a) => a.label);
+
 describe("cabeçalho do módulo", () => {
-  it("na entrada: título do módulo, sem seta de voltar", () => {
+  it("na entrada: título do módulo, sem seta de voltar e sem nível 2", () => {
     expect(cabecalhoDoModulo(gestao, "/estoque/visao-geral")).toMatchObject({
       modulo: "Estoque",
       entrada: "/estoque/visao-geral",
       naEntrada: true,
       titulo: "Estoque",
       abaAtiva: "/estoque/visao-geral",
+      subAbas: [],
     });
   });
 
@@ -42,6 +45,7 @@ describe("cabeçalho do módulo", () => {
       naEntrada: false,
       titulo: "Perdas",
       abaAtiva: "/estoque/contagem/perdas",
+      subAbas: [],
     });
   });
 
@@ -52,12 +56,16 @@ describe("cabeçalho do módulo", () => {
       titulo: "Fichas técnicas",
       abaAtiva: "/fichas-tecnicas",
     });
-    expect(cabecalhoDoModulo(gestao, "/garante/execucao/abc")).toMatchObject({ modulo: "Garante", abaAtiva: "/garante" });
+    expect(cabecalhoDoModulo(gestao, "/garante/execucao/abc")).toMatchObject({
+      modulo: "Garante",
+      abaAtiva: "/garante",
+      subAbaAtiva: "/garante",
+    });
   });
 
   it("Início não tem cabeçalho; Equipe tem título e nenhuma aba", () => {
     expect(cabecalhoDoModulo(gestao, "/painel")).toBeNull();
-    expect(cabecalhoDoModulo(gestao, "/equipe")).toMatchObject({ modulo: "Equipe", abas: [], naEntrada: true });
+    expect(cabecalhoDoModulo(gestao, "/equipe")).toMatchObject({ modulo: "Equipe", abas: [], subAbas: [], naEntrada: true });
   });
 
   it("Contas a pagar e receber é do Financeiro; Contas financeiras é de Cadastros", () => {
@@ -66,37 +74,143 @@ describe("cabeçalho do módulo", () => {
     expect(cabecalhoDoModulo(gestao, "/financeiro-gerencial/dre")?.modulo).toBe("Relatórios");
   });
 
-  it("abas do Estoque respeitam o papel", () => {
-    expect(cabecalhoDoModulo(operacional, "/estoque/visao-geral")?.abas.map((a) => a.label)).toEqual([
-      "Visão geral",
-      "Fazer contagem",
-      "Conferir contagens",
-      "Movimentações",
-      "Perdas",
-      "Pedidos feitos",
-      "Produtos",
-    ]);
-  });
-
   it("módulo 'em breve' não abre cabeçalho", () => {
     const semGarante = montarMenuRestaurantePiloto({ ...tudoLigado, garanteHabilitado: false });
     expect(cabecalhoDoModulo(semGarante, "/garante")).toBeNull();
   });
 });
 
+describe("abas em dois níveis (24/10)", () => {
+  it("Estoque: nível 1 são as seções, na ordem de uso", () => {
+    expect(rotulos(cabecalhoDoModulo(gestao, "/estoque/visao-geral")?.abas)).toEqual([
+      "Visão geral",
+      "Produtos",
+      "Contagem",
+      "Pedidos",
+      "CMV Real",
+      "Perdas",
+      "Movimentações",
+    ]);
+  });
+
+  it("seção com várias telas abre o nível 2 e a aba da seção leva à primeira tela", () => {
+    const conferir = cabecalhoDoModulo(gestao, "/estoque/contagem/visualizacao");
+    expect(conferir).toMatchObject({ abaAtiva: "/estoque/contagem", subAbaAtiva: "/estoque/contagem/visualizacao" });
+    expect(conferir?.abas.find((a) => a.label === "Contagem")?.href).toBe("/estoque/contagem");
+    expect(rotulos(conferir?.subAbas)).toEqual(["Fazer contagem", "Conferir contagens"]);
+
+    const feitos = cabecalhoDoModulo(gestao, "/estoque/pedidos/feitos");
+    expect(feitos).toMatchObject({ abaAtiva: "/estoque/pedidos", subAbaAtiva: "/estoque/pedidos/feitos", titulo: "Pedidos feitos" });
+    expect(rotulos(feitos?.subAbas)).toEqual(["Criar cotação", "Editor de espelhos", "Pedidos feitos"]);
+  });
+
+  it("seção de uma tela só não tem nível 2", () => {
+    for (const tela of ["/estoque/produtos", "/estoque/cmv", "/estoque/contagem/movimentacoes"]) {
+      expect(cabecalhoDoModulo(gestao, tela)?.subAbas, tela).toEqual([]);
+    }
+  });
+
+  it("operacional: sem CMV Real e Pedidos só com Pedidos feitos (sem nível 2)", () => {
+    expect(rotulos(cabecalhoDoModulo(operacional, "/estoque/visao-geral")?.abas)).toEqual([
+      "Visão geral",
+      "Produtos",
+      "Contagem",
+      "Pedidos",
+      "Perdas",
+      "Movimentações",
+    ]);
+    const pedidos = cabecalhoDoModulo(operacional, "/estoque/pedidos/feitos");
+    expect(pedidos?.abas.find((a) => a.label === "Pedidos")?.href).toBe("/estoque/pedidos/feitos");
+    expect(pedidos?.subAbas).toEqual([]);
+  });
+
+  it("Financeiro usa as seções do menu, na mesma ordem", () => {
+    expect(rotulos(cabecalhoDoModulo(gestao, "/financeiro-gerencial/visao-geral")?.abas)).toEqual([
+      "Dia a dia",
+      "Lançamentos",
+      "Fechamento do mês",
+    ]);
+    expect(rotulos(cabecalhoDoModulo(operacional, "/financeiro-gerencial/visao-geral")?.abas)).toEqual([
+      "Dia a dia",
+      "Lançamentos",
+    ]);
+    expect(cabecalhoDoModulo(gestao, "/financeiro-gerencial/lancamentos/despesas")).toMatchObject({
+      abaAtiva: "/financeiro-gerencial/lancamentos/receitas",
+      subAbaAtiva: "/financeiro-gerencial/lancamentos/despesas",
+    });
+  });
+
+  it("Garante: Cumprir e Gestão para a gestão; operacional (uma seção) vê as telas direto", () => {
+    expect(rotulos(cabecalhoDoModulo(gestao, "/garante")?.abas)).toEqual(["Cumprir", "Gestão"]);
+    expect(cabecalhoDoModulo(operacional, "/garante")).toMatchObject({
+      abas: [
+        { label: "Hoje", href: "/garante" },
+        { label: "Planos de ação", href: "/garante/planos" },
+      ],
+      abaAtiva: "/garante",
+      subAbas: [],
+    });
+  });
+
+  it("módulo de uma seção só (Vendas, Cardápio, Relatórios) mostra as telas no nível 1", () => {
+    expect(rotulos(cabecalhoDoModulo(gestao, "/financeiro/consolidado")?.abas)).toEqual([
+      "Novo lançamento",
+      "Histórico",
+      "Dashboard",
+    ]);
+    expect(cabecalhoDoModulo(gestao, "/fichas-tecnicas")?.subAbas).toEqual([]);
+    expect(cabecalhoDoModulo(gestao, "/financeiro-gerencial/dre")).toMatchObject({
+      abaAtiva: "/financeiro-gerencial/dre",
+      subAbas: [],
+    });
+  });
+
+  it("Cadastros: grupos no nível 1; Fornecedores abre o nível 2", () => {
+    expect(rotulos(cabecalhoDoModulo(gestao, "/cadastros")?.abas)).toEqual([
+      "Todos os cadastros",
+      "Produtos",
+      "Setores",
+      "Fornecedores",
+      "Fichas técnicas",
+      "Financeiro",
+    ]);
+    expect(rotulos(cabecalhoDoModulo(gestao, "/estoque/fornecedores/edicao")?.subAbas)).toEqual([
+      "Consultar fornecedores",
+      "Editar fornecedores",
+    ]);
+  });
+});
+
 describe("abas saem do menu (uma fonte só), em toda combinação de papel e flag", () => {
-  it("as abas de cada módulo são os subitens dele e todas são destinos visíveis", () => {
+  it("cada tela do módulo acende sua aba; nada fora do que o menu mostra", () => {
     for (const ctx of todosOsContextos()) {
       const menu = montarMenuRestaurantePiloto(ctx);
       const visiveis = destinosVisiveis(menu);
       for (const modulo of menu) {
         if (modulo.disabled || !modulo.sections) continue;
-        const cab = cabecalhoDoModulo(menu, modulo.href);
-        const esperado = modulo.sections.flatMap((s) => s.items.map((i) => i.href));
-        expect(cab?.modulo, `${modulo.label} ${JSON.stringify(ctx)}`).toBe(modulo.label);
-        expect(cab?.abas.map((a) => a.href)).toEqual(esperado);
-        expect(cab?.naEntrada).toBe(true);
-        for (const aba of cab?.abas ?? []) expect(visiveis.has(aba.href)).toBe(true);
+        const secoes = modulo.sections.filter((s) => s.items.length > 0);
+        const entrada = cabecalhoDoModulo(menu, modulo.href);
+        const contexto = `${modulo.label} ${JSON.stringify(ctx)}`;
+        expect(entrada?.modulo, contexto).toBe(modulo.label);
+        expect(entrada?.naEntrada).toBe(true);
+        // Nível 1: uma aba por seção (ou as telas, quando só há uma seção).
+        const esperadoNivel1 =
+          secoes.length > 1 ? secoes.map((s) => s.items[0].href) : secoes.flatMap((s) => s.items.map((i) => i.href));
+        expect(entrada?.abas.map((a) => a.href), contexto).toEqual(esperadoNivel1);
+        for (const secao of secoes) {
+          for (const tela of secao.items) {
+            const cab = cabecalhoDoModulo(menu, tela.href);
+            expect(visiveis.has(tela.href)).toBe(true);
+            if (secoes.length > 1) {
+              expect(cab?.abaAtiva, `${tela.href} ${contexto}`).toBe(secao.items[0].href);
+              expect(cab?.subAbas.map((a) => a.href)).toEqual(secao.items.length > 1 ? secao.items.map((i) => i.href) : []);
+              expect(cab?.subAbaAtiva).toBe(secao.items.length > 1 ? tela.href : undefined);
+            } else {
+              expect(cab?.abaAtiva, `${tela.href} ${contexto}`).toBe(tela.href);
+              expect(cab?.subAbas).toEqual([]);
+            }
+          }
+        }
       }
     }
   });

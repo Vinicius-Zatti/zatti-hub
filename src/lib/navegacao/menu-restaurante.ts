@@ -283,17 +283,18 @@ export const RELATORIOS_FINANCEIRO: readonly { label: string; href: string }[] =
 
 const CADASTROS_DO_FINANCEIRO = new Set(["/financeiro-gerencial/contas", "/financeiro-gerencial/categorias"]);
 
+// Ordem pelo uso real dos clientes (Vinícius, 24/10/2026): Visão geral |
+// Produtos | Contagem | Pedidos | CMV Real | Perdas | Movimentações. A mesma
+// ordem vale na sanfona, no filtro do menu e nas abas de dois níveis.
 function secoesEstoquePiloto({ podeGerir }: ContextoMenuRestaurante): SecaoNavegacao[] {
   return [
     { label: "Visão geral", items: [{ label: "Visão geral", href: ENTRADA_ESTOQUE }] },
+    { label: "Produtos", items: [{ label: "Produtos", href: "/estoque/produtos" }] },
     {
       label: "Contagem",
       items: [
         { label: "Fazer contagem", href: "/estoque/contagem" },
         { label: "Conferir contagens", href: "/estoque/contagem/visualizacao" },
-        // Já abertas a todos os papéis pelas abas atuais da Contagem (getAcessoAtual).
-        { label: "Movimentações", href: "/estoque/contagem/movimentacoes" },
-        { label: "Perdas", href: "/estoque/contagem/perdas" },
       ],
     },
     {
@@ -309,7 +310,9 @@ function secoesEstoquePiloto({ podeGerir }: ContextoMenuRestaurante): SecaoNaveg
       ],
     },
     ...(podeGerir ? [{ label: "CMV Real", items: [{ label: "CMV Real", href: "/estoque/cmv" }] }] : []),
-    { label: "Produtos", items: [{ label: "Produtos", href: "/estoque/produtos" }] },
+    // Já abertas a todos os papéis pelas abas atuais da Contagem (getAcessoAtual).
+    { label: "Perdas", items: [{ label: "Perdas", href: "/estoque/contagem/perdas" }] },
+    { label: "Movimentações", items: [{ label: "Movimentações", href: "/estoque/contagem/movimentacoes" }] },
   ];
 }
 

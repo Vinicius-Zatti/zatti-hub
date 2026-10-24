@@ -54,12 +54,12 @@ describe("filtrarMenus", () => {
   });
 
   it("várias palavras valem pelo caminho módulo > seção > item", () => {
+    // Perdas e Movimentações viraram seções próprias do Estoque (24/10).
     expect(hrefs(filtrarMenus(menu, "estoque contagem"))).toEqual([
       "/estoque/contagem",
       "/estoque/contagem/visualizacao",
-      "/estoque/contagem/movimentacoes",
-      "/estoque/contagem/perdas",
     ]);
+    expect(hrefs(filtrarMenus(menu, "estoque perdas"))).toEqual(["/estoque/contagem/perdas"]);
     expect(hrefs(filtrarMenus(menu, "produtos editar"))).toEqual(["/estoque/produtos/edicao"]);
   });
 

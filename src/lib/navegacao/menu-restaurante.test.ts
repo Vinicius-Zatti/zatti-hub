@@ -146,26 +146,28 @@ describe("estrutura de módulos do piloto (24/10)", () => {
     expect(ROTULO_CARDAPIO).toBe("Cardápio");
   });
 
-  it("Estoque: Visão geral, Contagem, Pedidos, CMV Real e Produtos (consulta)", () => {
+  it("Estoque na ordem de uso (24/10): Visão geral, Produtos, Contagem, Pedidos, CMV Real, Perdas, Movimentações", () => {
     expect(modulo("Estoque")?.href).toBe(ENTRADA_ESTOQUE);
     expect(modulo("Estoque")?.sections?.map((s) => s.label)).toEqual([
       "Visão geral",
+      "Produtos",
       "Contagem",
       "Pedidos",
       "CMV Real",
-      "Produtos",
+      "Perdas",
+      "Movimentações",
     ]);
     expect(hrefs("Estoque")).toEqual([
       ENTRADA_ESTOQUE,
+      "/estoque/produtos",
       "/estoque/contagem",
       "/estoque/contagem/visualizacao",
-      "/estoque/contagem/movimentacoes",
-      "/estoque/contagem/perdas",
       "/estoque/pedidos",
       "/estoque/pedidos/cotacoes",
       "/estoque/pedidos/feitos",
       "/estoque/cmv",
-      "/estoque/produtos",
+      "/estoque/contagem/perdas",
+      "/estoque/contagem/movimentacoes",
     ]);
   });
 
@@ -245,7 +247,14 @@ describe("estrutura de módulos do piloto (24/10)", () => {
       "Garante",
       "Relatórios",
     ]);
-    expect(operacional[1].sections?.map((s) => s.label)).toEqual(["Visão geral", "Contagem", "Pedidos", "Produtos"]);
+    expect(operacional[1].sections?.map((s) => s.label)).toEqual([
+      "Visão geral",
+      "Produtos",
+      "Contagem",
+      "Pedidos",
+      "Perdas",
+      "Movimentações",
+    ]);
   });
 });
 
