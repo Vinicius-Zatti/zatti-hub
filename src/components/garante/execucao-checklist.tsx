@@ -64,7 +64,7 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
     <div className="flex flex-col gap-4 pb-24" data-modo-foco={editavel ? "" : undefined}>
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-2xl font-bold text-azul-noite">{execucao.modeloNome}</h1>
+          <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">{execucao.modeloNome}</h1>
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ESTILO_SITUACAO[situacao].classe}`}>
             {ESTILO_SITUACAO[situacao].texto}
           </span>

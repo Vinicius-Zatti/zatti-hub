@@ -420,6 +420,8 @@ export function EstruturaAplicativoV2({
         <main
           id="conteudo-principal"
           tabIndex={-1}
+          // Com cabeçalho de módulo, o h1 repetido da página some (globals.css).
+          data-cabecalho-modulo={cabecalho ? "" : undefined}
           className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 lg:py-6"
         >
           <NavegacaoV2Provider>

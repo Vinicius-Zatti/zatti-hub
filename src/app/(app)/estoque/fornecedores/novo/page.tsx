@@ -8,7 +8,7 @@ export default async function NovoFornecedorPage({
   const { erro } = await searchParams;
   return (
     <div className="mx-auto max-w-lg">
-      <h1 className="font-display text-2xl font-bold text-azul-noite">Novo fornecedor</h1>
+      <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">Novo fornecedor</h1>
       <p className="mt-1 text-xs text-cinza-medio">
         O código é gerado automaticamente. Nome Fantasia, Vendedor e WhatsApp são obrigatórios.
       </p>

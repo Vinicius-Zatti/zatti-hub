@@ -95,7 +95,7 @@ export function FichaTecnicaDetalhe({
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-azul-noite">{ficha.nome}</h1>
+          <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">{ficha.nome}</h1>
           <p className="text-sm text-cinza-medio">
             {ficha.sku} · {CAMADA_LABEL[ficha.camada]} · {ficha.categoriaNome} · {STATUS_LABEL[ficha.status]}
           </p>
