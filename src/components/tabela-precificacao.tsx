@@ -15,6 +15,7 @@ import {
 } from "@/app/(app)/fichas-tecnicas/actions";
 import { CLASSIFICACAO_TAG, calcularCmv, montarPrecosPorCanal } from "@/lib/fichas-tecnicas";
 import type { CanalVenda, FichaTecnicaResumo } from "@/lib/types";
+import { normalizarBusca } from "@/lib/busca";
 
 type Precos = {
   precoVenda: number | null;
@@ -154,10 +155,10 @@ export function TabelaPrecificacao({
   useEffect(() => () => desativar(), [desativar]);
 
   const filtradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     if (!termo) return fichas;
     return fichas.filter(
-      (f) => f.nome.toLowerCase().includes(termo) || f.sku.toLowerCase().includes(termo) || f.categoriaNome.toLowerCase().includes(termo),
+      (f) => normalizarBusca(f.nome).includes(termo) || normalizarBusca(f.sku).includes(termo) || normalizarBusca(f.categoriaNome).includes(termo),
     );
   }, [fichas, busca]);
 

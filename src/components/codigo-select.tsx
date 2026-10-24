@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { normalizarBusca } from "@/lib/busca";
 
 export type OpcaoCodigo = { codigo: string; descricao: string };
 
@@ -43,9 +44,9 @@ export function CodigoSelect({
 
   const opcoesFiltradas = busca
     ? opcoes.filter((o) => {
-        const alvo = termo.trim().toLowerCase();
+        const alvo = normalizarBusca(termo);
         if (!alvo) return true;
-        return o.codigo.toLowerCase().includes(alvo) || o.descricao.toLowerCase().includes(alvo);
+        return normalizarBusca(o.codigo).includes(alvo) || normalizarBusca(o.descricao).includes(alvo);
       })
     : opcoes;
 

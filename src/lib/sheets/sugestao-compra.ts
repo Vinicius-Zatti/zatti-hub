@@ -9,11 +9,33 @@ import {
   type EscopoSetor,
 } from "@/lib/contagem/setor";
 import { consolidarVariasDatas } from "@/lib/contagem/varias-datas";
-import type { SugestaoCompra } from "@/lib/types";
+import type { Produto, SugestaoCompra } from "@/lib/types";
 
 /** Etiqueta do item sem estoque necessário da semana: ele aparece na cotação,
  * mas sem sugestão de compra, porque não há ponto de reposição pra comparar. */
 export const ALERTA_SEM_PONTO_REPOSICAO = "Sem ponto de reposição";
+
+const COMPRAR_EMERGENCIAL = "Comprar emergencial";
+const FALTA_PRECO = "Falta preço no cadastro";
+
+/** Etiqueta do item na cotação. Sem ponto de reposição, a etiqueta nova não
+ * esconde as outras pendências (parecer do Codex, 24/10/2026): emergência
+ * (abaixo do mínimo) fica em destaque no lugar dela e a falta de preço vem
+ * junto, porque o subtotal ignora item sem preço. `calcularAlerta` olha preço
+ * antes do mínimo, por isso o mínimo é conferido aqui de novo. */
+export function alertaDaCotacao(
+  produto: Pick<Produto, "estoqueNecessarioSemana" | "estoqueMinimo" | "precoUnitario">,
+  estoqueAtual: number | null,
+  alertaContagem: string
+): string {
+  if (produto.estoqueNecessarioSemana !== null) return alertaContagem;
+  const emergencial =
+    alertaContagem === COMPRAR_EMERGENCIAL ||
+    (estoqueAtual !== null && produto.estoqueMinimo !== null && estoqueAtual < produto.estoqueMinimo);
+  const partes = [emergencial ? COMPRAR_EMERGENCIAL : ALERTA_SEM_PONTO_REPOSICAO];
+  if (produto.precoUnitario === null) partes.push(FALTA_PRECO);
+  return partes.join(" · ");
+}
 
 function parseDataBr(d: string): number {
   // "DD/MM/AAAA" -> timestamp, pra achar/ordenar contagens por data
@@ -158,11 +180,7 @@ export async function gerarPedido(
       // mostrando o alerta histórico gravado - só Pedidos/Criar Cotação usa
       // o valor atual, porque é sobre decidir compra agora, não sobre o
       // registro daquele dia.
-      // Comprar emergencial (mínimo cadastrado) continua valendo acima da etiqueta.
-      alerta:
-        necessario === null && alertaContagem !== "Comprar emergencial"
-          ? ALERTA_SEM_PONTO_REPOSICAO
-          : alertaContagem,
+      alerta: alertaDaCotacao(produto, estoqueAtual, alertaContagem),
       setoresQueNaoContaram: incompletosPorSku.get(produto.sku) ?? [],
       datasContagem: consolidado.datasPorSku.get(produto.sku) ?? [],
     });

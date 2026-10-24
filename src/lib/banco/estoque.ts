@@ -155,6 +155,40 @@ export async function salvarProdutosBanco(
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
 }
 
+/** Liga o fornecedor ao produto numa transação com a linha travada (ver
+ * 20261024120000_vincular_fornecedor_produto.sql): duas confirmações ao mesmo
+ * tempo nunca escolhem a mesma vaga e nada além da vaga é regravado. Devolve
+ * null se a função ainda não existe no banco (migration não aplicada), pra o
+ * chamador cair no caminho antigo. */
+export async function vincularFornecedorProdutoBanco(
+  unidadeId: string,
+  sku: string,
+  fornecedor: string,
+): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("vincular_fornecedor_produto", {
+    p_unidade_id: unidadeId,
+    p_sku: sku,
+    p_fornecedor: fornecedor,
+  });
+  if (error?.code === "PGRST202") return null;
+  if (error) throw new Error(`Não foi possível ligar o fornecedor ao produto: ${error.message}`);
+  return String(data);
+}
+
+/** Atualiza só o preço do produto, sem regravar o resto da linha (um vínculo
+ * de fornecedor gravado no meio não se perde). */
+export async function atualizarPrecoProdutoBanco(unidadeId: string, sku: string, preco: number): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("produtos")
+    .update({ preco_unitario: preco, atualizado_em: new Date().toISOString() })
+    .eq("unidade_id", unidadeId)
+    .eq("sku", sku);
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
+  if (error) throw new Error(`Não foi possível salvar o preço do produto: ${error.message}`);
+}
+
 /** Só cria: SKU que já existe na unidade é recusado pela unicidade
  * (unidade_id, sku) do banco, nunca sobrescrito - vale mesmo com duas
  * criações chegando ao mesmo tempo. */

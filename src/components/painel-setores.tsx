@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import type { Produto, Setor } from "@/lib/types";
 import { nomeGrupo } from "@/lib/grupos";
 import { designarSetoresAction, salvarSetorAction } from "@/app/(app)/estoque/setores/actions";
+import { normalizarBusca } from "@/lib/busca";
 
 type Designacoes = Record<string, string[]>;
 
@@ -34,7 +35,7 @@ export function PainelSetores({
   );
 
   const visiveis = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     return produtos.filter((produto) => {
       const atuais = mapa[produto.sku] ?? [];
       if (filtroSetor === "sem" && atuais.length > 0) return false;
@@ -43,7 +44,7 @@ export function PainelSetores({
       }
       if (!termo) return true;
       return (
-        produto.nome.toLowerCase().includes(termo) || produto.sku.toLowerCase().includes(termo)
+        normalizarBusca(produto.nome).includes(termo) || normalizarBusca(produto.sku).includes(termo)
       );
     });
   }, [produtos, mapa, busca, filtroSetor]);

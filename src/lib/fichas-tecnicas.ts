@@ -4,6 +4,7 @@ import type {
   ClassificacaoMargem,
   ComponenteFicha,
   ConfiguracaoFinanceira,
+  CustoComponenteFicha,
   CustoFicha,
   EtapaFicha,
   FichaTecnicaResumo,
@@ -36,6 +37,31 @@ export const GRUPOS_FORA_DE_FICHA = new Set(["LIM", "OPE"]);
  * que sai em ponto e sem casa fixa (bug real: "0.9" em vez de "0,900"). */
 export function formatarQuantidade(valor: number): string {
   return valor.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+function brl(valor: number): string {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function numero(valor: number): string {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
+}
+
+/** Explicação do custo de um componente para o "i" da tela da ficha: de onde
+ * sai o preço por unidade e a conta até o total. */
+export function explicacaoCustoComponente(custo: CustoComponenteFicha, quantidade: number, unidade: string): string {
+  if (custo.custoUnitario === null || custo.custoTotal === null) {
+    return "Sem preço no Cadastro: este item ainda não entra no custo da ficha.";
+  }
+  const total = `${brl(custo.custoUnitario)}/${unidade} × ${formatarQuantidade(quantidade)} ${unidade} = ${brl(custo.custoTotal)}.`;
+  if (custo.precoCadastro === null) {
+    return `Custo por ${unidade} da outra ficha (sub-receita). ${total}`;
+  }
+  const partes = [`Preço no Cadastro ${brl(custo.precoCadastro)}`];
+  if (custo.fatorUnidade !== null && custo.fatorUnidade !== 1) partes.push(`÷ fator de unidade ${numero(custo.fatorUnidade)}`);
+  if (custo.fatorCorrecao !== null && custo.fatorCorrecao !== 1) partes.push(`× fator de correção ${numero(custo.fatorCorrecao)}`);
+  const porUnidade = partes.length > 1 ? `${partes.join(" ")} = ${brl(custo.custoUnitario)}/${unidade}. ` : "";
+  return `${porUnidade}${total}`;
 }
 
 export type GrupoFichasPorCategoria = {
