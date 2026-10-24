@@ -89,7 +89,7 @@ export function PedidoCompras({
   const [editando, setEditando] = useState<Record<string, string>>({});
   const [confirmando, setConfirmando] = useState<Record<string, boolean>>({});
   const [erroConfirmar, setErroConfirmar] = useState<Record<string, string>>({});
-  const agendarSincronizacao = useSincronizarCotacao();
+  const { agendar: agendarSincronizacao } = useSincronizarCotacao();
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
@@ -502,7 +502,7 @@ function TabelaItens({
                     {item.alerta && (
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          item.alerta === "Comprar emergencial"
+                          item.alerta.startsWith("Comprar emergencial")
                             ? "bg-vermelho/10 text-vermelho"
                             : "bg-ambar/10 text-ambar"
                         }`}

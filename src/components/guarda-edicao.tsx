@@ -11,6 +11,9 @@ type GuardaEdicaoContextType = {
    * assim (comportamento de sempre). */
   ativar: (mensagem?: string, aoSalvar?: () => Promise<boolean>) => void;
   desativar: () => void;
+  /** Navegação feita por código (router.push), que o clique em link não
+   * pega: com a guarda ativa abre o mesmo aviso; sem ela, navega direto. */
+  navegar: (href: string) => void;
 };
 
 const GuardaEdicaoContext = createContext<GuardaEdicaoContextType | null>(null);
@@ -49,6 +52,20 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
     ativoRef.current = false;
     aoSalvarRef.current = null;
   }, []);
+
+  const navegar = useCallback(
+    (href: string) => {
+      if (!ativoRef.current) {
+        router.push(href);
+        return;
+      }
+      setMensagem(mensagemRef.current);
+      setTemSalvar(aoSalvarRef.current !== null);
+      setErroSalvar(null);
+      setHrefPendente(href);
+    },
+    [router]
+  );
 
   useEffect(() => {
     function aoClicar(e: MouseEvent) {
@@ -116,7 +133,7 @@ export function GuardaEdicaoProvider({ children }: { children: React.ReactNode }
   }
 
   return (
-    <GuardaEdicaoContext.Provider value={{ ativar, desativar }}>
+    <GuardaEdicaoContext.Provider value={{ ativar, desativar, navegar }}>
       {children}
       {hrefPendente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-azul-noite/70 p-4">

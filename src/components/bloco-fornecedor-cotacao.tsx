@@ -314,7 +314,7 @@ export function BlocoFornecedorCotacao({
                     {item.alerta && (
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          item.alerta === "Comprar emergencial"
+                          item.alerta.startsWith("Comprar emergencial")
                             ? "bg-vermelho/10 text-vermelho"
                             : "bg-ambar/10 text-ambar"
                         }`}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
@@ -24,7 +24,7 @@ import {
 } from "@/lib/canvas-tabela";
 import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
-import { nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
+import { SEM_FORNECEDOR, nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -83,12 +83,16 @@ export function EditorEspelhos({
   /** Setores que ainda não fecharam a contagem dessa data. */
   setoresPendentes?: string[];
 }) {
-  const router = useRouter();
   const pathname = usePathname();
 
   // Mesma chave de Criar Cotação: várias contagens separadas por vírgula.
+  // Trocar a contagem remonta o editor (nova `key`): com quantidade ou preço
+  // em edição, passa pelo mesmo aviso da guarda (parecer do Codex, 24/10/2026),
+  // e o que já foi confirmado sincroniza em paralelo (a contagem nova já vem
+  // fresca do banco; não espera o recálculo da atual).
   function trocarDatas(novasDatas: string[]) {
-    router.push(`${pathname}?data=${encodeURIComponent(novasDatas.join(","))}`);
+    void sincronizarAgora();
+    navegarComGuarda(`${pathname}?data=${encodeURIComponent(novasDatas.join(","))}`);
   }
 
   // Item do Cadastro trazido pelo "+ Adicionar item" pra um fornecedor que não
@@ -194,7 +198,7 @@ export function EditorEspelhos({
   // A tela não recarrega depois de confirmar (fase 3 de velocidade), então o
   // vínculo gravado fica anotado aqui pra não reenviar a cada clique.
   const [vinculados, setVinculados] = useState<Record<string, boolean>>({});
-  const agendarSincronizacao = useSincronizarCotacao();
+  const { agendar: agendarSincronizacao, sincronizarAgora } = useSincronizarCotacao();
   function semVinculo(fornecedor: string, item: SugestaoCompra): boolean {
     if (vinculados[chave(fornecedor, item.sku)]) return false;
     return !item.fornecedores.some((f) => nomeFornecedorCanonico(f, [fornecedor]) === fornecedor);
@@ -297,7 +301,7 @@ export function EditorEspelhos({
   // pra digitar, o valor só existe aqui na memória. Sem aviso nenhum antes
   // desta mudança: sair ou atualizar a página com um campo aberto perdia o
   // que tava sendo digitado, sem avisar nada.
-  const { ativar: ativarGuarda, desativar: desativarGuarda } = useGuardaEdicao();
+  const { ativar: ativarGuarda, desativar: desativarGuarda, navegar: navegarComGuarda } = useGuardaEdicao();
   const editandoAlgumCampo = Object.keys(editandoQtd).length > 0 || Object.keys(editandoPreco).length > 0;
   useEffect(() => {
     if (editandoAlgumCampo) {
@@ -853,6 +857,11 @@ export function EditorEspelhos({
                             {nomeExibido}
                             {semEmbalagem && (
                               <span className="ml-1 text-[10px] font-bold">(cadastro incompleto)</span>
+                            )}
+                            {fornecedor !== SEM_FORNECEDOR && semVinculo(fornecedor, item) && (
+                              <span className="block text-[10px] font-normal text-cinza-medio">
+                                Ao confirmar, este fornecedor fica no Cadastro para as próximas cotações
+                              </span>
                             )}
                           </td>
                           {semEmbalagem ? (
