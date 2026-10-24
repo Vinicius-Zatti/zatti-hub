@@ -299,6 +299,8 @@ export async function salvarConversaoProdutoAction(input: {
       dadosNovos: entrada,
     });
 
+    // Fator de correção ou de unidade muda o custo do pré-preparo (piloto).
+    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
     revalidatePath("/fichas-tecnicas/conversoes");
     return { ok: true };
   } catch (err) {
@@ -327,6 +329,8 @@ export async function salvarConversoesProdutoAction(
       })),
     );
 
+    // Fator de correção ou de unidade muda o custo do pré-preparo (piloto).
+    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
     revalidatePath("/fichas-tecnicas/conversoes");
     return { ok: true };
   } catch (err) {
