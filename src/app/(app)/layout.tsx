@@ -2,6 +2,7 @@ import { EstruturaAplicativo } from "@/components/estrutura-aplicativo";
 import { EstruturaAplicativoV2 } from "@/components/estrutura-aplicativo-v2";
 import type { ItemNavegacao } from "@/lib/navegacao/tipos";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { escolherAtalhos } from "@/lib/navegacao/atalhos";
 import {
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
@@ -111,25 +112,33 @@ export default async function AppLayout({
   const itensRestaurante = navegacaoV2
     ? montarMenuRestaurantePiloto(contextoMenu)
     : montarMenuRestaurante(contextoMenu);
-  const Estrutura = navegacaoV2 ? EstruturaAplicativoV2 : EstruturaAplicativo;
+  const propsEstrutura = {
+    items: acesso.areaInterna ? itensAreaInterna : itensRestaurante,
+    organizacaoAtual: acesso.organizacaoId,
+    organizacaoNome: acesso.organizacaoNome,
+    organizacoes: acesso.organizacoesDisponiveis,
+    usuarioEmail: acesso.usuarioEmail,
+    usuarioNome: acesso.usuarioNome,
+  };
+  const conteudo = (
+    // Nome da unidade para a mensagem de suporte do cartão de erro.
+    <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
+      {faixa ? <FaixaAssinatura faixa={faixa} link={assinatura?.link ?? null} /> : null}
+      {children}
+    </UnidadeSuporteProvider>
+  );
 
   return (
     <GuardaContagemProvider>
       <GuardaEdicaoProvider>
-        <Estrutura
-          items={acesso.areaInterna ? itensAreaInterna : itensRestaurante}
-          organizacaoAtual={acesso.organizacaoId}
-          organizacaoNome={acesso.organizacaoNome}
-          organizacoes={acesso.organizacoesDisponiveis}
-          usuarioEmail={acesso.usuarioEmail}
-          usuarioNome={acesso.usuarioNome}
-        >
-          {/* Nome da unidade para a mensagem de suporte do cartão de erro. */}
-          <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
-            {faixa ? <FaixaAssinatura faixa={faixa} link={assinatura?.link ?? null} /> : null}
-            {children}
-          </UnidadeSuporteProvider>
-        </Estrutura>
+        {navegacaoV2 ? (
+          // Barra inferior do celular: atalhos tirados do mesmo menu (papel e flags iguais).
+          <EstruturaAplicativoV2 {...propsEstrutura} atalhos={escolherAtalhos(itensRestaurante, podeGerir)}>
+            {conteudo}
+          </EstruturaAplicativoV2>
+        ) : (
+          <EstruturaAplicativo {...propsEstrutura}>{conteudo}</EstruturaAplicativo>
+        )}
       </GuardaEdicaoProvider>
     </GuardaContagemProvider>
   );

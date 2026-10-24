@@ -60,7 +60,8 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
 
 
   return (
-    <div className="flex flex-col gap-4 pb-24">
+    // Preenchendo (botão fixo no rodapé): `data-modo-foco` esconde a barra inferior da Navegação V2.
+    <div className="flex flex-col gap-4 pb-24" data-modo-foco={editavel ? "" : undefined}>
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-display text-2xl font-bold text-azul-noite">{execucao.modeloNome}</h1>

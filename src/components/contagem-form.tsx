@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import type { Produto } from "@/lib/types";
 import {
   abrirContagemAction,
@@ -762,9 +763,18 @@ export function ContagemForm({
   }
 
   // ── TELA 3: INVENTÁRIO ───────────────────────────────────────────────
+  // `data-modo-foco`: a barra inferior da Navegação V2 some, o rodapé fixo é desta tela.
   return (
-    <div className="pb-40">
+    <div className="pb-40" data-modo-foco>
       <div className="sticky top-0 z-10 -mx-3 rounded-t-lg bg-azul-noite px-3 py-3 sm:-mx-6 sm:px-6">
+        {/* Saída explícita só na Navegação V2 (`group/app`), onde o modo foco esconde a barra
+            inferior. O clique passa pela GuardaContagem, que avisa se houver contagem em andamento. */}
+        <Link
+          href="/painel"
+          className="mb-2 hidden items-center gap-1 text-xs font-semibold text-cinza-claro hover:text-branco [.group\/app_&]:inline-flex [.group\/app_&]:lg:hidden"
+        >
+          ← Sair da contagem
+        </Link>
         <div className="text-[9px] font-bold uppercase tracking-widest text-ambar">
           Zatti Consultoria · M.E.G.A.
         </div>
@@ -780,9 +790,11 @@ export function ContagemForm({
         </div>
       </div>
 
+      {/* Na Navegação V2 não há seta lateral no celular: lá o aviso só sugere girar o celular. */}
       <div className="mt-3 rounded-lg border border-ambar/40 bg-ambar/10 px-3 py-2.5 text-xs leading-relaxed text-cinza sm:hidden">
         <span className="font-bold text-azul-noite">Tela estreita?</span>{" "}
-        Recolha o menu pela seta lateral para ver melhor os nomes. Se preferir, gire o celular.
+        <span className="[.group\/app_&]:hidden">Recolha o menu pela seta lateral para ver melhor os nomes. Se preferir, gire o celular.</span>
+        <span className="hidden [.group\/app_&]:inline">Gire o celular para ver melhor os nomes.</span>
       </div>
 
       <div className="mt-2 flex flex-col gap-4">
