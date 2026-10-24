@@ -13,6 +13,7 @@ import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
+import { normalizarBusca } from "@/lib/busca";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -114,13 +115,13 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   });
 
   const filtrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     return fornecedoresLocais.filter((f) => {
       const atual = estado[f.codigo] ?? f;
       if (
         termo &&
-        !atual.nomeFantasia.toLowerCase().includes(termo) &&
-        !atual.nomeVendedor.toLowerCase().includes(termo)
+        !normalizarBusca(atual.nomeFantasia).includes(termo) &&
+        !normalizarBusca(atual.nomeVendedor).includes(termo)
       ) {
         return false;
       }

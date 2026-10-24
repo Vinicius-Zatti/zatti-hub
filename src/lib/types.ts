@@ -227,6 +227,20 @@ export type ComponenteFicha = {
   quantidade: number;
   ordem: number;
   observacoes: string;
+  /** Só na leitura da tela da ficha: de onde sai o custo deste componente,
+   * para quem olha achar o item com preço ou fator errado. */
+  custo?: CustoComponenteFicha;
+};
+
+/** Produto: preço do Cadastro ÷ fator de unidade × fator de correção.
+ * Sub-receita: custo por unidade da outra ficha (preço e fatores nulos).
+ * `custoUnitario` nulo = sem preço cadastrado. */
+export type CustoComponenteFicha = {
+  precoCadastro: number | null;
+  fatorUnidade: number | null;
+  fatorCorrecao: number | null;
+  custoUnitario: number | null;
+  custoTotal: number | null;
 };
 
 export type EtapaFicha = {

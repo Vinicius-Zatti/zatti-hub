@@ -24,6 +24,7 @@ import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
 import { ExcluirProdutoBotao } from "@/components/excluir-produto-botao";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { criarFilaSerial, incorporarNovosPorSku } from "@/lib/fila-serial";
+import { normalizarBusca } from "@/lib/busca";
 
 // Mensagem quando a chamada nem chega a responder (rede, servidor fora do ar).
 const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexão e tente de novo.";
@@ -315,10 +316,10 @@ function CadastroSection({
   });
 
   const filtrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     return produtos.filter((p) => {
       const atual = estado[p.sku] ?? p;
-      if (termo && !atual.nome.toLowerCase().includes(termo) && !atual.sku.toLowerCase().includes(termo)) {
+      if (termo && !normalizarBusca(atual.nome).includes(termo) && !normalizarBusca(atual.sku).includes(termo)) {
         return false;
       }
       if (filtroGrupo && atual.grupo !== filtroGrupo) return false;

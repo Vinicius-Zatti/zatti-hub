@@ -15,6 +15,7 @@ import type {
   CamadaFicha,
   CategoriaFicha,
   ComponenteFicha,
+  CustoComponenteFicha,
   ConfiguracaoFinanceira,
   CustoFicha,
   EtapaFicha,
@@ -367,11 +368,11 @@ export async function listarFichasTecnicas(
  * menos peso que o comprado - dimensão separada, se aplica mesmo sem trocar
  * de unidade). Sem conversão cadastrada, os dois fatores ficam em 1
  * (comportamento de hoje: preço do Cadastro direto). */
-export async function custosUnitariosProdutos(
+export async function precosProdutosFicha(
   supabase: SupabaseClient,
   unidadeId: string,
   skus: string[],
-): Promise<Map<string, number | null>> {
+): Promise<Map<string, PrecoProdutoFicha>> {
   const skusUnicos = Array.from(new Set(skus));
   if (skusUnicos.length === 0) return new Map();
   // Leitura completa e com erro propagado: sem as conversões o custo sairia
@@ -409,18 +410,34 @@ export async function custosUnitariosProdutos(
       fatorCorrecao: Number(c.fator_correcao),
     });
   }
-  const mapa = new Map<string, number | null>();
+  const mapa = new Map<string, PrecoProdutoFicha>();
   for (const p of produtosData) {
-    if (p.preco_unitario === null) {
-      mapa.set(p.sku, null);
-      continue;
-    }
     const conversao = conversaoPorSku.get(p.sku);
-    const fator = conversao?.fator ?? 1;
-    const fatorCorrecao = conversao?.fatorCorrecao ?? 1;
-    mapa.set(p.sku, (Number(p.preco_unitario) / fator) * fatorCorrecao);
+    mapa.set(p.sku, {
+      precoUnitario: p.preco_unitario === null ? null : Number(p.preco_unitario),
+      fator: conversao?.fator ?? 1,
+      fatorCorrecao: conversao?.fatorCorrecao ?? 1,
+    });
   }
   return mapa;
+}
+
+/** Preço do Cadastro e conversões de cada produto, sem a conta - a tela da
+ * ficha mostra as partes para explicar o custo de cada componente. */
+export type PrecoProdutoFicha = { precoUnitario: number | null; fator: number; fatorCorrecao: number };
+
+export function custoUnitarioDoPreco(p: PrecoProdutoFicha | undefined): number | null {
+  if (!p || p.precoUnitario === null) return null;
+  return (p.precoUnitario / p.fator) * p.fatorCorrecao;
+}
+
+export async function custosUnitariosProdutos(
+  supabase: SupabaseClient,
+  unidadeId: string,
+  skus: string[],
+): Promise<Map<string, number | null>> {
+  const detalhes = await precosProdutosFicha(supabase, unidadeId, skus);
+  return new Map(Array.from(detalhes, ([sku, p]) => [sku, custoUnitarioDoPreco(p)]));
 }
 
 const PROFUNDIDADE_MAXIMA_CUSTO = 20;
@@ -536,12 +553,39 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
   const produtoSkus = todosComponentesRows.map((c) => c.produto_sku).filter((sku): sku is string => sku !== null);
   const fichaIds = todosComponentesRows.map((c) => c.ficha_componente_id).filter((fid): fid is string => fid !== null);
 
-  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios] = await Promise.all([
+  const [nomesProdutos, nomesFichas, nomesCategorias, nomesUsuarios, precosProdutos, custosSubFichas] = await Promise.all([
     nomesProdutosPorSku(supabase, unidadeId, produtoSkus),
     nomesFichasPorId(supabase, unidadeId, fichaIds),
     nomesCategoriasPorId(supabase, unidadeId, [row.categoria_id]),
     nomesPorUserId(supabase, [row.criado_por, row.atualizado_por].filter(Boolean)),
+    precosProdutosFicha(supabase, unidadeId, produtoSkus),
+    Promise.all(
+      Array.from(new Set(fichaIds)).map(async (fid) => [fid, (await calcularCustoFicha(unidadeId, fid, 1)).custoPorUnidade] as const),
+    ).then((pares) => new Map(pares)),
   ]);
+
+  function custoDoComponente(c: ComponenteRow): CustoComponenteFicha {
+    const quantidade = Number(c.quantidade);
+    if (c.produto_sku) {
+      const preco = precosProdutos.get(c.produto_sku);
+      const custoUnitario = custoUnitarioDoPreco(preco);
+      return {
+        precoCadastro: preco?.precoUnitario ?? null,
+        fatorUnidade: preco?.fator ?? null,
+        fatorCorrecao: preco?.fatorCorrecao ?? null,
+        custoUnitario,
+        custoTotal: custoUnitario === null ? null : custoUnitario * quantidade,
+      };
+    }
+    const custoUnitario = custosSubFichas.get(c.ficha_componente_id ?? "") ?? null;
+    return {
+      precoCadastro: null,
+      fatorUnidade: null,
+      fatorCorrecao: null,
+      custoUnitario,
+      custoTotal: custoUnitario === null ? null : custoUnitario * quantidade,
+    };
+  }
 
   function componenteDaLinha(c: ComponenteRow): ComponenteFicha {
     return {
@@ -556,6 +600,7 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
       quantidade: Number(c.quantidade),
       ordem: c.ordem,
       observacoes: c.observacoes,
+      custo: custoDoComponente(c),
     };
   }
 

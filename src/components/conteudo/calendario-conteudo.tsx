@@ -22,6 +22,7 @@ import {
   type StatusPeca,
 } from "@/lib/conteudo/pecas";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
+import { normalizarBusca } from "@/lib/busca";
 
 /** Cor de cada status (borda do cartão e do seletor): ideia neutra, em produção âmbar, publicado verde. */
 const COR_STATUS: Record<StatusPeca, string> = {
@@ -303,9 +304,9 @@ function Lista({
   const [busca, setBusca] = useState("");
   const contagem = useMemo(() => contarPorStatus(pecas), [pecas]);
   const visiveis = useMemo(() => {
-    const termo = busca.trim().toLocaleLowerCase("pt-BR");
+    const termo = normalizarBusca(busca);
     return ordenarLista(
-      pecas.filter((p) => (!status || p.status === status) && (!termo || p.titulo.toLocaleLowerCase("pt-BR").includes(termo))),
+      pecas.filter((p) => (!status || p.status === status) && (!termo || normalizarBusca(p.titulo).includes(termo))),
     );
   }, [pecas, status, busca]);
 

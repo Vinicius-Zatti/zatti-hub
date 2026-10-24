@@ -8,6 +8,7 @@ import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { salvarConversaoProdutoAction, salvarConversoesProdutoAction } from "@/app/(app)/fichas-tecnicas/actions";
+import { normalizarBusca } from "@/lib/busca";
 
 type Linha = {
   sku: string;
@@ -83,10 +84,10 @@ export function ConversoesProdutoTabela({ linhas }: { linhas: Linha[] }) {
   );
 
   const filtradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     return linhas.filter((l) => {
       if (filtroGrupo && l.grupo !== filtroGrupo) return false;
-      if (termo && !l.nome.toLowerCase().includes(termo) && !l.sku.toLowerCase().includes(termo)) return false;
+      if (termo && !normalizarBusca(l.nome).includes(termo) && !normalizarBusca(l.sku).includes(termo)) return false;
       return true;
     });
   }, [linhas, busca, filtroGrupo]);

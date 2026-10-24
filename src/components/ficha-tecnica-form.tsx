@@ -16,6 +16,7 @@ import type {
   UnidadeRendimentoFicha,
 } from "@/lib/types";
 import type { EntradaFichaTecnica } from "@/lib/banco/fichas-tecnicas";
+import { normalizarBusca } from "@/lib/busca";
 
 const STATUS_LABEL: Record<StatusFicha, string> = {
   rascunho: "Rascunho",
@@ -752,8 +753,8 @@ function SeletorBusca({
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
   const selecionado = opcoes.find((o) => o.valor === valorSelecionado);
-  const termo = busca.trim().toLowerCase();
-  const filtradas = (termo ? opcoes.filter((o) => o.rotulo.toLowerCase().includes(termo)) : opcoes).slice(0, 30);
+  const termo = normalizarBusca(busca);
+  const filtradas = (termo ? opcoes.filter((o) => normalizarBusca(o.rotulo).includes(termo)) : opcoes).slice(0, 30);
 
   return (
     <div className="relative">

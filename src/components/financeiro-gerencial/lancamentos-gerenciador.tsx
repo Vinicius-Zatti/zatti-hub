@@ -40,6 +40,7 @@ import type {
   StatusParcela,
   TipoLancamento,
 } from "@/lib/financeiro-gerencial/tipos";
+import { normalizarBusca } from "@/lib/busca";
 
 const STATUS_LABEL: Record<StatusParcela, string> = {
   aberto: "Em aberto",
@@ -202,12 +203,12 @@ export function LancamentosGerenciador({
   );
 
   const linhasFiltradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizarBusca(busca);
     return todasAsLinhas.filter(({ lancamento, parcela }) => {
       if (
         termo &&
-        !lancamento.descricao.toLowerCase().includes(termo) &&
-        !lancamento.categoriaNome.toLowerCase().includes(termo)
+        !normalizarBusca(lancamento.descricao).includes(termo) &&
+        !normalizarBusca(lancamento.categoriaNome).includes(termo)
       ) {
         return false;
       }

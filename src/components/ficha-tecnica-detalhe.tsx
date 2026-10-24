@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CAMADA_LABEL, formatarQuantidade } from "@/lib/fichas-tecnicas";
+import { CAMADA_LABEL, explicacaoCustoComponente, formatarQuantidade } from "@/lib/fichas-tecnicas";
+import { DicaCalculo } from "@/components/dica-calculo";
 import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
 import { FotoFichaTecnica } from "@/components/foto-ficha-tecnica";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
 import { PrecosCanalFicha } from "@/components/precos-canal-ficha";
 import { FichaNaContagem } from "@/components/ficha-na-contagem";
 import type { VinculoContagemFicha } from "@/lib/banco/pre-preparo-leitura";
-import type { CategoriaFicha, FichaTecnica } from "@/lib/types";
+import type { CategoriaFicha, ComponenteFicha, FichaTecnica } from "@/lib/types";
 
 const STATUS_LABEL = { ativa: "Ativa", rascunho: "Rascunho", inativa: "Inativa" } as const;
 
@@ -233,6 +234,7 @@ export function FichaTecnicaDetalhe({
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-cinza">{c.nomeExibicao}</div>
                   {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
+                  {podeGerir && <CustoDoComponente componente={c} />}
                 </div>
                 <span className="shrink-0 text-sm font-bold text-azul-noite">
                   {formatarQuantidade(c.quantidade)} {c.unidadeUso}
@@ -257,6 +259,7 @@ export function FichaTecnicaDetalhe({
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-cinza">{c.nomeExibicao}</div>
                     {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
+                  {podeGerir && <CustoDoComponente componente={c} />}
                   </div>
                   <span className="shrink-0 text-sm font-bold text-azul-noite">
                     {formatarQuantidade(c.quantidade)} {c.unidadeUso}
@@ -299,6 +302,34 @@ export function FichaTecnicaDetalhe({
           <p className="text-sm leading-relaxed text-cinza">{ficha.observacoesGerenciais}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Valor de cada componente embaixo do nome (Vinícius, 24/10/2026): com o
+ * preço à vista, o item com preço ou fator errado aparece sozinho. */
+function CustoDoComponente({ componente: c }: { componente: ComponenteFicha }) {
+  if (!c.custo) return null;
+  const { custoUnitario, custoTotal, fatorCorrecao } = c.custo;
+  return (
+    <div className="flex items-center gap-1 text-xs text-cinza-medio">
+      {custoUnitario === null || custoTotal === null ? (
+        <span className="text-ambar">Sem preço no Cadastro</span>
+      ) : (
+        <span>
+          {custoUnitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/{c.unidadeUso} ·{" "}
+          <span className="font-semibold text-cinza">
+            {custoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </span>
+          {fatorCorrecao !== null && fatorCorrecao !== 1 && (
+            <> · fator de correção {fatorCorrecao.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}</>
+          )}
+        </span>
+      )}
+      <DicaCalculo
+        rotulo={`Como o custo de ${c.nomeExibicao} é calculado`}
+        texto={explicacaoCustoComponente(c.custo, c.quantidade, c.unidadeUso)}
+      />
     </div>
   );
 }
