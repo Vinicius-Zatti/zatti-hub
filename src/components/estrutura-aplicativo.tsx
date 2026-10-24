@@ -4,25 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { IconeNavegacao, type NomeIconeNavegacao } from "@/components/icones-navegacao";
+import { IconeNavegacao } from "@/components/icones-navegacao";
+import { itemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { signOutAction } from "@/lib/supabase/actions";
 import { limparTodosRascunhos } from "@/lib/rascunho-local";
 
-export type SecaoNavegacao = {
-  label: string;
-  items: { label: string; href: string }[];
-};
-
-export type ItemNavegacao = {
-  label: string;
-  href: string;
-  icone: NomeIconeNavegacao;
-  disabled: boolean;
-  /** Lista quando um módulo agrupa rotas de prefixos diferentes (ex.: Escritório). */
-  activePrefix?: string | string[];
-  sections?: SecaoNavegacao[];
-};
+// Tipos e `itemAtivo` moraram aqui até 24/10/2026; agora vêm de `lib/navegacao`
+// (compartilhados com o menu em sanfona da Navegação V2) e seguem reexportados.
+export type { ItemNavegacao, SecaoNavegacao };
+export { itemAtivo };
 
 type Props = {
   children: React.ReactNode;
@@ -401,17 +392,4 @@ function PainelDestinos({
       </div>
     </div>
   );
-}
-
-export function itemAtivo(items: ItemNavegacao[], pathname: string): string | undefined {
-  let melhor: { label: string; tamanho: number } | undefined;
-  for (const item of items) {
-    if (item.disabled) continue;
-    for (const prefixo of [item.activePrefix ?? item.href].flat()) {
-      if (pathname.startsWith(prefixo) && (!melhor || prefixo.length > melhor.tamanho)) {
-        melhor = { label: item.label, tamanho: prefixo.length };
-      }
-    }
-  }
-  return melhor?.label;
 }
