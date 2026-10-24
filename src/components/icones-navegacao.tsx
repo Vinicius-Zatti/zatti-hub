@@ -1,6 +1,7 @@
 export type NomeIconeNavegacao =
   | "painel"
   | "estoque"
+  | "cadastros"
   | "financeiro"
   | "financeiroGerencial"
   | "meuTempo"
@@ -13,7 +14,11 @@ export type NomeIconeNavegacao =
   | "acessos"
   | "sair"
   | "recolher"
-  | "expandir";
+  | "expandir"
+  | "menu"
+  | "buscar"
+  | "seta"
+  | "fechar";
 
 export function IconeNavegacao({
   nome,
@@ -36,6 +41,14 @@ export function IconeNavegacao({
         <path d="m4 7 8-4 8 4-8 4-8-4Z" />
         <path d="m4 7 8 4 8-4v10l-8 4-8-4V7Z" />
         <path d="M12 11v10" />
+      </>
+    ),
+    // Cadastros (Navegação V2): ficha com linhas, o que se cadastra uma vez e se consulta.
+    cadastros: (
+      <>
+        <rect x="4" y="3" width="16" height="18" rx="2" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="M13 8h4M13 11h4M8 15h8M8 18h5" />
       </>
     ),
     financeiro: (
@@ -120,6 +133,16 @@ export function IconeNavegacao({
         <path d="m5 6 6 6-6 6" />
       </>
     ),
+    // Menu em sanfona (Navegação V2): abrir a gaveta, filtrar, seta do grupo e fechar.
+    menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+    buscar: (
+      <>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m20 20-4.2-4.2" />
+      </>
+    ),
+    seta: <path d="m6 9 6 6 6-6" />,
+    fechar: <path d="M6 6l12 12M18 6 6 18" />,
   }[nome];
 
   return (

@@ -1,0 +1,426 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { IconeNavegacao } from "@/components/icones-navegacao";
+import { OrgSwitcher } from "@/components/org-switcher";
+import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
+import { itemAtivo, subitemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
+import { limparTodosRascunhos } from "@/lib/rascunho-local";
+import { signOutAction } from "@/lib/supabase/actions";
+
+// Navegação V2, fase 1 (24/10/2026) - só a unidade piloto (`lib/navegacao/piloto.ts`).
+// Menu em sanfona: o módulo abre os subitens logo abaixo dele, dentro do próprio
+// menu (sem o painel flutuante à direita de `estrutura-aplicativo.tsx`), com o
+// grupo da tela atual já aberto e o campo "Filtrar menus" no topo.
+// Celular: barra no topo com o botão do menu, que abre uma gaveta com rótulos.
+// Desktop (lg): menu fixo à esquerda, recolhível até ficar só com os ícones.
+
+type Props = {
+  children: React.ReactNode;
+  items: ItemNavegacao[];
+  organizacaoAtual: string;
+  organizacaoNome: string;
+  organizacoes: { id: string; nome: string }[];
+  usuarioEmail: string;
+  usuarioNome: string | null;
+};
+
+export function EstruturaAplicativoV2({
+  children,
+  items,
+  organizacaoAtual,
+  organizacaoNome,
+  organizacoes,
+  usuarioEmail,
+  usuarioNome,
+}: Props) {
+  const pathname = usePathname();
+  // Só vale no desktop: no celular o menu é a gaveta, sempre com rótulos.
+  const [recolhido, setRecolhido] = useState(false);
+  // Gaveta do celular guarda o caminho em que abriu: trocou de tela, fecha sozinha.
+  const [gavetaEm, setGavetaEm] = useState<string | null>(null);
+  const gavetaAberta = gavetaEm === pathname;
+  const [filtro, setFiltro] = useState("");
+  // Grupo que a pessoa abriu ou fechou na mão; sem escolha, abre só o da tela atual.
+  const [alternados, setAlternados] = useState<Record<string, boolean>>({});
+  // Com filtro, todos os grupos encontrados vêm abertos; estes foram fechados na mão.
+  const [fechadosNoFiltro, setFechadosNoFiltro] = useState<Record<string, boolean>>({});
+  const botaoMenuRef = useRef<HTMLButtonElement>(null);
+  const botaoFecharRef = useRef<HTMLButtonElement>(null);
+
+  const labelAtivo = itemAtivo(items, pathname);
+  const hrefAtivo = subitemAtivo(items, pathname);
+  const filtrando = normalizarBusca(filtro) !== "";
+  const visiveis = filtrarMenus(items, filtro);
+  const variasOrganizacoes = organizacoes.length > 1;
+
+  useEffect(() => {
+    if (!gavetaAberta) return;
+    botaoFecharRef.current?.focus();
+
+    function aoPressionarTecla(evento: KeyboardEvent) {
+      if (evento.key !== "Escape") return;
+      setGavetaEm(null);
+      botaoMenuRef.current?.focus();
+    }
+
+    document.addEventListener("keydown", aoPressionarTecla);
+    return () => document.removeEventListener("keydown", aoPressionarTecla);
+  }, [gavetaAberta]);
+
+  function fecharGaveta() {
+    setGavetaEm(null);
+  }
+
+  function grupoAberto(label: string) {
+    if (filtrando) return !fechadosNoFiltro[label];
+    return alternados[label] ?? label === labelAtivo;
+  }
+
+  function alternarGrupo(label: string) {
+    // Menu recolhido (só ícones): o clique expande o menu já com o grupo aberto.
+    if (recolhido) {
+      setRecolhido(false);
+      setAlternados((atual) => ({ ...atual, [label]: true }));
+      return;
+    }
+    const aberto = grupoAberto(label);
+    if (filtrando) setFechadosNoFiltro((atual) => ({ ...atual, [label]: aberto }));
+    else setAlternados((atual) => ({ ...atual, [label]: !aberto }));
+  }
+
+  function mudarFiltro(valor: string) {
+    setFiltro(valor);
+    setFechadosNoFiltro({});
+  }
+
+  // Classes que só valem com o menu recolhido no desktop.
+  const someRecolhido = recolhido ? "lg:hidden" : "";
+  const alinhamentoItem = recolhido ? "lg:justify-center" : "";
+
+  return (
+    <div className="min-h-dvh">
+      <a
+        href="#conteudo-principal"
+        className="fixed left-2 top-2 z-[60] -translate-y-20 rounded-md bg-ambar px-3 py-2 text-sm font-bold text-azul-noite transition-transform focus:translate-y-0 focus:outline-none"
+      >
+        Pular para o conteúdo
+      </a>
+
+      {gavetaAberta && (
+        <div aria-hidden="true" onClick={fecharGaveta} className="fixed inset-0 z-40 bg-azul-noite/60 lg:hidden" />
+      )}
+
+      <aside
+        id="menu-lateral"
+        aria-label="Menu lateral"
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-white/10 bg-azul-noite text-branco shadow-xl transition-[transform,width,visibility] duration-200 lg:z-40 lg:max-w-none lg:translate-x-0 lg:visible ${
+          gavetaAberta ? "translate-x-0" : "invisible -translate-x-full"
+        } ${recolhido ? "lg:w-[5.5rem]" : "lg:w-64"}`}
+      >
+        <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-2">
+          <Link
+            href="/painel"
+            aria-label="Ir para o início do Zatti Hub"
+            title="Zatti Hub"
+            onClick={fecharGaveta}
+            className="flex h-full items-center justify-center rounded-md px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ambar"
+          >
+            <Image
+              src="/brand/zatti-hub-horizontal.svg"
+              alt="Zatti Hub"
+              width={900}
+              height={520}
+              priority
+              className={`h-auto w-28 ${someRecolhido}`}
+            />
+            <Image
+              src="/brand/zatti-hub-simbolo.svg"
+              alt=""
+              width={96}
+              height={96}
+              priority
+              className={`hidden h-11 w-11 ${recolhido ? "lg:block" : ""}`}
+            />
+          </Link>
+          <button
+            ref={botaoFecharRef}
+            type="button"
+            onClick={() => {
+              fecharGaveta();
+              botaoMenuRef.current?.focus();
+            }}
+            aria-label="Fechar menu"
+            title="Fechar menu"
+            className="absolute right-2 flex h-11 w-11 items-center justify-center rounded-lg text-white/75 transition-colors hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:hidden"
+          >
+            <IconeNavegacao nome="fechar" className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Recolher (só desktop), na altura do cabeçalho: no menu atual fica em
+            4.5rem, que aqui é a linha do filtro. */}
+        <button
+          type="button"
+          onClick={() => {
+            mudarFiltro("");
+            setRecolhido((atual) => !atual);
+          }}
+          aria-label={recolhido ? "Expandir menu lateral" : "Recolher menu lateral"}
+          title={recolhido ? "Expandir menu" : "Recolher menu"}
+          className="absolute -right-3 top-[1.125rem] z-50 hidden h-7 w-7 items-center justify-center rounded-full border border-cinza-claro bg-branco text-azul-noite shadow-md transition-colors hover:bg-off-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:flex"
+        >
+          <IconeNavegacao nome={recolhido ? "expandir" : "recolher"} className="h-4 w-4" />
+        </button>
+
+        <div className={`shrink-0 px-3 pt-3 ${someRecolhido}`}>
+          <div className="relative">
+            <IconeNavegacao
+              nome="buscar"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45"
+            />
+            <input
+              type="text"
+              value={filtro}
+              onChange={(evento) => mudarFiltro(evento.target.value)}
+              onKeyDown={(evento) => {
+                // Esc limpa o filtro primeiro; com ele vazio, fecha a gaveta.
+                if (evento.key === "Escape" && filtro) {
+                  evento.stopPropagation();
+                  mudarFiltro("");
+                }
+              }}
+              placeholder="Filtrar menus"
+              aria-label="Filtrar menus"
+              autoComplete="off"
+              spellCheck={false}
+              className="min-h-11 w-full rounded-lg border border-white/15 bg-white/5 py-2 pl-9 pr-10 text-base text-branco placeholder:text-white/45 focus:border-ambar focus:outline-none focus-visible:ring-1 focus-visible:ring-ambar lg:min-h-10 lg:text-sm"
+            />
+            {filtro && (
+              <button
+                type="button"
+                onClick={() => mudarFiltro("")}
+                aria-label="Limpar filtro de menus"
+                title="Limpar filtro"
+                className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-white/60 hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+              >
+                <IconeNavegacao nome="fechar" className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <nav aria-label="Módulos do sistema" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+          {visiveis.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-white/60">Nenhum menu encontrado para &quot;{filtro.trim()}&quot;.</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {visiveis.map((item, indice) => {
+                const ativo = item.label === labelAtivo;
+                const classeBase = `flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${alinhamentoItem}`;
+
+                if (item.disabled) {
+                  return (
+                    <li key={item.label}>
+                      <div
+                        aria-disabled="true"
+                        title={`${item.label} - em breve`}
+                        className={`${classeBase} cursor-not-allowed text-white/30`}
+                      >
+                        <IconeNavegacao nome={item.icone} className="h-5 w-5 shrink-0" />
+                        <span className={`flex min-w-0 flex-1 items-center justify-between gap-2 ${someRecolhido}`}>
+                          <span className="truncate">{item.label}</span>
+                          <span className="text-[10px] font-semibold">em breve</span>
+                        </span>
+                      </div>
+                    </li>
+                  );
+                }
+
+                if (!item.sections) {
+                  return (
+                    <li key={item.label}>
+                      <Link
+                        href={item.href}
+                        aria-current={ativo ? "page" : undefined}
+                        title={item.label}
+                        onClick={fecharGaveta}
+                        className={`${classeBase} ${
+                          ativo ? "bg-ambar font-bold text-azul-noite" : "text-white/75 hover:bg-white/10 hover:text-branco"
+                        }`}
+                      >
+                        <IconeNavegacao nome={item.icone} className="h-5 w-5 shrink-0" />
+                        <span className={`min-w-0 flex-1 truncate text-left ${someRecolhido}`}>{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                }
+
+                const aberto = grupoAberto(item.label);
+                const idGrupo = `grupo-menu-${indice}`;
+                return (
+                  <li key={item.label}>
+                    <button
+                      type="button"
+                      aria-expanded={aberto}
+                      aria-controls={idGrupo}
+                      title={item.label}
+                      onClick={() => alternarGrupo(item.label)}
+                      className={`${classeBase} ${
+                        ativo
+                          ? `bg-white/10 font-semibold text-ambar ${recolhido ? "lg:bg-ambar lg:text-azul-noite" : ""}`
+                          : "text-white/75 hover:bg-white/10 hover:text-branco"
+                      }`}
+                    >
+                      <IconeNavegacao nome={item.icone} className="h-5 w-5 shrink-0" />
+                      <span className={`min-w-0 flex-1 truncate text-left ${someRecolhido}`}>{item.label}</span>
+                      <IconeNavegacao
+                        nome="seta"
+                        className={`h-4 w-4 shrink-0 transition-transform duration-200 ${aberto ? "rotate-180" : ""} ${someRecolhido}`}
+                      />
+                    </button>
+                    {aberto && (
+                      <div id={idGrupo} className={`ml-5 mt-1 mb-2 border-l border-white/10 pl-2 ${someRecolhido}`}>
+                        {item.sections.map((secao) => (
+                          <SecaoSanfona
+                            key={secao.label}
+                            secao={secao}
+                            hrefAtivo={hrefAtivo}
+                            aoNavegar={fecharGaveta}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </nav>
+
+        <div className="shrink-0 border-t border-white/10 p-2">
+          <div className={`mb-2 rounded-lg bg-white/5 p-2 ${someRecolhido}`}>
+            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">Usuário</p>
+            <p className="mb-2 truncate text-xs font-medium text-branco" title={usuarioEmail}>
+              {usuarioNome || usuarioEmail || "Conta ativa"}
+            </p>
+            <p className="mb-1 truncate text-[10px] font-semibold uppercase tracking-wide text-white/45">Organização</p>
+            {variasOrganizacoes ? (
+              <OrgSwitcher organizacoes={organizacoes} atual={organizacaoAtual} />
+            ) : (
+              <p className="truncate text-xs font-medium text-branco" title={organizacaoNome}>
+                {organizacaoNome}
+              </p>
+            )}
+          </div>
+
+          {/* Recolhido no desktop: a inicial da organização expande o menu para trocar de cliente. */}
+          <button
+            type="button"
+            aria-label={`Organização: ${organizacaoNome}`}
+            title={organizacaoNome}
+            onClick={() => setRecolhido(false)}
+            className={`mb-1 hidden min-h-11 w-full items-center justify-center rounded-lg px-3 py-2.5 text-white/75 transition-colors hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${
+              recolhido ? "lg:flex" : ""
+            }`}
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ambar text-xs font-bold text-azul-noite">
+              {organizacaoNome.charAt(0).toUpperCase() || "?"}
+            </span>
+          </button>
+
+          {/* Sair limpa os rascunhos de Contagem/Desempenho deste aparelho. */}
+          <form action={signOutAction} onSubmit={limparTodosRascunhos}>
+            <button
+              type="submit"
+              aria-label="Sair"
+              title="Sair"
+              className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${alinhamentoItem}`}
+            >
+              <IconeNavegacao nome="sair" className="h-5 w-5 shrink-0" />
+              <span className={someRecolhido}>Sair</span>
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      <div
+        className={`flex min-h-dvh flex-col transition-[padding-left] duration-200 ${recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64"}`}
+      >
+        {/* Barra do celular no fluxo da página (não fixa): Contagem e SubTabs já
+            usam `sticky top-0` e ficariam escondidas atrás de uma barra fixa. */}
+        <header className="flex h-14 shrink-0 items-center gap-2 bg-azul-noite px-2 text-branco lg:hidden">
+          <button
+            ref={botaoMenuRef}
+            type="button"
+            onClick={() => setGavetaEm(pathname)}
+            aria-label="Abrir menu"
+            aria-expanded={gavetaAberta}
+            aria-controls="menu-lateral"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-branco transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+          >
+            <IconeNavegacao nome="menu" className="h-6 w-6" />
+          </button>
+          <Link href="/painel" aria-label="Ir para o início do Zatti Hub" className="shrink-0 rounded-md">
+            <Image src="/brand/zatti-hub-simbolo.svg" alt="" width={96} height={96} className="h-9 w-9" />
+          </Link>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{labelAtivo ?? "Zatti Hub"}</span>
+        </header>
+        <main
+          id="conteudo-principal"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 lg:py-6"
+        >
+          {children}
+        </main>
+        <footer className="border-t border-cinza-claro bg-branco px-3 py-4 text-center text-xs text-cinza-medio">
+          Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function SecaoSanfona({
+  secao,
+  hrefAtivo,
+  aoNavegar,
+}: {
+  secao: SecaoNavegacao;
+  hrefAtivo: string | undefined;
+  aoNavegar: () => void;
+}) {
+  // Seção de um item só com o mesmo nome (ex.: Setores) vira link direto, sem título repetido.
+  const semTitulo = secao.items.length === 1 && secao.items[0].label === secao.label;
+  return (
+    <div className="mt-1 first:mt-0">
+      {!semTitulo && (
+        <p className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+          {secao.label}
+        </p>
+      )}
+      <ul className="flex flex-col gap-0.5">
+        {secao.items.map((sub) => {
+          const ativo = sub.href === hrefAtivo;
+          return (
+            <li key={sub.href}>
+              <Link
+                href={sub.href}
+                aria-current={ativo ? "page" : undefined}
+                onClick={aoNavegar}
+                className={`flex min-h-11 items-center rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:min-h-9 ${
+                  ativo ? "bg-ambar font-semibold text-azul-noite" : "text-white/75 hover:bg-white/10 hover:text-branco"
+                }`}
+              >
+                {sub.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
