@@ -2,8 +2,8 @@
 
 import { requireGestao, registrarAuditoria } from "@/lib/acesso";
 import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEntrega } from "@/lib/pedidos";
-import { listProdutos, upsertProduto } from "@/lib/sheets/produtos";
-import { SEM_FORNECEDOR, vincularFornecedorAoProduto } from "@/lib/pedido";
+import { listProdutos, atualizarPrecoProduto, vincularFornecedorNoProduto } from "@/lib/sheets/produtos";
+import { SEM_FORNECEDOR } from "@/lib/pedido";
 import { sincronizarCustosPrePreparoMelhorEsforco } from "@/lib/banco/pre-preparo";
 import type { PedidoItem } from "@/lib/types";
 import { revalidatePath } from "next/cache";
@@ -65,7 +65,7 @@ async function atualizarPrecoCadastroSeMudou(item: ItemConfirmar, acesso: Awaite
   if (!produto) return;
   const precoAntes = produto.precoUnitario;
   if (precoAntes !== null && Math.abs(precoAntes - item.precoAtualizado) < 0.001) return;
-  await upsertProduto({ ...produto, precoUnitario: item.precoAtualizado }, acesso.spreadsheetId);
+  await atualizarPrecoProduto(produto, item.precoAtualizado, acesso.spreadsheetId);
   await registrarAuditoria({
     acesso,
     acao: "atualizar_preco_via_pedido",
@@ -89,22 +89,19 @@ async function vincularFornecedorNoCadastro(
 ): Promise<string | undefined> {
   if (fornecedor === SEM_FORNECEDOR) return undefined;
   try {
-    const produtos = await listProdutos(acesso.spreadsheetId);
-    const produto = produtos.find((p) => p.sku === sku);
-    if (!produto) return undefined;
-    const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
-    if (vinculado === null) return undefined;
-    if (vinculado === "sem_vaga") {
+    // Atômico no banco (parecer do Codex, 24/10/2026): confirmações ao mesmo
+    // tempo não disputam a mesma vaga nem regravam o produto inteiro.
+    const resultado = await vincularFornecedorNoProduto(sku, fornecedor, acesso.spreadsheetId);
+    if (resultado === "sem_vaga") {
       return "Item salvo no pedido. O produto já tem 4 fornecedores no Cadastro, então este não ficou ligado a ele.";
     }
-    await upsertProduto(vinculado, acesso.spreadsheetId);
+    if (resultado !== "vinculado") return undefined;
     await registrarAuditoria({
       acesso,
       acao: "vincular_fornecedor_via_cotacao",
       entidade: "produto",
       entidadeId: sku,
-      dadosAntigos: { fornecedores: [produto.fornecedor1, produto.fornecedor2, produto.fornecedor3, produto.fornecedor4] },
-      dadosNovos: { fornecedores: [vinculado.fornecedor1, vinculado.fornecedor2, vinculado.fornecedor3, vinculado.fornecedor4] },
+      dadosNovos: { fornecedor },
     });
     return undefined;
   } catch {

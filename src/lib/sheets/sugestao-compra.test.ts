@@ -12,7 +12,7 @@ vi.mock("./inventario", () => ({
   calcularAlerta: (...args: unknown[]) => calcularAlertaMock(...args),
 }));
 
-const { gerarPedido } = await import("./sugestao-compra");
+const { gerarPedido, alertaDaCotacao } = await import("./sugestao-compra");
 const { valorContagem } = await import("@/lib/cmv");
 
 const DATA = "17/09/2026";
@@ -122,6 +122,21 @@ describe("estoque atual com setor", () => {
     const { itens } = await gerarPedido({ data: DATA }, null);
 
     expect(itens[0]).toMatchObject({ quantidadeSugerida: 0, alerta: "Comprar emergencial" });
+  });
+
+  it("sem ponto, sem preco e abaixo do minimo mostra emergencial e falta de preco", () => {
+    const p = { estoqueNecessarioSemana: null, estoqueMinimo: 3, precoUnitario: null };
+    // calcularAlerta real devolve "Falta preço no cadastro" antes de olhar o mínimo.
+    expect(alertaDaCotacao(p, 1, "Falta preço no cadastro")).toBe(
+      "Comprar emergencial · Falta preço no cadastro"
+    );
+    expect(alertaDaCotacao({ ...p, estoqueMinimo: null }, 1, "Falta preço no cadastro")).toBe(
+      "Sem ponto de reposição · Falta preço no cadastro"
+    );
+    expect(alertaDaCotacao({ ...p, precoUnitario: 10 }, 5, "")).toBe("Sem ponto de reposição");
+    expect(alertaDaCotacao({ ...p, estoqueNecessarioSemana: 8 }, 1, "Falta preço no cadastro")).toBe(
+      "Falta preço no cadastro"
+    );
   });
 
   it("soma os setores em vez de ficar com a ultima linha gravada", async () => {

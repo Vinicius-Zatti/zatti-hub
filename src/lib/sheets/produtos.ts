@@ -3,7 +3,15 @@ import { getSheetsClient } from "./client";
 import { toNumeroBR as toNumber } from "./numero";
 import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
-import { listarProdutosBanco, salvarProdutosBanco, excluirProdutoBanco, inserirProdutoBanco } from "@/lib/banco/estoque";
+import {
+  listarProdutosBanco,
+  salvarProdutosBanco,
+  excluirProdutoBanco,
+  inserirProdutoBanco,
+  vincularFornecedorProdutoBanco,
+  atualizarPrecoProdutoBanco,
+} from "@/lib/banco/estoque";
+import { vincularFornecedorAoProduto } from "@/lib/pedido";
 import { paraCelulaSegura } from "./seguranca";
 import { ErroPublico } from "@/lib/erros";
 
@@ -93,6 +101,47 @@ export async function upsertProduto(
   spreadsheetId: string | null
 ): Promise<void> {
   await upsertProdutosBatch([produto], spreadsheetId);
+}
+
+export type ResultadoVinculoFornecedor = "vinculado" | "ja_vinculado" | "sem_vaga" | "sem_produto";
+
+/** Liga o fornecedor na primeira vaga livre do produto (Fornecedor 1 a 4),
+ * nunca sobrescrevendo. No banco é atômico, com a linha travada; na planilha
+ * legada (sem trava) segue lendo e regravando o produto. */
+export async function vincularFornecedorNoProduto(
+  sku: string,
+  fornecedor: string,
+  spreadsheetId: string | null
+): Promise<ResultadoVinculoFornecedor> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    const resultado = await vincularFornecedorProdutoBanco(fonte.unidadeId, sku, fornecedor);
+    if (resultado !== null) {
+      if (resultado === "ja_vinculado" || resultado === "sem_vaga" || resultado === "sem_produto") return resultado;
+      return "vinculado";
+    }
+  }
+  const produto = (await listProdutos(spreadsheetId)).find((p) => p.sku === sku);
+  if (!produto) return "sem_produto";
+  const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
+  if (vinculado === null) return "ja_vinculado";
+  if (vinculado === "sem_vaga") return "sem_vaga";
+  await upsertProduto(vinculado, spreadsheetId);
+  return "vinculado";
+}
+
+/** Grava só o preço do produto. No banco não regrava o resto da linha. */
+export async function atualizarPrecoProduto(
+  produto: Produto,
+  preco: number,
+  spreadsheetId: string | null
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await atualizarPrecoProdutoBanco(fonte.unidadeId, produto.sku, preco);
+    return;
+  }
+  await upsertProduto({ ...produto, precoUnitario: preco }, spreadsheetId);
 }
 
 /** Cria um produto sem nunca sobrescrever um SKU existente (fluxos de
