@@ -138,3 +138,57 @@ export type DadosBoasVindas = {
   validaAte: Date | null;
   url: string;
 };
+
+// ── Senha provisória para conta que já existe (24/10/2026) ─────────────
+// A troca de estado e a conferência de quem pode são do banco
+// (`gerar_senha_provisoria_conta`, migration 20261024150000). Aqui só o que
+// o servidor faz com a resposta.
+
+/** Respostas de `gerar_senha_provisoria_conta`. */
+export type CodigoGerarProvisoria =
+  | "ok"
+  | "sem_permissao"
+  | "nao_encontrado"
+  | "propria_conta"
+  | "outra_organizacao"
+  | "outra_unidade"
+  | "limite";
+
+/** Texto para a tela a partir da resposta do banco. `null` = deu certo.
+ * Resposta desconhecida vira erro genérico (falha fechada). */
+export function mensagemGerarProvisoria(codigo: unknown): string | null {
+  switch (codigo) {
+    case "ok":
+      return null;
+    case "sem_permissao":
+      return "Você não tem permissão para gerar senha provisória.";
+    case "nao_encontrado":
+      return "Acesso não encontrado.";
+    case "propria_conta":
+      return "Para trocar a sua própria senha, use \"Esqueci minha senha\" na tela de login.";
+    case "outra_organizacao":
+      return "Essa pessoa também tem acesso a outro cliente no Zatti Hub. Peça para a Zatti gerar a senha provisória dela.";
+    case "outra_unidade":
+      return "Essa pessoa também tem acesso a outra unidade. Peça para a gestão geral do cliente gerar a senha provisória.";
+    case "limite":
+      return "Espere 2 minutos entre uma senha provisória e outra.";
+    default:
+      return "Não foi possível gerar a senha provisória.";
+  }
+}
+
+/** Validade da provisória para mostrar na tela, no horário de Brasília
+ * (DD/MM/AAAA às HH:MM). O instante vem do servidor; fuso explícito. */
+export function formatarValidadeProvisoria(validaAte: Date): string {
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(validaAte);
+  const p = (tipo: Intl.DateTimeFormatPartTypes) => partes.find((x) => x.type === tipo)?.value ?? "";
+  return `${p("day")}/${p("month")}/${p("year")} às ${p("hour")}:${p("minute")}`;
+}

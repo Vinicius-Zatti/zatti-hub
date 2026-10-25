@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { requireMaster, registrarAuditoria, type Role } from "@/lib/acesso";
@@ -12,6 +13,9 @@ import {
   validarPapelVinculo,
 } from "@/lib/acessos/slug";
 import { mensagemErroGarante } from "@/lib/garante/regras";
+import { formatarValidadeProvisoria, mensagemGerarProvisoria } from "@/lib/equipe/regras";
+import { gerarSenhaProvisoriaNoBanco } from "@/lib/equipe/servidor";
+import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
 type Resultado<T = { ok: true }> = T | { erro: string };
@@ -307,6 +311,81 @@ export async function reenviarAcessoAction(
   if (erroRecuperacao) return { erro: erroRecuperacao.message };
   await registrarAuditoria({ acesso, acao: "reenviar_recuperacao", entidade: "usuario", entidadeId: userId });
   return { ok: true, tipo: "recuperacao" };
+}
+
+/** Senha provisória para qualquer conta que já existe (master, 24/10/2026).
+ * A senha atual deixa de valer, as sessões caem e a conta volta ao primeiro
+ * acesso. A provisória aparece uma vez para o master (que pode não ter o
+ * WhatsApp da pessoa) e, se ele pedir e o vínculo tiver WhatsApp, vai
+ * também pelo Vini. O banco confere de novo que quem pede é master e grava a
+ * auditoria. O segundo fator do master já foi exigido por `requireMaster()`. */
+export async function gerarSenhaProvisoriaAction(
+  vinculoId: string,
+  enviarWhatsapp: boolean,
+): Promise<Resultado<{ ok: true; senha: string; validaAte: string; envio: ResultadoEnvio | null }>> {
+  const acesso = await requireMaster();
+  if (typeof vinculoId !== "string" || !UUID.test(vinculoId) || typeof enviarWhatsapp !== "boolean") {
+    return { erro: "Pedido inválido." };
+  }
+  const admin = createAdminClient();
+
+  const { data: vinculo, error: erroVinculo } = await admin
+    .from("vinculos")
+    .select("id, user_id, organizacao_id, whatsapp, organizacoes(nome)")
+    .eq("id", vinculoId)
+    .maybeSingle();
+  if (erroVinculo) return { erro: "Não foi possível carregar esse acesso." };
+  if (!vinculo) return { erro: "Acesso não encontrado." };
+  const whatsapp = (vinculo.whatsapp as string | null) ?? null;
+  // Antes de trocar: pedir o envio sem WhatsApp não pode deixar a pessoa sem senha.
+  if (enviarWhatsapp && !whatsapp) return { erro: "Esse acesso não tem WhatsApp cadastrado." };
+
+  const userId = vinculo.user_id as string;
+  const gerado = await gerarSenhaProvisoriaNoBanco(admin, {
+    atorId: acesso.userId,
+    vinculoId: vinculo.id as string,
+    alvoUserId: userId,
+    escopo: "master",
+    organizacaoId: null,
+  });
+  const erro = mensagemGerarProvisoria(gerado.codigo);
+  if (erro || !gerado.senha) return { erro: erro ?? "Não foi possível gerar a senha provisória." };
+
+  let envio: ResultadoEnvio | null = null;
+  if (enviarWhatsapp && whatsapp) {
+    const [{ data: usuario }, { data: perfil }] = await Promise.all([
+      admin.auth.admin.getUserById(userId),
+      admin.from("perfis").select("nome").eq("id", userId).maybeSingle(),
+    ]);
+    const organizacao = vinculo.organizacoes as { nome?: string } | { nome?: string }[] | null;
+    const organizacaoNome = (Array.isArray(organizacao) ? organizacao[0]?.nome : organizacao?.nome) ?? "";
+    if (usuario.user?.email) {
+      envio = await enviarAcessoPeloVini({
+        tipo: "conta_nova",
+        idempotencia: randomUUID(),
+        whatsapp,
+        nome: (perfil?.nome as string | null) ?? "",
+        email: usuario.user.email,
+        organizacaoNome,
+        senhaTemporaria: gerado.senha,
+        validaAte: gerado.validaAte,
+      });
+    } else {
+      envio = "falhou";
+    }
+    await admin
+      .from("vinculos")
+      .update({ acesso_envio_status: envio, acesso_envio_em: new Date().toISOString() })
+      .eq("id", vinculoId);
+  }
+
+  revalidarAcessos();
+  return {
+    ok: true,
+    senha: gerado.senha,
+    validaAte: formatarValidadeProvisoria(gerado.validaAte),
+    envio,
+  };
 }
 
 /** Liga ou desliga a chave "Usar extrato do estoque" da unidade (decisão 7 de

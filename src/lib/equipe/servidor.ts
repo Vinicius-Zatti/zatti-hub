@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { expiracaoSenhaTemporaria, gerarSenhaTemporaria } from "@/lib/equipe/regras";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -44,4 +45,37 @@ export async function contaPendente(admin: Admin, conta: ContaAuth): Promise<boo
     .maybeSingle();
   if (error) throw new Error("Falha ao conferir o primeiro acesso.");
   return Boolean(data);
+}
+
+/** Gera a senha provisória de uma conta que já existe (Equipe ou Acessos).
+ * Sorteia a provisória aqui e manda só o hash; o banco confere de novo o
+ * papel de `ator` (lido da sessão pelo chamador, nunca do formulário), a
+ * regra de organização e o limite, e faz a troca inteira numa transação.
+ * Devolve o código do banco e, só com "ok", a provisória em texto. */
+export async function gerarSenhaProvisoriaNoBanco(
+  admin: Admin,
+  params: {
+    atorId: string;
+    vinculoId: string;
+    alvoUserId: string;
+    escopo: "master" | "equipe";
+    organizacaoId: string | null;
+  },
+): Promise<{ codigo: string; senha: string | null; validaAte: Date }> {
+  const senha = gerarSenhaTemporaria();
+  const validaAte = expiracaoSenhaTemporaria(new Date());
+  const { data, error } = await admin.rpc("gerar_senha_provisoria_conta", {
+    p_ator: params.atorId,
+    p_vinculo_id: params.vinculoId,
+    p_escopo: params.escopo,
+    p_organizacao_id: params.organizacaoId,
+    p_hash: hashSenhaTemporaria(params.alvoUserId, senha),
+    p_expira_em: validaAte.toISOString(),
+  });
+  if (error) {
+    console.error("[equipe] falha ao gerar senha provisória", { codigo: error.code });
+    return { codigo: "erro", senha: null, validaAte };
+  }
+  const codigo = String(data);
+  return { codigo, senha: codigo === "ok" ? senha : null, validaAte };
 }

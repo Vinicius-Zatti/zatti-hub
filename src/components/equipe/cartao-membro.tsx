@@ -9,6 +9,7 @@ import {
   revogarMembroAction,
 } from "@/app/(app)/equipe/actions";
 import type { MembroEquipe } from "@/app/(app)/equipe/dados";
+import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
 import { ROTULO_FUNCAO, textoEnvio } from "./textos";
 
 const SITUACAO: Record<MembroEquipe["situacao"], { texto: string; classe: string }> = {
@@ -85,6 +86,15 @@ export function CartaoMembro({ membro }: { membro: MembroEquipe }) {
             >
               {membro.situacao === "aguardando" ? "Reenviar senha" : "Reenviar acesso"}
             </button>
+          )}
+          {membro.situacao === "ativo" && (
+            <GerarSenhaProvisoria
+              modo="equipe"
+              vinculoId={membro.vinculoId}
+              nomeExibido={membro.nome ?? membro.email}
+              whatsappFinal={membro.whatsappFinal}
+              className={`${BOTAO} border-ambar text-ambar hover:bg-ambar/10`}
+            />
           )}
           <button
             type="button"

@@ -7,11 +7,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
   gerarSenhaTemporaria,
+  mensagemGerarProvisoria,
   normalizarWhatsapp,
   podeAdministrarVinculo,
   validarConcessao,
 } from "@/lib/equipe/regras";
-import { buscarUsuarioPorEmail, contaPendente, hashSenhaTemporaria } from "@/lib/equipe/servidor";
+import {
+  buscarUsuarioPorEmail,
+  contaPendente,
+  gerarSenhaProvisoriaNoBanco,
+  hashSenhaTemporaria,
+} from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -359,6 +365,53 @@ export async function reenviarAcessoMembroAction(
   });
   await gravarResultadoEnvio(admin, alvo.id, envio);
   await registrarAuditoria({ acesso, acao: "equipe_reenviar_senha", entidade: "vinculo", entidadeId: alvo.id, dadosNovos: { envio } });
+  revalidarEquipe();
+  return { ok: true, envio };
+}
+
+/** Senha provisória para quem já tem conta ativa (24/10/2026). A senha
+ * atual deixa de valer, as sessões caem e a conta volta ao primeiro acesso;
+ * a provisória vai só para o WhatsApp da pessoa (a gestão não vê). Só para
+ * conta que pertence apenas a este cliente: o banco confere de novo papel,
+ * organização, unidade e limite, e grava a auditoria. */
+export async function gerarSenhaProvisoriaMembroAction(
+  vinculoId: string,
+): Promise<Resultado<{ ok: true; envio: ResultadoEnvio }>> {
+  const acesso = await requireEquipe();
+  const admin = createAdminClient();
+  const carregado = await carregarAlvo(admin, acesso, vinculoId);
+  if ("erro" in carregado) return carregado;
+  const { alvo } = carregado;
+
+  if (alvo.status !== "ativo") return { erro: "Só dá para gerar senha provisória para acesso ativo." };
+  // Antes de trocar: sem WhatsApp, a pessoa ficaria sem senha nenhuma.
+  if (!alvo.whatsapp) return { erro: "Cadastre o WhatsApp dessa pessoa antes de gerar a senha provisória." };
+
+  const { data: usuario, error: erroUsuario } = await admin.auth.admin.getUserById(alvo.user_id);
+  if (erroUsuario || !usuario.user?.email) return { erro: "Conta não encontrada." };
+  const { data: perfil } = await admin.from("perfis").select("nome").eq("id", alvo.user_id).maybeSingle();
+
+  const gerado = await gerarSenhaProvisoriaNoBanco(admin, {
+    atorId: acesso.userId,
+    vinculoId: alvo.id,
+    alvoUserId: alvo.user_id,
+    escopo: "equipe",
+    organizacaoId: acesso.organizacaoId,
+  });
+  const erro = mensagemGerarProvisoria(gerado.codigo);
+  if (erro || !gerado.senha) return { erro: erro ?? "Não foi possível gerar a senha provisória." };
+
+  const envio = await enviarAcessoPeloVini({
+    tipo: "conta_nova",
+    idempotencia: randomUUID(),
+    whatsapp: alvo.whatsapp,
+    nome: (perfil?.nome as string | null) ?? "",
+    email: usuario.user.email,
+    organizacaoNome: acesso.organizacaoNome,
+    senhaTemporaria: gerado.senha,
+    validaAte: gerado.validaAte,
+  });
+  await gravarResultadoEnvio(admin, alvo.id, envio);
   revalidarEquipe();
   return { ok: true, envio };
 }

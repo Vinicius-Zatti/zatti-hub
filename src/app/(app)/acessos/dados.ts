@@ -37,6 +37,8 @@ export type VinculoPainel = {
   role: string;
   status: string;
   confirmado: boolean;
+  /** Só os 4 últimos dígitos do WhatsApp do vínculo (o número inteiro não vai ao navegador). */
+  whatsappFinal: string | null;
   criadoEm: string;
 };
 
@@ -63,7 +65,7 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
       .from("unidades")
       .select("id, organizacao_id, nome, fonte_dados_estoque, spreadsheet_id, consolidado_vendas_habilitado, extrato_estoque_habilitado, ativo")
       .order("nome"),
-    admin.from("vinculos").select("id, user_id, organizacao_id, unidade_id, role, status, created_at").order("created_at", { ascending: false }),
+    admin.from("vinculos").select("id, user_id, organizacao_id, unidade_id, role, status, whatsapp, created_at").order("created_at", { ascending: false }),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
 
@@ -129,6 +131,7 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
       role: v.role,
       status: v.status,
       confirmado: usuario?.confirmado ?? false,
+      whatsappFinal: v.whatsapp ? String(v.whatsapp).slice(-4) : null,
       criadoEm: v.created_at,
     };
   });
