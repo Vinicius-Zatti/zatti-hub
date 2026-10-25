@@ -58,3 +58,103 @@ body {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Tema escuro (Navegação V2, fase 7, 25/10/2026). Só vale com o shell V2 na
+   tela (`[data-tema-piloto]`, unidade piloto) e com `data-tema="escuro"` no
+   <html>, gravado antes da pintura pelo script do <head> (`lib/tema.ts`).
+   Fundo no azul institucional, nunca preto (marca Zatti). O tema claro não
+   muda: aqui só se redefinem os mesmos tokens.
+   - Superfícies derivadas do azul-noite: fundo #0D1F2D, cartões #13293A,
+     bordas #24435A. Textos claros com contraste AA sobre fundo e cartão.
+   - `azul-noite` e `azul-petroleo` viram cores de TEXTO claras (títulos e
+     links); as superfícies sólidas da marca (menu, cabeçalho de tabela,
+     botões, selos) continuam como no claro: dentro delas os tokens voltam
+     aos valores originais (texto branco no azul, azul-noite no âmbar). */
+html[data-tema="escuro"]:has([data-tema-piloto]) {
+  color-scheme: dark;
+  --off-white: #0d1f2d;
+  --branco: #13293a;
+  --cinza-claro: #24435a;
+  --cinza: #e1e7ec;
+  --cinza-medio: #a4b3bf;
+  --azul-noite: #f5f0e8;
+  --azul-petroleo: #93bddb;
+  --verde: #63c58f;
+  --vermelho: #f08a8a;
+}
+
+/* Superfícies sólidas da marca: mesmos tokens do tema claro. `:where` deixa
+   a especificidade baixa para os ajustes abaixo valerem. */
+html[data-tema="escuro"]:has([data-tema-piloto])
+  :where(
+    [class~="bg-azul-noite"],
+    [class~="bg-azul-petroleo"],
+    [class~="bg-ambar"],
+    [class~="bg-verde"],
+    [class~="bg-vermelho"],
+    [class~="bg-cinza"],
+    [class~="bg-cinza-medio"],
+    [class~="hover:bg-azul-noite"]:hover,
+    [class~="hover:bg-azul-petroleo"]:hover,
+    [class~="hover:bg-ambar"]:hover,
+    .group:hover [class~="group-hover:bg-azul-petroleo"],
+    .group:hover [class~="group-hover:bg-ambar"]
+  ) {
+  color-scheme: light;
+  --off-white: #f5f0e8;
+  --branco: #ffffff;
+  --cinza-claro: #dfdad0;
+  --cinza: #2c2c2c;
+  --cinza-medio: #6b6f72;
+  --azul-noite: #0d1f2d;
+  --azul-petroleo: #1a3a52;
+  --verde: #2e7d4f;
+  --vermelho: #a83232;
+}
+
+/* Texto branco/off-white só existe sobre superfície escura: continua claro
+   (ex.: linha de cabeçalho de tabela com `text-branco` e o th herdando). */
+html[data-tema="escuro"]:has([data-tema-piloto]) [class~="text-branco"] {
+  --branco: #ffffff;
+}
+html[data-tema="escuro"]:has([data-tema-piloto]) [class~="text-off-white"] {
+  --off-white: #f5f0e8;
+}
+
+/* Botão principal (azul-noite) não some no fundo, que também é azul-noite. */
+html[data-tema="escuro"]:has([data-tema-piloto]) :is(button, a, label)[class~="bg-azul-noite"] {
+  --azul-noite: #24506e;
+}
+html[data-tema="escuro"]:has([data-tema-piloto]) :is(button, a, label)[class~="hover:bg-azul-petroleo"]:hover {
+  --azul-petroleo: #2f6488;
+}
+
+/* Barras, legendas e marcadores de gráfico (elementos vazios): mesma cor
+   clara das linhas do gráfico no escuro, senão somem no cartão. */
+html[data-tema="escuro"]:has([data-tema-piloto]) :is([class~="bg-azul-noite"], [class~="bg-azul-petroleo"]):empty {
+  --azul-noite: #f5f0e8;
+  --azul-petroleo: #93bddb;
+}
+
+/* Peça clara dentro do menu (botão de recolher, lista de organizações): escura. */
+html[data-tema="escuro"]:has([data-tema-piloto]) #menu-lateral [class~="bg-branco"] {
+  color-scheme: dark;
+  --off-white: #0d1f2d;
+  --branco: #13293a;
+  --cinza-claro: #24435a;
+  --cinza: #e1e7ec;
+  --cinza-medio: #a4b3bf;
+  --azul-noite: #f5f0e8;
+  --azul-petroleo: #93bddb;
+}
+
+/* Véu atrás de modal, busca e gaveta: escuro (o azul-noite do tema é texto claro). */
+html[data-tema="escuro"]:has([data-tema-piloto])
+  :is([class~="bg-azul-noite/50"], [class~="bg-azul-noite/60"], [class~="bg-azul-noite/70"]) {
+  background-color: rgb(4 11 17 / 0.72);
+}
+
+/* Modal: a caixa tem o mesmo tom do fundo; a borda separa do véu. */
+html[data-tema="escuro"]:has([data-tema-piloto]) [data-modal-flutuante] > div {
+  box-shadow: 0 0 0 1px var(--cinza-claro), 0 18px 48px rgb(0 0 0 / 0.45);
+}
