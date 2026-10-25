@@ -14,9 +14,12 @@
 --
 -- Quem pede: a Server Action passa o id de quem está logado (`p_ator`, lido da sessão no
 -- servidor) e o banco confere de novo o papel dessa pessoa nos vínculos. A função fica no
--- schema public, mas só o service_role tem EXECUTE (revogado de public, anon e
--- authenticated): pela Data API, um usuário logado recebe "permission denied". É o grant
--- que protege, não o schema. Assim a provisória da Equipe vai direto para o WhatsApp da
+-- schema public, mas o EXECUTE é revogado de public, anon, authenticated e vini_operador
+-- (que ganha EXECUTE em toda função nova de public pelos default privileges de
+-- 20261019180000_papel_vini_operador.sql) e concedido só ao service_role. Pela Data API,
+-- um usuário logado recebe "permission denied". É o grant que protege, não o schema.
+-- Toda função criada ou recriada aqui que mexe em senha ou no Auth revoga o vini_operador
+-- explicitamente. Assim a provisória da Equipe vai direto para o WhatsApp da
 -- pessoa e a gestão nunca a vê. O segundo fator do master é conferido pelo
 -- `requireMaster()` antes da chamada.
 -- Proteções extras no escopo da Equipe (revisão de segurança, 24/10): recusa se o WhatsApp
@@ -50,7 +53,7 @@ begin
   return new;
 end;
 $$;
-revoke all on function public.vinculos_marcar_troca_whatsapp() from public, anon, authenticated, service_role;
+revoke all on function public.vinculos_marcar_troca_whatsapp() from public, anon, authenticated, service_role, vini_operador;
 
 drop trigger if exists vinculos_marcar_troca_whatsapp on public.vinculos;
 create trigger vinculos_marcar_troca_whatsapp
@@ -94,7 +97,7 @@ begin
   return found;
 end;
 $$;
-revoke all on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) from public, anon, authenticated;
+revoke all on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) from public, anon, authenticated, vini_operador;
 grant execute on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) to service_role;
 
 -- ── Gatilho de sessão: espera quem está trocando a conta ────────────────
@@ -113,7 +116,7 @@ begin
   return new;
 end;
 $$;
-revoke all on function public.equipe_bloquear_sessao_pendente() from public, anon, authenticated, service_role;
+revoke all on function public.equipe_bloquear_sessao_pendente() from public, anon, authenticated, service_role, vini_operador;
 
 -- ── Gerar a senha provisória ────────────────────────────────────────────
 -- p_escopo 'master': p_ator precisa ter vínculo master ativo; vale para qualquer conta
@@ -323,6 +326,6 @@ end;
 $$;
 
 revoke all on function public.gerar_senha_provisoria_conta(uuid, uuid, text, text, text, timestamptz)
-  from public, anon, authenticated;
+  from public, anon, authenticated, vini_operador;
 grant execute on function public.gerar_senha_provisoria_conta(uuid, uuid, text, text, text, timestamptz)
   to service_role;
