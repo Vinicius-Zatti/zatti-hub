@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(53);
+select plan(57);
 
 grant select on setores to authenticated;
 
@@ -96,6 +96,23 @@ select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000f002');
 select throws_ok($$ select public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000f002',
     '00000000-0000-0000-0000-00000000bb04', 'equipe', 'org-sp-a', repeat('a', 64), now() + interval '7 days') $$,
   '42501', null, 'usuário logado não chama a função pela Data API');
+select pg_temp.como_servidor();
+
+-- O operador do Vini (vini_operador) ganha EXECUTE em toda função nova de public por
+-- default privileges (19/10): estas mexem em senha e no Auth e são revogadas dele.
+select is(has_function_privilege('vini_operador',
+  'public.gerar_senha_provisoria_conta(uuid, uuid, text, text, text, timestamptz)', 'execute'), false,
+  'vini_operador sem EXECUTE em gerar_senha_provisoria_conta');
+select is(has_function_privilege('vini_operador',
+  'public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz)', 'execute'), false,
+  'vini_operador sem EXECUTE em rotacionar_senha_temporaria');
+select set_config('role', 'vini_operador', true);
+select throws_ok($$ select public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000f002',
+    '00000000-0000-0000-0000-00000000bb04', 'equipe', 'org-sp-a', repeat('a', 64), now() + interval '7 days') $$,
+  '42501', null, 'vini_operador não gera senha provisória');
+select throws_ok($$ select public.rotacionar_senha_temporaria('00000000-0000-0000-0000-00000000f004',
+    '00000000-0000-0000-0000-00000000bb04', repeat('a', 64), now() + interval '7 days') $$,
+  '42501', null, 'vini_operador não reenvia senha provisória');
 select pg_temp.como_servidor();
 
 select throws_ok($$ select public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000f002',
