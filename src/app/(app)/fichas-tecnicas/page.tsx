@@ -2,6 +2,9 @@ import { getAcessoAtual } from "@/lib/acesso";
 import { getConfiguracaoFinanceira, listarFichasTecnicas } from "@/lib/banco/fichas-tecnicas";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { ListaFichasTecnicas } from "@/components/lista-fichas-tecnicas";
+import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { configCadastroRapido } from "@/lib/cadastro-rapido";
+import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,11 @@ export default async function FichasTecnicasPage() {
         deducoesTotal={deducoesTotal}
         deducoesIfood={deducoesIfood}
         deducoes99Food={deducoes99Food}
+        cadastroRapidoProduto={configCadastroRapido(
+          podeGerir && usaNavegacaoV2(acesso),
+          CONTAGEM_POR_SETOR_ATIVA,
+          acesso.fonteDadosEstoque,
+        )}
       />
     </div>
   );
