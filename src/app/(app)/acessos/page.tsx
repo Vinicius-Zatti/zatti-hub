@@ -44,7 +44,8 @@ export default async function AcessosPage() {
         <h2 className="font-display text-lg font-bold text-azul-noite">
           Organizações <span className="text-sm font-normal text-cinza-medio">({organizacoes.length})</span>
         </h2>
-        <div className="mt-2 max-h-[40vh] overflow-auto rounded-lg border border-cinza-claro">
+        <div className="mt-2">
+          <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Organizações">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-branco">
@@ -64,8 +65,8 @@ export default async function AcessosPage() {
                 </tr>
               )}
               {organizacoes.map((o) => (
-                <tr key={o.id} className="border-t border-cinza-claro odd:bg-off-white/50">
-                  <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-azul-noite">{o.nome}</td>
+                <tr key={o.id} className="group border-t border-cinza-claro odd:bg-off-white">
+                  <td className="sticky left-0 z-10 bg-branco group-odd:bg-off-white px-3 py-2 font-medium text-azul-noite">{o.nome}</td>
                   <td className="px-3 py-2 font-mono text-xs text-cinza-medio">{o.id}</td>
                   <td className="px-3 py-2">{ROTULO_TIPO_CLIENTE[o.tipoCliente] ?? o.tipoCliente}</td>
                   <td className="px-3 py-2 text-center">{o.totalUnidades}</td>
@@ -76,6 +77,7 @@ export default async function AcessosPage() {
               ))}
             </tbody>
           </table>
+          </TabelaRolavel>
         </div>
       </section>
 
@@ -83,7 +85,8 @@ export default async function AcessosPage() {
         <h2 className="font-display text-lg font-bold text-azul-noite">
           Unidades <span className="text-sm font-normal text-cinza-medio">({unidades.length})</span>
         </h2>
-        <div className="mt-2 max-h-[40vh] overflow-auto rounded-lg border border-cinza-claro">
+        <div className="mt-2">
+          <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Unidades">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-branco">
@@ -104,8 +107,8 @@ export default async function AcessosPage() {
                 </tr>
               )}
               {unidades.map((u) => (
-                <tr key={u.id} className="border-t border-cinza-claro odd:bg-off-white/50">
-                  <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-azul-noite">{u.nome}</td>
+                <tr key={u.id} className="group border-t border-cinza-claro odd:bg-off-white">
+                  <td className="sticky left-0 z-10 bg-branco group-odd:bg-off-white px-3 py-2 font-medium text-azul-noite">{u.nome}</td>
                   <td className="px-3 py-2">{u.organizacaoNome}</td>
                   <td className="px-3 py-2">{u.fonteDadosEstoque === "banco" ? "Banco" : "Planilha"}</td>
                   <td className="px-3 py-2 text-center">
@@ -135,6 +138,7 @@ export default async function AcessosPage() {
               ))}
             </tbody>
           </table>
+          </TabelaRolavel>
         </div>
       </section>
 
@@ -165,8 +169,8 @@ export default async function AcessosPage() {
                   </tr>
                 )}
                 {avisosGarante.map((u) => (
-                  <tr key={u.unidadeId} className="border-t border-cinza-claro odd:bg-off-white/50">
-                    <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-azul-noite">{u.unidadeNome}</td>
+                  <tr key={u.unidadeId} className="group border-t border-cinza-claro odd:bg-off-white">
+                    <td className="sticky left-0 z-10 bg-branco group-odd:bg-off-white px-3 py-2 font-medium text-azul-noite">{u.unidadeNome}</td>
                     <td className="px-3 py-2">{u.organizacaoNome}</td>
                     <td className="px-3 py-2">
                       <TextoResponsavelAvisos atual={u.atual} />
@@ -193,8 +197,9 @@ export default async function AcessosPage() {
         <h2 className="font-display text-lg font-bold text-azul-noite">
           Usuários e vínculos <span className="text-sm font-normal text-cinza-medio">({vinculos.length})</span>
         </h2>
-        <div className="mt-2 max-h-[50vh] overflow-auto rounded-lg border border-cinza-claro">
-          <table className="w-full text-sm">
+        <div className="mt-2">
+          <TabelaRolavel className="max-h-[50vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Usuários e vínculos">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="text-branco">
                 <Th fixo>Usuário</Th>
@@ -215,8 +220,8 @@ export default async function AcessosPage() {
                 </tr>
               )}
               {vinculos.map((v) => (
-                <tr key={v.id} className="border-t border-cinza-claro odd:bg-off-white/50">
-                  <td className="sticky left-0 bg-inherit px-3 py-2">
+                <tr key={v.id} className="group border-t border-cinza-claro odd:bg-off-white">
+                  <td className="sticky left-0 z-10 bg-branco group-odd:bg-off-white px-3 py-2">
                     <EditarNomeVinculo userId={v.userId} nomeAtual={v.nome} />
                     <p className="text-xs text-cinza-medio">{v.email}</p>
                   </td>
@@ -274,6 +279,7 @@ export default async function AcessosPage() {
               ))}
             </tbody>
           </table>
+          </TabelaRolavel>
         </div>
       </section>
     </div>
