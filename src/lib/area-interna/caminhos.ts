@@ -28,6 +28,7 @@ export const PREFIXOS_RESTAURANTE = [
   // Páginas de entrada do piloto da Navegação V2 (24/10/2026).
   "/relatorios",
   "/cadastros",
+  "/configuracoes",
 ] as const;
 
 function casaPrefixo(caminho: string, prefixos: readonly string[]): boolean {

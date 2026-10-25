@@ -10,6 +10,7 @@ import { BuscaGlobal, BuscaGlobalProvider } from "@/components/navegacao-v2/busc
 import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
 import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
 import { AlternadorTema } from "@/components/navegacao-v2/alternador-tema";
+import { TourModuloProvider } from "@/components/navegacao-v2/tour-modulo";
 import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
 import { teclaAbreBusca, type EntradaBusca } from "@/lib/navegacao/busca";
 import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
@@ -40,6 +41,8 @@ type Props = {
   entradasBusca: EntradaBusca[];
   /** Subtítulo do cabeçalho na página de entrada de cada módulo. */
   unidadeNome: string;
+  /** Módulos com tour já visto (fase 4); null = leitura falhou e o tour não abre sozinho. */
+  toursVistos: string[] | null;
   organizacaoAtual: string;
   organizacaoNome: string;
   organizacoes: { id: string; nome: string }[];
@@ -53,6 +56,7 @@ export function EstruturaAplicativoV2({
   atalhos,
   entradasBusca,
   unidadeNome,
+  toursVistos,
   organizacaoAtual,
   organizacaoNome,
   organizacoes,
@@ -529,8 +533,11 @@ export function EstruturaAplicativoV2({
         >
           <NavegacaoV2Provider>
             <BuscaGlobalProvider abrir={abrirBusca}>
-              {cabecalho && <CabecalhoModuloV2 cabecalho={cabecalho} unidadeNome={unidadeNome} />}
-              {children}
+              {/* Tour do primeiro acesso de cada módulo (fase 4, 25/10/2026). */}
+              <TourModuloProvider rotuloModulo={labelAtivo} vistos={toursVistos}>
+                {cabecalho && <CabecalhoModuloV2 cabecalho={cabecalho} unidadeNome={unidadeNome} />}
+                {children}
+              </TourModuloProvider>
             </BuscaGlobalProvider>
           </NavegacaoV2Provider>
         </main>

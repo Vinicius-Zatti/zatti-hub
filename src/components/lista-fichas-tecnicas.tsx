@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ConfigCadastroRapido } from "@/lib/cadastro-rapido";
 import { Th } from "@/components/tabela";
 import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
@@ -46,6 +47,7 @@ export function ListaFichasTecnicas({
   deducoesTotal,
   deducoesIfood,
   deducoes99Food,
+  cadastroRapidoProduto = null,
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
@@ -57,6 +59,8 @@ export function ListaFichasTecnicas({
   deducoesTotal: number;
   deducoesIfood: number;
   deducoes99Food: number;
+  /** Atalho "+ Novo insumo" ao montar/editar ficha (ver `FichaTecnicaForm`). */
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
 }) {
   const router = useRouter();
   const [camada, setCamada] = useState<CamadaFicha>("PRE");
@@ -291,6 +295,7 @@ export function ListaFichasTecnicas({
                 deducoesIfood={deducoesIfood}
                 deducoes99Food={deducoes99Food}
                 aoFechar={fechar}
+                cadastroRapidoProduto={cadastroRapidoProduto}
                 aoSalvar={() => {
                   if (fichaAbertaId) void carregar(fichaAbertaId);
                 }}
@@ -323,6 +328,7 @@ export function ListaFichasTecnicas({
                 categorias={dadosNovo.categorias}
                 produtos={dadosNovo.produtos}
                 fichasDisponiveis={dadosNovo.fichasDisponiveis}
+                cadastroRapidoProduto={cadastroRapidoProduto}
                 onSalvo={() => {
                   fecharNovo();
                   router.refresh();

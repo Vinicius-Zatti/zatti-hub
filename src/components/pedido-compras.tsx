@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import type { Fornecedor, SugestaoCompra } from "@/lib/types";
+import type { Fornecedor, Produto, SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos, SEM_FORNECEDOR } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
@@ -14,6 +14,16 @@ import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
+import { ModalFlutuante } from "@/components/modal-flutuante";
+import { NovoProdutoForm } from "@/components/novo-produto-form";
+import {
+  ALERTA_FORA_DA_CONTAGEM,
+  avisoProdutoCotacao,
+  incluirPorSku,
+  mesclarItensNovos,
+  produtoParaSugestaoCompra,
+  type ConfigCadastroRapido,
+} from "@/lib/cadastro-rapido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -38,6 +48,7 @@ export function PedidoCompras({
   fornecedoresCadastro,
   quantidadesSalvas,
   setoresPendentes = [],
+  cadastroRapidoProduto = null,
 }: {
   itens: SugestaoCompra[];
   /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
@@ -58,6 +69,10 @@ export function PedidoCompras({
    * estoque atual é soma parcial e a tela exige confirmação explícita antes
    * de deixar confirmar quantidade. */
   setoresPendentes?: string[];
+  /** Cadastro rápido no lugar onde se usa (Navegação V2, piloto): "+ Novo
+   * produto" cadastra em modal e a linha nova já entra na conferência com o
+   * campo Comprar aberto. Só Gestão/master (`criarProdutoAction` confere). */
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -90,6 +105,27 @@ export function PedidoCompras({
   const [confirmando, setConfirmando] = useState<Record<string, boolean>>({});
   const [erroConfirmar, setErroConfirmar] = useState<Record<string, string>>({});
   const { agendar: agendarSincronizacao } = useSincronizarCotacao();
+
+  // Produto cadastrado pelo atalho: entra na lista local sem recarregar, então
+  // quantidade já digitada e edição aberta em outras linhas continuam onde estavam.
+  const [itensNovos, setItensNovos] = useState<SugestaoCompra[]>([]);
+  const [novoProdutoAberto, setNovoProdutoAberto] = useState(false);
+  const [avisoNovoProduto, setAvisoNovoProduto] = useState<string | null>(null);
+  // Trocar contagem ou escopo (router.push não remonta este componente) zera as
+  // linhas cadastradas aqui: a partir daí vale o que o servidor devolve.
+  const chaveTela = `${datasUsadas.join(",")}|${gruposSelecionados.join(",")}`;
+  const [chaveItensNovos, setChaveItensNovos] = useState(chaveTela);
+  if (chaveItensNovos !== chaveTela) {
+    setChaveItensNovos(chaveTela);
+    setItensNovos([]);
+    setAvisoNovoProduto(null);
+  }
+  const itensTela = useMemo(
+    () => mesclarItensNovos(itens, itensNovos, gruposSelecionados),
+    [itens, itensNovos, gruposSelecionados],
+  );
+  const skusNovos = useMemo(() => new Set(itensNovos.map((i) => i.sku)), [itensNovos]);
+  const temForaDaContagem = itensTela.some((i) => skusNovos.has(i.sku) || i.alerta === ALERTA_FORA_DA_CONTAGEM);
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
@@ -158,7 +194,7 @@ export function PedidoCompras({
 
   const itensEfetivos = useMemo(
     () =>
-      itens.map((item) => {
+      itensTela.map((item) => {
         const fornecedorOverride = fornecedorOverrides[item.sku];
         const quantidadeOverride = overrides[item.sku];
         return {
@@ -167,7 +203,7 @@ export function PedidoCompras({
           ...(quantidadeOverride !== undefined ? { precisaComprar: quantidadeOverride > 0 } : {}),
         };
       }),
-    [itens, fornecedorOverrides, overrides]
+    [itensTela, fornecedorOverrides, overrides]
   );
 
   const porGrupo = useMemo(() => agruparPorGrupo(itensEfetivos), [itensEfetivos]);
@@ -187,21 +223,55 @@ export function PedidoCompras({
   const contagemParcial = setoresPendentes.length > 0;
   const podeConfirmar = podeEditar && (!contagemParcial || parcialLiberada);
 
-  const totalGeral = itens.reduce((soma, item) => {
+  function produtoCadastrado(produto: Produto) {
+    setNovoProdutoAberto(false);
+    const item = produtoParaSugestaoCompra(produto);
+    const foraDoFiltro = gruposSelecionados.length > 0 && !gruposSelecionados.includes(produto.grupo);
+    setItensNovos((atual) => incluirPorSku(atual, item));
+    if (podeConfirmar && !foraDoFiltro) setEditando((e) => ({ ...e, [item.sku]: "" }));
+    setAvisoNovoProduto(
+      avisoProdutoCotacao({
+        nome: produto.nome,
+        grupoNome: nomeGrupo(produto.grupo),
+        foraDoFiltro,
+        podeDigitar: podeConfirmar,
+        avisarSetor: cadastroRapidoProduto?.avisarSetor ?? false,
+      }),
+    );
+  }
+
+  const totalGeral = itensTela.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
     return soma + valorAtual(item) * item.precoUnitario;
   }, 0);
 
   return (
     <div className="flex flex-col gap-5 pb-10">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-azul-noite">Criar Cotação</h1>
-        <p className="text-sm text-cinza-medio">
-          Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
-          não precisa comprar. Confirmar já grava na hora. Depois, compartilha a cotação de cada
-          fornecedor lá embaixo.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-3xl font-bold text-azul-noite">Criar Cotação</h1>
+          <p className="text-sm text-cinza-medio">
+            Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
+            não precisa comprar. Confirmar já grava na hora. Depois, compartilha a cotação de cada
+            fornecedor lá embaixo.
+          </p>
+        </div>
+        {cadastroRapidoProduto && (
+          <button
+            type="button"
+            onClick={() => setNovoProdutoAberto(true)}
+            className="shrink-0 rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco hover:bg-azul-petroleo"
+          >
+            + Novo produto
+          </button>
+        )}
       </div>
+
+      {avisoNovoProduto && (
+        <p role="status" className="rounded-md border border-ambar bg-ambar/10 px-3 py-2 text-sm text-cinza">
+          {avisoNovoProduto}
+        </p>
+      )}
 
       {contagemParcial && (
         <div className="rounded-lg border-2 border-ambar bg-ambar/10 p-4">
@@ -288,17 +358,20 @@ export function PedidoCompras({
           {variasContagens ? `Nessas contagens (${listarDatas(datasUsadas)})` : `Nessa contagem (${dataUsada})`}{" "}
           foram contados os grupos:{" "}
           <strong className="text-cinza">{gruposContadosNoDia.map(nomeGrupo).join(", ")}</strong>. O resto
-          do cadastro nem entra aqui, porque não fez parte {variasContagens ? "dessas contagens" : "dessa contagem"}.
+          do cadastro nem entra aqui, porque não fez parte {variasContagens ? "dessas contagens" : "dessa contagem"}
+          {temForaDaContagem
+            ? `, exceto produto cadastrado aqui ou com compra já confirmada, que aparece com a etiqueta "${ALERTA_FORA_DA_CONTAGEM}" ou "novo".`
+            : "."}
         </p>
       )}
 
-      {itens.length === 0 && (
+      {itensTela.length === 0 && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
           Nenhum produto ativo nesse escopo.
         </div>
       )}
 
-      {itens.length > 0 && (
+      {itensTela.length > 0 && (
         <div>
           <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">Conferência por Grupo</h2>
           <p className="mb-3 rounded-md border border-ambar/60 bg-ambar/10 px-3 py-2 text-xs font-medium text-ambar">
@@ -317,6 +390,7 @@ export function PedidoCompras({
                 erroConfirmar={erroConfirmar}
                 podeEditar={podeConfirmar}
                 mostrarDatas={variasContagens}
+                skusNovos={skusNovos}
                 onIniciarEdicao={iniciarEdicao}
                 onConfirmarEdicao={confirmarEdicaoGrupo}
                 onChangeEditando={(sku, v) => setEditando((ed) => ({ ...ed, [sku]: v }))}
@@ -326,7 +400,7 @@ export function PedidoCompras({
         </div>
       )}
 
-      {itens.length > 0 && (
+      {itensTela.length > 0 && (
         <div>
           <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">
             Por Fornecedor - cotação e compartilhamento
@@ -353,6 +427,12 @@ export function PedidoCompras({
           </div>
         </div>
       )}
+
+      <ModalFlutuante aberto={novoProdutoAberto} onFechar={() => setNovoProdutoAberto(false)}>
+        {novoProdutoAberto && (
+          <NovoProdutoForm onSalvo={produtoCadastrado} onCancelar={() => setNovoProdutoAberto(false)} />
+        )}
+      </ModalFlutuante>
     </div>
   );
 }
@@ -366,6 +446,7 @@ function TabelaItens({
   erroConfirmar,
   podeEditar,
   mostrarDatas,
+  skusNovos,
   onIniciarEdicao,
   onConfirmarEdicao,
   onChangeEditando,
@@ -379,6 +460,8 @@ function TabelaItens({
   podeEditar: boolean;
   /** Com mais de uma contagem marcada: mostra de qual data veio cada estoque. */
   mostrarDatas: boolean;
+  /** Linhas cadastradas agora pelo atalho - ficam marcadas pra achar fácil. */
+  skusNovos: Set<string>;
   onIniciarEdicao: (item: SugestaoCompra) => void;
   onConfirmarEdicao: (item: SugestaoCompra) => void;
   onChangeEditando: (sku: string, valor: string) => void;
@@ -421,11 +504,20 @@ function TabelaItens({
               const emEdicao = editando[item.sku] !== undefined;
               const valor = item.precoUnitario !== null ? qtd * item.precoUnitario : null;
               const precisa = qtd > 0;
+              const novo = skusNovos.has(item.sku);
 
               return (
-                <tr key={item.sku} className={`border-t border-cinza-claro ${precisa ? "bg-ambar/5" : ""}`}>
+                <tr
+                  key={item.sku}
+                  className={`border-t border-cinza-claro ${novo ? "bg-azul-petroleo/10" : precisa ? "bg-ambar/5" : ""}`}
+                >
                   <td className={`px-3 py-2 font-medium ${precisa ? "text-cinza" : "text-cinza-medio"}`}>
                     {item.nome}
+                    {novo && (
+                      <span className="ml-1.5 rounded-full bg-azul-petroleo/15 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo">
+                        novo
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-cinza-medio">
                     {item.estoqueAtual !== null
