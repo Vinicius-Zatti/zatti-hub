@@ -215,6 +215,12 @@ export function PermissoesMembro({
                   onTrocar={(n) => trocar(m.chave, n)}
                   desabilitado={pendente}
                 />
+                {m.chave === "cardapio" && padrao("cardapio") === "editar" && rascunho.cardapio !== "editar" && (
+                  <p className="rounded-md bg-ambar/10 px-2 py-1 text-xs text-azul-noite">
+                    Sem Editar no Cardápio, {pessoa.nome} também não marca nem desmarca pré-preparo em Cadastros
+                    &gt; Produtos (isso cria ou inativa ficha técnica).
+                  </p>
+                )}
                 {acoes.map((a) => (
                   <div key={a.chave} className="ml-3 border-l-2 border-cinza-claro pl-3">
                     <LinhaNivel

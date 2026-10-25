@@ -11,6 +11,7 @@ import {
   excecoesDasLinhas,
   niveisEfetivos,
   nomeChave,
+  restringirPorVinculos,
   rank,
   type ChavePermissao,
   type NiveisCompletos,
@@ -288,13 +289,23 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   }
 
   const ehDono = !ehMaster && vinculoDaOrg?.role === "gestao" && vinculoDaOrg.unidade_id === null;
-  const linhasPermissao = ((permissoesData as { vinculo_id: string; modulo: string; nivel: string }[] | null) ?? [])
-    .filter((l) => !ehMaster && l.vinculo_id === vinculoDaOrg?.id);
-  const permissoes = niveisEfetivos(
+  // Mesma regra do banco (unidades_modulo_negadas): a exceção de QUALQUER vínculo ativo que cobre a
+  // unidade da sessão restringe; o vínculo que define o papel dá a base (padrão + exceções dele).
+  const todasLinhas = (permissoesData as { vinculo_id: string; modulo: string; nivel: string }[] | null) ?? [];
+  const linhasDoVinculo = (id: string) => todasLinhas.filter((l) => l.vinculo_id === id);
+  const permissoesBase = niveisEfetivos(
     ehMaster ? "master" : role === "gestao" ? "gestao" : "operacional",
     ehMaster || vinculoDaOrg?.unidade_id === null,
-    excecoesDasLinhas(linhasPermissao),
+    ehMaster || !vinculoDaOrg ? {} : excecoesDasLinhas(linhasDoVinculo(vinculoDaOrg.id)),
   );
+  const permissoes = ehMaster
+    ? permissoesBase
+    : restringirPorVinculos(
+        permissoesBase,
+        vinculos
+          .filter((v) => v.organizacao_id === organizacaoId && (v.unidade_id === null || v.unidade_id === unidade.id))
+          .map((v) => excecoesDasLinhas(linhasDoVinculo(v.id))),
+      );
 
   const usuarioEmail = typeof claims.claims.email === "string" ? claims.claims.email : "";
   const titularFinanceiro = ehTitularFinanceiro({ ehMaster, aal: claims.claims.aal, email: usuarioEmail });

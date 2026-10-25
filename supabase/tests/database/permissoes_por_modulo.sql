@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(66);
 
 -- O usuário dos testes precisa poder assumir o papel do operador do Vini (só nesta transação).
 grant vini_operador to current_user;
@@ -19,7 +19,8 @@ grant vini_operador to current_user;
 -- f001 master | f002 dono (gestão org inteira) | f003 gerente sem Financeiro |
 -- f004 operacional | f005 gerente só vê (Financeiro, Vendas, Cardápio) |
 -- f006 gerente sem "apagar lançamento" e sem "fechar mês" | f007 dono fora do piloto |
--- f008 operacional fora do piloto
+-- f008 operacional fora do piloto | f009 outro dono (org inteira, duas unidades) |
+-- f010 dois vínculos na mesma organização (operacional na Burger + gestão de todas)
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-00000000f001', 'pm-master@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000f002', 'pm-dono@teste.local', 'x', now(), 'authenticated', 'authenticated'),
@@ -28,7 +29,9 @@ insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, 
   ('00000000-0000-0000-0000-00000000f005', 'pm-ver@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000f006', 'pm-acoes@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000f007', 'pm-dono-fora@teste.local', 'x', now(), 'authenticated', 'authenticated'),
-  ('00000000-0000-0000-0000-00000000f008', 'pm-oper-fora@teste.local', 'x', now(), 'authenticated', 'authenticated');
+  ('00000000-0000-0000-0000-00000000f008', 'pm-oper-fora@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f009', 'pm-dono2@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f010', 'pm-duplo@teste.local', 'x', now(), 'authenticated', 'authenticated');
 
 insert into organizacoes (id, nome, tipo_cliente, ativo, equipe_habilitado) values
   ('org-pm', 'Cliente PM', 'saas', true, true),
@@ -39,7 +42,8 @@ insert into unidades (id, organizacao_id, nome, fonte_dados_estoque, ativo,
   financeiro_gerencial_habilitado, financeiro_liberado_equipe, conciliacao_habilitada,
   consolidado_vendas_habilitado, fichas_tecnicas_habilitado) values
   ('zatti-burger', 'org-pm', 'Burger PM', 'banco', true, true, true, true, true, true),
-  ('pm-fora-1', 'org-pm-fora', 'Fora PM', 'banco', true, true, true, true, true, true);
+  ('pm-fora-1', 'org-pm-fora', 'Fora PM', 'banco', true, true, true, true, true, true),
+  ('pm-loja2', 'org-pm', 'Loja 2 PM', 'banco', true, true, true, true, true, true);
 
 insert into vinculos (id, user_id, organizacao_id, unidade_id, role, status) values
   ('00000000-0000-0000-0000-0000000f0a01', '00000000-0000-0000-0000-00000000f001', 'org-pm-fora', null, 'master', 'ativo'),
@@ -49,7 +53,10 @@ insert into vinculos (id, user_id, organizacao_id, unidade_id, role, status) val
   ('00000000-0000-0000-0000-0000000f0a05', '00000000-0000-0000-0000-00000000f005', 'org-pm', 'zatti-burger', 'gestao', 'ativo'),
   ('00000000-0000-0000-0000-0000000f0a06', '00000000-0000-0000-0000-00000000f006', 'org-pm', 'zatti-burger', 'gestao', 'ativo'),
   ('00000000-0000-0000-0000-0000000f0a07', '00000000-0000-0000-0000-00000000f007', 'org-pm-fora', null, 'gestao', 'ativo'),
-  ('00000000-0000-0000-0000-0000000f0a08', '00000000-0000-0000-0000-00000000f008', 'org-pm-fora', 'pm-fora-1', 'operacional', 'ativo');
+  ('00000000-0000-0000-0000-0000000f0a08', '00000000-0000-0000-0000-00000000f008', 'org-pm-fora', 'pm-fora-1', 'operacional', 'ativo'),
+  ('00000000-0000-0000-0000-0000000f0a09', '00000000-0000-0000-0000-00000000f009', 'org-pm', null, 'gestao', 'ativo'),
+  ('00000000-0000-0000-0000-0000000f0a10', '00000000-0000-0000-0000-00000000f010', 'org-pm', 'zatti-burger', 'operacional', 'ativo'),
+  ('00000000-0000-0000-0000-0000000f0a11', '00000000-0000-0000-0000-00000000f010', 'org-pm', null, 'gestao', 'ativo');
 
 select public.semear_categorias_financeiras('zatti-burger');
 insert into fin_contas_financeiras (id, unidade_id, nome, tipo)
@@ -59,6 +66,11 @@ select v.id, 'zatti-burger', 'despesa', c.id, 'Fornecedor PM', '2026-10-01', '00
 from fin_categorias c,
      (values ('00000000-0000-0000-0000-0000000f0d01'::uuid), ('00000000-0000-0000-0000-0000000f0d02'::uuid)) v(id)
 where c.unidade_id = 'zatti-burger' and c.codigo_sistema = 'cmc_compras_mercadorias';
+select public.semear_categorias_financeiras('pm-loja2');
+insert into fin_lancamentos (id, unidade_id, tipo, categoria_id, descricao, data_competencia, criado_por)
+select '00000000-0000-0000-0000-0000000f0d03', 'pm-loja2', 'despesa', c.id, 'Fornecedor loja 2', '2026-10-01',
+       '00000000-0000-0000-0000-00000000f002'
+from fin_categorias c where c.unidade_id = 'pm-loja2' and c.codigo_sistema = 'cmc_compras_mercadorias';
 insert into fin_parcelas (id, unidade_id, lancamento_id, numero, total_parcelas, valor, data_prevista) values
   ('00000000-0000-0000-0000-0000000f0d11', 'zatti-burger', '00000000-0000-0000-0000-0000000f0d01', 1, 1, 100, '2026-10-29');
 insert into consolidados_vendas (unidade_id, data, credito, total_formas_pagamento, total_canais,
@@ -182,7 +194,7 @@ select is((select count(*)::int from logs_auditoria
               and dados_novos -> 'excecoes' = '{"financeiro":"sem_acesso","configuracoes":"ver"}'::jsonb),
   1, 'auditoria com antes e depois');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f001', 'org-pm', '00000000-0000-0000-0000-0000000f0a05',
-  '{"financeiro":"ver","vendas":"ver","cardapio":"ver"}'), 'ok', 'master deixa um gerente só vendo');
+  '{"financeiro":"ver","vendas":"ver","cardapio":"ver","configuracoes":"ver"}'), 'ok', 'master deixa um gerente só vendo');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a06',
   '{"financeiro.apagar_lancamento":"sem_acesso","financeiro.fechar_mes":"sem_acesso"}'), 'ok',
   'dono tira duas ações sensíveis');
@@ -241,6 +253,48 @@ select is((select count(*)::int from permissoes_modulo where vinculo_id = '00000
   0, 'voltar ao padrão apaga as linhas');
 select pg_temp.como('00000000-0000-0000-0000-00000000f003');
 select is((select count(*)::int from fin_lancamentos), 2, 'de volta ao padrão, lê de novo');
+
+-- ── Dono não mexe em outro dono; exceção de quem cobre duas unidades ─────
+select pg_temp.como('00000000-0000-0000-0000-00000000f009');
+select is((select count(*)::int from fin_lancamentos), 3, 'outro dono sem exceção lê as duas unidades');
+select pg_temp.como_servidor();
+select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a09',
+  '{"financeiro":"sem_acesso"}'), 'alvo_dono', 'dono não restringe outro dono');
+select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f001', 'org-pm', '00000000-0000-0000-0000-0000000f0a09',
+  '{"financeiro":"sem_acesso"}'), 'ok', 'master restringe um dono');
+select pg_temp.como('00000000-0000-0000-0000-00000000f009');
+select is((select count(*)::int from fin_lancamentos), 0, 'exceção no vínculo da organização inteira vale nas duas unidades');
+select ok(not public.pode_modulo('financeiro', 'ver', 'pm-loja2'), 'pode_modulo nega a segunda unidade também');
+
+-- ── Dois vínculos: a restrição vence ─────────────────────────────────────
+select pg_temp.como_servidor();
+select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f001', 'org-pm', '00000000-0000-0000-0000-0000000f0a10',
+  '{"financeiro":"sem_acesso"}'), 'ok', 'master tira o Financeiro do vínculo operacional');
+select pg_temp.como('00000000-0000-0000-0000-00000000f010');
+select is((select count(*)::int from fin_lancamentos where unidade_id = 'zatti-burger'), 0,
+  'o outro vínculo (gestão, sem exceção) não devolve o Financeiro da Burger');
+select is((select count(*)::int from fin_lancamentos where unidade_id = 'pm-loja2'), 1,
+  'na unidade que só o vínculo sem exceção cobre, segue como hoje');
+update fin_lancamentos set descricao = 'por tras' where id = '00000000-0000-0000-0000-0000000f0d01';
+select pg_temp.como_servidor();
+select isnt((select descricao from fin_lancamentos where id = '00000000-0000-0000-0000-0000000f0d01'), 'por tras',
+  'nem grava por trás na unidade negada');
+
+-- ── service_role não é barrado pela exceção de ninguém ───────────────────
+select set_config('role', 'service_role', true);
+select set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+select lives_ok($$update fin_lancamentos set descricao = 'servidor' where id = '00000000-0000-0000-0000-0000000f0d01'$$,
+  'service_role grava na unidade em que há exceção');
+select pg_temp.como_servidor();
+select is((select descricao from fin_lancamentos where id = '00000000-0000-0000-0000-0000000f0d01'), 'servidor',
+  'gravação do servidor ficou');
+
+-- ── Troca de função limpa o que passou do teto ───────────────────────────
+update vinculos set role = 'operacional' where id = '00000000-0000-0000-0000-0000000f0a05';
+select is((select jsonb_object_agg(modulo, nivel) from permissoes_modulo
+            where vinculo_id = '00000000-0000-0000-0000-0000000f0a05'),
+  '{"financeiro":"ver","vendas":"ver"}'::jsonb,
+  'virou operacional: sai Configurações (acima do teto) e Cardápio (agora é o padrão); restrições ficam');
 
 select * from finish();
 rollback;

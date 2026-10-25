@@ -24,7 +24,7 @@ import {
   salvarPermissoesNoBanco,
 } from "@/lib/equipe/servidor";
 import { CHAVES, ehChavePermissao, ehNivel, mensagemSalvarPermissoes } from "@/lib/permissoes/modulos";
-import { podeAdministrarPermissoes } from "@/lib/permissoes/quem-administra";
+import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -580,6 +580,9 @@ export async function salvarPermissoesMembroAction(vinculoId: string, niveis: un
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
+  if (!podeMudarPermissoesDe(acesso, { role: carregado.alvo.role, unidadeId: carregado.alvo.unidade_id })) {
+    return { erro: mensagemSalvarPermissoes("alvo_dono") ?? "" };
+  }
   const codigo = await salvarPermissoesNoBanco(admin, {
     atorId: acesso.userId,
     organizacaoId: acesso.organizacaoId,

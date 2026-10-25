@@ -1,5 +1,5 @@
 import { requireEquipe, temPermissao } from "@/lib/acesso";
-import { podeAdministrarPermissoes } from "@/lib/permissoes/quem-administra";
+import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { CadastrarMembroForm } from "@/components/equipe/cadastrar-membro-form";
 import { CartaoMembro } from "@/components/equipe/cartao-membro";
 import { carregarEquipe } from "./dados";
@@ -65,7 +65,9 @@ export default async function EquipePage() {
               podeTodas={!acesso.unidadeFixa}
               organizacaoNome={acesso.organizacaoNome}
               podeEditar={podeEditar}
-              equipePermissoes={equipePermissoes}
+              equipePermissoes={
+                podeMudarPermissoesDe(acesso, { role: m.role, unidadeId: m.unidadeId }) ? equipePermissoes : null
+              }
             />
           ))}
         </div>

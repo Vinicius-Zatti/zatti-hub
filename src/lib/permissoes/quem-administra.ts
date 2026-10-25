@@ -15,3 +15,13 @@ export function podeAdministrarPermissoes(acesso: {
   if (acesso.role === "master") return true;
   return acesso.ehDono && acesso.permissoes.equipe === "editar";
 }
+
+/** Dono não mexe nas permissões de outro dono (gestão da organização inteira): só o master.
+ * Mesma recusa ('alvo_dono') de `salvar_permissoes_modulo` no banco. */
+export function podeMudarPermissoesDe(
+  ator: { role: string },
+  alvo: { role: string; unidadeId: string | null },
+): boolean {
+  if (ator.role === "master") return true;
+  return !(alvo.role === "gestao" && alvo.unidadeId === null);
+}

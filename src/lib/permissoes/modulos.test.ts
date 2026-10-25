@@ -11,8 +11,10 @@ import {
   nivelMaximo,
   nivelPadrao,
   rascunhoInicial,
+  restringirPorVinculos,
   textoSalvarPermissoes,
 } from "./modulos";
+import { podeMudarPermissoesDe } from "./quem-administra";
 import { aplicarPermissoesMenu, destinoSemEdicao } from "./menu";
 import { montarMenuRestaurantePiloto, type ContextoMenuRestaurante } from "@/lib/navegacao/menu-restaurante";
 
@@ -160,5 +162,26 @@ describe("menu do piloto", () => {
 
   it("todo módulo do catálogo tem nome", () => {
     expect(MODULOS).toHaveLength(9);
+  });
+});
+
+describe("dois vínculos e dono", () => {
+  it("a restrição de qualquer vínculo vence", () => {
+    const base = niveisEfetivos("gestao", true, {});
+    const r = restringirPorVinculos(base, [{}, { financeiro: "sem_acesso" }]);
+    expect(r.financeiro).toBe("sem_acesso");
+    expect(r["financeiro.apagar_lancamento"]).toBe("sem_acesso");
+    expect(r.vendas).toBe("editar");
+  });
+
+  it("exceção nunca sobe o nível pelo outro vínculo", () => {
+    const base = niveisEfetivos("gestao", false, {});
+    expect(restringirPorVinculos(base, [{ configuracoes: "ver" }]).configuracoes).toBe("sem_acesso");
+  });
+
+  it("dono não mexe em outro dono; master mexe", () => {
+    expect(podeMudarPermissoesDe({ role: "gestao" }, { role: "gestao", unidadeId: null })).toBe(false);
+    expect(podeMudarPermissoesDe({ role: "gestao" }, { role: "gestao", unidadeId: "loja" })).toBe(true);
+    expect(podeMudarPermissoesDe({ role: "master" }, { role: "gestao", unidadeId: null })).toBe(true);
   });
 });

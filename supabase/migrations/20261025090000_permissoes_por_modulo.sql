@@ -29,8 +29,16 @@
 -- Quem grava: só `salvar_permissoes_modulo`, executada pelo service_role com o id de quem está
 -- logado (`p_ator`, lido da sessão no servidor), conferido de novo aqui, como em
 -- 20261024200000_editar_vinculo_acesso.sql. Master (qualquer organização) ou o dono (gestão
--- ativa da organização inteira, sem restrição na própria Equipe) da organização. Só
--- organização do piloto da Navegação V2. Auditoria em logs_auditoria.
+-- ativa da organização inteira, sem restrição na própria Equipe) da organização; dono não mexe
+-- em outro dono (só master). Só organização do piloto da Navegação V2. Auditoria em logs_auditoria.
+--
+-- Dois vínculos na mesma organização: a exceção de qualquer um que cobre a unidade vence.
+-- Troca de função ou unidade (editar_vinculo_acesso): gatilho limpa a exceção que passou do novo
+-- teto ou virou o novo padrão. Desempenho: quem não tem nenhuma linha não paga nada além de um
+-- teste único por consulta (ver unidades_modulo_negadas).
+--
+-- Lock: os `create trigger` e `create or replace function` pegam lock nas tabelas do Financeiro,
+-- Vendas, Cardápio e em vinculos por alguns instantes. Rodar fora do horário de uso.
 --
 -- Desfazer: `drop table public.permissoes_modulo cascade;` devolve o comportamento de antes (as
 -- funções novas passam a não achar linha nenhuma); para limpar tudo, reaplicar os corpos
@@ -151,9 +159,13 @@ $$;
 -- ── Leitura da permissão de quem está logado ─────────────────────────────
 
 -- Unidades em que a sessão NÃO tem `p_nivel` em `p_chave` por causa de uma exceção gravada.
--- Negada só quando todo vínculo ativo (não master) que cobre a unidade tem linha abaixo do
--- nível pedido; um vínculo sem linha mantém o comportamento de hoje. Master nunca é negado.
--- Conjunto calculado uma vez por consulta (mesmo desenho de unidades_acessiveis).
+-- A restrição vence: basta UM vínculo ativo (não master) que cobre a unidade ter linha abaixo do
+-- nível pedido (coerente com "linhas só restringem"; quem tem dois vínculos na mesma organização
+-- não escapa da exceção pelo outro). Sem linha nenhuma, nada muda. Master nunca é negado.
+-- Desempenho: o primeiro filtro não depende da unidade e vira um teste único por consulta
+-- (InitPlan). Quem não tem nenhuma linha em permissoes_modulo (todo mundo fora do piloto e quase
+-- todo mundo dentro) recebe o conjunto vazio sem varrer unidades. Conjunto calculado uma vez por
+-- consulta (mesmo desenho de unidades_acessiveis).
 create or replace function public.unidades_modulo_negadas(p_chave text, p_nivel text)
 returns setof text
 language sql
@@ -164,7 +176,14 @@ rows 5
 as $$
   select u.id
   from public.unidades u
-  where auth.uid() is not null
+  where (
+      select exists (
+        select 1
+          from public.permissoes_modulo p
+          join public.vinculos v on v.id = p.vinculo_id
+         where v.user_id = auth.uid()
+      )
+    )
     and not exists (
       select 1 from public.vinculos vm
        where vm.user_id = auth.uid() and vm.status = 'ativo' and vm.role = 'master'
@@ -177,15 +196,6 @@ as $$
          and v.organizacao_id = u.organizacao_id
          and (v.unidade_id is null or v.unidade_id = u.id)
          and public.permissao_nivel_rank(p.nivel) < public.permissao_nivel_rank(p_nivel)
-    )
-    and not exists (
-      select 1
-        from public.vinculos v
-        left join public.permissoes_modulo p on p.vinculo_id = v.id and p.modulo = p_chave
-       where v.user_id = auth.uid() and v.status = 'ativo' and v.role <> 'master'
-         and v.organizacao_id = u.organizacao_id
-         and (v.unidade_id is null or v.unidade_id = u.id)
-         and (p.vinculo_id is null or public.permissao_nivel_rank(p.nivel) >= public.permissao_nivel_rank(p_nivel))
     );
 $$;
 
@@ -409,12 +419,49 @@ create trigger permissao_acao_editar_dia_lancado
     'vendas.editar_dia_lancado',
     'Editar um dia de vendas já lançado não está liberado para você. Peça a quem administra a equipe.');
 
+-- ── Troca de função ou unidade (editar_vinculo_acesso, #41) ──────────────
+
+-- Quando o vínculo muda de papel ou de unidade, a exceção que ficou acima do novo teto (ex.:
+-- "ver" Configurações de um gerente que virou operacional) ou igual ao novo padrão (deixou de
+-- ser exceção) sai. Restrição que continua abaixo do padrão fica: o dono decidiu e a troca de
+-- função não devolve acesso sozinha. Gatilho em vez de mexer na função do #41: vale para
+-- qualquer caminho (Equipe, Acessos ou SQL).
+create or replace function public.ajustar_permissoes_apos_troca_vinculo()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.permissoes_modulo p
+   where p.vinculo_id = new.id
+     and (
+       new.role = 'master'
+       or p.nivel = public.permissao_nivel_padrao(new.role, new.unidade_id is null, p.modulo)
+       or public.permissao_nivel_rank(p.nivel)
+          > public.permissao_nivel_rank(public.permissao_nivel_maximo(new.role, new.unidade_id is null, p.modulo))
+     );
+  return new;
+end;
+$$;
+
+revoke all on function public.ajustar_permissoes_apos_troca_vinculo() from public, anon, authenticated;
+revoke execute on function public.ajustar_permissoes_apos_troca_vinculo() from vini_operador;
+
+drop trigger if exists ajustar_permissoes_apos_troca on public.vinculos;
+create trigger ajustar_permissoes_apos_troca
+  after update of role, unidade_id on public.vinculos
+  for each row
+  when (old.role is distinct from new.role or old.unidade_id is distinct from new.unidade_id)
+  execute function public.ajustar_permissoes_apos_troca_vinculo();
+
 -- ── Escrita das permissões ────────────────────────────────────────────────
 
 -- `p_niveis`: estado desejado completo do vínculo, {"financeiro": "ver", ...}. Chave ausente =
 -- padrão do papel. Grava só o que difere do padrão. Devolve 'ok' ou o motivo:
 -- 'sem_mudanca', 'pedido_invalido', 'sem_permissao', 'fora_do_piloto', 'nao_encontrado',
--- 'proprio_vinculo', 'revogado', 'acima_do_papel', 'modulo_indisponivel'.
+-- 'proprio_vinculo', 'revogado', 'alvo_dono', 'acima_do_papel', 'modulo_indisponivel'.
+-- Dono não mexe nas permissões de outro dono (gestão da organização inteira): só o master.
 create or replace function public.salvar_permissoes_modulo(
   p_ator uuid,
   p_organizacao_id text,
@@ -497,6 +544,9 @@ begin
   end if;
   if v_alvo.status = 'revogado' then
     return 'revogado';
+  end if;
+  if not v_ator_master and v_alvo.role = 'gestao' and v_alvo.unidade_id is null then
+    return 'alvo_dono';
   end if;
 
   foreach v_chave in array c_chaves loop

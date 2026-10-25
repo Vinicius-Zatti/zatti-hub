@@ -142,6 +142,22 @@ export function niveisEfetivos(role: PapelPermissao, orgInteira: boolean, exceco
   return saida;
 }
 
+/** A restrição vence (mesma regra de `unidades_modulo_negadas` no banco): cada exceção de
+ * qualquer vínculo que cobre a unidade só baixa o nível. Ação sensível cai junto com o módulo. */
+export function restringirPorVinculos(base: NiveisCompletos, excecoesPorVinculo: readonly Excecoes[]): NiveisCompletos {
+  const saida = { ...base };
+  for (const excecoes of excecoesPorVinculo) {
+    for (const chave of CHAVES) {
+      const nivel = excecoes[chave];
+      if (nivel && rank(nivel) < rank(saida[chave])) saida[chave] = nivel;
+    }
+  }
+  for (const acao of ACOES) {
+    if (saida[acao.modulo] !== "editar") saida[acao.chave] = "sem_acesso";
+  }
+  return saida;
+}
+
 /** Converte linhas do banco em exceções (ignora chave ou nível desconhecido). */
 export function excecoesDasLinhas(linhas: readonly { modulo: string; nivel: string }[] | null | undefined): Excecoes {
   const saida: Excecoes = {};
@@ -242,6 +258,8 @@ export function mensagemSalvarPermissoes(codigo: unknown): string | null {
       return "Você não pode mudar as suas próprias permissões. Peça para a Zatti.";
     case "revogado":
       return "Esse acesso foi tirado. Devolva o acesso antes de mudar permissões.";
+    case "alvo_dono":
+      return "Permissões de outro dono (gestão de todas as unidades) só a Zatti muda.";
     case "acima_do_papel":
       return "Essa função não permite esse nível. Mude a função em \"Editar acesso\" primeiro.";
     case "modulo_indisponivel":

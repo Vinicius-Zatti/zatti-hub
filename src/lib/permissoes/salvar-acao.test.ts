@@ -111,6 +111,14 @@ describe("salvarPermissoesMembroAction", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("dono não muda outro dono (nem chega ao banco)", async () => {
+    alvo = { ...(alvo as Record<string, unknown>), unidade_id: null };
+    expect(await salvarPermissoesMembroAction(VINCULO, {})).toEqual({
+      erro: "Permissões de outro dono (gestão de todas as unidades) só a Zatti muda.",
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("recusa do banco vira texto; erro do banco vira genérico", async () => {
     respostaRpc = { data: "acima_do_papel", error: null };
     expect(await salvarPermissoesMembroAction(VINCULO, { cardapio: "editar" })).toEqual({
