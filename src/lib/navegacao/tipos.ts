@@ -16,6 +16,10 @@ export type ItemNavegacao = {
   /** Lista quando um módulo agrupa rotas de prefixos diferentes (ex.: Escritório). */
   activePrefix?: string | string[];
   sections?: SecaoNavegacao[];
+  /** Na sanfona o módulo é link direto para `href`, sem abrir subitens: as
+   * seções servem só às abas do cabeçalho, à busca e às permissões (Início do
+   * piloto, cuja aba Dashboard fica só no cabeçalho). */
+  linkDireto?: boolean;
 };
 
 /** Módulo ativo pelo prefixo mais longo: na área do Vinícius "/escritorio"

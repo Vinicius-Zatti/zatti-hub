@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
+import { BotaoBuscaGlobal } from "@/components/navegacao-v2/busca-global";
+import { BotaoReverTour } from "@/components/navegacao-v2/tour-modulo";
 import { comContagemBase, type AbaModulo, type CabecalhoModulo } from "@/lib/navegacao/abas";
 
 // Navegação V2 (24/10/2026), desenho aprovado em `navegacao-v2-desenho.html`:
@@ -18,7 +20,7 @@ import { comContagemBase, type AbaModulo, type CabecalhoModulo } from "@/lib/nav
 export function CabecalhoModuloV2({ cabecalho, unidadeNome }: { cabecalho: CabecalhoModulo; unidadeNome: string }) {
   const { modulo, entrada, abas, abaAtiva, subAbas, subAbaAtiva, naEntrada, titulo } = cabecalho;
   return (
-    <div className="sticky top-0 z-30 -mx-3 -mt-5 mb-4 bg-off-white px-3 pt-3 group-has-[[data-modo-foco]]/app:static sm:-mx-6 sm:px-6 lg:-mt-6">
+    <div data-tour="cabecalho-modulo" className="sticky top-0 z-30 -mx-3 -mt-5 mb-4 bg-off-white px-3 pt-3 group-has-[[data-modo-foco]]/app:static sm:-mx-6 sm:px-6 lg:-mt-6">
       <div className="flex items-center gap-2 px-0.5 pb-2">
         {!naEntrada && (
           <Link
@@ -30,10 +32,13 @@ export function CabecalhoModuloV2({ cabecalho, unidadeNome }: { cabecalho: Cabec
             <IconeNavegacao nome="seta" className="h-5 w-5 rotate-90" />
           </Link>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[19px] font-bold leading-tight text-azul-noite">{titulo}</p>
           <p className="truncate text-xs text-cinza-medio">{naEntrada ? unidadeNome : modulo}</p>
         </div>
+        {/* Rever o tour do primeiro acesso (fase 4) e lupa da busca global (só celular). */}
+        <BotaoReverTour />
+        <BotaoBuscaGlobal />
       </div>
       {abas.length > 1 && (
         // `?data=` das abas de Pedidos vem da URL: sem Suspense, a leitura dos
@@ -101,6 +106,7 @@ function TrilhoAbas({ modulo, abas, abaAtiva, secundario = false }: PropsTrilho)
   return (
     <nav
       aria-label={secundario ? `Telas da seção de ${modulo}` : `Seções de ${modulo}`}
+      data-tour={secundario ? "subabas-modulo" : "abas-modulo"}
       className={
         secundario
           ? "flex items-center gap-1 px-0.5"

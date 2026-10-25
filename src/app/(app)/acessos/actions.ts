@@ -21,6 +21,7 @@ import {
 } from "@/lib/equipe/regras";
 import { editarVinculoNoBanco, gerarSenhaProvisoriaNoBanco } from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
+import { alterarFlagModulo, validarExtratoEstoque } from "@/lib/acessos/alterar-flag";
 import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
 type Resultado<T = { ok: true }> = T | { erro: string };
@@ -434,32 +435,21 @@ export async function editarVinculoAction(
 export async function definirExtratoEstoqueAction(unidadeId: string, ligar: boolean): Promise<Resultado> {
   const acesso = await requireMaster();
   if (typeof unidadeId !== "string" || !unidadeId || typeof ligar !== "boolean") return { erro: "Pedido inválido." };
-  const admin = createAdminClient();
 
-  const { data: unidade, error: erroLeitura } = await admin
-    .from("unidades")
-    .select("id, fonte_dados_estoque, extrato_estoque_habilitado")
-    .eq("id", unidadeId)
-    .maybeSingle();
-  if (erroLeitura) return { erro: erroLeitura.message };
-  if (!unidade) return { erro: "Unidade não encontrada." };
-  if (ligar && unidade.fonte_dados_estoque !== "banco") {
-    return { erro: "O extrato só existe para unidade com o estoque no Zatti Hub (não na planilha)." };
-  }
-  if (Boolean(unidade.extrato_estoque_habilitado) === ligar) return { ok: true };
-
-  const { error } = await admin.from("unidades").update({ extrato_estoque_habilitado: ligar }).eq("id", unidadeId);
-  if (error) return { erro: error.message };
-
-  // O log vai na unidade alterada, não na unidade da sessão do master.
-  await registrarAuditoria({
-    acesso: { ...acesso, unidadeId },
-    acao: ligar ? "ligar_extrato_estoque" : "desligar_extrato_estoque",
-    entidade: "unidade",
-    entidadeId: unidadeId,
-    dadosAntigos: { extratoEstoqueHabilitado: !ligar },
-    dadosNovos: { extratoEstoqueHabilitado: ligar },
+  const r = await alterarFlagModulo({
+    acesso,
+    tabela: "unidades",
+    id: unidadeId,
+    coluna: "extrato_estoque_habilitado",
+    ligar,
+    acaoLigar: "ligar_extrato_estoque",
+    acaoDesligar: "desligar_extrato_estoque",
+    campoAuditoria: "extratoEstoqueHabilitado",
+    colunasValidacao: ["fonte_dados_estoque"],
+    validar: validarExtratoEstoque(ligar),
   });
+  if ("erro" in r) return r;
+  if (!r.mudou) return { ok: true };
 
   revalidarAcessos();
   revalidatePath("/estoque/contagem/movimentacoes");

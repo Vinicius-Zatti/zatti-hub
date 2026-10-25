@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { SCRIPT_TEMA_INICIAL } from "@/lib/tema";
 
 // Fontes auto-hospedadas (não `next/font/google`) de propósito: build
 // deixa de depender de rede pra buscar fonte - uma falha passageira nesse
@@ -52,7 +53,14 @@ export default function RootLayout({
     <html
       lang="pt-BR"
       className={`${dmSans.variable} ${cormorant.variable} h-full antialiased`}
+      // O script abaixo grava `data-tema` no <html> antes da hidratação.
+      suppressHydrationWarning
     >
+      <head>
+        {/* Tema da tela antes da pintura (sem piscar claro). As cores escuras
+            só valem no shell da Navegação V2 (piloto) - ver globals.css. */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_INICIAL }} />
+      </head>
       <body className="min-h-full flex flex-col bg-off-white text-cinza">
         {children}
       </body>

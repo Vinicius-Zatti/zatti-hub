@@ -2,6 +2,7 @@
 
 import { BotaoTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   criarLancamentoAction,
   criarRecorrenciaAction,
@@ -152,7 +153,27 @@ export function LancamentosGerenciador({
   podeGerir: boolean;
 }) {
   const titulo = tipo === "receita" ? "Receitas" : "Despesas";
-  const [criando, setCriando] = useState(false);
+  // Atalho "Nova despesa"/"Nova receita" (Início e busca do piloto) chega com
+  // `?novo=1` e abre o modal de criação - também quando a pessoa já está nesta
+  // tela (o Next não remonta o componente, só o parâmetro muda).
+  const router = useRouter();
+  const pathname = usePathname();
+  const parametros = useSearchParams();
+  const pedeNovo = parametros.get("novo") === "1";
+  const [criando, setCriando] = useState(pedeNovo);
+  const [pedeNovoAnterior, setPedeNovoAnterior] = useState(pedeNovo);
+  if (pedeNovo !== pedeNovoAnterior) {
+    setPedeNovoAnterior(pedeNovo);
+    if (pedeNovo) setCriando(true);
+  }
+  // O `?novo=1` sai da URL pelo router (não volta depois de salvar e o F5 não reabre o modal).
+  useEffect(() => {
+    if (!pedeNovo) return;
+    const restantes = new URLSearchParams(parametros.toString());
+    restantes.delete("novo");
+    const consulta = restantes.toString();
+    router.replace(consulta ? `${pathname}?${consulta}` : pathname, { scroll: false });
+  }, [pedeNovo, parametros, pathname, router]);
   const [criandoDocumento, setCriandoDocumento] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const rotuloData = rotuloDataParcela(tipo);
