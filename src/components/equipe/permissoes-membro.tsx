@@ -201,7 +201,7 @@ export function PermissoesMembro({
                 <LinhaNivel
                   chave={m.chave}
                   nome={m.nome}
-                  descricao={m.liberado ? m.descricao : "Ainda segue o padrão da função (chega na próxima etapa)."}
+                  descricao={m.liberado ? m.descricao : `Ainda não muda por aqui (chega na próxima etapa). Vale o padrão da função: ${ROTULO_NIVEL[padrao(m.chave)]}.`}
                   valor={rascunho[m.chave]}
                   padrao={padrao(m.chave)}
                   salvo={salvo[m.chave]}
@@ -210,7 +210,9 @@ export function PermissoesMembro({
                   explicacaoBloqueio={
                     m.chave === "configuracoes"
                       ? "Ligar e desligar módulos fica com a Zatti (módulo pode ser pago)."
-                      : `A função ${ROTULO_FUNCAO[pessoa.role]} não permite. Mude a função em "Editar acesso".`
+                      : !m.liberado
+                        ? `${m.nome} ainda não muda por aqui. Por enquanto vale o padrão da função.`
+                        : `A função ${ROTULO_FUNCAO[pessoa.role]} não permite. Mude a função em "Editar acesso".`
                   }
                   onTrocar={(n) => trocar(m.chave, n)}
                   desabilitado={pendente}
