@@ -612,9 +612,11 @@ export function ContagemForm({
   }
 
   // ── TELA 1: DATA ──────────────────────────────────────────────────────
+  // `data-sem-tour` (telas 1 e 2): o tour do primeiro acesso não abre no começo
+  // da contagem, sem mudar o visual (o `data-modo-foco` esconderia a barra).
   if (tela === "data") {
     return (
-      <div className="mx-auto max-w-md pb-10 text-center">
+      <div className="mx-auto max-w-md pb-10 text-center" data-sem-tour>
         <h1 className="font-display text-2xl font-bold text-azul-noite">Contagem de Estoque</h1>
         <p className="mt-1 text-sm text-cinza-medio">Informe a data da contagem para começar.</p>
         <div className="mt-8 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
@@ -726,7 +728,7 @@ export function ContagemForm({
   // ── TELA 2: AVISO ─────────────────────────────────────────────────────
   if (tela === "aviso") {
     return (
-      <div className="mx-auto max-w-md pb-10">
+      <div className="mx-auto max-w-md pb-10" data-sem-tour>
         <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">Inventário {unidadeNome}</h1>
         <p className="mt-1 text-sm text-cinza-medio capitalize">
           {mesDisplay} · {escopoLabel}

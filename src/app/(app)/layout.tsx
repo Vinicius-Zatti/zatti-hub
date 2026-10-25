@@ -4,6 +4,8 @@ import type { ItemNavegacao } from "@/lib/navegacao/tipos";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { escolherAtalhos } from "@/lib/navegacao/atalhos";
 import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
+import { acoesDisponiveis } from "@/lib/navegacao/acoes";
+import { montarEntradasBusca } from "@/lib/navegacao/busca";
 import {
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
@@ -20,6 +22,7 @@ import { CABECALHO_CAMINHO, ehCaminhoRestaurante } from "@/lib/area-interna/cami
 import { FaixaAssinatura } from "@/components/assinatura/faixa-assinatura";
 import { getAssinaturaAtual } from "@/lib/assinatura/app";
 import { faixaAssinatura } from "@/lib/assinatura/regras";
+import { lerToursVistos } from "@/lib/tour/banco";
 
 export default async function AppLayout({
   children,
@@ -35,11 +38,14 @@ export default async function AppLayout({
   const podeGerir = acesso.role !== "operacional";
   // Vigência anual (15/10/2026): depois da carência o cliente trava, sem perder dado. O master
   // nunca trava (vê a faixa para saber a situação do cliente).
-  const [assinatura, conciliacaoHabilitada] = await Promise.all([
+  const navegacaoV2 = usaNavegacaoV2(acesso);
+  const [assinatura, conciliacaoHabilitada, toursVistos] = await Promise.all([
     acesso.areaInterna ? null : getAssinaturaAtual(acesso.organizacaoId),
     acesso.financeiroGerencialHabilitado && !acesso.areaInterna
       ? lerFlagsConciliacao(acesso.unidadeId).then((f) => f.habilitada)
       : false,
+    // Tour do primeiro acesso (fase 4): só o piloto lê; falha vira null e o tour não abre.
+    navegacaoV2 ? lerToursVistos(acesso.userId) : null,
   ]);
   if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
   const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir) : null;
@@ -100,7 +106,6 @@ export default async function AppLayout({
   // Menu do restaurante: mesmas regras de papel e flags nos dois menus
   // (`lib/navegacao/menu-restaurante.ts`). A unidade piloto da Navegação V2
   // (`lib/navegacao/piloto.ts`) vê o menu em sanfona; as demais, o atual.
-  const navegacaoV2 = usaNavegacaoV2(acesso);
   const contextoMenu = contextoMenuRestaurante(acesso, conciliacaoHabilitada);
   const itensRestaurante = navegacaoV2
     ? aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenu), acesso.permissoes)
@@ -129,7 +134,9 @@ export default async function AppLayout({
           <EstruturaAplicativoV2
             {...propsEstrutura}
             atalhos={escolherAtalhos(itensRestaurante)}
+            entradasBusca={montarEntradasBusca(itensRestaurante, acoesDisponiveis(itensRestaurante, podeGerir))}
             unidadeNome={acesso.unidadeNome}
+            toursVistos={toursVistos}
           >
             {conteudo}
           </EstruturaAplicativoV2>

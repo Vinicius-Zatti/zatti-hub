@@ -37,7 +37,7 @@ export default async function EquipePage() {
       </div>
 
       {podeEditar ? (
-        <section className="rounded-lg border border-cinza-claro bg-branco p-4">
+        <section data-tour="equipe-cadastrar" className="rounded-lg border border-cinza-claro bg-branco p-4">
           <h2 className="font-display text-lg font-bold text-azul-noite">Cadastrar pessoa</h2>
           <CadastrarMembroForm
             unidades={unidades}
@@ -51,7 +51,7 @@ export default async function EquipePage() {
         </p>
       )}
 
-      <section className="flex flex-col gap-3">
+      <section data-tour="equipe-com-acesso" className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-bold text-azul-noite">
           Com acesso <span className="text-sm font-normal text-cinza-medio">({ativos.length})</span>
         </h2>
