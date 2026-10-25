@@ -17,6 +17,7 @@ import {
 
 const EVENTO_TEMA = "zatti-hub:tema-mudou";
 const CONSULTA_SISTEMA_ESCURO = "(prefers-color-scheme: dark)";
+const COR_BARRA_ESCURO = "#0d1f2d";
 
 function lerSalvo(chave: string): PreferenciaTema {
   try {
@@ -35,9 +36,29 @@ function assinar(aviso: () => void) {
   };
 }
 
+/** Cor da barra do navegador/sistema no celular: azul-noite no escuro. No
+ * claro a meta sai e vale o padrão do navegador, como antes do tema escuro. */
+const ID_META_COR = "zatti-hub-cor-tema";
+function aplicarCorDaBarra(tema: "claro" | "escuro" | null) {
+  let meta = document.getElementById(ID_META_COR) as HTMLMetaElement | null;
+  if (tema !== "escuro") {
+    meta?.remove();
+    return;
+  }
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.id = ID_META_COR;
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = COR_BARRA_ESCURO;
+}
+
 function aplicarNaPagina(preferencia: PreferenciaTema) {
   const sistemaEscuro = window.matchMedia?.(CONSULTA_SISTEMA_ESCURO).matches ?? false;
-  document.documentElement.setAttribute("data-tema", resolverTema(preferencia, sistemaEscuro));
+  const tema = resolverTema(preferencia, sistemaEscuro);
+  document.documentElement.setAttribute("data-tema", tema);
+  aplicarCorDaBarra(tema);
   try {
     window.localStorage.setItem(CHAVE_TEMA_ATUAL, preferencia);
   } catch {
@@ -97,6 +118,9 @@ export function AlternadorTema({ usuario, className = "" }: { usuario: string; c
     consulta.addEventListener("change", aoMudarSistema);
     return () => consulta.removeEventListener("change", aoMudarSistema);
   }, [preferencia]);
+
+  // Saiu do shell do piloto (ex.: trocou para unidade fora do piloto): a barra volta ao padrão.
+  useEffect(() => () => aplicarCorDaBarra(null), []);
 
   function escolher(valor: PreferenciaTema) {
     try {
