@@ -33,12 +33,12 @@ export default async function GaranteHojePage() {
         </p>
       </div>
       {agenda.length === 0 ? (
-        <p className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">
+        <p data-tour="garante-checklists" className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">
           Nenhum checklist para hoje.
           {gestao && " Monte um a partir dos POPs em Modelos e publicação."}
         </p>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div data-tour="garante-checklists" className="grid gap-3 md:grid-cols-2">
           {agenda.map((linha) => (
             <CartaoAgenda key={linha.publicacaoId} linha={linha} gestao={gestao} />
           ))}

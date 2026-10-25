@@ -22,7 +22,8 @@ export type NomeIconeNavegacao =
   | "menu"
   | "buscar"
   | "seta"
-  | "fechar";
+  | "fechar"
+  | "ajuda";
 
 export function IconeNavegacao({
   nome,
@@ -177,6 +178,14 @@ export function IconeNavegacao({
     ),
     seta: <path d="m6 9 6 6 6-6" />,
     fechar: <path d="M6 6l12 12M18 6 6 18" />,
+    // Rever o tour do módulo (Navegação V2, fase 4).
+    ajuda: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7" />
+        <path d="M12 17.2h.01" />
+      </>
+    ),
   }[nome];
 
   return (
