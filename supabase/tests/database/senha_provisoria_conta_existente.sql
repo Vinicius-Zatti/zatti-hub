@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(53);
 
 grant select on setores to authenticated;
 
@@ -27,7 +27,11 @@ insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, 
   ('00000000-0000-0000-0000-00000000f005', 'sp-duas-orgs@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000f006', 'sp-loja2@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000f007', 'sp-gestor-b@teste.local',
-     extensions.crypt('SenhaAntigaB123', extensions.gen_salt('bf', 4)), now(), 'authenticated', 'authenticated');
+     extensions.crypt('SenhaAntigaB123', extensions.gen_salt('bf', 4)), now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f008', 'sp-gestao-e-master@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f009', 'sp-duas-lojas@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f010', 'sp-service-role@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000f011', 'sp-whatsapp-novo@teste.local', 'x', now(), 'authenticated', 'authenticated');
 
 insert into organizacoes (id, nome, tipo_cliente, ativo, equipe_habilitado) values
   ('org-sp-a', 'Cliente SP A', 'saas', true, true),
@@ -52,7 +56,13 @@ insert into vinculos (id, user_id, organizacao_id, unidade_id, role, status, wha
   ('00000000-0000-0000-0000-00000000bb07', '00000000-0000-0000-0000-00000000f006', 'org-sp-a', 'org-sp-a-2', 'operacional', 'ativo', null),
   ('00000000-0000-0000-0000-00000000bb08', '00000000-0000-0000-0000-00000000f007', 'org-sp-b', null, 'gestao', 'ativo', null),
   ('00000000-0000-0000-0000-00000000bb09', '00000000-0000-0000-0000-00000000f002', 'org-sp-off', null, 'gestao', 'ativo', null),
-  ('00000000-0000-0000-0000-00000000bb10', '00000000-0000-0000-0000-00000000f006', 'org-sp-off', 'org-sp-off-1', 'operacional', 'revogado', null);
+  ('00000000-0000-0000-0000-00000000bb10', '00000000-0000-0000-0000-00000000f006', 'org-sp-off', 'org-sp-off-1', 'operacional', 'revogado', null),
+  ('00000000-0000-0000-0000-00000000bb11', '00000000-0000-0000-0000-00000000f008', 'org-sp-a', null, 'gestao', 'ativo', '+5531999990011'),
+  ('00000000-0000-0000-0000-00000000bb12', '00000000-0000-0000-0000-00000000f008', 'org-sp-b', null, 'master', 'ativo', null),
+  ('00000000-0000-0000-0000-00000000bb13', '00000000-0000-0000-0000-00000000f009', 'org-sp-a', 'org-sp-a-1', 'operacional', 'ativo', '+5531999990013'),
+  ('00000000-0000-0000-0000-00000000bb14', '00000000-0000-0000-0000-00000000f009', 'org-sp-a', 'org-sp-a-2', 'operacional', 'ativo', null),
+  ('00000000-0000-0000-0000-00000000bb15', '00000000-0000-0000-0000-00000000f010', 'org-sp-a', 'org-sp-a-1', 'operacional', 'ativo', '+5531999990015'),
+  ('00000000-0000-0000-0000-00000000bb16', '00000000-0000-0000-0000-00000000f011', 'org-sp-a', 'org-sp-a-1', 'operacional', 'ativo', '+5531999990016');
 
 -- Sessão aberta do alvo antes da geração.
 insert into auth.sessions (id, user_id, created_at, updated_at) values
@@ -117,8 +127,24 @@ select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f002', '00000000-0000-0
   '00000000-0000-0000-0000-00000000f002', 'Provisoria234'), 'propria_conta', 'ninguém gera para a própria conta');
 select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-00000000bb10', 'equipe', 'org-sp-off',
   '00000000-0000-0000-0000-00000000f006', 'Provisoria234'), 'sem_permissao', 'organização sem a Equipe ligada não gera');
+select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-00000000bb11', 'equipe', 'org-sp-a',
+  '00000000-0000-0000-0000-00000000f008', 'Provisoria234'), 'nao_encontrado',
+  'gestão não alcança conta que também é master (vínculo de gestão na organização dela)');
+select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f003', '00000000-0000-0000-0000-00000000bb13', 'equipe', 'org-sp-a',
+  '00000000-0000-0000-0000-00000000f009', 'Provisoria234'), 'outra_unidade',
+  'gestor de loja recusa conta que também está em outra loja');
+update vinculos set whatsapp = '+5531988880016' where id = '00000000-0000-0000-0000-00000000bb16';
+select isnt((select whatsapp_alterado_em from vinculos where id = '00000000-0000-0000-0000-00000000bb16'), null,
+  'troca de WhatsApp fica registrada no vínculo');
+select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-00000000bb16', 'equipe', 'org-sp-a',
+  '00000000-0000-0000-0000-00000000f011', 'Provisoria234'), 'whatsapp_recente',
+  'Equipe não gera logo depois de trocar o WhatsApp');
+update vinculos set whatsapp_alterado_em = null where id = '00000000-0000-0000-0000-00000000bb16';
+select isnt((select whatsapp_alterado_em from vinculos where id = '00000000-0000-0000-0000-00000000bb16'), null,
+  'a data da troca não é apagada por fora');
 select is((select count(*)::int from senhas_temporarias where user_id in (
-  '00000000-0000-0000-0000-00000000f005', '00000000-0000-0000-0000-00000000f006', '00000000-0000-0000-0000-00000000f007')), 0,
+  '00000000-0000-0000-0000-00000000f005', '00000000-0000-0000-0000-00000000f006', '00000000-0000-0000-0000-00000000f007',
+  '00000000-0000-0000-0000-00000000f008', '00000000-0000-0000-0000-00000000f009', '00000000-0000-0000-0000-00000000f011')), 0,
   'nenhuma recusa deixou pendência');
 
 -- ── Gestão da mesma organização gera para conta exclusiva ───────────────
@@ -188,6 +214,37 @@ select is((select count(*)::int from auth.sessions where user_id = '00000000-000
 select is((select count(*)::int from logs_auditoria where acao = 'gerar_senha_provisoria'
   and entidade_id = '00000000-0000-0000-0000-00000000f007' and user_id = '00000000-0000-0000-0000-00000000f001'
   and unidade_id = 'org-sp-b-1' and dados_novos ->> 'escopo' = 'master'), 1, 'auditoria do master');
+
+select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f001', '00000000-0000-0000-0000-00000000bb16', 'master', null,
+  '00000000-0000-0000-0000-00000000f011', 'ProvMaster345'), 'ok', 'a espera do WhatsApp trocado é só da Equipe');
+select is((select origem from senhas_temporarias where user_id = '00000000-0000-0000-0000-00000000f011'), 'redefinicao',
+  'pendência marcada como redefinição');
+update senhas_temporarias set enviada_em = now() - interval '5 minutes' where user_id = '00000000-0000-0000-0000-00000000f011';
+select is(public.rotacionar_senha_temporaria('00000000-0000-0000-0000-00000000f011', '00000000-0000-0000-0000-00000000bb16',
+  public.equipe_hash_provisoria('00000000-0000-0000-0000-00000000f011', 'Reenvio234567'), now() + interval '7 days'), false,
+  'senha redefinida não é reenviada para WhatsApp trocado há pouco');
+select is((select origem from senhas_temporarias where user_id = '00000000-0000-0000-0000-00000000f004'), 'redefinicao',
+  'conversão pela Equipe também marca redefinição');
+
+-- ── O grant: o servidor (service_role) chama ────────────────────────────
+create temp table t_hash_servidor as
+  select public.equipe_hash_provisoria('00000000-0000-0000-0000-00000000f010', 'PeloServidor2') as hash;
+grant select on t_hash_servidor to service_role;
+select set_config('role', 'service_role', true);
+select is(public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-00000000bb15',
+  'equipe', 'org-sp-a', (select hash from t_hash_servidor), now() + interval '7 days'), 'ok', 'service_role executa a função');
+select pg_temp.como_servidor();
+
+-- ── Teto por pessoa: 5 gerações a cada 10 minutos (Equipe) ──────────────
+-- f002 já gerou 2 (f004 e f010); mais 3 registros completam o teto.
+insert into logs_auditoria (unidade_id, user_id, acao, entidade, entidade_id, dados_novos)
+select 'org-sp-a-1', '00000000-0000-0000-0000-00000000f002', 'gerar_senha_provisoria', 'usuario', gen_random_uuid()::text,
+       jsonb_build_object('escopo', 'equipe')
+  from generate_series(1, 3);
+select is(pg_temp.gerar('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-00000000bb07', 'equipe', 'org-sp-a',
+  '00000000-0000-0000-0000-00000000f006', 'Provisoria234'), 'limite_ator', 'sexta geração em 10 minutos é barrada');
+select is((select count(*)::int from senhas_temporarias where user_id = '00000000-0000-0000-0000-00000000f006'), 0,
+  'e não deixou pendência');
 
 -- ── Provisória vencida não entra ────────────────────────────────────────
 update senhas_temporarias set expira_em = now() - interval '1 minute' where user_id = '00000000-0000-0000-0000-00000000f007';

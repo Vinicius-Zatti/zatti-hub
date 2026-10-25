@@ -379,6 +379,15 @@ export async function gerarSenhaProvisoriaAction(
       .eq("id", vinculoId);
   }
 
+  // A geração já foi auditada no banco; aqui, que a senha foi exibida ao master e o envio.
+  await registrarAuditoria({
+    acesso,
+    acao: "senha_provisoria_exibida",
+    entidade: "usuario",
+    entidadeId: userId,
+    dadosNovos: { vinculoId, exibidaNaTela: true, envio },
+  });
+
   revalidarAcessos();
   return {
     ok: true,

@@ -23,10 +23,11 @@ const acessoMaster = { ...acessoGestao, userId: "99999999-9999-4999-8999-9999999
 
 const requireEquipe = vi.fn(async () => acessoGestao);
 const requireMaster = vi.fn(async () => acessoMaster);
+const registrarAuditoria = vi.fn<(p: Record<string, unknown>) => Promise<void>>(async () => undefined);
 vi.mock("@/lib/acesso", () => ({
   requireEquipe: () => requireEquipe(),
   requireMaster: () => requireMaster(),
-  registrarAuditoria: vi.fn(async () => undefined),
+  registrarAuditoria: (p: Record<string, unknown>) => registrarAuditoria(p),
 }));
 
 const enviarAcessoPeloVini = vi.fn<(dados: Record<string, unknown>) => Promise<"aceito">>(async () => "aceito");
@@ -54,9 +55,11 @@ const admin = {
 };
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
 
-const { mensagemGerarProvisoria, formatarValidadeProvisoria } = await import("./regras");
+const { mensagemGerarProvisoria, formatarValidadeProvisoria, whatsappTrocadoHaPouco } = await import("./regras");
 const { hashSenhaTemporaria, gerarSenhaProvisoriaNoBanco } = await import("./servidor");
-const { gerarSenhaProvisoriaMembroAction } = await import("@/app/(app)/equipe/actions");
+const { gerarSenhaProvisoriaMembroAction, atualizarWhatsappMembroAction, reenviarAcessoMembroAction } = await import(
+  "@/app/(app)/equipe/actions"
+);
 const { gerarSenhaProvisoriaAction } = await import("@/app/(app)/acessos/actions");
 
 const VINCULO = "22222222-2222-4222-8222-222222222222";
@@ -75,6 +78,7 @@ beforeEach(() => {
       status: "ativo",
       whatsapp: "+5531999990004",
       acesso_envio_em: null,
+      whatsapp_alterado_em: null,
       organizacoes: { nome: "Cliente A" },
     },
     perfis: { nome: "Pessoa" },
@@ -92,6 +96,22 @@ describe("mensagemGerarProvisoria", () => {
   it("resposta desconhecida vira erro (falha fechada)", () => {
     expect(mensagemGerarProvisoria("qualquer")).toBe("Não foi possível gerar a senha provisória.");
     expect(mensagemGerarProvisoria(null)).toBe("Não foi possível gerar a senha provisória.");
+  });
+});
+
+describe("proteções da revisão de segurança", () => {
+  it("mensagens próprias para WhatsApp trocado e teto por pessoa", () => {
+    expect(mensagemGerarProvisoria("whatsapp_recente")).toBe(
+      "O WhatsApp desta pessoa mudou agora há pouco. Por segurança, espere 30 minutos ou peça à Zatti.",
+    );
+    expect(mensagemGerarProvisoria("limite_ator")).toMatch(/10 minutos/);
+  });
+  it("whatsappTrocadoHaPouco: 30 minutos, falha fechada", () => {
+    const agora = new Date("2026-10-25T12:00:00Z");
+    expect(whatsappTrocadoHaPouco(null, agora)).toBe(false);
+    expect(whatsappTrocadoHaPouco("2026-10-25T11:45:00Z", agora)).toBe(true);
+    expect(whatsappTrocadoHaPouco("2026-10-25T11:29:00Z", agora)).toBe(false);
+    expect(whatsappTrocadoHaPouco("data-quebrada", agora)).toBe(true);
   });
 });
 
@@ -144,6 +164,18 @@ describe("gerarSenhaProvisoriaMembroAction (Equipe)", () => {
     // A gestão nunca recebe a senha na resposta.
     expect(JSON.stringify(r)).not.toContain(String(envio.senhaTemporaria));
   });
+  it("audita o resultado do envio (sem a senha)", async () => {
+    await gerarSenhaProvisoriaMembroAction(VINCULO);
+    const auditoria = registrarAuditoria.mock.calls.find((c) => c[0].acao === "senha_provisoria_envio")?.[0];
+    expect(auditoria).toMatchObject({ entidadeId: ALVO, dadosNovos: { vinculoId: VINCULO, envio: "aceito", exibidaNaTela: false } });
+    const senha = String(enviarAcessoPeloVini.mock.calls[0][0].senhaTemporaria);
+    expect(JSON.stringify(registrarAuditoria.mock.calls)).not.toContain(senha);
+  });
+  it("WhatsApp trocado há pouco: mensagem do banco chega à tela", async () => {
+    respostaRpc = { data: "whatsapp_recente", error: null };
+    expect(await gerarSenhaProvisoriaMembroAction(VINCULO)).toEqual({ erro: mensagemGerarProvisoria("whatsapp_recente") });
+    expect(enviarAcessoPeloVini).not.toHaveBeenCalled();
+  });
   it("conta com vínculo em outra organização: recusa clara e nada é enviado", async () => {
     respostaRpc = { data: "outra_organizacao", error: null };
     const r = await gerarSenhaProvisoriaMembroAction(VINCULO);
@@ -174,6 +206,32 @@ describe("gerarSenhaProvisoriaMembroAction (Equipe)", () => {
   });
 });
 
+describe("troca de WhatsApp e reenvio (Equipe)", () => {
+  it("auditoria guarda só os 4 finais do número antigo e do novo", async () => {
+    expect(await atualizarWhatsappMembroAction(VINCULO, "31 98888-7777")).toEqual({ ok: true });
+    expect(registrarAuditoria.mock.calls[0][0]).toMatchObject({
+      acao: "equipe_editar_whatsapp",
+      dadosAntigos: { whatsappFinal: "0004" },
+      dadosNovos: { whatsappFinal: "7777" },
+    });
+    expect(JSON.stringify(registrarAuditoria.mock.calls)).not.toContain("98888");
+  });
+  it("senha redefinida não é reenviada para número trocado há pouco", async () => {
+    linhas.vinculos = { ...(linhas.vinculos as object), whatsapp_alterado_em: new Date().toISOString() };
+    linhas.senhas_temporarias = { vinculo_id: VINCULO, origem: "redefinicao", user_id: ALVO };
+    expect(await reenviarAcessoMembroAction(VINCULO)).toEqual({ erro: mensagemGerarProvisoria("whatsapp_recente") });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(enviarAcessoPeloVini).not.toHaveBeenCalled();
+  });
+  it("conta nova (cadastro) continua podendo reenviar depois de corrigir o número", async () => {
+    linhas.vinculos = { ...(linhas.vinculos as object), whatsapp_alterado_em: new Date().toISOString() };
+    linhas.senhas_temporarias = { vinculo_id: VINCULO, origem: "cadastro", user_id: ALVO };
+    respostaRpc = { data: true, error: null };
+    expect(await reenviarAcessoMembroAction(VINCULO)).toEqual({ ok: true, envio: "aceito" });
+    expect(rpc.mock.calls[0][0]).toBe("rotacionar_senha_temporaria");
+  });
+});
+
 describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
   it("master gera para qualquer conta e vê a provisória uma vez", async () => {
     const r = await gerarSenhaProvisoriaAction(VINCULO, false);
@@ -185,6 +243,12 @@ describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
     expect(r.senha).toMatch(/^[A-Za-z0-9]{12}$/);
     expect(r.validaAte).toMatch(/^\d{2}\/\d{2}\/\d{4} às \d{2}:\d{2}$/);
     expect(enviarAcessoPeloVini).not.toHaveBeenCalled();
+    expect(registrarAuditoria.mock.calls[0][0]).toMatchObject({
+      acao: "senha_provisoria_exibida",
+      entidadeId: ALVO,
+      dadosNovos: { vinculoId: VINCULO, exibidaNaTela: true, envio: null },
+    });
+    expect(JSON.stringify(registrarAuditoria.mock.calls)).not.toContain(r.senha);
   });
   it("com WhatsApp do vínculo, envia quando o master pede", async () => {
     const r = await gerarSenhaProvisoriaAction(VINCULO, true);

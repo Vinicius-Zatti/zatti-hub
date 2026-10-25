@@ -33,6 +33,7 @@ export function GerarSenhaProvisoria({
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
   const [gerada, setGerada] = useState<{ senha: string; validaAte: string } | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [enviadaEquipe, setEnviadaEquipe] = useState(false);
 
   const semWhatsappNaEquipe = modo === "equipe" && !whatsappFinal;
 
@@ -43,6 +44,7 @@ export function GerarSenhaProvisoria({
     setMensagem(null);
     setCopiado(false);
     setEnviarWhatsapp(false);
+    setEnviadaEquipe(false);
   }
 
   function gerar() {
@@ -54,6 +56,9 @@ export function GerarSenhaProvisoria({
           setMensagem({ tom: "erro", texto: r.erro });
           return;
         }
+        // Qualquer resultado do envio conclui: a senha atual já deixou de valer, e
+        // gerar de novo aqui só bateria no limite. Falha manda usar "Reenviar senha".
+        setEnviadaEquipe(true);
         setMensagem(textoEnvioProvisoria(r.envio, true));
       } else {
         const r = await gerarSenhaProvisoriaAction(vinculoId, enviarWhatsapp);
@@ -68,7 +73,7 @@ export function GerarSenhaProvisoria({
     });
   }
 
-  const concluido = gerada !== null || (modo === "equipe" && mensagem !== null && mensagem.tom !== "erro");
+  const concluido = gerada !== null || enviadaEquipe;
 
   return (
     <>

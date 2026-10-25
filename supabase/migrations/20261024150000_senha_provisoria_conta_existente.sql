@@ -13,10 +13,16 @@
 -- sessão e troca de senha até a pessoa concluir o primeiro acesso.
 --
 -- Quem pede: a Server Action passa o id de quem está logado (`p_ator`, lido da sessão no
--- servidor) e o banco confere de novo o papel dessa pessoa nos vínculos. A função é só
--- do service_role (não é exposta na Data API): a provisória da Equipe vai direto para o
--- WhatsApp da pessoa e a gestão nunca a vê. O segundo fator do master é conferido pelo
+-- servidor) e o banco confere de novo o papel dessa pessoa nos vínculos. A função fica no
+-- schema public, mas só o service_role tem EXECUTE (revogado de public, anon e
+-- authenticated): pela Data API, um usuário logado recebe "permission denied". É o grant
+-- que protege, não o schema. Assim a provisória da Equipe vai direto para o WhatsApp da
+-- pessoa e a gestão nunca a vê. O segundo fator do master é conferido pelo
 -- `requireMaster()` antes da chamada.
+-- Proteções extras no escopo da Equipe (revisão de segurança, 24/10): recusa se o WhatsApp
+-- do vínculo mudou há menos de 30 minutos (quem troca o número e gera em seguida
+-- receberia a provisória num número dele) e no máximo 5 gerações por pessoa a cada 10
+-- minutos.
 -- Só acrescenta (e reforça o gatilho de sessão). Idempotente.
 
 -- Limite de frequência para conta que ainda não estava pendente: o mesmo de hoje
@@ -24,6 +30,72 @@
 create index if not exists logs_auditoria_senha_provisoria_idx
   on public.logs_auditoria (entidade_id, criado_em)
   where acao = 'gerar_senha_provisoria';
+create index if not exists logs_auditoria_senha_provisoria_ator_idx
+  on public.logs_auditoria (user_id, criado_em)
+  where acao = 'gerar_senha_provisoria';
+
+-- ── Quando o WhatsApp do vínculo mudou ──────────────────────────────────
+-- Gravado por gatilho, vale para qualquer escritor (tela Equipe, Acessos, SQL). Vínculo
+-- novo nasce sem data: só a troca do número conta.
+alter table public.vinculos add column if not exists whatsapp_alterado_em timestamptz;
+
+create or replace function public.vinculos_marcar_troca_whatsapp()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.whatsapp is distinct from old.whatsapp then
+    new.whatsapp_alterado_em := now();
+  else
+    new.whatsapp_alterado_em := old.whatsapp_alterado_em;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.vinculos_marcar_troca_whatsapp() from public, anon, authenticated, service_role;
+
+drop trigger if exists vinculos_marcar_troca_whatsapp on public.vinculos;
+create trigger vinculos_marcar_troca_whatsapp
+  before update on public.vinculos
+  for each row execute function public.vinculos_marcar_troca_whatsapp();
+
+-- ── Origem da pendência ──────────────────────────────────────────────────
+-- 'cadastro' = conta nova da Equipe (o fluxo de 12/10); 'redefinicao' = conta que já
+-- existia e recebeu senha provisória por esta função.
+alter table public.senhas_temporarias
+  add column if not exists origem text not null default 'cadastro';
+alter table public.senhas_temporarias drop constraint if exists senhas_temporarias_origem_valida;
+alter table public.senhas_temporarias
+  add constraint senhas_temporarias_origem_valida check (origem in ('cadastro', 'redefinicao'));
+
+-- Reenvio (Equipe): mesmo corpo de 12/10, com uma condição a mais. Senha redefinida não é
+-- reenviada para um WhatsApp trocado há menos de 30 minutos; sem isso, gerar com o número
+-- certo, trocar o número e reenviar contornaria a espera da geração. Conta nova
+-- ('cadastro') segue como antes (corrigir o número e reenviar é o uso normal).
+create or replace function public.rotacionar_senha_temporaria(
+  p_user_id uuid, p_vinculo_id uuid, p_hash text, p_expira_em timestamptz
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.senhas_temporarias t
+     set hash = p_hash, expira_em = p_expira_em, versao = versao + 1, enviada_em = now(), tentativas = 0
+   where t.user_id = p_user_id
+     and t.vinculo_id = p_vinculo_id
+     and t.enviada_em < now() - interval '2 minutes'
+     and not (
+       t.origem = 'redefinicao'
+       and exists (
+         select 1 from public.vinculos v
+          where v.id = p_vinculo_id and v.whatsapp_alterado_em > now() - interval '30 minutes'
+       )
+     );
+  return found;
+end;
+$$;
+revoke all on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz) to service_role;
 
 -- ── Gatilho de sessão: espera quem está trocando a conta ────────────────
 -- Corpo igual ao de 12/10 com uma linha a mais: antes de conferir a pendência, a sessão
@@ -52,7 +124,9 @@ revoke all on function public.equipe_bloquear_sessao_pendente() from public, ano
 --   vínculo master; gestor preso a uma unidade só alcança conta cujos vínculos são todos
 --   dessa unidade.
 -- Devolve 'ok' ou o motivo: 'sem_permissao', 'nao_encontrado', 'propria_conta',
--- 'outra_organizacao', 'outra_unidade', 'limite'. Conta que já estava pendente só troca
+-- 'outra_organizacao', 'outra_unidade', 'limite', 'limite_ator' (Equipe: mais de 5 em
+-- 10 minutos pela mesma pessoa), 'whatsapp_recente' (Equipe: número trocado há menos de
+-- 30 minutos). Conta que já estava pendente só troca
 -- o hash (mesmo efeito do reenvio). Grava a auditoria (quem, para quem, quando).
 create or replace function public.gerar_senha_provisoria_conta(
   p_ator uuid,
@@ -124,8 +198,22 @@ begin
     end if;
   end if;
 
+  -- Teto por pessoa no escopo da Equipe: 5 gerações a cada 10 minutos. A trava por
+  -- pessoa serializa os pedidos dela, para dois pedidos simultâneos não passarem do teto.
+  if p_escopo = 'equipe' then
+    perform pg_advisory_xact_lock(hashtextextended('gerar_senha_provisoria_ator:' || p_ator::text, 0));
+    if (
+      select count(*) from public.logs_auditoria
+       where acao = 'gerar_senha_provisoria' and user_id = p_ator
+         and criado_em >= now() - interval '10 minutes'
+         and dados_novos ->> 'escopo' = 'equipe'
+    ) >= 5 then
+      return 'limite_ator';
+    end if;
+  end if;
+
   -- Para quem.
-  select id, user_id, organizacao_id, unidade_id, role, status into v_alvo
+  select id, user_id, organizacao_id, unidade_id, role, status, whatsapp_alterado_em into v_alvo
     from public.vinculos where id = p_vinculo_id;
   if not found or v_alvo.status = 'revogado' then
     return 'nao_encontrado';
@@ -161,6 +249,11 @@ begin
          and unidade_id is distinct from v_ator_unidade
     ) then
       return 'outra_unidade';
+    end if;
+    -- A provisória da Equipe vai para o WhatsApp do vínculo: número trocado agora há
+    -- pouco não recebe senha (troca e geração em sequência por quem não é a pessoa).
+    if v_alvo.whatsapp_alterado_em is not null and v_alvo.whatsapp_alterado_em > now() - interval '30 minutes' then
+      return 'whatsapp_recente';
     end if;
   end if;
 
@@ -205,8 +298,8 @@ begin
     values (v_alvo.user_id, now())
     on conflict (id) do update set sessoes_validas_desde = excluded.sessoes_validas_desde;
 
-    insert into public.senhas_temporarias (user_id, vinculo_id, hash, expira_em, versao, enviada_em, tentativas)
-    values (v_alvo.user_id, v_alvo.id, p_hash, p_expira_em, 1, now(), 0);
+    insert into public.senhas_temporarias (user_id, vinculo_id, hash, expira_em, versao, enviada_em, tentativas, origem)
+    values (v_alvo.user_id, v_alvo.id, p_hash, p_expira_em, 1, now(), 0, 'redefinicao');
   end if;
 
   -- Auditoria na unidade do vínculo, ou na primeira unidade da organização dele.

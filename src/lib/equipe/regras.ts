@@ -152,7 +152,9 @@ export type CodigoGerarProvisoria =
   | "propria_conta"
   | "outra_organizacao"
   | "outra_unidade"
-  | "limite";
+  | "limite"
+  | "limite_ator"
+  | "whatsapp_recente";
 
 /** Texto para a tela a partir da resposta do banco. `null` = deu certo.
  * Resposta desconhecida vira erro genérico (falha fechada). */
@@ -172,6 +174,10 @@ export function mensagemGerarProvisoria(codigo: unknown): string | null {
       return "Essa pessoa também tem acesso a outra unidade. Peça para a gestão geral do cliente gerar a senha provisória.";
     case "limite":
       return "Espere 2 minutos entre uma senha provisória e outra.";
+    case "limite_ator":
+      return "Você gerou várias senhas provisórias em pouco tempo. Por segurança, espere 10 minutos.";
+    case "whatsapp_recente":
+      return "O WhatsApp desta pessoa mudou agora há pouco. Por segurança, espere 30 minutos ou peça à Zatti.";
     default:
       return "Não foi possível gerar a senha provisória.";
   }
@@ -191,4 +197,15 @@ export function formatarValidadeProvisoria(validaAte: Date): string {
   }).formatToParts(validaAte);
   const p = (tipo: Intl.DateTimeFormatPartTypes) => partes.find((x) => x.type === tipo)?.value ?? "";
   return `${p("day")}/${p("month")}/${p("year")} às ${p("hour")}:${p("minute")}`;
+}
+
+/** Espera depois de trocar o WhatsApp do vínculo antes de mandar senha
+ * provisória de conta redefinida para ele (o banco confere o mesmo). */
+export const MINUTOS_ESPERA_WHATSAPP_TROCADO = 30;
+
+export function whatsappTrocadoHaPouco(alteradoEm: string | null, agora: Date): boolean {
+  if (!alteradoEm) return false;
+  const quando = new Date(alteradoEm).getTime();
+  if (Number.isNaN(quando)) return true; // na dúvida, espera (falha fechada)
+  return agora.getTime() - quando < MINUTOS_ESPERA_WHATSAPP_TROCADO * 60_000;
 }
