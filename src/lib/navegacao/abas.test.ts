@@ -83,6 +83,13 @@ describe("cabeçalho do módulo", () => {
     expect(cabecalhoDoModulo(operacional, "/painel")).toMatchObject({ modulo: "Início", abas: [], naEntrada: true });
   });
 
+  it("Início é link direto na sanfona para todos (Dashboard só no cabeçalho)", () => {
+    for (const menu of [gestao, operacional]) {
+      const inicio = menu.find((i) => i.label === "Início");
+      expect(inicio).toMatchObject({ href: "/painel", linkDireto: true });
+    }
+  });
+
   it("Equipe tem título e nenhuma aba", () => {
     expect(cabecalhoDoModulo(gestao, "/equipe")).toMatchObject({ modulo: "Equipe", abas: [], subAbas: [], naEntrada: true });
   });
