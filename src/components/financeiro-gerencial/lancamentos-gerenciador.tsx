@@ -143,6 +143,7 @@ export function LancamentosGerenciador({
   categorias,
   contas,
   podeGerir,
+  abrirNovo = false,
 }: {
   tipo: TipoLancamento;
   lancamentos: Lancamento[];
@@ -150,9 +151,18 @@ export function LancamentosGerenciador({
   contas: ContaFinanceira[];
   /** Só Gestão/master edita lançamento já salvo (RLS `fin_lancamentos_update_gestao`). */
   podeGerir: boolean;
+  /** Abre o modal de criação ao entrar (atalho `?novo=1`). */
+  abrirNovo?: boolean;
 }) {
   const titulo = tipo === "receita" ? "Receitas" : "Despesas";
-  const [criando, setCriando] = useState(false);
+  const [criando, setCriando] = useState(abrirNovo);
+  // O `?novo=1` sai da barra de endereço: recarregar a página não reabre o modal.
+  useEffect(() => {
+    if (!abrirNovo) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("novo");
+    window.history.replaceState(window.history.state, "", url);
+  }, [abrirNovo]);
   const [criandoDocumento, setCriandoDocumento] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const rotuloData = rotuloDataParcela(tipo);

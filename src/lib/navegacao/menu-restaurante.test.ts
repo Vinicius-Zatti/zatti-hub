@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { destinosVisiveis } from "./atalhos";
 import {
   ENTRADA_CADASTROS,
+  ENTRADA_DASHBOARD,
   ENTRADA_ESTOQUE,
   ENTRADA_RELATORIOS,
   ROTULO_CARDAPIO,
@@ -37,6 +38,7 @@ const NOVOS_NO_MENU = new Set([
   ENTRADA_ESTOQUE,
   ENTRADA_RELATORIOS,
   ENTRADA_CADASTROS,
+  ENTRADA_DASHBOARD,
   "/estoque/contagem/movimentacoes",
   "/estoque/contagem/perdas",
 ]);
@@ -264,6 +266,7 @@ describe("módulo e subitem ativos no piloto", () => {
   it("cada tela acende o módulo certo, inclusive quando o prefixo é de outro", () => {
     const casos: [string, string][] = [
       ["/painel", "Início"],
+      [ENTRADA_DASHBOARD, "Início"],
       [ENTRADA_ESTOQUE, "Estoque"],
       ["/estoque/contagem/perdas", "Estoque"],
       ["/estoque/produtos", "Estoque"],

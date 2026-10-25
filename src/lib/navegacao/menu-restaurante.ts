@@ -272,6 +272,8 @@ export const ROTULO_VENDAS = "Vendas";
 export const ENTRADA_ESTOQUE = "/estoque/visao-geral";
 export const ENTRADA_RELATORIOS = "/relatorios";
 export const ENTRADA_CADASTROS = "/cadastros";
+/** Dashboard por área do piloto (fase 3): aba do Início, só gestão/master. */
+export const ENTRADA_DASHBOARD = "/painel/dashboard";
 
 /** Relatórios que saem do Financeiro e vão para o módulo Relatórios. */
 export const RELATORIOS_FINANCEIRO: readonly { label: string; href: string }[] = [
@@ -442,8 +444,28 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
   const cadastros = secoesCadastrosPiloto(ctx);
   const relatorios = secoesRelatoriosPiloto(ctx);
   return [
-    // Início = o Painel geral de hoje (o Início com atalhos é a fase 3).
-    { label: "Início", href: "/painel", icone: "painel", activePrefix: "/painel", disabled: false },
+    // Início com atalhos por operação (fase 3, 24/10/2026) em /painel; a
+    // gestão ganha a aba Dashboard ao lado, com os números por área.
+    {
+      label: "Início",
+      href: "/painel",
+      icone: "painel",
+      activePrefix: "/painel",
+      disabled: false,
+      ...(ctx.podeGerir
+        ? {
+            sections: [
+              {
+                label: "Início",
+                items: [
+                  { label: "Início", href: "/painel" },
+                  { label: "Dashboard", href: ENTRADA_DASHBOARD },
+                ],
+              },
+            ],
+          }
+        : {}),
+    },
     {
       label: "Estoque",
       href: ENTRADA_ESTOQUE,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
+import { BotaoBuscaGlobal } from "@/components/navegacao-v2/busca-global";
 import { comContagemBase, type AbaModulo, type CabecalhoModulo } from "@/lib/navegacao/abas";
 
 // Navegação V2 (24/10/2026), desenho aprovado em `navegacao-v2-desenho.html`:
@@ -30,10 +31,12 @@ export function CabecalhoModuloV2({ cabecalho, unidadeNome }: { cabecalho: Cabec
             <IconeNavegacao nome="seta" className="h-5 w-5 rotate-90" />
           </Link>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[19px] font-bold leading-tight text-azul-noite">{titulo}</p>
           <p className="truncate text-xs text-cinza-medio">{naEntrada ? unidadeNome : modulo}</p>
         </div>
+        {/* Lupa da busca global (só celular). */}
+        <BotaoBuscaGlobal />
       </div>
       {abas.length > 1 && (
         // `?data=` das abas de Pedidos vem da URL: sem Suspense, a leitura dos

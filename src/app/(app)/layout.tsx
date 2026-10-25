@@ -3,6 +3,8 @@ import { EstruturaAplicativoV2 } from "@/components/estrutura-aplicativo-v2";
 import type { ItemNavegacao } from "@/lib/navegacao/tipos";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { escolherAtalhos } from "@/lib/navegacao/atalhos";
+import { acoesDisponiveis } from "@/lib/navegacao/acoes";
+import { montarEntradasBusca } from "@/lib/navegacao/busca";
 import {
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
@@ -128,6 +130,7 @@ export default async function AppLayout({
           <EstruturaAplicativoV2
             {...propsEstrutura}
             atalhos={escolherAtalhos(itensRestaurante)}
+            entradasBusca={montarEntradasBusca(itensRestaurante, acoesDisponiveis(itensRestaurante, podeGerir))}
             unidadeNome={acesso.unidadeNome}
           >
             {conteudo}
