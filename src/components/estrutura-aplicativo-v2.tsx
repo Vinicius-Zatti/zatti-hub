@@ -395,7 +395,7 @@ export function EstruturaAplicativoV2({
                   );
                 }
 
-                if (!item.sections) {
+                if (!item.sections || item.linkDireto) {
                   return (
                     <li key={item.label}>
                       <Link
@@ -443,7 +443,6 @@ export function EstruturaAplicativoV2({
                           <SecaoSanfona
                             key={secao.label}
                             secao={secao}
-                            modulo={item.label}
                             hrefAtivo={hrefAtivo}
                             aoNavegar={fecharGaveta}
                           />
@@ -593,18 +592,15 @@ function classeRotuloBarra(ativo: boolean) {
 
 function SecaoSanfona({
   secao,
-  modulo,
   hrefAtivo,
   aoNavegar,
 }: {
   secao: SecaoNavegacao;
-  modulo: string;
   hrefAtivo: string | undefined;
   aoNavegar: () => void;
 }) {
-  // Seção de um item só com o mesmo nome (ex.: Setores) vira link direto, sem título repetido;
-  // seção com o nome do próprio módulo (Início, Relatórios) também não repete o título.
-  const semTitulo = (secao.items.length === 1 && secao.items[0].label === secao.label) || secao.label === modulo;
+  // Seção de um item só com o mesmo nome (ex.: Setores) vira link direto, sem título repetido.
+  const semTitulo = secao.items.length === 1 && secao.items[0].label === secao.label;
   return (
     <div className="mt-1 first:mt-0">
       {!semTitulo && (

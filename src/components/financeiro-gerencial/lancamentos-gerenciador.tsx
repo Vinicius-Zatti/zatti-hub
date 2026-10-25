@@ -2,6 +2,7 @@
 
 import { BotaoTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   criarLancamentoAction,
   criarRecorrenciaAction,
@@ -143,7 +144,6 @@ export function LancamentosGerenciador({
   categorias,
   contas,
   podeGerir,
-  abrirNovo = false,
 }: {
   tipo: TipoLancamento;
   lancamentos: Lancamento[];
@@ -151,18 +151,29 @@ export function LancamentosGerenciador({
   contas: ContaFinanceira[];
   /** Só Gestão/master edita lançamento já salvo (RLS `fin_lancamentos_update_gestao`). */
   podeGerir: boolean;
-  /** Abre o modal de criação ao entrar (atalho `?novo=1`). */
-  abrirNovo?: boolean;
 }) {
   const titulo = tipo === "receita" ? "Receitas" : "Despesas";
-  const [criando, setCriando] = useState(abrirNovo);
-  // O `?novo=1` sai da barra de endereço: recarregar a página não reabre o modal.
+  // Atalho "Nova despesa"/"Nova receita" (Início e busca do piloto) chega com
+  // `?novo=1` e abre o modal de criação - também quando a pessoa já está nesta
+  // tela (o Next não remonta o componente, só o parâmetro muda).
+  const router = useRouter();
+  const pathname = usePathname();
+  const parametros = useSearchParams();
+  const pedeNovo = parametros.get("novo") === "1";
+  const [criando, setCriando] = useState(pedeNovo);
+  const [pedeNovoAnterior, setPedeNovoAnterior] = useState(pedeNovo);
+  if (pedeNovo !== pedeNovoAnterior) {
+    setPedeNovoAnterior(pedeNovo);
+    if (pedeNovo) setCriando(true);
+  }
+  // O `?novo=1` sai da URL pelo router (não volta depois de salvar e o F5 não reabre o modal).
   useEffect(() => {
-    if (!abrirNovo) return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("novo");
-    window.history.replaceState(window.history.state, "", url);
-  }, [abrirNovo]);
+    if (!pedeNovo) return;
+    const restantes = new URLSearchParams(parametros.toString());
+    restantes.delete("novo");
+    const consulta = restantes.toString();
+    router.replace(consulta ? `${pathname}?${consulta}` : pathname, { scroll: false });
+  }, [pedeNovo, parametros, pathname, router]);
   const [criandoDocumento, setCriandoDocumento] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
   const rotuloData = rotuloDataParcela(tipo);

@@ -137,6 +137,7 @@ export default async function DashboardPage() {
         ...baseFinanceiro,
         tipo: "dados",
         contexto: `Painel M.E.G.A. de ${nomeMes}${cmvFechado ? "" : " (CMV provisório)"}`,
+        // Sem cor: o Painel M.E.G.A. só colore pelo farol da meta, que fica na tela de origem.
         numeros: [
           { rotulo: "Faturamento", valor: formatarMoeda(painel.faturamento.valor), dica: EXPLICACAO_CALCULO.painel_faturamento },
           {
@@ -148,13 +149,11 @@ export default async function DashboardPage() {
             rotulo: "Resultado",
             valor: formatarMoeda(painel.resultado.valor),
             dica: EXPLICACAO_CALCULO.painel_resultado,
-            alerta: (painel.resultado.valor ?? 0) < 0,
           },
           {
             rotulo: "Caixa projetado em 30 dias",
             valor: formatarMoeda(painel.caixaProjetado30Dias.saldo),
             dica: EXPLICACAO_CALCULO.painel_caixa_30,
-            alerta: painel.caixaProjetado30Dias.saldo < 0,
           },
         ],
       });

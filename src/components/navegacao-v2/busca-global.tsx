@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
 import { buscarEntradas, type EntradaBusca } from "@/lib/navegacao/busca";
@@ -40,7 +39,6 @@ export function BotaoBuscaGlobal({ className = "" }: { className?: string }) {
 type Medidas = { topo: number; altura: number } | null;
 
 export function BuscaGlobal({ entradas, aoFechar }: { entradas: EntradaBusca[]; aoFechar: () => void }) {
-  const router = useRouter();
   const [termo, setTermo] = useState("");
   const [ativo, setAtivo] = useState(0);
   const [medidas, setMedidas] = useState<Medidas>(null);
@@ -94,14 +92,29 @@ export function BuscaGlobal({ entradas, aoFechar }: { entradas: EntradaBusca[]; 
     };
   }, []);
 
+  // Abrir um resultado é sempre um clique no <a> dele (mouse, toque ou Enter):
+  // assim as guardas de saída (Contagem em andamento, edição sem salvar), que
+  // escutam clique em link na captura do `document`, valem aqui também. Elas
+  // param a propagação, então o fechamento não pode depender do onClick do
+  // Link: este ouvinte na captura do `window` roda antes delas e fecha a busca
+  // logo depois, com ou sem a confirmação aparecendo.
+  useEffect(() => {
+    function aoClicar(evento: MouseEvent) {
+      const link = (evento.target as HTMLElement | null)?.closest?.("a");
+      if (!link || !listaRef.current?.contains(link)) return;
+      setTimeout(() => aoFecharRef.current(), 0);
+    }
+    window.addEventListener("click", aoClicar, true);
+    return () => window.removeEventListener("click", aoClicar, true);
+  }, []);
+
   // Resultado ativo sempre visível ao andar pelas setas (só a lista rola).
   useEffect(() => {
     listaRef.current?.querySelector<HTMLElement>("[aria-selected='true']")?.scrollIntoView({ block: "nearest" });
   }, [indiceAtivo]);
 
-  function abrirResultado(item: EntradaBusca) {
-    aoFechar();
-    router.push(item.href);
+  function abrirResultado(indice: number) {
+    document.getElementById(idOpcao(indice))?.querySelector<HTMLAnchorElement>("a")?.click();
   }
 
   function aoTeclar(evento: React.KeyboardEvent<HTMLInputElement>) {
@@ -120,7 +133,7 @@ export function BuscaGlobal({ entradas, aoFechar }: { entradas: EntradaBusca[]; 
       setAtivo((indiceAtivo - 1 + resultados.length) % resultados.length);
     } else if (evento.key === "Enter" && indiceAtivo >= 0) {
       evento.preventDefault();
-      abrirResultado(resultados[indiceAtivo]);
+      abrirResultado(indiceAtivo);
     }
   }
 
@@ -199,7 +212,6 @@ export function BuscaGlobal({ entradas, aoFechar }: { entradas: EntradaBusca[]; 
                     <Link
                       href={item.href}
                       tabIndex={-1}
-                      onClick={aoFechar}
                       onMouseMove={() => !selecionado && setAtivo(indice)}
                       className={`flex min-h-12 items-center gap-3 rounded-lg px-2.5 py-2 transition-colors ${
                         selecionado ? "bg-ambar/15" : "hover:bg-off-white"

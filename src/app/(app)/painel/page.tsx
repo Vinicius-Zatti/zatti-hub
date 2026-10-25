@@ -68,6 +68,8 @@ export default async function PainelPage() {
   // atalhos por operação, tirados do mesmo menu (papel e flags). Os números
   // por área foram para a aba Dashboard (/painel/dashboard, só gestão).
   if (piloto) {
+    // `lerFlagsConciliacao` é `cache()` do React: o layout já leu nesta mesma
+    // requisição, então aqui não há consulta nova ao banco.
     const conciliacaoHabilitada = acesso.financeiroGerencialHabilitado
       ? (await lerFlagsConciliacao(acesso.unidadeId)).habilitada
       : false;

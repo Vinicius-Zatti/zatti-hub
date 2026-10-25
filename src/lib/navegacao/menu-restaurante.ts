@@ -444,14 +444,16 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
   const cadastros = secoesCadastrosPiloto(ctx);
   const relatorios = secoesRelatoriosPiloto(ctx);
   return [
-    // Início com atalhos por operação (fase 3, 24/10/2026) em /painel; a
-    // gestão ganha a aba Dashboard ao lado, com os números por área.
+    // Início com atalhos por operação (fase 3, 24/10/2026) em /painel. Na
+    // sanfona é link direto para todos; a gestão ganha a aba Dashboard só no
+    // cabeçalho do módulo (`linkDireto`).
     {
       label: "Início",
       href: "/painel",
       icone: "painel",
       activePrefix: "/painel",
       disabled: false,
+      linkDireto: true,
       ...(ctx.podeGerir
         ? {
             sections: [
