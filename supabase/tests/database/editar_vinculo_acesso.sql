@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(38);
 
 grant select on setores to authenticated;
 
@@ -85,6 +85,16 @@ select pg_temp.autenticar_como('00000000-0000-0000-0000-00000000e002');
 select throws_ok($$ select public.editar_vinculo_acesso('00000000-0000-0000-0000-00000000e002',
     '00000000-0000-0000-0000-00000000ea04', 'equipe', 'org-ea-a', 'gestao', null) $$,
   '42501', null, 'usuário logado não chama a função pela Data API');
+select pg_temp.como_servidor();
+
+-- vini_operador ganha EXECUTE em função nova de public por default privileges (19/10).
+select is(has_function_privilege('vini_operador',
+  'public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)', 'execute'), false,
+  'vini_operador sem EXECUTE em editar_vinculo_acesso');
+select set_config('role', 'vini_operador', true);
+select throws_ok($$ select public.editar_vinculo_acesso('00000000-0000-0000-0000-00000000e002',
+    '00000000-0000-0000-0000-00000000ea04', 'equipe', 'org-ea-a', 'gestao', null) $$,
+  '42501', null, 'vini_operador não edita acesso');
 select pg_temp.como_servidor();
 select throws_ok($$ select public.editar_vinculo_acesso('00000000-0000-0000-0000-00000000e002',
     '00000000-0000-0000-0000-00000000ea04', 'outro', 'org-ea-a', 'gestao', null) $$,

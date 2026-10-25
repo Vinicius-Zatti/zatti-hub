@@ -20,8 +20,11 @@
 --
 -- Quem pede: a Server Action passa o id de quem está logado (`p_ator`, lido da sessão no
 -- servidor) e o banco confere de novo o papel dessa pessoa nos vínculos, como em
--- 20261024150000_senha_provisoria_conta_existente.sql. Só o service_role executa (não é
--- exposta na Data API). O segundo fator do master é conferido pelo `requireMaster()`.
+-- 20261024150000_senha_provisoria_conta_existente.sql. A função fica em public, mas o
+-- EXECUTE é revogado de public, anon, authenticated e vini_operador (que ganha EXECUTE em
+-- toda função nova de public pelos default privileges de 20261019180000) e concedido só
+-- ao service_role: é o grant que protege, não o schema. O segundo fator do master é
+-- conferido pelo `requireMaster()`.
 --
 -- Sessões da pessoa editada continuam válidas: o app (`getAcessoAtual`) e todo helper de
 -- RLS leem o vínculo a cada request, então papel menor vale na próxima requisição.
@@ -210,6 +213,6 @@ end;
 $$;
 
 revoke all on function public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)
-  from public, anon, authenticated;
+  from public, anon, authenticated, vini_operador;
 grant execute on function public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)
   to service_role;
