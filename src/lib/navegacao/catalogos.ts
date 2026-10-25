@@ -45,14 +45,14 @@ export const CATALOGO_RELATORIOS: readonly EntradaRelatorio[] = [
   {
     area: "Financeiro",
     titulo: "Fluxo de Caixa",
-    descricao: "Quanto dinheiro entrou e saiu, no realizado e no projetado.",
+    descricao: "Fluxo de caixa dia a dia: o que entrou e saiu em cada dia, no realizado e no projetado.",
     href: "/financeiro-gerencial/fluxo-caixa",
     icone: "financeiro",
   },
   {
     area: "Financeiro",
     titulo: "DFC",
-    descricao: "De onde veio e para onde foi o caixa no ano, pelo método direto.",
+    descricao: "Fluxo de caixa mês a mês, no formato da DRE: entradas e saídas por grupo de contas, no ano.",
     href: "/financeiro-gerencial/dfc",
     icone: "financeiroGerencial",
   },

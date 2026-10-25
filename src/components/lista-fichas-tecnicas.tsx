@@ -138,7 +138,7 @@ export function ListaFichasTecnicas({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-2">
+        <div data-tour="cardapio-camadas" className="flex gap-2">
           {(["PRE", "VEN"] as CamadaFicha[]).map((c) => (
             <button
               key={c}
