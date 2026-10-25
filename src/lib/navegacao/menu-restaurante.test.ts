@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { destinosVisiveis } from "./atalhos";
 import {
+  CONFIGURACOES_MODULOS,
   ENTRADA_CADASTROS,
   ENTRADA_DASHBOARD,
+  ENTRADA_CONFIGURACOES,
   ENTRADA_ESTOQUE,
   ENTRADA_RELATORIOS,
   ROTULO_CARDAPIO,
   ROTULO_VENDAS,
   montarMenuRestaurante,
+  contextoMenuRestaurante,
   montarMenuRestaurantePiloto,
+  podeVerConfiguracoes,
   type ContextoMenuRestaurante,
 } from "./menu-restaurante";
 import { moduloAtivo, subitemAtivo, type ItemNavegacao } from "./tipos";
@@ -112,8 +116,8 @@ describe("menu do piloto x menu atual, nas 128 combinações de papel e flag", (
       const menu = montarMenuRestaurantePiloto(ctx);
       const relatorios = menu.find((i) => i.label === "Relatórios");
       const cadastros = menu.find((i) => i.label === "Cadastros");
-      const temRelatorio = ctx.financeiroGerencialHabilitado || (ctx.podeGerir && ctx.consolidadoVendasHabilitado);
-      expect(Boolean(relatorios), JSON.stringify(ctx)).toBe(temRelatorio);
+      // O catálogo sempre tem relatório do Estoque (Contagens, todos os papéis).
+      expect(Boolean(relatorios), JSON.stringify(ctx)).toBe(true);
       expect(Boolean(cadastros), JSON.stringify(ctx)).toBe(ctx.podeGerir);
       expect(destinosVisiveis(menu).has(ENTRADA_ESTOQUE)).toBe(true);
     }
@@ -257,6 +261,48 @@ describe("estrutura de módulos do piloto (24/10)", () => {
       "Perdas",
       "Movimentações",
     ]);
+  });
+});
+
+describe("Configurações no piloto (24/10)", () => {
+  it("aparece só com podeConfigurar, por último, com as abas Unidade e Módulos", () => {
+    const sem = montarMenuRestaurantePiloto(tudoLigado);
+    expect(sem.some((i) => i.label === "Configurações")).toBe(false);
+    const com = montarMenuRestaurantePiloto({ ...tudoLigado, podeConfigurar: true });
+    const config = com[com.length - 1];
+    expect(config.label).toBe("Configurações");
+    expect(config.href).toBe(ENTRADA_CONFIGURACOES);
+    expect(config.sections?.flatMap((s) => s.items.map((i) => i.href))).toEqual([ENTRADA_CONFIGURACOES, CONFIGURACOES_MODULOS]);
+    expect(moduloAtivo(com, CONFIGURACOES_MODULOS)).toBe("Configurações");
+  });
+
+  it("quem vê: master e dono (gestão sem unidade fixa); nunca operacional nem gestor de uma unidade", () => {
+    expect(podeVerConfiguracoes({ role: "master", unidadeFixa: null })).toBe(true);
+    expect(podeVerConfiguracoes({ role: "gestao", unidadeFixa: null })).toBe(true);
+    expect(podeVerConfiguracoes({ role: "gestao", unidadeFixa: "zatti-burger" })).toBe(false);
+    expect(podeVerConfiguracoes({ role: "operacional", unidadeFixa: null })).toBe(false);
+    expect(podeVerConfiguracoes({ role: "operacional", unidadeFixa: "zatti-burger" })).toBe(false);
+  });
+
+  it("contextoMenuRestaurante leva a regra para o menu", () => {
+    const base = {
+      consolidadoVendasHabilitado: true,
+      financeiroGerencialHabilitado: true,
+      fichasTecnicasHabilitado: true,
+      equipeHabilitado: true,
+      garanteHabilitado: true,
+    };
+    const rotulos = (role: string, unidadeFixa: string | null) =>
+      montarMenuRestaurantePiloto(contextoMenuRestaurante({ ...base, role, unidadeFixa }, true)).map((i) => i.label);
+    expect(rotulos("master", null)).toContain("Configurações");
+    expect(rotulos("gestao", null)).toContain("Configurações");
+    expect(rotulos("gestao", "zatti-burger")).not.toContain("Configurações");
+    expect(rotulos("operacional", null)).not.toContain("Configurações");
+  });
+
+  it("menu atual (fora do piloto) não ganha Configurações", () => {
+    const atual = montarMenuRestaurante({ ...tudoLigado, podeConfigurar: true });
+    expect(destinosVisiveis(atual).has(ENTRADA_CONFIGURACOES)).toBe(false);
   });
 });
 

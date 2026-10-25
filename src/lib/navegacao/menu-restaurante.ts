@@ -15,6 +15,9 @@ export type ContextoMenuRestaurante = {
   equipeHabilitado: boolean;
   garanteHabilitado: boolean;
   conciliacaoHabilitada: boolean;
+  /** Configurações do piloto: master ou dono (gestão da organização inteira,
+   * vínculo sem unidade fixa). Ausente = não vê. */
+  podeConfigurar?: boolean;
 };
 
 // Rótulo "Desempenho" - módulo tecnicamente continua em /financeiro/consolidado
@@ -274,6 +277,8 @@ export const ENTRADA_RELATORIOS = "/relatorios";
 export const ENTRADA_CADASTROS = "/cadastros";
 /** Dashboard por área do piloto (fase 3): aba do Início, só gestão/master. */
 export const ENTRADA_DASHBOARD = "/painel/dashboard";
+export const ENTRADA_CONFIGURACOES = "/configuracoes";
+export const CONFIGURACOES_MODULOS = "/configuracoes/modulos";
 
 /** Relatórios que saem do Financeiro e vão para o módulo Relatórios. */
 export const RELATORIOS_FINANCEIRO: readonly { label: string; href: string }[] = [
@@ -416,11 +421,11 @@ export function temPainelVendas(ctx: ContextoMenuRestaurante): boolean {
   return ctx.podeGerir && ctx.consolidadoVendasHabilitado;
 }
 
-/** Relatórios: os do Financeiro (com a flag) e a página de catálogo, que também
- * lista o Painel de vendas (o Dashboard segue no menu de Vendas). Sem nenhum
- * relatório acessível, o módulo não aparece. */
+/** Relatórios: a página de catálogo (que agrupa Financeiro, Estoque, Garante e
+ * Vendas, cada relatório na rota de sempre) e os do Financeiro, com a flag. O
+ * Estoque sempre tem relatório para todos os papéis (Contagens), então o
+ * módulo aparece para todo mundo; o catálogo mostra só o que a pessoa abre. */
 function secoesRelatoriosPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] {
-  if (!ctx.financeiroGerencialHabilitado && !temPainelVendas(ctx)) return [];
   return [
     {
       label: "Relatórios",
@@ -432,10 +437,20 @@ function secoesRelatoriosPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] 
   ];
 }
 
+/** Configurações: dados da unidade e módulos contratados. Só master e dono;
+ * ligar ou desligar módulo é só master (`requireMaster` na action). */
+function secoesConfiguracoesPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] {
+  if (!ctx.podeConfigurar) return [];
+  return [
+    { label: "Unidade", items: [{ label: "Unidade", href: ENTRADA_CONFIGURACOES }] },
+    { label: "Módulos", items: [{ label: "Módulos", href: CONFIGURACOES_MODULOS }] },
+  ];
+}
+
 /**
  * Menu do piloto da Navegação V2 (módulos aprovados por Vinícius em 24/10/2026):
- * Início, Estoque, Vendas, Financeiro, Cardápio, Garante, Equipe, Relatórios e
- * Cadastros. Mesmos papéis e flags do menu atual. Destinos novos: só as três
+ * Início, Estoque, Vendas, Financeiro, Cardápio, Garante, Equipe, Relatórios,
+ * Cadastros e Configurações. Mesmos papéis e flags do menu atual. Destinos novos: só as três
  * páginas de entrada (Estoque, Relatórios, Cadastros) e Movimentações e Perdas,
  * que já abriam pelas abas da Contagem. Nenhuma rota, permissão ou flag muda.
  * As abas de cada módulo saem daqui (`lib/navegacao/abas.ts`).
@@ -443,6 +458,7 @@ function secoesRelatoriosPiloto(ctx: ContextoMenuRestaurante): SecaoNavegacao[] 
 export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
   const cadastros = secoesCadastrosPiloto(ctx);
   const relatorios = secoesRelatoriosPiloto(ctx);
+  const configuracoes = secoesConfiguracoesPiloto(ctx);
   return [
     // Início com atalhos por operação (fase 3, 24/10/2026) em /painel. Na
     // sanfona é link direto para todos; a gestão ganha a aba Dashboard só no
@@ -536,6 +552,18 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
           },
         ]
       : []),
+    ...(configuracoes.length > 0
+      ? [
+          {
+            label: "Configurações",
+            href: ENTRADA_CONFIGURACOES,
+            icone: "configuracoes" as const,
+            activePrefix: ENTRADA_CONFIGURACOES,
+            disabled: false,
+            sections: configuracoes,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -548,6 +576,7 @@ export function contextoMenuRestaurante(
     fichasTecnicasHabilitado: boolean;
     equipeHabilitado: boolean;
     garanteHabilitado: boolean;
+    unidadeFixa: string | null;
   },
   conciliacaoHabilitada: boolean,
 ): ContextoMenuRestaurante {
@@ -559,5 +588,12 @@ export function contextoMenuRestaurante(
     equipeHabilitado: acesso.equipeHabilitado,
     garanteHabilitado: acesso.garanteHabilitado,
     conciliacaoHabilitada,
+    podeConfigurar: podeVerConfiguracoes(acesso),
   };
+}
+
+/** Configurações (piloto): master, ou gestão com vínculo na organização
+ * inteira (o dono). Gestor preso a uma unidade e operacional não veem. */
+export function podeVerConfiguracoes(acesso: { role: string; unidadeFixa: string | null }): boolean {
+  return acesso.role === "master" || (acesso.role === "gestao" && acesso.unidadeFixa === null);
 }

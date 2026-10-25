@@ -17,6 +17,15 @@ import type {
 } from "@/lib/types";
 import type { EntradaFichaTecnica } from "@/lib/banco/fichas-tecnicas";
 import { normalizarBusca } from "@/lib/busca";
+import { ModalFlutuante } from "@/components/modal-flutuante";
+import { NovoProdutoForm } from "@/components/novo-produto-form";
+import {
+  avisoInsumoFicha,
+  incluirPorSku,
+  produtoParaOpcaoFicha,
+  type ConfigCadastroRapido,
+} from "@/lib/cadastro-rapido";
+import type { Produto } from "@/lib/types";
 
 const STATUS_LABEL: Record<StatusFicha, string> = {
   rascunho: "Rascunho",
@@ -60,8 +69,9 @@ function novaEtapa(ordem: number): EtapaFicha {
 export function FichaTecnicaForm({
   existente,
   categorias: categoriasIniciais,
-  produtos,
+  produtos: produtosIniciais,
   fichasDisponiveis,
+  cadastroRapidoProduto = null,
   onSalvo,
   onCancelar,
 }: {
@@ -69,6 +79,11 @@ export function FichaTecnicaForm({
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
+  /** Cadastro rápido no lugar onde se usa (Navegação V2, piloto): "+ Novo
+   * insumo" abre o cadastro de produto em modal e, ao salvar, o item já fica
+   * escolhido na linha. Só quem pode cadastrar produto (Gestão/master) recebe
+   * a config - `criarProdutoAction` confere de novo no servidor. */
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
   /** Quando informado, o form vira "in-place" (usado dentro da própria tela
    * de detalhe) - em vez de navegar pra `/fichas-tecnicas/[id]`, avisa o
    * componente pai que salvou, pra ele voltar sozinho pro modo de leitura. */
@@ -100,6 +115,32 @@ export function FichaTecnicaForm({
   const [componentes, setComponentes] = useState<ComponenteFicha[]>(existente?.componentes ?? []);
   const [componentesDelivery, setComponentesDelivery] = useState<ComponenteFicha[]>(existente?.componentesDelivery ?? []);
   const [etapas, setEtapas] = useState<EtapaFicha[]>(existente?.etapas ?? []);
+
+  // Lista local: produto cadastrado pelo atalho entra aqui sem recarregar a
+  // tela (o que já foi digitado na ficha continua onde estava).
+  const [produtos, setProdutos] = useState<OpcaoProduto[]>(produtosIniciais);
+  const [novoInsumo, setNovoInsumo] = useState<{
+    lista: "componentes" | "delivery";
+    indice: number;
+    nome: string;
+  } | null>(null);
+  // Aviso do último cadastro pelo atalho, mostrado no bloco onde ele foi
+  // aberto. Some ao abrir/fechar o modal de novo ou mexer nas linhas do bloco.
+  const [avisoInsumo, setAvisoInsumo] = useState<{ lista: "componentes" | "delivery"; texto: string } | null>(null);
+
+  function limparAviso(lista: "componentes" | "delivery") {
+    setAvisoInsumo((atual) => (atual?.lista === lista ? null : atual));
+  }
+
+  function abrirNovoInsumo(lista: "componentes" | "delivery", indice: number, nome: string) {
+    setAvisoInsumo(null);
+    setNovoInsumo({ lista, indice, nome });
+  }
+
+  function fecharNovoInsumo() {
+    setAvisoInsumo(null);
+    setNovoInsumo(null);
+  }
 
   const [criandoCategoria, setCriandoCategoria] = useState(false);
   const [codigoCategoria, setCodigoCategoria] = useState("");
@@ -144,6 +185,7 @@ export function FichaTecnicaForm({
   }
 
   function atualizarComponente(indice: number, valor: ComponenteFicha) {
+    limparAviso("componentes");
     editar(
       setComponentes,
       componentes.map((c, i) => (i === indice ? valor : c)),
@@ -151,6 +193,7 @@ export function FichaTecnicaForm({
   }
 
   function removerComponente(indice: number) {
+    limparAviso("componentes");
     editar(
       setComponentes,
       reordenarComponentes(componentes.filter((_, i) => i !== indice)),
@@ -160,12 +203,14 @@ export function FichaTecnicaForm({
   function moverComponente(indice: number, direcao: -1 | 1) {
     const alvo = indice + direcao;
     if (alvo < 0 || alvo >= componentes.length) return;
+    limparAviso("componentes");
     const copia = [...componentes];
     [copia[indice], copia[alvo]] = [copia[alvo], copia[indice]];
     editar(setComponentes, reordenarComponentes(copia));
   }
 
   function atualizarComponenteDelivery(indice: number, valor: ComponenteFicha) {
+    limparAviso("delivery");
     editar(
       setComponentesDelivery,
       componentesDelivery.map((c, i) => (i === indice ? valor : c)),
@@ -173,6 +218,7 @@ export function FichaTecnicaForm({
   }
 
   function removerComponenteDelivery(indice: number) {
+    limparAviso("delivery");
     editar(
       setComponentesDelivery,
       reordenarComponentes(componentesDelivery.filter((_, i) => i !== indice)),
@@ -182,6 +228,7 @@ export function FichaTecnicaForm({
   function moverComponenteDelivery(indice: number, direcao: -1 | 1) {
     const alvo = indice + direcao;
     if (alvo < 0 || alvo >= componentesDelivery.length) return;
+    limparAviso("delivery");
     const copia = [...componentesDelivery];
     [copia[indice], copia[alvo]] = [copia[alvo], copia[indice]];
     editar(setComponentesDelivery, reordenarComponentes(copia));
@@ -278,6 +325,31 @@ export function FichaTecnicaForm({
   function cancelar() {
     desativar();
     onCancelar?.();
+  }
+
+  function insumoCadastrado(produto: Produto) {
+    const alvo = novoInsumo;
+    setNovoInsumo(null);
+    if (!alvo) return;
+    const opcao = produtoParaOpcaoFicha(produto);
+    const texto = avisoInsumoFicha({
+      nome: produto.nome,
+      grupo: produto.grupo,
+      entrouNaFicha: opcao !== null,
+      avisarSetor: cadastroRapidoProduto?.avisarSetor ?? false,
+    });
+    setAvisoInsumo(texto ? { lista: alvo.lista, texto } : null);
+    if (!opcao) return;
+    setProdutos((atual) => incluirPorSku(atual, opcao));
+    const setter = alvo.lista === "componentes" ? setComponentes : setComponentesDelivery;
+    setter((atual) =>
+      atual.map((c, i) =>
+        i === alvo.indice
+          ? { ...c, tipo: "produto", produtoSku: opcao.sku, fichaComponenteId: null, unidadeUso: opcao.unidadeUso }
+          : c,
+      ),
+    );
+    ativar(MENSAGEM_GUARDA);
   }
 
   return (
@@ -456,6 +528,11 @@ export function FichaTecnicaForm({
                 produtos={produtos}
                 fichasDisponiveis={fichasParaEscolher}
                 onChange={(v) => atualizarComponente(indice, v)}
+                onNovoInsumo={
+                  cadastroRapidoProduto
+                    ? (nome) => abrirNovoInsumo("componentes", indice, nome)
+                    : undefined
+                }
                 onRemover={() => removerComponente(indice)}
                 onSubir={() => moverComponente(indice, -1)}
                 onDescer={() => moverComponente(indice, 1)}
@@ -464,6 +541,7 @@ export function FichaTecnicaForm({
               />
             ))}
           </div>
+          {avisoInsumo?.lista === "componentes" && <AvisoInsumo texto={avisoInsumo.texto} />}
           <button
             type="button"
             onClick={() => editar(setComponentes, [...componentes, novoComponente(componentes.length)])}
@@ -490,6 +568,11 @@ export function FichaTecnicaForm({
                   produtos={produtos}
                   fichasDisponiveis={fichasParaEscolher}
                   onChange={(v) => atualizarComponenteDelivery(indice, v)}
+                  onNovoInsumo={
+                    cadastroRapidoProduto
+                      ? (nome) => abrirNovoInsumo("delivery", indice, nome)
+                      : undefined
+                  }
                   onRemover={() => removerComponenteDelivery(indice)}
                   onSubir={() => moverComponenteDelivery(indice, -1)}
                   onDescer={() => moverComponenteDelivery(indice, 1)}
@@ -498,6 +581,7 @@ export function FichaTecnicaForm({
                 />
               ))}
             </div>
+            {avisoInsumo?.lista === "delivery" && <AvisoInsumo texto={avisoInsumo.texto} />}
             <button
               type="button"
               onClick={() => editar(setComponentesDelivery, [...componentesDelivery, novoComponente(componentesDelivery.length)])}
@@ -626,7 +710,28 @@ export function FichaTecnicaForm({
           </button>
         </div>
       </form>
+
+      {/* Fora do <form> da ficha de propósito: o cadastro de produto tem o
+          próprio <form>, e o envio dele não pode disparar o "Salvar ficha". */}
+      <ModalFlutuante aberto={novoInsumo !== null} onFechar={fecharNovoInsumo}>
+        {novoInsumo && (
+          <NovoProdutoForm
+            nomeInicial={novoInsumo.nome || undefined}
+            avisoNomeInicial="Preenchido com o que você buscou na ficha técnica."
+            onSalvo={insumoCadastrado}
+            onCancelar={fecharNovoInsumo}
+          />
+        )}
+      </ModalFlutuante>
     </div>
+  );
+}
+
+function AvisoInsumo({ texto }: { texto: string }) {
+  return (
+    <p role="status" className="mt-3 rounded-md border border-ambar bg-ambar/10 px-3 py-2 text-xs text-cinza">
+      {texto}
+    </p>
   );
 }
 
@@ -635,6 +740,7 @@ function LinhaComponente({
   produtos,
   fichasDisponiveis,
   onChange,
+  onNovoInsumo,
   onRemover,
   onSubir,
   onDescer,
@@ -645,6 +751,8 @@ function LinhaComponente({
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
   onChange: (v: ComponenteFicha) => void;
+  /** Presente só com cadastro rápido liberado - recebe o que foi digitado na busca. */
+  onNovoInsumo?: (nomeDigitado: string) => void;
   onRemover: () => void;
   onSubir: () => void;
   onDescer: () => void;
@@ -696,7 +804,19 @@ function LinhaComponente({
               const produto = produtos.find((p) => p.sku === sku);
               onChange({ ...componente, produtoSku: sku, unidadeUso: produto?.unidadeUso ?? "" });
             }}
+            acaoNova={onNovoInsumo ? { rotulo: "+ Cadastrar novo insumo", onClick: onNovoInsumo } : undefined}
           />
+          {/* Linha já com produto escolhido não repete o atalho: continua na
+              última opção da busca, se a pessoa quiser trocar por um novo. */}
+          {onNovoInsumo && !componente.produtoSku && (
+            <button
+              type="button"
+              onClick={() => onNovoInsumo("")}
+              className="mt-1 text-xs font-semibold text-azul-noite underline"
+            >
+              + Novo insumo
+            </button>
+          )}
         </div>
       ) : (
         <div className="mt-2">
@@ -744,11 +864,14 @@ function SeletorBusca({
   valorSelecionado,
   onSelecionar,
   placeholder,
+  acaoNova,
 }: {
   opcoes: { valor: string; rotulo: string }[];
   valorSelecionado: string;
   onSelecionar: (valor: string) => void;
   placeholder: string;
+  /** Última linha da lista: cadastra o que não existe, levando o texto buscado. */
+  acaoNova?: { rotulo: string; onClick: (busca: string) => void };
 }) {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState(false);
@@ -789,6 +912,21 @@ function SeletorBusca({
               {o.rotulo}
             </button>
           ))}
+          {acaoNova && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const texto = busca.trim();
+                setAberto(false);
+                setBusca("");
+                acaoNova.onClick(texto);
+              }}
+              className="block w-full border-t border-cinza-claro px-3 py-2 text-left text-sm font-semibold text-azul-noite hover:bg-off-white"
+            >
+              {busca.trim() ? `${acaoNova.rotulo}: "${busca.trim()}"` : acaoNova.rotulo}
+            </button>
+          )}
         </div>
       )}
     </div>
