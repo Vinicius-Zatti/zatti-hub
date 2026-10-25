@@ -1,4 +1,4 @@
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, temPermissao } from "@/lib/acesso";
 import { listConsolidados } from "@/lib/consolidado-vendas";
 import { ConsolidadoTabela } from "@/components/consolidado-tabela";
 
@@ -8,5 +8,5 @@ export default async function HistoricoConsolidadoPage() {
   const acesso = await getAcessoAtual();
   const lancamentos = await listConsolidados(acesso.unidadeId);
 
-  return <ConsolidadoTabela lancamentos={lancamentos} podeEditar={acesso.role !== "operacional"} />;
+  return <ConsolidadoTabela lancamentos={lancamentos} podeEditar={acesso.role !== "operacional" && temPermissao(acesso, "vendas.editar_dia_lancado", "editar")} />;
 }

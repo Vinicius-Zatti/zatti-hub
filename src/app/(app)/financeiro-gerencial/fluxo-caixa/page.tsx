@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireRelatorioFinanceiro } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, carregarTransferencias } from "@/lib/banco/financeiro-gerencial-v1";
 import { aberturasDasContas, montarMovimentosCaixa, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
@@ -14,7 +14,7 @@ export default async function FluxoCaixaPage({
 }: {
   searchParams: Promise<{ ano?: string; visao?: string; modo?: string; mes?: string; conta?: string }>;
 }) {
-  const acesso = await requireFinanceiroGerencial();
+  const acesso = await requireRelatorioFinanceiro();
   const params = await searchParams;
   const hoje = hojeIsoBrasil();
   const ano = params.ano && /^\d{4}$/.test(params.ano) ? Number(params.ano) : Number(hoje.slice(0, 4));

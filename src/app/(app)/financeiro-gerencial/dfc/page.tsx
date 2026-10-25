@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireRelatorioFinanceiro } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, listarParametrosProvisao, listarReversoesProvisao } from "@/lib/banco/financeiro-gerencial-v1";
 import { aberturasDasContas, montarMovimentosCaixa, type VisaoCaixa } from "@/lib/financeiro-gerencial/caixa";
@@ -11,7 +11,7 @@ import { DfcVisualizacao } from "@/components/financeiro-gerencial/dfc-visualiza
 export const dynamic = "force-dynamic";
 
 export default async function DfcPage({ searchParams }: { searchParams: Promise<{ ano?: string; visao?: string }> }) {
-  const acesso = await requireFinanceiroGerencial();
+  const acesso = await requireRelatorioFinanceiro();
   const params = await searchParams;
   const ano = params.ano && /^\d{4}$/.test(params.ano) ? Number(params.ano) : Number(hojeIsoBrasil().slice(0, 4));
   const visao: VisaoCaixa = params.visao === "realizado" ? "realizado" : "projetado";

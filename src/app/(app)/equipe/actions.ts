@@ -2,7 +2,7 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { requireEquipe, registrarAuditoria, type AcessoAtual } from "@/lib/acesso";
+import { requireEquipeEditar, registrarAuditoria, type AcessoAtual } from "@/lib/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
@@ -21,7 +21,10 @@ import {
   editarVinculoNoBanco,
   gerarSenhaProvisoriaNoBanco,
   hashSenhaTemporaria,
+  salvarPermissoesNoBanco,
 } from "@/lib/equipe/servidor";
+import { CHAVES, ehChavePermissao, ehNivel, mensagemSalvarPermissoes } from "@/lib/permissoes/modulos";
+import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -104,7 +107,7 @@ async function gravarResultadoEnvio(
 export async function cadastrarMembroAction(formData: FormData): Promise<
   Resultado<{ ok: true; situacao: "enviado" | "pendente_de_outro_cliente" | "conta_existente"; envio: ResultadoEnvio | null }>
 > {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
 
   const nome = String(formData.get("nome") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -284,7 +287,7 @@ export async function cadastrarMembroAction(formData: FormData): Promise<
 export async function reenviarAcessoMembroAction(
   vinculoId: string,
 ): Promise<Resultado<{ ok: true; envio: ResultadoEnvio }>> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
@@ -391,7 +394,7 @@ export async function reenviarAcessoMembroAction(
 export async function gerarSenhaProvisoriaMembroAction(
   vinculoId: string,
 ): Promise<Resultado<{ ok: true; envio: ResultadoEnvio }>> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
@@ -447,7 +450,7 @@ export async function editarAcessoMembroAction(
   role: string,
   unidadeId: string | null,
 ): Promise<Resultado> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   if (!pedidoEdicaoValido(vinculoId, role, unidadeId)) return { erro: "Pedido inválido." };
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
@@ -468,7 +471,7 @@ export async function editarAcessoMembroAction(
 
 /** Corrige o WhatsApp de alguém da equipe. */
 export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: string): Promise<Resultado> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   const whatsapp = normalizarWhatsapp(bruto);
   if (!whatsapp) return { erro: "WhatsApp inválido. Use DDD + número, ex.: 31 99999-8888." };
   const admin = createAdminClient();
@@ -495,7 +498,7 @@ export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: st
  * que cobre o cliente ou a loja. Vale na hora: toda policy confere o status
  * do vínculo a cada consulta, não o que está no token. */
 export async function revogarMembroAction(vinculoId: string): Promise<Resultado> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
@@ -525,7 +528,7 @@ export async function revogarMembroAction(vinculoId: string): Promise<Resultado>
 /** Devolve o acesso. Conta que ainda não trocou a senha volta como
  * 'convidado' (libera junto com o primeiro acesso). */
 export async function reativarMembroAction(vinculoId: string): Promise<Resultado> {
-  const acesso = await requireEquipe();
+  const acesso = await requireEquipeEditar();
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
@@ -554,6 +557,40 @@ export async function reativarMembroAction(vinculoId: string): Promise<Resultado
     dadosAntigos: { status: alvo.status },
     dadosNovos: { status: novoStatus },
   });
+  revalidarEquipe();
+  return { ok: true };
+}
+
+/** Permissões por módulo de alguém da equipe (Navegação V2, fase 6 - 25/10/2026). Só master ou
+ * o dono (gestão da organização inteira, com a Equipe em "editar"), só no piloto. `niveis` é o
+ * estado completo da tela (o rascunho só grava aqui). O banco confere tudo de novo, guarda só
+ * as exceções ao padrão da função e grava a auditoria. */
+export async function salvarPermissoesMembroAction(vinculoId: string, niveis: unknown): Promise<Resultado> {
+  const acesso = await requireEquipeEditar();
+  if (!podeAdministrarPermissoes(acesso)) return { erro: mensagemSalvarPermissoes("sem_permissao") ?? "" };
+  if (typeof vinculoId !== "string" || !/^[0-9a-f-]{36}$/i.test(vinculoId)) return { erro: "Pedido inválido." };
+  if (!niveis || typeof niveis !== "object" || Array.isArray(niveis)) return { erro: "Pedido inválido." };
+  const entrada = niveis as Record<string, unknown>;
+  const limpo: Record<string, string> = {};
+  for (const [chave, nivel] of Object.entries(entrada)) {
+    if (!ehChavePermissao(chave) || !ehNivel(nivel)) return { erro: "Pedido inválido." };
+    limpo[chave] = nivel;
+  }
+  if (Object.keys(limpo).length > CHAVES.length) return { erro: "Pedido inválido." };
+  const admin = createAdminClient();
+  const carregado = await carregarAlvo(admin, acesso, vinculoId);
+  if ("erro" in carregado) return carregado;
+  if (!podeMudarPermissoesDe(acesso, { role: carregado.alvo.role, unidadeId: carregado.alvo.unidade_id })) {
+    return { erro: mensagemSalvarPermissoes("alvo_dono") ?? "" };
+  }
+  const codigo = await salvarPermissoesNoBanco(admin, {
+    atorId: acesso.userId,
+    organizacaoId: acesso.organizacaoId,
+    vinculoId: carregado.alvo.id,
+    niveis: limpo,
+  });
+  const erro = mensagemSalvarPermissoes(codigo);
+  if (erro && codigo !== "sem_mudanca") return { erro };
   revalidarEquipe();
   return { ok: true };
 }

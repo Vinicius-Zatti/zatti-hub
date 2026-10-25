@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { SubTabs } from "@/components/sub-tabs";
 import { getAcessoAtual } from "@/lib/acesso";
+import { AvisoSomenteVer } from "@/components/aviso-somente-ver";
+import { destinoSemEdicao } from "@/lib/permissoes/menu";
 
 const SUB_ITEMS = [
   { label: "Novo Lançamento", href: "/financeiro/consolidado/novo" },
@@ -20,11 +22,13 @@ export default async function FinanceiroLayout({ children }: { children: React.R
   // fazem hoje com tela ainda não liberada.
   if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/produtos");
 
-  const items = acesso.role === "operacional" ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : SUB_ITEMS;
+  const items = (acesso.role === "operacional" ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : SUB_ITEMS)
+    .filter((item) => destinoSemEdicao(item.href, acesso.permissoes) === null);
 
   return (
     <div className="flex flex-col gap-5">
       <SubTabs items={items} />
+      <AvisoSomenteVer acesso={acesso} modulo="vendas" />
       {children}
     </div>
   );

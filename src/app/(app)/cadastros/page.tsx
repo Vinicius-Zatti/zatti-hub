@@ -4,6 +4,7 @@ import { getAcessoAtual, requireGestao } from "@/lib/acesso";
 import { CATALOGO_CADASTROS, filtrarCatalogo } from "@/lib/navegacao/catalogos";
 import { contextoMenuRestaurante, montarMenuRestaurantePiloto } from "@/lib/navegacao/menu-restaurante";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 
 /** Cadastros (Navegação V2, 24/10/2026): página de entrada com um bloco por
  * cadastro que a pessoa já abre hoje pelo menu. Todos os cadastros são de
@@ -12,7 +13,7 @@ import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 export default async function CadastrosPage() {
   if (!usaNavegacaoV2(await getAcessoAtual())) redirect("/estoque/produtos");
   const acesso = await requireGestao();
-  const menu = montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, false));
+  const menu = aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, false)), acesso.permissoes);
   const cadastros = filtrarCatalogo(CATALOGO_CADASTROS, menu);
 
   return (

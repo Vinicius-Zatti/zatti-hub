@@ -1,4 +1,4 @@
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, temPermissao } from "@/lib/acesso";
 import { carregarFichaTecnicaParaExibir, getConfiguracaoFinanceira } from "@/lib/banco/fichas-tecnicas";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function FichaTecnicaPage({ params }: { params: Promise<{ id: string }> }) {
   const acesso = await getAcessoAtual();
   const { id } = await params;
-  const podeGerir = acesso.role !== "operacional";
+  const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "cardapio", "editar");
 
   const [dados, configuracao] = await Promise.all([
     carregarFichaTecnicaParaExibir(acesso.unidadeId, id, podeGerir),

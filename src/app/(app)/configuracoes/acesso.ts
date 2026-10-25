@@ -10,5 +10,6 @@ import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 export async function requireConfiguracoes(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (!usaNavegacaoV2(acesso) || !podeVerConfiguracoes(acesso)) redirect("/painel");
+  if (acesso.permissoes.configuracoes === "sem_acesso") redirect("/painel");
   return acesso;
 }

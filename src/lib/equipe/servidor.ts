@@ -109,3 +109,23 @@ export async function editarVinculoNoBanco(
   }
   return String(data);
 }
+
+/** Grava as permissões por módulo de um vínculo (fase 6, 25/10/2026). `niveis` é o estado
+ * completo desejado; o banco confere de novo quem pede (`atorId`, da sessão), o piloto, o teto
+ * do papel e as chaves ainda travadas, grava só as exceções e a auditoria. Devolve o código. */
+export async function salvarPermissoesNoBanco(
+  admin: Admin,
+  params: { atorId: string; organizacaoId: string; vinculoId: string; niveis: Record<string, string> },
+): Promise<string> {
+  const { data, error } = await admin.rpc("salvar_permissoes_modulo", {
+    p_ator: params.atorId,
+    p_organizacao_id: params.organizacaoId,
+    p_vinculo_id: params.vinculoId,
+    p_niveis: params.niveis,
+  });
+  if (error) {
+    console.error("[equipe] falha ao salvar permissões", { codigo: error.code });
+    return "erro";
+  }
+  return String(data);
+}

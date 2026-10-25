@@ -90,17 +90,19 @@ export default async function DashboardPage() {
   const hoje = hojeIsoBrasil();
   const nomeMes = `${MESES_POR_EXTENSO[Number(hoje.slice(5, 7)) - 1]}/${hoje.slice(0, 4)}`;
 
+  // Área com "sem acesso" nas permissões por módulo não entra no Dashboard.
+  const ve = (m: keyof typeof acesso.permissoes) => acesso.permissoes[m] !== "sem_acesso";
   const [estoque, painel, garante] = await Promise.all([
-    ouNull("estoque", carregarEstoque(acesso)),
-    acesso.financeiroGerencialHabilitado ? ouNull("financeiro", carregarPainelMega(acesso, hoje)) : undefined,
-    acesso.garanteHabilitado ? ouNull("garante", carregarResumoGarantePainel(acesso)) : undefined,
+    ve("estoque") ? ouNull("estoque", carregarEstoque(acesso)) : undefined,
+    acesso.financeiroGerencialHabilitado && ve("financeiro") ? ouNull("financeiro", carregarPainelMega(acesso, hoje)) : undefined,
+    acesso.garanteHabilitado && ve("garante") ? ouNull("garante", carregarResumoGarantePainel(acesso)) : undefined,
   ]);
 
   const areas: AreaDashboard[] = [];
 
   const baseEstoque = { area: "Estoque", icone: "estoque" as const, href: "/estoque/visao-geral", rotuloLink: "Abrir Estoque" };
-  if (!estoque) areas.push({ ...baseEstoque, tipo: "erro" });
-  else
+  if (estoque === null) areas.push({ ...baseEstoque, tipo: "erro" });
+  else if (estoque)
     areas.push({
       ...baseEstoque,
       tipo: "dados",
@@ -187,7 +189,7 @@ export default async function DashboardPage() {
       });
   }
 
-  if (acesso.consolidadoVendasHabilitado)
+  if (acesso.consolidadoVendasHabilitado && ve("vendas"))
     areas.push({
       area: "Vendas",
       icone: "financeiro",

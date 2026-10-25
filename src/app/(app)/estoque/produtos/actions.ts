@@ -7,12 +7,13 @@ import { salvarDesignacoesBanco } from "@/lib/banco/setores";
 import { setoresDaPendencia } from "@/lib/contagem/pendencia";
 import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import {
+  lerVinculosPrePreparo,
   prePreparoVinculadoHabilitado,
   sincronizarCustosPrePreparoMelhorEsforco,
   sincronizarPrePreparos,
 } from "@/lib/banco/pre-preparo";
 import type { Produto } from "@/lib/types";
-import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, type AcessoAtual } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, temPermissao, type AcessoAtual } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import {
   fornecedor1Schema,
@@ -70,6 +71,21 @@ async function sincronizarPrePreparoDaGrade(acesso: AcessoAtual, produtos: Produ
   }
   await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
   return erros.length > 0 ? `Produto salvo, mas o pré-preparo não foi ajustado. ${erros.join("; ")}` : null;
+}
+
+/** Marcar ou desmarcar pré-preparo cria, reativa ou inativa ficha técnica (Cardápio). Quem não
+ * edita o Cardápio (permissão por módulo, fase 6) recebe uma mensagem única ANTES de salvar
+ * qualquer coisa, para não gravar o produto e deixar a ficha pela metade. Sem mudança na chave,
+ * o resto do produto salva normalmente. */
+const MENSAGEM_PRE_PREPARO_SEM_CARDAPIO =
+  "Marcar ou desmarcar pré-preparo mexe na ficha técnica, e seu acesso ao Cardápio não permite editar. Nada foi salvo: desfaça a mudança de pré-preparo ou peça a quem administra a equipe.";
+
+async function prePreparoBloqueadoPeloCardapio(acesso: AcessoAtual, produtos: Produto[]): Promise<boolean> {
+  if (temPermissao(acesso, "cardapio", "editar")) return false;
+  const comChave = produtos.filter((p) => p.prePreparo !== undefined);
+  if (comChave.length === 0 || !(await prePreparoVinculadoHabilitado(acesso.unidadeId))) return false;
+  const atuais = await lerVinculosPrePreparo(acesso.unidadeId);
+  return comChave.some((p) => (p.prePreparo === true) !== (atuais.get(p.sku)?.prePreparo === true));
 }
 
 export async function sugerirSkuAction(
@@ -191,6 +207,7 @@ export async function salvarProdutoAction(
   try {
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
+    if (await prePreparoBloqueadoPeloCardapio(acesso, [entrada])) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
     await upsertProduto(entrada, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
@@ -282,6 +299,7 @@ export async function salvarProdutosAction(
   try {
     await exigirLimiteRequisicao("salvar_produtos");
     const entradas = validarEntrada(produtosSchema, produtos);
+    if (await prePreparoBloqueadoPeloCardapio(acesso, entradas)) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
     await upsertProdutosBatch(entradas, acesso.spreadsheetId);
     await registrarAuditoriaBatch(
       entradas.map((produto) => ({

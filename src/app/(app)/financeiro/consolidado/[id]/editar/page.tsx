@@ -1,11 +1,11 @@
-import { requireGestao } from "@/lib/acesso";
+import { requireGestaoConsolidado } from "@/lib/acesso";
 import { getConsolidadoPorId } from "@/lib/consolidado-vendas";
 import { NovoLancamentoForm } from "@/components/novo-lancamento-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditarConsolidadoPage({ params }: { params: Promise<{ id: string }> }) {
-  const acesso = await requireGestao();
+  const acesso = await requireGestaoConsolidado();
   const { id } = await params;
   const consolidado = await getConsolidadoPorId(acesso.unidadeId, id);
 

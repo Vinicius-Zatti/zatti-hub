@@ -1,4 +1,5 @@
-import { requireEquipe } from "@/lib/acesso";
+import { requireEquipe, temPermissao } from "@/lib/acesso";
+import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { CadastrarMembroForm } from "@/components/equipe/cadastrar-membro-form";
 import { CartaoMembro } from "@/components/equipe/cartao-membro";
 import { carregarEquipe } from "./dados";
@@ -12,6 +13,18 @@ export default async function EquipePage() {
 
   const ativos = membros.filter((m) => m.situacao !== "revogado");
   const semAcesso = membros.filter((m) => m.situacao === "revogado");
+  // Permissões por módulo (fase 6): "ver" a Equipe abre a lista sem botões; master e dono
+  // (no piloto) mudam as permissões de cada pessoa.
+  const podeEditar = temPermissao(acesso, "equipe", "editar");
+  const equipePermissoes = podeEditar && podeAdministrarPermissoes(acesso)
+    ? ativos.map((m) => ({
+        vinculoId: m.vinculoId,
+        nome: m.nome ?? m.email,
+        role: m.role,
+        orgInteira: m.unidadeId === null,
+        excecoes: m.excecoes,
+      }))
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -23,14 +36,20 @@ export default async function EquipePage() {
         </p>
       </div>
 
-      <section data-tour="equipe-cadastrar" className="rounded-lg border border-cinza-claro bg-branco p-4">
-        <h2 className="font-display text-lg font-bold text-azul-noite">Cadastrar pessoa</h2>
-        <CadastrarMembroForm
-          unidades={unidades}
-          unidadeFixa={acesso.unidadeFixa}
-          organizacaoNome={acesso.organizacaoNome}
-        />
-      </section>
+      {podeEditar ? (
+        <section data-tour="equipe-cadastrar" className="rounded-lg border border-cinza-claro bg-branco p-4">
+          <h2 className="font-display text-lg font-bold text-azul-noite">Cadastrar pessoa</h2>
+          <CadastrarMembroForm
+            unidades={unidades}
+            unidadeFixa={acesso.unidadeFixa}
+            organizacaoNome={acesso.organizacaoNome}
+          />
+        </section>
+      ) : (
+        <p className="rounded-md border border-ambar/40 bg-ambar/10 px-3 py-2 text-xs text-azul-noite">
+          Seu acesso à Equipe é só para ver. Para cadastrar ou mudar acessos, peça a quem administra a equipe.
+        </p>
+      )}
 
       <section data-tour="equipe-com-acesso" className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-bold text-azul-noite">
@@ -45,6 +64,10 @@ export default async function EquipePage() {
               unidades={unidades}
               podeTodas={!acesso.unidadeFixa}
               organizacaoNome={acesso.organizacaoNome}
+              podeEditar={podeEditar}
+              equipePermissoes={
+                podeMudarPermissoesDe(acesso, { role: m.role, unidadeId: m.unidadeId }) ? equipePermissoes : null
+              }
             />
           ))}
         </div>
@@ -63,6 +86,7 @@ export default async function EquipePage() {
               unidades={unidades}
               podeTodas={!acesso.unidadeFixa}
               organizacaoNome={acesso.organizacaoNome}
+              podeEditar={podeEditar}
             />
             ))}
           </div>

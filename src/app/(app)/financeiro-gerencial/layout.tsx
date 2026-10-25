@@ -1,6 +1,8 @@
 import { SubTabs } from "@/components/sub-tabs";
 import { requireFinanceiroGerencial } from "@/lib/acesso";
 import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
+import { AvisoSomenteVer } from "@/components/aviso-somente-ver";
+import { destinoSemEdicao } from "@/lib/permissoes/menu";
 
 // Ordem do dia a dia (pedido de Vinícius em 20/10/2026, substitui a de 25/08): painel primeiro,
 // trabalho diário, relatórios e por último a configuração. Conciliação entra logo depois da
@@ -43,12 +45,15 @@ export default async function FinanceiroGerencialLayout({ children }: { children
   const todos = conciliacao.habilitada
     ? [...SUB_ITEMS.slice(0, 2), { label: "Conciliação", href: "/financeiro-gerencial/conciliacao" }, ...SUB_ITEMS.slice(2)]
     : SUB_ITEMS;
-  const items = acesso.role === "operacional" ? todos.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : todos;
+  const items = (acesso.role === "operacional" ? todos.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : todos)
+    // Permissão por módulo (fase 6): quem só vê não abre as telas de trabalho.
+    .filter((item) => destinoSemEdicao(item.href, acesso.permissoes) === null);
 
   return (
     <div className="flex flex-col gap-5">
       {/* Fixo no topo ao rolar (pedido de 25/09) - relatórios longos. */}
       <SubTabs items={items} fixoNoTopo />
+      <AvisoSomenteVer acesso={acesso} modulo="financeiro" />
       {children}
     </div>
   );

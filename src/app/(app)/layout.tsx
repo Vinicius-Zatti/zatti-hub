@@ -3,6 +3,7 @@ import { EstruturaAplicativoV2 } from "@/components/estrutura-aplicativo-v2";
 import type { ItemNavegacao } from "@/lib/navegacao/tipos";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { escolherAtalhos } from "@/lib/navegacao/atalhos";
+import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 import { acoesDisponiveis } from "@/lib/navegacao/acoes";
 import { montarEntradasBusca } from "@/lib/navegacao/busca";
 import {
@@ -107,7 +108,7 @@ export default async function AppLayout({
   // (`lib/navegacao/piloto.ts`) vê o menu em sanfona; as demais, o atual.
   const contextoMenu = contextoMenuRestaurante(acesso, conciliacaoHabilitada);
   const itensRestaurante = navegacaoV2
-    ? montarMenuRestaurantePiloto(contextoMenu)
+    ? aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenu), acesso.permissoes)
     : montarMenuRestaurante(contextoMenu);
   const propsEstrutura = {
     items: acesso.areaInterna ? itensAreaInterna : itensRestaurante,

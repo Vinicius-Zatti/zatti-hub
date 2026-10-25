@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, tratarEntrada } from "@/lib/banco/caixa-entrada";
 import { lerEntrada, receberArquivo, TAMANHO_MAXIMO_CAIXA } from "@/lib/caixa-entrada/processar";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
@@ -19,6 +19,7 @@ type Resposta = { ok: true; mensagem: string } | { ok: false; mensagem: string }
 export async function enviarArquivosAction(formData: FormData): Promise<Resposta> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conciliacao_importar");
     const arquivos = formData.getAll("arquivos").filter((a): a is File => a instanceof File && a.size > 0);
     if (arquivos.length === 0) throw new ErroPublico("Escolha pelo menos um arquivo.");
@@ -51,6 +52,7 @@ export async function enviarArquivosAction(formData: FormData): Promise<Resposta
 export async function lerDeNovoAction(entradaId: string): Promise<Resposta> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conciliacao_reprocessar");
     const id = uuid.parse(entradaId);
     // A entrada precisa ser visível pela sessão (RLS) antes de o servidor ler com o service role.
@@ -76,6 +78,7 @@ export async function linkOriginalAction(entradaId: string): Promise<{ ok: true;
 export async function lancarEntradaAction(input: unknown): Promise<{ ok: true; documentoId: string } | { ok: false; mensagem: string }> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_criar");
     const bruto = z.object({ entradaId: uuid, documento: z.unknown() }).strict().parse(input);
     const documento = validarEntrada(documentoFinanceiroEntradaSchema, bruto.documento);
@@ -89,8 +92,9 @@ export async function lancarEntradaAction(input: unknown): Promise<{ ok: true; d
 }
 
 export async function anexarEntradaAction(input: unknown): Promise<Resposta> {
-  await requireFinanceiroGerencial();
+  const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     const e = z.object({ entradaId: uuid, lancamentoId: uuid }).strict().parse(input);
     await tratarEntrada(e.entradaId, "anexar", e.lancamentoId, null);
     revalidatePath(CAMINHO);
@@ -101,8 +105,9 @@ export async function anexarEntradaAction(input: unknown): Promise<Resposta> {
 }
 
 export async function descartarEntradaAction(input: unknown): Promise<Resposta> {
-  await requireFinanceiroGerencial();
+  const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     const e = z.object({ entradaId: uuid, motivo: z.string().trim().min(3).max(300) }).strict().parse(input);
     await tratarEntrada(e.entradaId, "descartar", null, e.motivo);
     revalidatePath(CAMINHO);
@@ -122,6 +127,7 @@ const configSchema = z.discriminatedUnion("acao", [
 export async function configurarCaixaAction(input: unknown): Promise<Resposta> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conta_financeira_salvar");
     const config = configSchema.parse(input);
     await configurarCaixa(acesso.unidadeId, config);
@@ -147,6 +153,7 @@ const alertaSchema = z.discriminatedUnion("acao", [
 export async function configurarAlertaAction(input: unknown): Promise<Resposta> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conta_financeira_salvar");
     const config = alertaSchema.parse(input);
     await configurarAlerta(acesso.unidadeId, config);

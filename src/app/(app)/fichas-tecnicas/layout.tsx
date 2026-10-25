@@ -1,5 +1,7 @@
 import { SubTabs } from "@/components/sub-tabs";
 import { requireFichasTecnicas } from "@/lib/acesso";
+import { AvisoSomenteVer } from "@/components/aviso-somente-ver";
+import { destinoSemEdicao } from "@/lib/permissoes/menu";
 
 const SUB_ITEMS = [
   { label: "Fichas", href: "/fichas-tecnicas" },
@@ -25,11 +27,13 @@ export default async function FichasTecnicasLayout({ children }: { children: Rea
   // essa unidade.
   const acesso = await requireFichasTecnicas();
 
-  const items = acesso.role === "operacional" ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : SUB_ITEMS;
+  const items = (acesso.role === "operacional" ? SUB_ITEMS.filter((item) => !SOMENTE_GESTAO.includes(item.href)) : SUB_ITEMS)
+    .filter((item) => destinoSemEdicao(item.href, acesso.permissoes) === null);
 
   return (
     <div className="flex flex-col gap-5">
       <SubTabs items={items} />
+      <AvisoSomenteVer acesso={acesso} modulo="cardapio" />
       {children}
     </div>
   );

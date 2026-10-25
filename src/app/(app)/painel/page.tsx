@@ -10,6 +10,7 @@ import { resumirEstoque } from "@/lib/estoque/resumo";
 import { acoesDoInicio } from "@/lib/navegacao/acoes";
 import { contextoMenuRestaurante, montarMenuRestaurantePiloto } from "@/lib/navegacao/menu-restaurante";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,10 @@ export default async function PainelPage() {
     const conciliacaoHabilitada = acesso.financeiroGerencialHabilitado
       ? (await lerFlagsConciliacao(acesso.unidadeId)).habilitada
       : false;
-    const menu = montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, conciliacaoHabilitada));
+    const menu = aplicarPermissoesMenu(
+      montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, conciliacaoHabilitada)),
+      acesso.permissoes,
+    );
     const { operacao, gestao } = acoesDoInicio(menu, acesso.role !== "operacional");
     return (
       <InicioPiloto

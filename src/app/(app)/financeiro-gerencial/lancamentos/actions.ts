@@ -1,6 +1,6 @@
 "use server";
 
-import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import {
   criarLancamento,
   criarRecorrencia,
@@ -72,6 +72,7 @@ function revalidarLancamentos() {
 export async function criarLancamentoAction(input: unknown): Promise<ResultadoLancamento> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_criar");
     const entrada = validarEntrada(lancamentoFinanceiroEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.dataCompetencia, ...entrada.parcelas.map((p) => p.dataPrevista)]);
@@ -88,6 +89,7 @@ export async function criarLancamentoAction(input: unknown): Promise<ResultadoLa
 export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoRecorrencia> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_recorrencia_criar");
     const entrada = validarEntrada(recorrenciaFinanceiraEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.dataInicio, ...(entrada.dataCompetencia ? [entrada.dataCompetencia] : [])]);
@@ -108,6 +110,7 @@ export async function criarRecorrenciaAction(input: unknown): Promise<ResultadoR
 export async function editarLancamentoAction(input: unknown): Promise<ResultadoLancamento> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_editar");
     const entrada = validarEntrada(editarLancamentoFinanceiroEntradaSchema, input);
     const lancamento = await editarLancamento({ ...entrada, unidadeId: acesso.unidadeId });
@@ -123,6 +126,8 @@ export async function editarLancamentoAction(input: unknown): Promise<ResultadoL
 export async function excluirLancamentoAction(input: unknown): Promise<ResultadoExclusao> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
+    exigirEdicao(acesso, "financeiro.apagar_lancamento");
     await exigirLimiteRequisicao("fin_lancamento_excluir");
     const entrada = validarEntrada(excluirLancamentoEntradaSchema, input);
     await excluirLancamento({ ...entrada, unidadeId: acesso.unidadeId });
@@ -136,6 +141,7 @@ export async function excluirLancamentoAction(input: unknown): Promise<Resultado
 export async function registrarBaixaAction(input: unknown): Promise<ResultadoBaixa> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_baixa_registrar");
     const entrada = validarEntrada(baixaFinanceiraEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.data]);
@@ -154,6 +160,7 @@ export async function registrarBaixaAction(input: unknown): Promise<ResultadoBai
 export async function registrarEstornoBaixaAction(input: unknown): Promise<ResultadoBaixa> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_baixa_estornar");
     const entrada = validarEntrada(estornarBaixaEntradaSchema, input);
     const parcela = await estornarBaixa({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
@@ -201,6 +208,7 @@ export async function obterRecorrenciaParaEdicaoAction(input: unknown): Promise<
 export async function editarRecorrenciaAction(input: unknown): Promise<ResultadoEditarRecorrencia> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_editar");
     const { recorrenciaId, ...modelo } = validarEntrada(editarRecorrenciaEntradaSchema, input);
     const plano = await editarRecorrencia({ unidadeId: acesso.unidadeId, recorrenciaId, modelo, criadoPor: acesso.userId });
@@ -215,6 +223,7 @@ export async function editarRecorrenciaAction(input: unknown): Promise<Resultado
 export async function criarTransferenciaAction(input: unknown): Promise<{ ok: true } | { ok: false; mensagem: string }> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_transferencia_criar");
     const entrada = validarEntrada(transferenciaManualEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.data]);

@@ -5,6 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 import { ehTitularFinanceiro } from "@/lib/acesso-financeiro";
 import { ordenarVinculos, podeUsarEquipe } from "@/lib/equipe/regras";
 import { CABECALHO_CAMINHO, ehCaminhoAreaInterna, escolherOrganizacaoMaster } from "@/lib/area-interna/caminhos";
+import { ErroPublico } from "@/lib/erros";
+import { destinoSemEdicao } from "@/lib/permissoes/menu";
+import {
+  excecoesDasLinhas,
+  niveisEfetivos,
+  nomeChave,
+  restringirPorVinculos,
+  rank,
+  type ChavePermissao,
+  type NiveisCompletos,
+  type NivelModulo,
+} from "@/lib/permissoes/modulos";
 
 export type Role = "gestao" | "operacional" | "master";
 export type FonteDadosEstoque = "planilha" | "banco";
@@ -71,6 +83,12 @@ export type AcessoAtual = {
    * `organizacoes.area_interna`): menu próprio, sem módulos de restaurante.
    * Só master chega nela (não há vínculo de cliente com essa organização). */
   areaInterna: boolean;
+  /** Nível efetivo por módulo e ação sensível (Navegação V2, fase 6): exceções gravadas em
+   * `permissoes_modulo` por cima do padrão do papel. Sem exceção = o de hoje. "Sem acesso"
+   * já chega dobrado nas flags acima (financeiro, vendas, cardápio, equipe). */
+  permissoes: NiveisCompletos;
+  /** Gestão ativa da organização inteira (o dono): administra permissões da própria equipe. */
+  ehDono: boolean;
 };
 
 type VinculoRow = {
@@ -139,6 +157,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     { data: vinculosData, error: erroVinculos },
     { data: perfil },
     { data: sessaoVigente, error: erroSessao },
+    { data: permissoesData, error: erroPermissoes },
   ] = await Promise.all([
     supabase
       .from("vinculos")
@@ -147,6 +166,8 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
       .in("status", ["ativo", "convidado"]),
     supabase.from("perfis").select("nome").eq("id", userId).maybeSingle(),
     supabase.rpc("sessao_vigente"),
+    // RLS devolve só as exceções dos vínculos da própria pessoa.
+    supabase.from("permissoes_modulo").select("vinculo_id, modulo, nivel").limit(500),
   ]);
 
   if (erroVinculos) {
@@ -162,6 +183,10 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   // devolve dado nenhum para ela; aqui a recusa é explícita e manda entrar de novo.
   if (erroSessao) throw new Error("Não foi possível validar a sessão do usuário.");
   if (sessaoVigente === false) redirect("/login");
+  // Tabela ainda não criada (SQL da fase 6 não rodou): sem exceção, igual ao banco.
+  if (erroPermissoes && erroPermissoes.code !== "42P01" && erroPermissoes.code !== "PGRST205") {
+    throw new Error("Não foi possível validar as permissões do usuário.");
+  }
 
   const todosVinculos = (vinculosData as unknown as VinculoRow[] | null) ?? [];
   // Ordem fixa (gestão antes de operacional, organização inteira antes de
@@ -263,6 +288,25 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     redirect("/planilha-pendente");
   }
 
+  const ehDono = !ehMaster && vinculoDaOrg?.role === "gestao" && vinculoDaOrg.unidade_id === null;
+  // Mesma regra do banco (unidades_modulo_negadas): a exceção de QUALQUER vínculo ativo que cobre a
+  // unidade da sessão restringe; o vínculo que define o papel dá a base (padrão + exceções dele).
+  const todasLinhas = (permissoesData as { vinculo_id: string; modulo: string; nivel: string }[] | null) ?? [];
+  const linhasDoVinculo = (id: string) => todasLinhas.filter((l) => l.vinculo_id === id);
+  const permissoesBase = niveisEfetivos(
+    ehMaster ? "master" : role === "gestao" ? "gestao" : "operacional",
+    ehMaster || vinculoDaOrg?.unidade_id === null,
+    ehMaster || !vinculoDaOrg ? {} : excecoesDasLinhas(linhasDoVinculo(vinculoDaOrg.id)),
+  );
+  const permissoes = ehMaster
+    ? permissoesBase
+    : restringirPorVinculos(
+        permissoesBase,
+        vinculos
+          .filter((v) => v.organizacao_id === organizacaoId && (v.unidade_id === null || v.unidade_id === unidade.id))
+          .map((v) => excecoesDasLinhas(linhasDoVinculo(v.id))),
+      );
+
   const usuarioEmail = typeof claims.claims.email === "string" ? claims.claims.email : "";
   const titularFinanceiro = ehTitularFinanceiro({ ehMaster, aal: claims.claims.aal, email: usuarioEmail });
 
@@ -277,20 +321,42 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     unidadeNome: unidade.nome,
     spreadsheetId: unidade.spreadsheet_id,
     fonteDadosEstoque: unidade.fonte_dados_estoque,
-    consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado,
-    fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado,
+    consolidadoVendasHabilitado: unidade.consolidado_vendas_habilitado && permissoes.vendas !== "sem_acesso",
+    fichasTecnicasHabilitado: unidade.fichas_tecnicas_habilitado && permissoes.cardapio !== "sem_acesso",
     financeiroGerencialHabilitado:
-      unidade.financeiro_gerencial_habilitado && (unidade.financeiro_liberado_equipe || titularFinanceiro),
+      unidade.financeiro_gerencial_habilitado &&
+      (unidade.financeiro_liberado_equipe || titularFinanceiro) &&
+      permissoes.financeiro !== "sem_acesso",
     titularFinanceiro,
     garanteHabilitado: unidade.garante_habilitado,
     extratoEstoqueHabilitado: unidade.extrato_estoque_habilitado,
     role,
     unidadeFixa,
-    equipeHabilitado,
+    equipeHabilitado: equipeHabilitado && permissoes.equipe !== "sem_acesso",
     organizacoesDisponiveis,
     areaInterna,
+    permissoes,
+    ehDono,
   };
 });
+
+/** Pode `nivel` em `chave`? (master sempre; sem exceção = padrão do papel). */
+export function temPermissao(acesso: Pick<AcessoAtual, "permissoes">, chave: ChavePermissao, nivel: NivelModulo): boolean {
+  return rank(acesso.permissoes[chave]) >= rank(nivel);
+}
+
+/** Falha antes do banco, com mensagem clara, quando a pessoa só pode ver o módulo ou a ação
+ * sensível foi tirada dela. Chamar dentro do `try` das Server Actions que gravam (o `catch`
+ * devolve a mensagem). O banco recusa de novo (gatilho `exigir_permissao_modulo`). */
+export function exigirEdicao(acesso: Pick<AcessoAtual, "permissoes">, chave: ChavePermissao): void {
+  if (temPermissao(acesso, chave, "editar")) return;
+  if (chave.includes(".")) {
+    throw new ErroPublico(`${nomeChave(chave)} não está liberado para você. Peça a quem administra a equipe.`);
+  }
+  throw new ErroPublico(
+    `Seu acesso a ${nomeChave(chave)} é só para ver. Peça a quem administra a equipe para liberar a edição.`,
+  );
+}
 
 /** Barreira real pras telas/ações só de Gestão (master conta como gestão em
  * qualquer organização) - chamar tanto no layout (esconde navegação)
@@ -316,6 +382,9 @@ export async function requireConsolidadoVendas(): Promise<AcessoAtual> {
 export async function requireGestaoConsolidado(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.consolidadoVendasHabilitado) redirect("/estoque/contagem");
+  // Permissão por módulo (fase 6): quem só vê Vendas não edita dia lançado.
+  if (!temPermissao(acesso, "vendas", "editar")) redirect("/financeiro/consolidado");
+  if (!temPermissao(acesso, "vendas.editar_dia_lancado", "editar")) redirect("/financeiro/consolidado");
   return acesso;
 }
 
@@ -335,6 +404,8 @@ export async function requireFichasTecnicas(): Promise<AcessoAtual> {
 export async function requireGestaoFichasTecnicas(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  // Permissão por módulo (fase 6): gestão que só vê o Cardápio fica como o operacional.
+  if (!temPermissao(acesso, "cardapio", "editar")) redirect("/fichas-tecnicas");
   return acesso;
 }
 
@@ -349,6 +420,15 @@ export async function requireFinanceiroGerencial(): Promise<AcessoAtual> {
   return acesso;
 }
 
+/** Relatórios do Financeiro (DRE, Fluxo de Caixa, DFC, Painel M.E.G.A.): Financeiro liberado e
+ * o módulo Relatórios sem "sem acesso" (fase 6). Os dados por baixo seguem a barreira do
+ * Financeiro no banco. */
+export async function requireRelatorioFinanceiro(): Promise<AcessoAtual> {
+  const acesso = await requireFinanceiroGerencial();
+  if (!temPermissao(acesso, "relatorios", "ver")) redirect("/financeiro-gerencial/visao-geral");
+  return acesso;
+}
+
 /** Escrita que exige simultaneamente modulo habilitado e papel de Gestao
  * (master continua com os mesmos privilegios administrativos) - usado pra
  * contas financeiras, categorias proprias, estoque mensal, provisoes e
@@ -356,6 +436,8 @@ export async function requireFinanceiroGerencial(): Promise<AcessoAtual> {
 export async function requireGestaoFinanceiroGerencial(): Promise<AcessoAtual> {
   const acesso = await requireGestao();
   if (!acesso.financeiroGerencialHabilitado) redirect("/estoque/contagem");
+  // Permissão por módulo (fase 6): configuração do Financeiro é só para quem edita.
+  if (!temPermissao(acesso, "financeiro", "editar")) redirect("/financeiro-gerencial/visao-geral");
   return acesso;
 }
 
@@ -373,6 +455,21 @@ export async function requireEquipe(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (!podeUsarEquipe(acesso)) redirect("/estoque/contagem");
   return acesso;
+}
+
+/** Ações da Equipe que gravam: além de `requireEquipe`, a Equipe em "editar" (fase 6). Quem só
+ * vê a Equipe abre a lista sem nenhum botão. */
+export async function requireEquipeEditar(): Promise<AcessoAtual> {
+  const acesso = await requireEquipe();
+  if (!temPermissao(acesso, "equipe", "editar")) redirect("/equipe");
+  return acesso;
+}
+
+/** Redireciona quem só vê o módulo para fora de uma tela que só serve para gravar
+ * (`TELAS_DE_EDICAO` em lib/permissoes/menu.ts). */
+export function redirecionarSemEdicao(acesso: Pick<AcessoAtual, "permissoes">, caminho: string): void {
+  const destino = destinoSemEdicao(caminho, acesso.permissoes);
+  if (destino) redirect(destino);
 }
 
 /** Barreira do Checklist Garante: módulo ligado na unidade. Cumprir é de

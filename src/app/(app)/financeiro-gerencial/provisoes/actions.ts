@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { listarCategorias } from "@/lib/banco/financeiro-gerencial";
 import {
   carregarBaseFinanceira,
@@ -34,6 +34,7 @@ function revalidar() {
 export async function salvarParametrosProvisaoAction(input: unknown): Promise<ResultadoProvisao> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_provisao_parametros_salvar");
     const entrada = validarEntrada(parametrosProvisaoEntradaSchema, input);
     await salvarParametrosProvisao({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
@@ -48,6 +49,7 @@ export async function salvarParametrosProvisaoAction(input: unknown): Promise<Re
 export async function criarReversaoProvisaoAction(input: unknown): Promise<ResultadoProvisao> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_provisao_reversao_salvar");
     const entrada = validarEntrada(reversaoProvisaoEntradaSchema, input);
     const [{ lancamentos }, categorias, parametros, reversoes] = await Promise.all([
@@ -82,6 +84,7 @@ export async function criarReversaoProvisaoAction(input: unknown): Promise<Resul
 export async function excluirReversaoProvisaoAction(input: unknown): Promise<ResultadoProvisao> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_provisao_reversao_salvar");
     const entrada = validarEntrada(excluirReversaoProvisaoEntradaSchema, input);
     await excluirReversaoProvisao({ ...entrada, unidadeId: acesso.unidadeId });
