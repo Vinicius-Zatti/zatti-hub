@@ -139,6 +139,11 @@ export const ROTEIROS_TOUR: Readonly<Record<ModuloTour, readonly PassoTour[]>> =
   ],
   cardapio: [
     {
+      alvos: ['[data-tour="cardapio-camadas"]'],
+      titulo: "Pré-preparo e venda",
+      texto: "Pré-preparo: receitas de uso interno, como molhos. Venda: os itens do cardápio, com o custo de cada um.",
+    },
+    {
       alvos: ['#conteudo-principal input[placeholder^="Buscar por nome"]'],
       titulo: "Achar uma ficha",
       texto: "Procure a ficha técnica pelo nome, pelo SKU ou pela categoria.",
