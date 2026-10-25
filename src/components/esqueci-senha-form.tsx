@@ -37,8 +37,7 @@ export function EsqueciSenhaForm() {
   if (estado === "enviado") {
     return (
       <p className="text-sm text-cinza-medio">
-        Se <strong>{email}</strong> tiver uma conta, mandamos um link pra criar uma senha nova.
-        Abre o email nesse mesmo aparelho e clica no link.
+        Se <strong>{email}</strong> tiver uma conta, mandamos um link pra criar uma senha nova. Pode abrir em qualquer aparelho.
       </p>
     );
   }
