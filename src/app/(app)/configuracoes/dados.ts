@@ -26,7 +26,14 @@ export async function carregarFlagsModulos(acesso: AcessoAtual): Promise<FlagsMo
     )
     .eq("id", acesso.unidadeId)
     .maybeSingle();
-  if (error || !data) throw new Error("Não foi possível ler os módulos da unidade.");
+  // Padrão do app: leitura que falha sobe para o `error.tsx` do segmento
+  // (app), o cartão de erro com unidade, tela e contato do suporte
+  // (`limite-erro-carregamento.tsx`), nunca uma página 500 crua.
+  if (error) {
+    console.error("Falha ao ler os módulos da unidade", error.code ?? "", error.message);
+    throw new Error("Não foi possível ler os módulos da unidade.");
+  }
+  if (!data) throw new Error("Unidade não encontrada ao ler os módulos.");
   const u = data as unknown as LinhaUnidade;
   return {
     consolidado_vendas_habilitado: u.consolidado_vendas_habilitado === true,

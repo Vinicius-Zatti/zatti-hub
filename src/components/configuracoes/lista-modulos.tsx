@@ -18,10 +18,17 @@ export function ListaModulos({ modulos }: { modulos: EstadoModulo[] }) {
     setErro(null);
     setEmAndamento(modulo.chave);
     startTransition(async () => {
-      const r = await definirModuloAction(modulo.chave, ligar);
-      if ("erro" in r) setErro({ chave: modulo.chave, texto: r.erro });
-      setEmAndamento(null);
-      setConfirmando(null);
+      // try/finally: se a action falhar (rede, sessão vencida), o botão não
+      // fica preso em "Salvando..." e o modal fecha com o erro no cartão.
+      try {
+        const r = await definirModuloAction(modulo.chave, ligar);
+        if ("erro" in r) setErro({ chave: modulo.chave, texto: r.erro });
+      } catch {
+        setErro({ chave: modulo.chave, texto: "Não foi possível salvar agora. Tente de novo em instantes." });
+      } finally {
+        setEmAndamento(null);
+        setConfirmando(null);
+      }
     });
   }
 
