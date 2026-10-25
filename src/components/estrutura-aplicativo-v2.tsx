@@ -10,6 +10,7 @@ import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
 import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
 import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
 import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
+import { posicaoGavetaAcimaDoTeclado, type PosicaoGaveta } from "@/lib/navegacao/gaveta-teclado";
 import { moduloAtivo, subitemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
 import { limparTodosRascunhos } from "@/lib/rascunho-local";
 import { signOutAction } from "@/lib/supabase/actions";
@@ -68,6 +69,9 @@ export function EstruturaAplicativoV2({
   // Arrastar a folha para baixo pela alça: quanto já desceu, em px.
   const [arrasto, setArrasto] = useState(0);
   const inicioArrasto = useRef<number | null>(null);
+  // Folha acima do teclado (celular): base e altura medidas no `visualViewport`.
+  // Sem ele, fica o CSS (rodapé da página, 85% da tela).
+  const [posicaoGaveta, setPosicaoGaveta] = useState<PosicaoGaveta | null>(null);
 
   // Módulo pelo subitem mais específico: "/estoque/setores" é de Cadastros, não do Estoque.
   const labelAtivo = moduloAtivo(items, pathname);
@@ -90,7 +94,46 @@ export function EstruturaAplicativoV2({
     }
 
     document.addEventListener("keydown", aoPressionarTecla);
-    return () => document.removeEventListener("keydown", aoPressionarTecla);
+    // Página parada atrás da folha: o iOS não rola o fundo ao focar o filtro.
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", aoPressionarTecla);
+      document.body.style.overflow = overflowAnterior;
+    };
+  }, [gavetaAberta]);
+
+  // Teclado do celular: a folha fica com altura fixa logo acima dele, com o
+  // filtro sempre visível no topo; só a lista de menus rola.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!gavetaAberta || !viewport) return;
+    let quadro = 0;
+
+    function atualizar() {
+      cancelAnimationFrame(quadro);
+      quadro = requestAnimationFrame(() => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        setPosicaoGaveta(
+          posicaoGavetaAcimaDoTeclado({
+            alturaJanela: window.innerHeight,
+            alturaVisivel: vv.height,
+            deslocamentoTopo: vv.offsetTop,
+          }),
+        );
+      });
+    }
+
+    atualizar();
+    viewport.addEventListener("resize", atualizar);
+    viewport.addEventListener("scroll", atualizar);
+    return () => {
+      cancelAnimationFrame(quadro);
+      viewport.removeEventListener("resize", atualizar);
+      viewport.removeEventListener("scroll", atualizar);
+      setPosicaoGaveta(null);
+    };
   }, [gavetaAberta]);
 
   function fecharGaveta() {
@@ -158,8 +201,14 @@ export function EstruturaAplicativoV2({
       <aside
         id="menu-lateral"
         aria-label="Menu lateral"
-        style={gavetaAberta && arrasto > 0 ? { transform: `translateY(${arrasto}px)`, transition: "none" } : undefined}
-        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-2xl bg-azul-noite pb-[env(safe-area-inset-bottom)] text-branco shadow-xl transition-[translate,width,visibility] duration-200 lg:inset-y-0 lg:right-auto lg:z-40 lg:max-h-none lg:translate-y-0 lg:visible lg:rounded-none lg:border-r lg:border-white/10 lg:pb-0 ${
+        style={{
+          ...(gavetaAberta && posicaoGaveta
+            ? { "--gaveta-base": `${posicaoGaveta.base}px`, "--gaveta-altura": `${posicaoGaveta.altura}px` }
+            : {}),
+          ...(gavetaAberta && arrasto > 0 ? { transform: `translateY(${arrasto}px)`, transition: "none" } : {}),
+        } as React.CSSProperties}
+        // Altura fixa (não segue a quantidade de menus encontrados); no desktop as classes lg: mandam.
+        className={`fixed inset-x-0 bottom-[var(--gaveta-base,0px)] z-50 flex h-[var(--gaveta-altura,85dvh)] flex-col rounded-t-2xl bg-azul-noite pb-[env(safe-area-inset-bottom)] text-branco shadow-xl transition-[translate,width,visibility] duration-200 lg:inset-y-0 lg:right-auto lg:z-40 lg:h-auto lg:translate-y-0 lg:visible lg:rounded-none lg:border-r lg:border-white/10 lg:pb-0 ${
           gavetaAberta ? "translate-y-0" : "invisible translate-y-full"
         } ${recolhido ? "lg:w-[5.5rem]" : "lg:w-64"}`}
       >
@@ -359,7 +408,8 @@ export function EstruturaAplicativoV2({
           )}
         </nav>
 
-        <div className="shrink-0 border-t border-white/10 p-2">
+        {/* Com o teclado aberto no celular, conta e Sair saem para sobrar espaço à lista. */}
+        <div className={`shrink-0 border-t border-white/10 p-2 ${gavetaAberta && posicaoGaveta?.tecladoAberto ? "hidden lg:block" : ""}`}>
           {/* Uma linha só (tela baixa): inicial de quem está logado + organização
               com o seletor de troca. Nome e e-mail ficam no título da inicial. */}
           <div className={`mb-1 flex min-h-11 items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 ${someRecolhido}`}>
