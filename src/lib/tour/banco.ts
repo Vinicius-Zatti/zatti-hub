@@ -1,6 +1,15 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
+// Aviso de leitura falha uma vez por processo (o layout lê a cada render; sem
+// a migration aplicada, logaria em toda tela).
+let avisou = false;
+function avisarUmaVez(...detalhes: unknown[]) {
+  if (avisou) return;
+  avisou = true;
+  console.warn("[tour] leitura de tours_vistos falhou; tour desligado (aviso único por processo)", ...detalhes);
+}
+
 /**
  * Módulos cujo tour o usuário já viu (`tours_vistos`, RLS: só as próprias
  * linhas). Devolve null quando a leitura falha (ex.: migration ainda não
@@ -11,12 +20,12 @@ export async function lerToursVistos(userId: string): Promise<string[] | null> {
     const supabase = await createClient();
     const { data, error } = await supabase.from("tours_vistos").select("modulo").eq("user_id", userId);
     if (error) {
-      console.error("[tour] leitura de tours_vistos falhou; tour desligado nesta tela", error.code, error.message);
+      avisarUmaVez(error.code, error.message);
       return null;
     }
     return (data ?? []).map((linha) => linha.modulo as string);
   } catch (erro) {
-    console.error("[tour] leitura de tours_vistos falhou; tour desligado nesta tela", erro);
+    avisarUmaVez(erro);
     return null;
   }
 }

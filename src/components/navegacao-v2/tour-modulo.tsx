@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconeNavegacao } from "@/components/icones-navegacao";
+import { teclaAbreBusca } from "@/lib/navegacao/busca";
 import { marcarTourVistoAction } from "@/lib/tour/actions";
 import {
   deveMostrarTour,
@@ -22,8 +23,9 @@ import { ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/rotei
 // cabeçalho. Textos e alvos em `lib/tour/roteiros.ts`; posição e regras em
 // `lib/tour/passos.ts`. Alvo ausente na tela: o passo é pulado. Sem leitura do
 // banco (`vistos === null`, ex.: migration não aplicada) não abre sozinho.
-// Não abre em tela em modo foco (Contagem, preenchimento do Garante) nem com
-// modal ou busca abertos.
+// Não abre em tela em modo foco (Contagem, preenchimento do Garante), em tela
+// marcada com `data-sem-tour` (começo da Contagem) nem com modal ou busca
+// abertos. Com o tour aberto, Ctrl+K e "/" não abrem a busca por baixo dele.
 
 const ESPERA_ABRIR_MS = 800;
 
@@ -69,11 +71,26 @@ export function TourModuloProvider({
     if (tourAtivo || !deveMostrarTour(modulo, vistosLocal) || !modulo) return;
     // Espera a tela assentar (abas, blocos e listas chegam por streaming).
     const espera = window.setTimeout(() => {
-      if (document.querySelector("[data-modo-foco], [data-modal-flutuante], [aria-modal='true']")) return;
+      if (document.querySelector("[data-modo-foco], [data-sem-tour], [data-modal-flutuante], [aria-modal='true']")) return;
       abrir(modulo, true);
     }, ESPERA_ABRIR_MS);
     return () => window.clearTimeout(espera);
   }, [modulo, pathname, vistosLocal, tourAtivo, abrir]);
+
+  // Tour aberto: o atalho da busca (Ctrl+K, "/") para aqui, na captura do
+  // window, antes do ouvinte do shell no document.
+  const tourAberto = tourAtivo !== null;
+  useEffect(() => {
+    if (!tourAberto) return;
+    function bloquearBusca(evento: KeyboardEvent) {
+      const { key, ctrlKey, metaKey, altKey } = evento;
+      if (!teclaAbreBusca({ key, ctrlKey, metaKey, altKey, emCampoDeTexto: false })) return;
+      evento.preventDefault();
+      evento.stopPropagation();
+    }
+    window.addEventListener("keydown", bloquearBusca, true);
+    return () => window.removeEventListener("keydown", bloquearBusca, true);
+  }, [tourAberto]);
 
   const rever = useCallback(() => {
     if (modulo) abrir(modulo, false);
@@ -279,6 +296,8 @@ function BalaoTour({
         ref={balaoRef}
         role="dialog"
         aria-modal="true"
+        // Clique no texto do balão não tira o foco de dentro dele.
+        tabIndex={-1}
         aria-labelledby={idTitulo}
         aria-describedby={idTexto}
         onKeyDown={aoTeclar}
