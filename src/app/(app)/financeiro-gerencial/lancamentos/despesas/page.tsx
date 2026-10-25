@@ -4,8 +4,7 @@ import { LancamentosGerenciador } from "@/components/financeiro-gerencial/lancam
 
 export const dynamic = "force-dynamic";
 
-/** `?novo=1` (atalho "Nova despesa" do Início e da busca do piloto) já abre o modal de criação. */
-export default async function LancamentosDespesasPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
+export default async function LancamentosDespesasPage() {
   const acesso = await requireFinanceiroGerencial();
   const [lancamentos, categorias, contas] = await Promise.all([
     listarLancamentos(acesso.unidadeId, { tipo: "despesa" }),
@@ -23,7 +22,6 @@ export default async function LancamentosDespesasPage({ searchParams }: { search
       categorias={categoriasDespesa}
       contas={contas}
       podeGerir={acesso.role !== "operacional"}
-      abrirNovo={(await searchParams).novo === "1"}
     />
   );
 }
