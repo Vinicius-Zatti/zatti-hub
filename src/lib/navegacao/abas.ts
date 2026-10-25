@@ -27,8 +27,10 @@ export type CabecalhoModulo = {
   titulo: string;
 };
 
-/** Módulos sem cabeçalho: o Início já abre com a saudação dele. */
-const SEM_CABECALHO = new Set(["Início"]);
+/** Módulos sem cabeçalho. O Início saiu daqui na fase 3 (24/10/2026): com as
+ * abas Início | Dashboard da gestão e a lupa da busca no celular, ele usa o
+ * mesmo cabeçalho dos outros módulos. */
+const SEM_CABECALHO = new Set<string>();
 
 /**
  * Abas em dois níveis (pedido de Vinícius, 24/10/2026: uma aba por tela

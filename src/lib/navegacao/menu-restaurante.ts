@@ -275,6 +275,8 @@ export const ROTULO_VENDAS = "Vendas";
 export const ENTRADA_ESTOQUE = "/estoque/visao-geral";
 export const ENTRADA_RELATORIOS = "/relatorios";
 export const ENTRADA_CADASTROS = "/cadastros";
+/** Dashboard por área do piloto (fase 3): aba do Início, só gestão/master. */
+export const ENTRADA_DASHBOARD = "/painel/dashboard";
 export const ENTRADA_CONFIGURACOES = "/configuracoes";
 export const CONFIGURACOES_MODULOS = "/configuracoes/modulos";
 
@@ -458,8 +460,30 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
   const relatorios = secoesRelatoriosPiloto(ctx);
   const configuracoes = secoesConfiguracoesPiloto(ctx);
   return [
-    // Início = o Painel geral de hoje (o Início com atalhos é a fase 3).
-    { label: "Início", href: "/painel", icone: "painel", activePrefix: "/painel", disabled: false },
+    // Início com atalhos por operação (fase 3, 24/10/2026) em /painel. Na
+    // sanfona é link direto para todos; a gestão ganha a aba Dashboard só no
+    // cabeçalho do módulo (`linkDireto`).
+    {
+      label: "Início",
+      href: "/painel",
+      icone: "painel",
+      activePrefix: "/painel",
+      disabled: false,
+      linkDireto: true,
+      ...(ctx.podeGerir
+        ? {
+            sections: [
+              {
+                label: "Início",
+                items: [
+                  { label: "Início", href: "/painel" },
+                  { label: "Dashboard", href: ENTRADA_DASHBOARD },
+                ],
+              },
+            ],
+          }
+        : {}),
+    },
     {
       label: "Estoque",
       href: ENTRADA_ESTOQUE,

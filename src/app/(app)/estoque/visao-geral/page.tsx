@@ -4,7 +4,7 @@ import { BlocosModulo, type BlocoModulo } from "@/components/navegacao-v2/blocos
 import { getAcessoAtual } from "@/lib/acesso";
 import { listarAndamentoBanco, listarModalidadesBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
-import { resumirEstoque, tipoDaContagem } from "@/lib/estoque/resumo";
+import { DICA_PEDIDOS_PENDENTES, resumirEstoque, tipoDaContagem } from "@/lib/estoque/resumo";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { listPedidosFeitos } from "@/lib/pedidos";
 import { listInventario } from "@/lib/sheets/inventario";
@@ -49,7 +49,7 @@ export default async function VisaoGeralEstoquePage() {
       icone: "pedidos",
       numero: String(resumo.pedidosPendentes),
       alerta: resumo.pedidosPendentes > 0,
-      dica: "Pedidos feitos com ao menos um item de fornecedor confirmado e que ainda não foram marcados como recebidos.",
+      dica: DICA_PEDIDOS_PENDENTES,
     },
     ...(podeGerir
       ? [

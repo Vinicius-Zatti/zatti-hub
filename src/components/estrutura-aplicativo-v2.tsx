@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
 import { OrgSwitcher } from "@/components/org-switcher";
+import { BuscaGlobal, BuscaGlobalProvider } from "@/components/navegacao-v2/busca-global";
 import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
 import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
 import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
+import { teclaAbreBusca, type EntradaBusca } from "@/lib/navegacao/busca";
 import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
 import { posicaoGavetaAcimaDoTeclado, type PosicaoGaveta } from "@/lib/navegacao/gaveta-teclado";
 import { moduloAtivo, subitemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
@@ -33,6 +35,8 @@ type Props = {
   items: ItemNavegacao[];
   /** Atalhos da barra inferior do celular, já filtrados por papel e flags. */
   atalhos: ItemNavegacao[];
+  /** Busca global (Ctrl+K / lupa): telas do menu e atalhos de ação, já filtrados por papel e flags. */
+  entradasBusca: EntradaBusca[];
   /** Subtítulo do cabeçalho na página de entrada de cada módulo. */
   unidadeNome: string;
   organizacaoAtual: string;
@@ -46,6 +50,7 @@ export function EstruturaAplicativoV2({
   children,
   items,
   atalhos,
+  entradasBusca,
   unidadeNome,
   organizacaoAtual,
   organizacaoNome,
@@ -72,6 +77,9 @@ export function EstruturaAplicativoV2({
   // Folha acima do teclado (celular): base e altura medidas no `visualViewport`.
   // Sem ele, fica o CSS (rodapé da página, 85% da tela).
   const [posicaoGaveta, setPosicaoGaveta] = useState<PosicaoGaveta | null>(null);
+  // Busca global guarda o caminho em que abriu, como a gaveta: trocou de tela, fecha.
+  const [buscaEm, setBuscaEm] = useState<string | null>(null);
+  const buscaAberta = buscaEm === pathname;
 
   // Módulo pelo subitem mais específico: "/estoque/setores" é de Cadastros, não do Estoque.
   const labelAtivo = moduloAtivo(items, pathname);
@@ -135,6 +143,29 @@ export function EstruturaAplicativoV2({
       setPosicaoGaveta(null);
     };
   }, [gavetaAberta]);
+
+  function abrirBusca() {
+    setGavetaEm(null);
+    setBuscaEm(pathname);
+  }
+
+  // Ctrl+K (Cmd+K) em qualquer lugar e "/" fora de campo de texto abrem a busca.
+  useEffect(() => {
+    function aoPressionarTecla(evento: KeyboardEvent) {
+      const alvo = evento.target as HTMLElement | null;
+      const emCampoDeTexto = Boolean(
+        alvo && (alvo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName)),
+      );
+      // Campos um a um: as propriedades do KeyboardEvent são getters do protótipo (o spread vem vazio).
+      const { key, ctrlKey, metaKey, altKey } = evento;
+      if (!teclaAbreBusca({ key, ctrlKey, metaKey, altKey, emCampoDeTexto })) return;
+      evento.preventDefault();
+      setGavetaEm(null);
+      setBuscaEm(window.location.pathname);
+    }
+    document.addEventListener("keydown", aoPressionarTecla);
+    return () => document.removeEventListener("keydown", aoPressionarTecla);
+  }, []);
 
   function fecharGaveta() {
     setGavetaEm(null);
@@ -283,6 +314,23 @@ export function EstruturaAplicativoV2({
           <IconeNavegacao nome={recolhido ? "expandir" : "recolher"} className="h-4 w-4" />
         </button>
 
+        {/* Busca global (só desktop; no celular é a lupa do cabeçalho). */}
+        <div className="hidden shrink-0 px-3 pt-3 lg:block">
+          <button
+            type="button"
+            onClick={abrirBusca}
+            aria-label="Buscar menus e atalhos (Ctrl+K)"
+            title="Buscar menus e atalhos (Ctrl+K)"
+            className={`flex min-h-10 w-full items-center gap-2 rounded-lg border border-ambar/50 bg-ambar/10 px-3 py-2 text-sm text-white/80 transition-colors hover:bg-ambar/20 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${recolhido ? "justify-center px-0" : ""}`}
+          >
+            <IconeNavegacao nome="buscar" className="h-4 w-4 shrink-0 text-ambar" />
+            <span className={`min-w-0 flex-1 truncate text-left ${someRecolhido}`}>Buscar</span>
+            <kbd className={`shrink-0 rounded border border-white/20 px-1.5 text-[10.5px] font-semibold text-white/60 ${someRecolhido}`}>
+              Ctrl K
+            </kbd>
+          </button>
+        </div>
+
         <div className={`shrink-0 px-3 pt-3 ${someRecolhido}`}>
           <div className="relative">
             <IconeNavegacao
@@ -347,7 +395,7 @@ export function EstruturaAplicativoV2({
                   );
                 }
 
-                if (!item.sections) {
+                if (!item.sections || item.linkDireto) {
                   return (
                     <li key={item.label}>
                       <Link
@@ -475,14 +523,18 @@ export function EstruturaAplicativoV2({
           className="mx-auto w-full max-w-6xl flex-1 px-3 py-5 sm:px-6 lg:py-6"
         >
           <NavegacaoV2Provider>
-            {cabecalho && <CabecalhoModuloV2 cabecalho={cabecalho} unidadeNome={unidadeNome} />}
-            {children}
+            <BuscaGlobalProvider abrir={abrirBusca}>
+              {cabecalho && <CabecalhoModuloV2 cabecalho={cabecalho} unidadeNome={unidadeNome} />}
+              {children}
+            </BuscaGlobalProvider>
           </NavegacaoV2Provider>
         </main>
         <footer className="border-t border-cinza-claro bg-branco px-3 py-4 text-center text-xs text-cinza-medio">
           Powered by <span className="font-semibold text-azul-petroleo">Zatti Consultoria</span>
         </footer>
       </div>
+
+      {buscaAberta && <BuscaGlobal entradas={entradasBusca} aoFechar={() => setBuscaEm(null)} />}
 
       <nav
         aria-label="Atalhos"
