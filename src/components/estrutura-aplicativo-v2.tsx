@@ -9,6 +9,7 @@ import { OrgSwitcher } from "@/components/org-switcher";
 import { BuscaGlobal, BuscaGlobalProvider } from "@/components/navegacao-v2/busca-global";
 import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
 import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
+import { AlternadorTema } from "@/components/navegacao-v2/alternador-tema";
 import { TourModuloProvider } from "@/components/navegacao-v2/tour-modulo";
 import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
 import { teclaAbreBusca, type EntradaBusca } from "@/lib/navegacao/busca";
@@ -220,7 +221,8 @@ export function EstruturaAplicativoV2({
   const alinhamentoItem = recolhido ? "lg:justify-center" : "";
 
   return (
-    <div className="group/app min-h-dvh">
+    // `data-tema-piloto`: só com este shell na tela o tema escuro vale (globals.css).
+    <div data-tema-piloto="" className="group/app min-h-dvh">
       <a
         href="#conteudo-principal"
         className="fixed left-2 top-2 z-[60] -translate-y-20 rounded-md bg-ambar px-3 py-2 text-sm font-bold text-azul-noite transition-transform focus:translate-y-0 focus:outline-none"
@@ -483,6 +485,9 @@ export function EstruturaAplicativoV2({
               )}
             </div>
           </div>
+
+          {/* Tema da tela (fase 7): preferência deste usuário neste aparelho. */}
+          <AlternadorTema usuario={usuarioEmail || usuarioNome || ""} className={someRecolhido} />
 
           {/* Recolhido no desktop: a inicial da organização expande o menu para trocar de cliente. */}
           <button
