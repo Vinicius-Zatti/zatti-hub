@@ -46,6 +46,7 @@ export function ListaFichasTecnicas({
   deducoesTotal,
   deducoesIfood,
   deducoes99Food,
+  cadastroRapidoProduto = false,
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
@@ -57,6 +58,8 @@ export function ListaFichasTecnicas({
   deducoesTotal: number;
   deducoesIfood: number;
   deducoes99Food: number;
+  /** Atalho "+ Novo insumo" ao montar/editar ficha (ver `FichaTecnicaForm`). */
+  cadastroRapidoProduto?: boolean;
 }) {
   const router = useRouter();
   const [camada, setCamada] = useState<CamadaFicha>("PRE");
@@ -291,6 +294,7 @@ export function ListaFichasTecnicas({
                 deducoesIfood={deducoesIfood}
                 deducoes99Food={deducoes99Food}
                 aoFechar={fechar}
+                cadastroRapidoProduto={cadastroRapidoProduto}
                 aoSalvar={() => {
                   if (fichaAbertaId) void carregar(fichaAbertaId);
                 }}
@@ -323,6 +327,7 @@ export function ListaFichasTecnicas({
                 categorias={dadosNovo.categorias}
                 produtos={dadosNovo.produtos}
                 fichasDisponiveis={dadosNovo.fichasDisponiveis}
+                cadastroRapidoProduto={cadastroRapidoProduto}
                 onSalvo={() => {
                   fecharNovo();
                   router.refresh();

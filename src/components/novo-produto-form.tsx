@@ -13,11 +13,15 @@ const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexã
 export function NovoProdutoForm({
   nomeInicial,
   unidadeInicial,
+  avisoNomeInicial = "Preenchido a partir de um item contado como avulso.",
   onSalvo,
   onCancelar,
 }: {
   nomeInicial?: string;
   unidadeInicial?: string;
+  /** Frase abaixo do título quando o nome já vem preenchido - cada tela que
+   * abre o cadastro rápido diz de onde veio o nome. */
+  avisoNomeInicial?: string;
   /** Quando informado, o form vira "in-place" (usado dentro de uma janela sobreposta) -
    * em vez de navegar pra `/estoque/produtos`, avisa o componente pai que salvou. */
   onSalvo?: (produto: Produto) => void;
@@ -81,7 +85,7 @@ export function NovoProdutoForm({
     <div>
       <h1 data-titulo-proprio className="font-display text-2xl font-bold text-azul-noite">Novo produto</h1>
       {nomeInicial && (
-        <p className="mt-1 text-xs text-cinza-medio">Preenchido a partir de um item contado como avulso.</p>
+        <p className="mt-1 text-xs text-cinza-medio">{avisoNomeInicial}</p>
       )}
       <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
         <div>

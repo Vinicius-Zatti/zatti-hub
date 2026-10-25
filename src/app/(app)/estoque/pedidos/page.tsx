@@ -8,6 +8,8 @@ import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem, listaDoParametro } from "@/lib/contagem/varias-datas";
+import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { completarComItensConfirmados } from "@/lib/cadastro-rapido";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +35,7 @@ export default async function PedidosPage({
   // Datas, andamento, fornecedores e produtos não dependem um do outro: saem
   // juntos. Inventário e produtos lidos aqui são reaproveitados por
   // `gerarPedido` (cache do request), sem segunda leitura.
-  const [datas, andamentoPorData, fornecedores] = await Promise.all([
+  const [datas, andamentoPorData, fornecedores, produtos] = await Promise.all([
     datasDisponiveis(acesso.spreadsheetId),
     porSetor ? listarAndamentoBanco(acesso.unidadeId) : new Map<string, AndamentoSetor[]>(),
     listFornecedores(acesso.spreadsheetId),
@@ -77,9 +79,17 @@ export default async function PedidosPage({
     }
   }
 
+  // Cadastro rápido (Navegação V2, piloto): produto cadastrado pelo atalho
+  // não está no escopo da contagem; depois de confirmado, a linha continua na
+  // tela ao recarregar. Fora do piloto a lista fica exatamente como era.
+  const cadastroRapido = usaNavegacaoV2(acesso);
+  const itens = cadastroRapido
+    ? completarComItensConfirmados(resultado.itens, produtos, quantidadesSalvas, grupos)
+    : resultado.itens;
+
   return (
     <PedidoCompras
-      itens={resultado.itens}
+      itens={itens}
       dataUsada={resultado.dataUsada}
       datasUsadas={resultado.datasUsadas}
       datasDisponiveis={datas}
@@ -92,6 +102,7 @@ export default async function PedidosPage({
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
       setoresPendentes={resultado.setoresPendentes}
+      cadastroRapidoProduto={cadastroRapido}
     />
   );
 }
