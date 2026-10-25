@@ -63,8 +63,34 @@ describe("cabeçalho do módulo", () => {
     });
   });
 
-  it("Início não tem cabeçalho; Equipe tem título e nenhuma aba", () => {
-    expect(cabecalhoDoModulo(gestao, "/painel")).toBeNull();
+  it("Início: gestão tem as abas Início | Dashboard; operacional, só o título", () => {
+    expect(cabecalhoDoModulo(gestao, "/painel")).toMatchObject({
+      modulo: "Início",
+      naEntrada: true,
+      titulo: "Início",
+      abas: [
+        { label: "Início", href: "/painel" },
+        { label: "Dashboard", href: "/painel/dashboard" },
+      ],
+      abaAtiva: "/painel",
+    });
+    expect(cabecalhoDoModulo(gestao, "/painel/dashboard")).toMatchObject({
+      naEntrada: false,
+      titulo: "Dashboard",
+      entrada: "/painel",
+      abaAtiva: "/painel/dashboard",
+    });
+    expect(cabecalhoDoModulo(operacional, "/painel")).toMatchObject({ modulo: "Início", abas: [], naEntrada: true });
+  });
+
+  it("Início é link direto na sanfona para todos (Dashboard só no cabeçalho)", () => {
+    for (const menu of [gestao, operacional]) {
+      const inicio = menu.find((i) => i.label === "Início");
+      expect(inicio).toMatchObject({ href: "/painel", linkDireto: true });
+    }
+  });
+
+  it("Equipe tem título e nenhuma aba", () => {
     expect(cabecalhoDoModulo(gestao, "/equipe")).toMatchObject({ modulo: "Equipe", abas: [], subAbas: [], naEntrada: true });
   });
 

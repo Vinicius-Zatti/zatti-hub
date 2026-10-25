@@ -13,6 +13,10 @@ function instanteData(valor: string): number {
   return Number.isNaN(instante) ? 0 : instante;
 }
 
+/** Explicação de `pedidosPendentes` (ícone "i"): Visão geral do Estoque e Início do piloto. */
+export const DICA_PEDIDOS_PENDENTES =
+  "Pedidos feitos com ao menos um item de fornecedor confirmado e que ainda não foram marcados como recebidos.";
+
 export type ResumoEstoque = {
   produtosAtivos: number;
   grupos: number;
