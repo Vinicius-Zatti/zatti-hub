@@ -29,3 +29,26 @@ export const ROTULO_FUNCAO: Record<string, string> = {
   gestao: "Gestão",
   operacional: "Operacional",
 };
+
+/** Texto depois de gerar senha provisória para conta que já existe (24/10).
+ * `equipe`: a gestão não vê a senha, depende só do WhatsApp. */
+export function textoEnvioProvisoria(
+  envio: "aceito" | "falhou" | "incerto",
+  equipe: boolean,
+): { tom: "ok" | "aviso" | "erro"; texto: string } {
+  if (envio === "aceito") {
+    return { tom: "ok", texto: "Senha provisória gerada. O envio pelo WhatsApp foi aceito. Confirme com a pessoa que chegou." };
+  }
+  if (envio === "incerto") {
+    return {
+      tom: "aviso",
+      texto: "Senha provisória gerada, mas não tivemos confirmação do envio no WhatsApp. Confira com a pessoa antes de reenviar.",
+    };
+  }
+  return {
+    tom: "erro",
+    texto: equipe
+      ? "A senha atual já deixou de valer, mas o WhatsApp não saiu. Confira o número e use \"Reenviar senha\" daqui a 2 minutos."
+      : "Senha provisória gerada, mas o WhatsApp não saiu. Repasse a senha acima para a pessoa.",
+  };
+}

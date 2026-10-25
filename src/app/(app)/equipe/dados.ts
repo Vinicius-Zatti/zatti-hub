@@ -61,12 +61,17 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
   }[];
 
   const userIds = [...new Set(vinculos.map((v) => v.user_id))];
-  const [{ data: perfisData }, contas] = await Promise.all([
+  const [{ data: perfisData }, contas, { data: pendentesData }] = await Promise.all([
     userIds.length
       ? admin.from("perfis").select("id, nome").in("id", userIds)
       : Promise.resolve({ data: [] as { id: string; nome: string | null }[] }),
     Promise.all(userIds.map((id) => admin.auth.admin.getUserById(id))),
+    // Conta ativa que recebeu senha provisória (24/10) volta a aguardar o primeiro acesso.
+    userIds.length
+      ? admin.from("senhas_temporarias").select("user_id").in("user_id", userIds)
+      : Promise.resolve({ data: [] as { user_id: string }[] }),
   ]);
+  const pendentes = new Set(((pendentesData ?? []) as { user_id: string }[]).map((p) => p.user_id));
   const nomes = new Map(((perfisData ?? []) as { id: string; nome: string | null }[]).map((p) => [p.id, p.nome]));
   const emails = new Map(contas.map((c, i) => [userIds[i], c.data.user?.email ?? ""]));
   const nomeUnidade = new Map(unidades.map((u) => [u.id, u.nome]));
@@ -80,7 +85,12 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
     role: v.role,
     unidadeId: v.unidade_id,
     unidadeNome: v.unidade_id ? nomeUnidade.get(v.unidade_id) ?? v.unidade_id : "Todas as unidades",
-    situacao: v.status === "ativo" ? "ativo" : v.status === "convidado" ? "aguardando" : "revogado",
+    situacao:
+      v.status === "revogado"
+        ? "revogado"
+        : v.status === "convidado" || pendentes.has(v.user_id)
+          ? "aguardando"
+          : "ativo",
     envioStatus: v.acesso_envio_status,
     envioEm: v.acesso_envio_em,
     ehVoce: v.user_id === acesso.userId,

@@ -1,6 +1,8 @@
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { requireMaster } from "@/lib/acesso";
 import { AcoesVinculo } from "@/components/acoes-vinculo";
+import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
 import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { ResponsavelAvisos, TextoResponsavelAvisos } from "@/components/garante/responsavel-avisos";
@@ -30,7 +32,11 @@ function Pill({ tom, children }: { tom: "verde" | "vermelho" | "ambar" | "cinza"
 }
 
 export default async function AcessosPage() {
-  const [{ organizacoes, unidades, vinculos }, avisosGarante] = await Promise.all([carregarPainelAcessos(), carregarAvisosGaranteAcessos()]);
+  const [{ organizacoes, unidades, vinculos }, avisosGarante, acesso] = await Promise.all([
+    carregarPainelAcessos(),
+    carregarAvisosGaranteAcessos(),
+    requireMaster(),
+  ]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -229,9 +235,27 @@ export default async function AcessosPage() {
                   </td>
                   <td className="px-3 py-2">
                     {v.role === "master" ? (
-                      <p className="text-right text-xs text-cinza-medio">Gerenciado fora do painel</p>
+                      <div className="flex flex-col items-end gap-1">
+                        <p className="text-right text-xs text-cinza-medio">Gerenciado fora do painel</p>
+                        {v.userId !== acesso.userId && v.status !== "revogado" && (
+                          <GerarSenhaProvisoria
+                            modo="master"
+                            vinculoId={v.id}
+                            nomeExibido={v.nome ?? v.email}
+                            whatsappFinal={v.whatsappFinal}
+                            className="rounded-md border border-ambar px-2 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10 disabled:opacity-40"
+                          />
+                        )}
+                      </div>
                     ) : (
-                      <AcoesVinculo vinculoId={v.id} userId={v.userId} status={v.status} />
+                      <AcoesVinculo
+                        vinculoId={v.id}
+                        userId={v.userId}
+                        status={v.status}
+                        nomeExibido={v.nome ?? v.email}
+                        whatsappFinal={v.whatsappFinal}
+                        podeGerarProvisoria={v.userId !== acesso.userId && v.status !== "revogado"}
+                      />
                     )}
                   </td>
                 </tr>

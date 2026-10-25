@@ -7,11 +7,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
   gerarSenhaTemporaria,
+  mensagemGerarProvisoria,
   normalizarWhatsapp,
+  whatsappTrocadoHaPouco,
   podeAdministrarVinculo,
   validarConcessao,
 } from "@/lib/equipe/regras";
-import { buscarUsuarioPorEmail, contaPendente, hashSenhaTemporaria } from "@/lib/equipe/servidor";
+import {
+  buscarUsuarioPorEmail,
+  contaPendente,
+  gerarSenhaProvisoriaNoBanco,
+  hashSenhaTemporaria,
+} from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -30,9 +37,14 @@ type VinculoAlvo = {
   status: string;
   whatsapp: string | null;
   acesso_envio_em: string | null;
+  whatsapp_alterado_em: string | null;
 };
 
 const MINUTOS_ENTRE_ENVIOS = 2;
+
+function finalWhatsapp(numero: string | null): string | null {
+  return numero ? numero.slice(-4) : null;
+}
 
 function revalidarEquipe() {
   revalidatePath("/equipe");
@@ -54,7 +66,7 @@ async function carregarAlvo(
 ): Promise<Resultado<{ alvo: VinculoAlvo }>> {
   const { data, error } = await admin
     .from("vinculos")
-    .select("id, user_id, organizacao_id, unidade_id, role, status, whatsapp, acesso_envio_em")
+    .select("id, user_id, organizacao_id, unidade_id, role, status, whatsapp, acesso_envio_em, whatsapp_alterado_em")
     .eq("id", vinculoId)
     .maybeSingle();
   if (error) return { erro: "Não foi possível carregar esse acesso." };
@@ -322,13 +334,18 @@ export async function reenviarAcessoMembroAction(
   // Codex, item 6); `rotacionar_senha_temporaria` confere de novo no banco.
   const { data: origem } = await admin
     .from("senhas_temporarias")
-    .select("vinculo_id")
+    .select("vinculo_id, origem")
     .eq("user_id", alvo.user_id)
     .maybeSingle();
   if (!origem || origem.vinculo_id !== alvo.id) {
     return {
       erro: "Essa pessoa foi cadastrada por outro acesso e ainda não entrou. Só quem cadastrou pode reenviar a senha.",
     };
+  }
+  // Senha redefinida (conta que já existia) não é reenviada para um número trocado
+  // há pouco: o banco também recusa (`rotacionar_senha_temporaria`).
+  if (origem.origem === "redefinicao" && whatsappTrocadoHaPouco(alvo.whatsapp_alterado_em, new Date())) {
+    return { erro: mensagemGerarProvisoria("whatsapp_recente") ?? "Não foi possível reenviar." };
   }
 
   // Só o hash da provisória muda (nenhuma escrita no Auth): a conta pendente
@@ -363,6 +380,61 @@ export async function reenviarAcessoMembroAction(
   return { ok: true, envio };
 }
 
+/** Senha provisória para quem já tem conta ativa (24/10/2026). A senha
+ * atual deixa de valer, as sessões caem e a conta volta ao primeiro acesso;
+ * a provisória vai só para o WhatsApp da pessoa (a gestão não vê). Só para
+ * conta que pertence apenas a este cliente: o banco confere de novo papel,
+ * organização, unidade e limite, e grava a auditoria. */
+export async function gerarSenhaProvisoriaMembroAction(
+  vinculoId: string,
+): Promise<Resultado<{ ok: true; envio: ResultadoEnvio }>> {
+  const acesso = await requireEquipe();
+  const admin = createAdminClient();
+  const carregado = await carregarAlvo(admin, acesso, vinculoId);
+  if ("erro" in carregado) return carregado;
+  const { alvo } = carregado;
+
+  if (alvo.status !== "ativo") return { erro: "Só dá para gerar senha provisória para acesso ativo." };
+  // Antes de trocar: sem WhatsApp, a pessoa ficaria sem senha nenhuma.
+  if (!alvo.whatsapp) return { erro: "Cadastre o WhatsApp dessa pessoa antes de gerar a senha provisória." };
+
+  const { data: usuario, error: erroUsuario } = await admin.auth.admin.getUserById(alvo.user_id);
+  if (erroUsuario || !usuario.user?.email) return { erro: "Conta não encontrada." };
+  const { data: perfil } = await admin.from("perfis").select("nome").eq("id", alvo.user_id).maybeSingle();
+
+  const gerado = await gerarSenhaProvisoriaNoBanco(admin, {
+    atorId: acesso.userId,
+    vinculoId: alvo.id,
+    alvoUserId: alvo.user_id,
+    escopo: "equipe",
+    organizacaoId: acesso.organizacaoId,
+  });
+  const erro = mensagemGerarProvisoria(gerado.codigo);
+  if (erro || !gerado.senha) return { erro: erro ?? "Não foi possível gerar a senha provisória." };
+
+  const envio = await enviarAcessoPeloVini({
+    tipo: "conta_nova",
+    idempotencia: randomUUID(),
+    whatsapp: alvo.whatsapp,
+    nome: (perfil?.nome as string | null) ?? "",
+    email: usuario.user.email,
+    organizacaoNome: acesso.organizacaoNome,
+    senhaTemporaria: gerado.senha,
+    validaAte: gerado.validaAte,
+  });
+  await gravarResultadoEnvio(admin, alvo.id, envio);
+  // A geração já foi auditada no banco; aqui, o que aconteceu com o envio.
+  await registrarAuditoria({
+    acesso,
+    acao: "senha_provisoria_envio",
+    entidade: "usuario",
+    entidadeId: alvo.user_id,
+    dadosNovos: { vinculoId: alvo.id, envio, exibidaNaTela: false },
+  });
+  revalidarEquipe();
+  return { ok: true, envio };
+}
+
 /** Corrige o WhatsApp de alguém da equipe. */
 export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: string): Promise<Resultado> {
   const acesso = await requireEquipe();
@@ -373,7 +445,17 @@ export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: st
   if ("erro" in carregado) return carregado;
   const { error } = await admin.from("vinculos").update({ whatsapp }).eq("id", carregado.alvo.id);
   if (error) return { erro: "Não foi possível salvar o WhatsApp." };
-  await registrarAuditoria({ acesso, acao: "equipe_editar_whatsapp", entidade: "vinculo", entidadeId: carregado.alvo.id });
+  // Só os 4 finais (nunca o número inteiro na auditoria). A troca também marca
+  // `vinculos.whatsapp_alterado_em` (gatilho no banco): a Equipe não gera senha
+  // provisória para esse vínculo nos 30 minutos seguintes.
+  await registrarAuditoria({
+    acesso,
+    acao: "equipe_editar_whatsapp",
+    entidade: "vinculo",
+    entidadeId: carregado.alvo.id,
+    dadosAntigos: { whatsappFinal: finalWhatsapp(carregado.alvo.whatsapp) },
+    dadosNovos: { whatsappFinal: finalWhatsapp(whatsapp) },
+  });
   revalidarEquipe();
   return { ok: true };
 }

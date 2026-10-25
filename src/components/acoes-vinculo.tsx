@@ -6,15 +6,22 @@ import {
   reenviarAcessoAction,
   revogarVinculoAction,
 } from "@/app/(app)/acessos/actions";
+import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
 
 export function AcoesVinculo({
   vinculoId,
   userId,
   status,
+  nomeExibido,
+  whatsappFinal,
+  podeGerarProvisoria,
 }: {
   vinculoId: string;
   userId: string;
   status: string;
+  nomeExibido: string;
+  whatsappFinal: string | null;
+  podeGerarProvisoria: boolean;
 }) {
   const [pendente, startTransition] = useTransition();
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -39,7 +46,16 @@ export function AcoesVinculo({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {podeGerarProvisoria && (
+          <GerarSenhaProvisoria
+            modo="master"
+            vinculoId={vinculoId}
+            nomeExibido={nomeExibido}
+            whatsappFinal={whatsappFinal}
+            className="rounded-md border border-ambar px-2 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10 disabled:opacity-40"
+          />
+        )}
         <button
           type="button"
           disabled={pendente}
