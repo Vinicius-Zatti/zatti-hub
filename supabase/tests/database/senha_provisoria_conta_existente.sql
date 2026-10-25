@@ -106,6 +106,8 @@ select is(has_function_privilege('vini_operador',
 select is(has_function_privilege('vini_operador',
   'public.rotacionar_senha_temporaria(uuid, uuid, text, timestamptz)', 'execute'), false,
   'vini_operador sem EXECUTE em rotacionar_senha_temporaria');
+-- Só dentro desta transação (desfeito no rollback): o postgres do teste assume o papel.
+grant vini_operador to postgres;
 select set_config('role', 'vini_operador', true);
 select throws_ok($$ select public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000f002',
     '00000000-0000-0000-0000-00000000bb04', 'equipe', 'org-sp-a', repeat('a', 64), now() + interval '7 days') $$,
