@@ -1,6 +1,6 @@
 "use server";
 
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { arquivarCategoriaPersonalizada, criarCategoriaPersonalizada, editarCategoriaPersonalizada, removerCategoria } from "@/lib/banco/financeiro-gerencial";
 import {
   arquivarCategoriaFinanceiraEntradaSchema,
@@ -23,6 +23,7 @@ export type ResultadoCategoria = { ok: true; categoria: CategoriaFinanceira } | 
 export async function criarCategoriaFinanceiraAction(input: unknown): Promise<ResultadoCategoria> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_categoria_criar");
     const entrada = validarEntrada(categoriaFinanceiraEntradaSchema, input);
     const categoria = await criarCategoriaPersonalizada({ ...entrada, unidadeId: acesso.unidadeId });
@@ -36,6 +37,7 @@ export async function criarCategoriaFinanceiraAction(input: unknown): Promise<Re
 export async function editarCategoriaFinanceiraAction(input: unknown): Promise<ResultadoCategoria> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_categoria_editar");
     const entrada = validarEntrada(editarCategoriaFinanceiraEntradaSchema, input);
     const categoria = await editarCategoriaPersonalizada({ ...entrada, unidadeId: acesso.unidadeId });
@@ -49,6 +51,7 @@ export async function editarCategoriaFinanceiraAction(input: unknown): Promise<R
 export async function arquivarCategoriaFinanceiraAction(input: unknown): Promise<ResultadoCategoria> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_categoria_editar");
     const entrada = validarEntrada(arquivarCategoriaFinanceiraEntradaSchema, input);
     const categoria = await arquivarCategoriaPersonalizada({ ...entrada, unidadeId: acesso.unidadeId });
@@ -64,6 +67,7 @@ export async function removerCategoriaFinanceiraAction(
 ): Promise<{ ok: true; resultado: "apagada" | "arquivada" } | { ok: false; mensagem: string }> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_categoria_editar");
     const entrada = validarEntrada(removerCategoriaFinanceiraEntradaSchema, input);
     const resultado = await removerCategoria({ ...entrada, unidadeId: acesso.unidadeId });

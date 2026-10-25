@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { salvarMetaUnidade } from "@/lib/banco/financeiro-metas";
 import { metaUnidadeEntradaSchema, validarEntrada } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -16,6 +16,7 @@ export type ResultadoMeta = { ok: true } | { ok: false; mensagem: string };
 export async function salvarMetaUnidadeAction(input: unknown): Promise<ResultadoMeta> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_provisao_parametros_salvar");
     const entrada = validarEntrada(metaUnidadeEntradaSchema, input);
     await salvarMetaUnidade({ ...entrada, vigenteDesde: `${entrada.vigenteDesde}-01`, unidadeId: acesso.unidadeId });

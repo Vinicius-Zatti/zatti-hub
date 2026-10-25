@@ -1,6 +1,6 @@
 "use server";
 
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { criarContaFinanceira, editarContaFinanceira } from "@/lib/banco/financeiro-gerencial";
 import { contaFinanceiraEntradaSchema, editarContaFinanceiraEntradaSchema, validarEntrada } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -16,6 +16,7 @@ export type ResultadoContaFinanceira = { ok: true; conta: ContaFinanceira } | { 
 export async function criarContaFinanceiraAction(input: unknown): Promise<ResultadoContaFinanceira> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conta_financeira_salvar");
     const entrada = validarEntrada(contaFinanceiraEntradaSchema, input);
     const conta = await criarContaFinanceira({ ...entrada, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
@@ -29,6 +30,7 @@ export async function criarContaFinanceiraAction(input: unknown): Promise<Result
 export async function editarContaFinanceiraAction(input: unknown): Promise<ResultadoContaFinanceira> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_conta_financeira_salvar");
     const entrada = validarEntrada(editarContaFinanceiraEntradaSchema, input);
     const conta = await editarContaFinanceira({ ...entrada, unidadeId: acesso.unidadeId });

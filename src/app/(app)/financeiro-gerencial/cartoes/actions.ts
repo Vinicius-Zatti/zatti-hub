@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { alterarVencimentoFatura, pagarFatura } from "@/lib/banco/financeiro-cartao";
 import { alterarVencimentoFaturaEntradaSchema, pagarFaturaEntradaSchema, validarEntrada } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -20,6 +20,7 @@ function revalidarCartao() {
 export async function pagarFaturaAction(input: unknown): Promise<ResultadoCartao> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_baixa_registrar");
     const entrada = validarEntrada(pagarFaturaEntradaSchema, input);
     await pagarFatura({ ...entrada, unidadeId: acesso.unidadeId });
@@ -34,6 +35,7 @@ export async function pagarFaturaAction(input: unknown): Promise<ResultadoCartao
 export async function alterarVencimentoFaturaAction(input: unknown): Promise<ResultadoCartao> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_editar");
     const entrada = validarEntrada(alterarVencimentoFaturaEntradaSchema, input);
     await alterarVencimentoFatura({ ...entrada, unidadeId: acesso.unidadeId });

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
 import {
   baixarVencimentoDocumento,
@@ -45,6 +45,7 @@ function revalidarFinanceiro() {
 export async function criarDocumentoAction(input: unknown): Promise<ResultadoDocumento> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_criar");
     const entrada = validarEntrada(documentoFinanceiroEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.dataCompetencia, ...entrada.vencimentos.map((v) => v.dataPrevista)]);
@@ -59,6 +60,7 @@ export async function criarDocumentoAction(input: unknown): Promise<ResultadoDoc
 export async function baixarVencimentoDocumentoAction(input: unknown): Promise<{ ok: true } | { ok: false; mensagem: string }> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_baixa_registrar");
     const entrada = validarEntrada(baixarVencimentoDocumentoEntradaSchema, input);
     await garantirMesesAbertos(acesso, [entrada.data]);
@@ -78,6 +80,7 @@ export async function listarContrapartesAction(): Promise<Contraparte[]> {
 export async function criarContraparteAction(input: unknown): Promise<ResultadoContraparte> {
   const acesso = await requireFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_lancamento_criar");
     const entrada = validarEntrada(contraparteEntradaSchema, input);
     const contraparte = await criarContraparte({

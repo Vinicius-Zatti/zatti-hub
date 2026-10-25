@@ -1,6 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { requireFinanceiroGerencial, type AcessoAtual } from "@/lib/acesso";
+import { requireFinanceiroGerencial, temPermissao, type AcessoAtual } from "@/lib/acesso";
 import { lerFlagsConciliacao, type FlagsConciliacao } from "@/lib/banco/conciliacao";
 
 /** Barreira da Conciliação: Financeiro Gerencial liberado E flag da unidade.
@@ -9,6 +9,8 @@ import { lerFlagsConciliacao, type FlagsConciliacao } from "@/lib/banco/concilia
  * banco, a Conciliação fica desligada e o resto do app segue normal. */
 export async function requireConciliacao(): Promise<{ acesso: AcessoAtual; flags: FlagsConciliacao }> {
   const acesso = await requireFinanceiroGerencial();
+  // Conciliação é trabalho: exige editar o Financeiro (mesma regra do banco, fase 6).
+  if (!temPermissao(acesso, "financeiro", "editar")) redirect("/financeiro-gerencial/visao-geral");
   const flags = await lerFlagsConciliacao(acesso.unidadeId);
   if (!flags.habilitada) redirect("/financeiro-gerencial/visao-geral");
   return { acesso, flags };

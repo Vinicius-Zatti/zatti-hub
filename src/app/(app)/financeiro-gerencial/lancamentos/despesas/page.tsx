@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, temPermissao } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras, listarLancamentos } from "@/lib/banco/financeiro-gerencial";
 import { LancamentosGerenciador } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
 
@@ -21,7 +21,7 @@ export default async function LancamentosDespesasPage() {
       lancamentos={lancamentos}
       categorias={categoriasDespesa}
       contas={contas}
-      podeGerir={acesso.role !== "operacional"}
+      podeGerir={acesso.role !== "operacional" && temPermissao(acesso, "financeiro", "editar")}
     />
   );
 }

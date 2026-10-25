@@ -4,6 +4,7 @@ import {
   requireConsolidadoVendas,
   requireGestaoConsolidado,
   registrarAuditoria,
+  exigirEdicao,
 } from "@/lib/acesso";
 import {
   calcularTotais,
@@ -57,6 +58,7 @@ export async function criarConsolidadoAction(input: EntradaForm): Promise<Result
   const acesso = await requireConsolidadoVendas();
 
   try {
+    exigirEdicao(acesso, "vendas");
     await exigirLimiteRequisicao("consolidado_criar");
     const entrada = validarEntrada(consolidadoSchema, input);
     const existente = await getConsolidadoPorData(acesso.unidadeId, entrada.data);
@@ -115,6 +117,8 @@ export async function editarConsolidadoAction(id: string, input: EntradaForm): P
   const acesso = await requireGestaoConsolidado();
 
   try {
+    exigirEdicao(acesso, "vendas");
+    exigirEdicao(acesso, "vendas.editar_dia_lancado");
     await exigirLimiteRequisicao("consolidado_editar");
     const idValidado = validarEntrada(idUuidSchema, id);
     const entrada = validarEntrada(consolidadoSchema, input);

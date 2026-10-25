@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, temPermissao } from "@/lib/acesso";
 import { carregarBaseFinanceira, listarRecorrenciasResumo } from "@/lib/banco/financeiro-gerencial-v1";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { RecorrenciasVisualizacao } from "@/components/financeiro-gerencial/recorrencias-visualizacao";
@@ -11,5 +11,5 @@ export default async function RecorrenciasPage() {
   const acesso = await requireFinanceiroGerencial();
   const { lancamentos, baixas } = await carregarBaseFinanceira(acesso.unidadeId);
   const recorrencias = await listarRecorrenciasResumo(acesso.unidadeId, lancamentos, baixas);
-  return <RecorrenciasVisualizacao recorrencias={recorrencias} podeGerir={acesso.role !== "operacional"} hoje={hojeIsoBrasil()} />;
+  return <RecorrenciasVisualizacao recorrencias={recorrencias} podeGerir={acesso.role !== "operacional" && temPermissao(acesso, "financeiro", "editar")} hoje={hojeIsoBrasil()} />;
 }

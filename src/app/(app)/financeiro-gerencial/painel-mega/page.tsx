@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireRelatorioFinanceiro, temPermissao } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras, listarEstoqueMensal } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, listarParametrosProvisao, listarReversoesProvisao } from "@/lib/banco/financeiro-gerencial-v1";
 import { listarMetasUnidade } from "@/lib/banco/financeiro-metas";
@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
 /** Painel M.E.G.A. (Financeiro V2, Fase 3, item 3): os números da DRE de um
  * mês, com farol só onde a gestão cadastrou meta. `?mes=AAAA-MM` (padrão: mês atual). */
 export default async function PainelMegaPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
-  const acesso = await requireFinanceiroGerencial();
+  const acesso = await requireRelatorioFinanceiro();
   const { mes: mesParam } = await searchParams;
   const hoje = hojeIsoBrasil();
   const competencia = mesParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(mesParam) ? mesParam : hoje.slice(0, 7);
   const [ano, mes] = competencia.split("-").map(Number);
-  const podeGerir = acesso.role !== "operacional";
+  const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "financeiro", "editar");
 
   const [{ lancamentos: todosLancamentos, baixas }, categorias, contas, estoques, parametros, reversoes, metas] = await Promise.all([
     carregarBaseFinanceira(acesso.unidadeId),

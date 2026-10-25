@@ -1,6 +1,6 @@
 "use server";
 
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { salvarEstoqueMensal, salvarSaidaSemReceita } from "@/lib/banco/financeiro-gerencial";
 import { estoqueMensalEntradaSchema, saidaSemReceitaEntradaSchema, validarEntrada } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -21,6 +21,7 @@ export type ResultadoSaidaSemReceita = { ok: true; saida: SaidaSemReceita } | { 
 export async function salvarEstoqueMensalAction(input: unknown): Promise<ResultadoEstoqueMensal> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_estoque_mensal_salvar");
     const entrada = validarEntrada(estoqueMensalEntradaSchema, input);
     const estoque = await salvarEstoqueMensal({
@@ -45,6 +46,7 @@ export async function salvarEstoqueMensalAction(input: unknown): Promise<Resulta
 export async function salvarSaidaSemReceitaAction(input: unknown): Promise<ResultadoSaidaSemReceita> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_saidas_sem_receita_salvar");
     const entrada = validarEntrada(saidaSemReceitaEntradaSchema, input);
     const saida = await salvarSaidaSemReceita({

@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, temPermissao } from "@/lib/acesso";
 import { listarCategorias, listarContasFinanceiras, listarLancamentos } from "@/lib/banco/financeiro-gerencial";
 import { listarContasLancaveis } from "@/lib/financeiro-gerencial/categorias";
 import { LancamentosGerenciador } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
@@ -21,7 +21,7 @@ export default async function LancamentosReceitasPage() {
       categorias={categoriasReceita}
       // Cartão de crédito só recebe despesa (o banco recusa receita nele).
       contas={contas.filter((c) => c.tipo !== "cartao_credito")}
-      podeGerir={acesso.role !== "operacional"}
+      podeGerir={acesso.role !== "operacional" && temPermissao(acesso, "financeiro", "editar")}
     />
   );
 }

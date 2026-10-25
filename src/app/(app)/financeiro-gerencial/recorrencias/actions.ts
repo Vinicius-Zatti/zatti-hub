@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { encerrarRecorrencia } from "@/lib/banco/financeiro-gerencial-v1";
 import { mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -14,6 +14,7 @@ export type ResultadoEncerrarRecorrencia = { ok: true; excluidas: number } | { o
 export async function encerrarRecorrenciaAction(input: unknown): Promise<ResultadoEncerrarRecorrencia> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
     await exigirLimiteRequisicao("fin_recorrencia_encerrar");
     const entrada = validarEntrada(encerrarRecorrenciaEntradaSchema, input);
     const { excluidas } = await encerrarRecorrencia({ ...entrada, unidadeId: acesso.unidadeId });

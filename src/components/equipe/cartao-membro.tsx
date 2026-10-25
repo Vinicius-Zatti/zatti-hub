@@ -11,6 +11,7 @@ import {
 import type { MembroEquipe } from "@/app/(app)/equipe/dados";
 import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
 import { EditarAcesso } from "@/components/editar-acesso";
+import { PermissoesMembro, type PessoaPermissoes } from "@/components/equipe/permissoes-membro";
 import { ROTULO_FUNCAO, textoEnvio } from "./textos";
 
 const SITUACAO: Record<MembroEquipe["situacao"], { texto: string; classe: string }> = {
@@ -32,6 +33,8 @@ export function CartaoMembro({
   unidades,
   podeTodas,
   organizacaoNome,
+  podeEditar = true,
+  equipePermissoes = null,
 }: {
   membro: MembroEquipe;
   /** Unidades que quem está logado pode dar (gestor de loja: só a dele). */
@@ -39,6 +42,11 @@ export function CartaoMembro({
   /** Pode dar "todas as unidades" (gestão da organização inteira ou master). */
   podeTodas: boolean;
   organizacaoNome: string;
+  /** Equipe em "editar" (fase 6). Só "ver": o cartão fica sem nenhum botão. */
+  podeEditar?: boolean;
+  /** Quem administra permissões (master ou dono, no piloto) recebe a equipe para o botão
+   * "Permissões" e o "Copiar de...". `null` = sem o botão. */
+  equipePermissoes?: PessoaPermissoes[] | null;
 }) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
@@ -88,7 +96,7 @@ export function CartaoMembro({
         </p>
       )}
 
-      {!membro.ehVoce && (
+      {!membro.ehVoce && podeEditar && (
         <div className="flex flex-wrap gap-2">
           {membro.situacao !== "revogado" && (
             <button
@@ -128,6 +136,19 @@ export function CartaoMembro({
               podeTodas={podeTodas}
               organizacaoNome={organizacaoNome}
               className={`${BOTAO} border-azul-noite text-azul-noite hover:bg-azul-noite/10`}
+            />
+          )}
+          {membro.situacao !== "revogado" && equipePermissoes && (
+            <PermissoesMembro
+              pessoa={{
+                vinculoId: membro.vinculoId,
+                nome: membro.nome ?? membro.email,
+                role: membro.role,
+                orgInteira: membro.unidadeId === null,
+                excecoes: membro.excecoes,
+              }}
+              outras={equipePermissoes}
+              className={`${BOTAO} border-azul-petroleo text-azul-petroleo hover:bg-azul-petroleo/10`}
             />
           )}
           {membro.situacao === "revogado" ? (

@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireFinanceiroGerencial, temPermissao } from "@/lib/acesso";
 import { listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
 import { listarFaturas } from "@/lib/banco/financeiro-cartao";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
@@ -25,7 +25,7 @@ export default async function CartoesPage({ searchParams }: { searchParams: Prom
       contasPagadoras={contas.filter((c) => c.tipo !== "cartao_credito" && c.ativo)}
       nomesContas={Object.fromEntries(contas.map((c) => [c.id, c.nome]))}
       hoje={hojeIsoBrasil()}
-      podeGestao={acesso.role === "gestao" || acesso.role === "master"}
+      podeGestao={(acesso.role === "gestao" || acesso.role === "master") && temPermissao(acesso, "financeiro", "editar")}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { requireFinanceiroGerencial } from "@/lib/acesso";
+import { requireRelatorioFinanceiro, temPermissao } from "@/lib/acesso";
 import { listarCategorias, listarEstoqueMensal, listarSaidasSemReceita } from "@/lib/banco/financeiro-gerencial";
 import { carregarBaseFinanceira, listarParametrosProvisao, listarReversoesProvisao } from "@/lib/banco/financeiro-gerencial-v1";
 import { carregarSugestoesEstoqueContagem } from "@/lib/banco/financeiro-contagem";
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 // `?visao=` (Realizada/Projetada/Completa) saiu em 25/09 - link antigo com ele
 // continua abrindo, o parâmetro só é ignorado.
 export default async function DrePage({ searchParams }: { searchParams: Promise<{ ano?: string }> }) {
-  const acesso = await requireFinanceiroGerencial();
+  const acesso = await requireRelatorioFinanceiro();
   const { ano: anoParam } = await searchParams;
   const ano = anoParam && /^\d{4}$/.test(anoParam) ? Number(anoParam) : new Date().getFullYear();
-  const podeGerir = acesso.role !== "operacional";
+  const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "financeiro", "editar");
 
   // Carga completa (não só o ano): o saldo das provisões depende do
   // histórico inteiro da unidade.

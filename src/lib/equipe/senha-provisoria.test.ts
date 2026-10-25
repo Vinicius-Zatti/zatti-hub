@@ -26,6 +26,7 @@ const requireMaster = vi.fn(async () => acessoMaster);
 const registrarAuditoria = vi.fn<(p: Record<string, unknown>) => Promise<void>>(async () => undefined);
 vi.mock("@/lib/acesso", () => ({
   requireEquipe: () => requireEquipe(),
+  requireEquipeEditar: () => requireEquipe(),
   requireMaster: () => requireMaster(),
   registrarAuditoria: (p: Record<string, unknown>) => registrarAuditoria(p),
 }));

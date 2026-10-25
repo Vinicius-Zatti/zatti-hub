@@ -3,6 +3,7 @@ import { EstruturaAplicativoV2 } from "@/components/estrutura-aplicativo-v2";
 import type { ItemNavegacao } from "@/lib/navegacao/tipos";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { escolherAtalhos } from "@/lib/navegacao/atalhos";
+import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 import {
   montarMenuRestaurante,
   montarMenuRestaurantePiloto,
@@ -102,7 +103,7 @@ export default async function AppLayout({
   const navegacaoV2 = usaNavegacaoV2(acesso);
   const contextoMenu = contextoMenuRestaurante(acesso, conciliacaoHabilitada);
   const itensRestaurante = navegacaoV2
-    ? montarMenuRestaurantePiloto(contextoMenu)
+    ? aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenu), acesso.permissoes)
     : montarMenuRestaurante(contextoMenu);
   const propsEstrutura = {
     items: acesso.areaInterna ? itensAreaInterna : itensRestaurante,

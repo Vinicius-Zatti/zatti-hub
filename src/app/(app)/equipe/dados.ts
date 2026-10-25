@@ -1,6 +1,7 @@
 import "server-only";
 import type { AcessoAtual } from "@/lib/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { excecoesDasLinhas, type Excecoes } from "@/lib/permissoes/modulos";
 
 export type MembroEquipe = {
   vinculoId: string;
@@ -17,6 +18,8 @@ export type MembroEquipe = {
   envioStatus: "aceito" | "falhou" | "incerto" | null;
   envioEm: string | null;
   ehVoce: boolean;
+  /** Exceções gravadas em `permissoes_modulo` (fase 6). Vazio = padrão da função. */
+  excecoes: Excecoes;
 };
 
 /** Lista a equipe do cliente da sessão. Chamar só depois de `requireEquipe()`
@@ -61,7 +64,8 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
   }[];
 
   const userIds = [...new Set(vinculos.map((v) => v.user_id))];
-  const [{ data: perfisData }, contas, { data: pendentesData }] = await Promise.all([
+  const vinculoIds = vinculos.map((v) => v.id);
+  const [{ data: perfisData }, contas, { data: pendentesData }, permissoesRes] = await Promise.all([
     userIds.length
       ? admin.from("perfis").select("id, nome").in("id", userIds)
       : Promise.resolve({ data: [] as { id: string; nome: string | null }[] }),
@@ -70,7 +74,16 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
     userIds.length
       ? admin.from("senhas_temporarias").select("user_id").in("user_id", userIds)
       : Promise.resolve({ data: [] as { user_id: string }[] }),
+    vinculoIds.length
+      ? admin.from("permissoes_modulo").select("vinculo_id, modulo, nivel").in("vinculo_id", vinculoIds)
+      : Promise.resolve({ data: [] as { vinculo_id: string; modulo: string; nivel: string }[], error: null }),
   ]);
+  // Tabela ainda não criada (SQL da fase 6 não rodou): todo mundo no padrão, como no banco.
+  const erroPermissoes = (permissoesRes as { error: { code?: string } | null }).error;
+  if (erroPermissoes && erroPermissoes.code !== "42P01" && erroPermissoes.code !== "PGRST205") {
+    throw new Error("Não foi possível carregar as permissões da equipe.");
+  }
+  const linhasPermissao = ((permissoesRes.data ?? []) as { vinculo_id: string; modulo: string; nivel: string }[]);
   const pendentes = new Set(((pendentesData ?? []) as { user_id: string }[]).map((p) => p.user_id));
   const nomes = new Map(((perfisData ?? []) as { id: string; nome: string | null }[]).map((p) => [p.id, p.nome]));
   const emails = new Map(contas.map((c, i) => [userIds[i], c.data.user?.email ?? ""]));
@@ -94,6 +107,7 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
     envioStatus: v.acesso_envio_status,
     envioEm: v.acesso_envio_em,
     ehVoce: v.user_id === acesso.userId,
+    excecoes: excecoesDasLinhas(linhasPermissao.filter((l) => l.vinculo_id === v.id)),
   }));
 
   return { membros, unidades };

@@ -369,7 +369,7 @@ begin
 
   foreach t in array array[
     'categorias_ficha', 'fichas_tecnicas', 'ficha_componentes', 'ficha_etapas', 'ficha_versoes',
-    'ficha_sku_contador', 'configuracao_financeira'
+    'configuracao_financeira'
   ] loop
     execute format('drop trigger if exists permissao_modulo_editar on public.%I', t);
     execute format(

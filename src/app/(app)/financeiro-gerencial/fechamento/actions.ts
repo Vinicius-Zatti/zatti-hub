@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestaoFinanceiroGerencial } from "@/lib/acesso";
+import { requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { salvarFechamento } from "@/lib/banco/financeiro-gerencial-v1";
 import { mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -14,6 +14,8 @@ export type ResultadoFechamento = { ok: true } | { ok: false; mensagem: string }
 export async function salvarFechamentoAction(input: unknown): Promise<ResultadoFechamento> {
   const acesso = await requireGestaoFinanceiroGerencial();
   try {
+    exigirEdicao(acesso, "financeiro");
+    exigirEdicao(acesso, "financeiro.fechar_mes");
     await exigirLimiteRequisicao("fin_fechamento_salvar");
     const entrada = validarEntrada(fechamentoMensalEntradaSchema, input);
     await salvarFechamento({ ...entrada, unidadeId: acesso.unidadeId, atualizadoPor: acesso.userId });

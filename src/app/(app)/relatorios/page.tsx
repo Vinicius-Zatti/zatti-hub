@@ -4,6 +4,7 @@ import { getAcessoAtual } from "@/lib/acesso";
 import { CATALOGO_RELATORIOS, filtrarCatalogo } from "@/lib/navegacao/catalogos";
 import { contextoMenuRestaurante, montarMenuRestaurantePiloto } from "@/lib/navegacao/menu-restaurante";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 
 /** Relatórios (Navegação V2, 24/10/2026): catálogo com um bloco por relatório
  * que a pessoa já abre hoje pelo menu (papel e flags). Cada relatório continua
@@ -13,7 +14,7 @@ export default async function RelatoriosPage() {
   const acesso = await getAcessoAtual();
   if (!usaNavegacaoV2(acesso)) redirect("/painel");
   // Conciliação não muda nenhum relatório: o catálogo não precisa ler a flag dela.
-  const menu = montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, false));
+  const menu = aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, false)), acesso.permissoes);
   const relatorios = filtrarCatalogo(CATALOGO_RELATORIOS, menu);
   if (relatorios.length === 0) redirect("/painel");
 
