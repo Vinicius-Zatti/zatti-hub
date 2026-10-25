@@ -255,6 +255,18 @@ export default async function AcessosPage() {
                         nomeExibido={v.nome ?? v.email}
                         whatsappFinal={v.whatsappFinal}
                         podeGerarProvisoria={v.userId !== acesso.userId && v.status !== "revogado"}
+                        edicao={
+                          v.userId !== acesso.userId && v.status !== "revogado"
+                            ? {
+                                role: v.role as "gestao" | "operacional",
+                                unidadeId: v.unidadeId,
+                                unidades: unidades
+                                  .filter((u) => u.organizacaoId === v.organizacaoId && u.ativo)
+                                  .map((u) => ({ id: u.id, nome: u.nome })),
+                                organizacaoNome: v.organizacaoNome,
+                              }
+                            : null
+                        }
                       />
                     )}
                   </td>

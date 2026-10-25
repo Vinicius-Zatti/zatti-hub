@@ -13,8 +13,13 @@ import {
   validarPapelVinculo,
 } from "@/lib/acessos/slug";
 import { mensagemErroGarante } from "@/lib/garante/regras";
-import { formatarValidadeProvisoria, mensagemGerarProvisoria } from "@/lib/equipe/regras";
-import { gerarSenhaProvisoriaNoBanco } from "@/lib/equipe/servidor";
+import {
+  formatarValidadeProvisoria,
+  mensagemEditarVinculo,
+  mensagemGerarProvisoria,
+  pedidoEdicaoValido,
+} from "@/lib/equipe/regras";
+import { editarVinculoNoBanco, gerarSenhaProvisoriaNoBanco } from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 import { alterarFlagModulo, validarExtratoEstoque } from "@/lib/acessos/alterar-flag";
 import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
@@ -396,6 +401,31 @@ export async function gerarSenhaProvisoriaAction(
     validaAte: formatarValidadeProvisoria(gerado.validaAte),
     envio,
   };
+}
+
+/** Edita papel (gestão/operacional) e unidade de um vínculo sem revogar
+ * (Navegação V2, fase 2 - 24/10/2026). Master edita qualquer vínculo não
+ * master. A troca, a conferência de novo do papel de quem pede e a auditoria
+ * (dados antigos e novos) são do banco, numa transação só. */
+export async function editarVinculoAction(
+  vinculoId: string,
+  role: string,
+  unidadeId: string | null,
+): Promise<Resultado> {
+  const acesso = await requireMaster();
+  if (!pedidoEdicaoValido(vinculoId, role, unidadeId)) return { erro: "Pedido inválido." };
+  const codigo = await editarVinculoNoBanco(createAdminClient(), {
+    atorId: acesso.userId,
+    vinculoId,
+    escopo: "master",
+    organizacaoId: null,
+    role,
+    unidadeId,
+  });
+  const erro = mensagemEditarVinculo(codigo);
+  if (erro) return { erro };
+  revalidarAcessos();
+  return { ok: true };
 }
 
 /** Liga ou desliga a chave "Usar extrato do estoque" da unidade (decisão 7 de
