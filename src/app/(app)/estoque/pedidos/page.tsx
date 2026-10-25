@@ -9,7 +9,7 @@ import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem, listaDoParametro } from "@/lib/contagem/varias-datas";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
-import { completarComItensConfirmados } from "@/lib/cadastro-rapido";
+import { completarComItensConfirmados, configCadastroRapido } from "@/lib/cadastro-rapido";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +102,7 @@ export default async function PedidosPage({
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
       setoresPendentes={resultado.setoresPendentes}
-      cadastroRapidoProduto={cadastroRapido}
+      cadastroRapidoProduto={configCadastroRapido(cadastroRapido, CONTAGEM_POR_SETOR_ATIVA, acesso.fonteDadosEstoque)}
     />
   );
 }

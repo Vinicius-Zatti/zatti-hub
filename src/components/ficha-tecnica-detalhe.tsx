@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ConfigCadastroRapido } from "@/lib/cadastro-rapido";
 import { CAMADA_LABEL, explicacaoCustoComponente, formatarQuantidade } from "@/lib/fichas-tecnicas";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-botao";
@@ -40,7 +41,7 @@ export function FichaTecnicaDetalhe({
   deducoes99Food,
   aoFechar,
   aoSalvar,
-  cadastroRapidoProduto = false,
+  cadastroRapidoProduto = null,
 }: {
   ficha: FichaTecnica;
   /** Link temporário da foto anexada (ver `carregarFichaTecnicaParaExibir`). */
@@ -59,7 +60,7 @@ export function FichaTecnicaDetalhe({
   aoFechar?: () => void;
   aoSalvar?: (id: string) => void;
   /** Atalho "+ Novo insumo" na edição (ver `FichaTecnicaForm`). */
-  cadastroRapidoProduto?: boolean;
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
 }) {
   const router = useRouter();
   const [editando, setEditando] = useState(false);

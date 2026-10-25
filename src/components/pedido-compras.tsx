@@ -16,7 +16,14 @@ import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/action
 import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { NovoProdutoForm } from "@/components/novo-produto-form";
-import { incluirPorSku, produtoParaSugestaoCompra } from "@/lib/cadastro-rapido";
+import {
+  ALERTA_FORA_DA_CONTAGEM,
+  avisoProdutoCotacao,
+  incluirPorSku,
+  mesclarItensNovos,
+  produtoParaSugestaoCompra,
+  type ConfigCadastroRapido,
+} from "@/lib/cadastro-rapido";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -41,7 +48,7 @@ export function PedidoCompras({
   fornecedoresCadastro,
   quantidadesSalvas,
   setoresPendentes = [],
-  cadastroRapidoProduto = false,
+  cadastroRapidoProduto = null,
 }: {
   itens: SugestaoCompra[];
   /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
@@ -65,7 +72,7 @@ export function PedidoCompras({
   /** Cadastro rápido no lugar onde se usa (Navegação V2, piloto): "+ Novo
    * produto" cadastra em modal e a linha nova já entra na conferência com o
    * campo Comprar aberto. Só Gestão/master (`criarProdutoAction` confere). */
-  cadastroRapidoProduto?: boolean;
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -104,11 +111,21 @@ export function PedidoCompras({
   const [itensNovos, setItensNovos] = useState<SugestaoCompra[]>([]);
   const [novoProdutoAberto, setNovoProdutoAberto] = useState(false);
   const [avisoNovoProduto, setAvisoNovoProduto] = useState<string | null>(null);
+  // Trocar contagem ou escopo (router.push não remonta este componente) zera as
+  // linhas cadastradas aqui: a partir daí vale o que o servidor devolve.
+  const chaveTela = `${datasUsadas.join(",")}|${gruposSelecionados.join(",")}`;
+  const [chaveItensNovos, setChaveItensNovos] = useState(chaveTela);
+  if (chaveItensNovos !== chaveTela) {
+    setChaveItensNovos(chaveTela);
+    setItensNovos([]);
+    setAvisoNovoProduto(null);
+  }
   const itensTela = useMemo(
-    () => itensNovos.reduce((lista, novo) => (lista.some((i) => i.sku === novo.sku) ? lista : [...lista, novo]), itens),
-    [itens, itensNovos],
+    () => mesclarItensNovos(itens, itensNovos, gruposSelecionados),
+    [itens, itensNovos, gruposSelecionados],
   );
   const skusNovos = useMemo(() => new Set(itensNovos.map((i) => i.sku)), [itensNovos]);
+  const temForaDaContagem = itensTela.some((i) => skusNovos.has(i.sku) || i.alerta === ALERTA_FORA_DA_CONTAGEM);
 
   function valorAtual(item: SugestaoCompra): number {
     return overrides[item.sku] ?? item.quantidadeSugerida;
@@ -209,12 +226,17 @@ export function PedidoCompras({
   function produtoCadastrado(produto: Produto) {
     setNovoProdutoAberto(false);
     const item = produtoParaSugestaoCompra(produto);
+    const foraDoFiltro = gruposSelecionados.length > 0 && !gruposSelecionados.includes(produto.grupo);
     setItensNovos((atual) => incluirPorSku(atual, item));
-    if (podeConfirmar) setEditando((e) => ({ ...e, [item.sku]: "" }));
+    if (podeConfirmar && !foraDoFiltro) setEditando((e) => ({ ...e, [item.sku]: "" }));
     setAvisoNovoProduto(
-      podeConfirmar
-        ? `"${produto.nome}" cadastrado. Digite quanto comprar na linha marcada em ${nomeGrupo(produto.grupo)}.`
-        : `"${produto.nome}" cadastrado e incluído em ${nomeGrupo(produto.grupo)}.`,
+      avisoProdutoCotacao({
+        nome: produto.nome,
+        grupoNome: nomeGrupo(produto.grupo),
+        foraDoFiltro,
+        podeDigitar: podeConfirmar,
+        avisarSetor: cadastroRapidoProduto?.avisarSetor ?? false,
+      }),
     );
   }
 
@@ -336,7 +358,10 @@ export function PedidoCompras({
           {variasContagens ? `Nessas contagens (${listarDatas(datasUsadas)})` : `Nessa contagem (${dataUsada})`}{" "}
           foram contados os grupos:{" "}
           <strong className="text-cinza">{gruposContadosNoDia.map(nomeGrupo).join(", ")}</strong>. O resto
-          do cadastro nem entra aqui, porque não fez parte {variasContagens ? "dessas contagens" : "dessa contagem"}.
+          do cadastro nem entra aqui, porque não fez parte {variasContagens ? "dessas contagens" : "dessa contagem"}
+          {temForaDaContagem
+            ? `, exceto produto cadastrado aqui ou com compra já confirmada, que aparece com a etiqueta "${ALERTA_FORA_DA_CONTAGEM}" ou "novo".`
+            : "."}
         </p>
       )}
 

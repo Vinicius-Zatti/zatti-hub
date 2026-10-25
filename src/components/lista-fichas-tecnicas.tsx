@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ConfigCadastroRapido } from "@/lib/cadastro-rapido";
 import { Th } from "@/components/tabela";
 import { ControlesTabela } from "@/components/tabela-rolavel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
@@ -46,7 +47,7 @@ export function ListaFichasTecnicas({
   deducoesTotal,
   deducoesIfood,
   deducoes99Food,
-  cadastroRapidoProduto = false,
+  cadastroRapidoProduto = null,
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
@@ -59,7 +60,7 @@ export function ListaFichasTecnicas({
   deducoesIfood: number;
   deducoes99Food: number;
   /** Atalho "+ Novo insumo" ao montar/editar ficha (ver `FichaTecnicaForm`). */
-  cadastroRapidoProduto?: boolean;
+  cadastroRapidoProduto?: ConfigCadastroRapido | null;
 }) {
   const router = useRouter();
   const [camada, setCamada] = useState<CamadaFicha>("PRE");

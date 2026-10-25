@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  AVISO_DEFINIR_SETOR,
+  avisoInsumoFicha,
+  avisoProdutoCotacao,
+  configCadastroRapido,
+  mesclarItensNovos,
   ALERTA_CADASTRADO_AGORA,
   ALERTA_FORA_DA_CONTAGEM,
   completarComItensConfirmados,
@@ -92,6 +97,11 @@ describe("completarComItensConfirmados", () => {
     expect(completarComItensConfirmados(itens, [produto()], { PROCAR001: 3 })).toBe(itens);
   });
 
+  it("confirmado com zero não volta para a tela", () => {
+    const novo = produto({ sku: "HORALF001", grupo: "HOR" });
+    expect(completarComItensConfirmados(itens, [novo], { HORALF001: 0 })).toBe(itens);
+  });
+
   it("acrescenta produto confirmado que ficou fora do escopo da contagem", () => {
     const novo = produto({ sku: "HORALF001", grupo: "HOR", nome: "alface" });
     const resultado = completarComItensConfirmados(itens, [produto(), novo], { HORALF001: 2 });
@@ -110,5 +120,55 @@ describe("completarComItensConfirmados", () => {
       ["PRO"],
     );
     expect(resultado).toBe(itens);
+  });
+});
+
+describe("mesclarItensNovos", () => {
+  const base = [produtoParaSugestaoCompra(produto({ sku: "PROCAR001" }))];
+  const rucula = produtoParaSugestaoCompra(produto({ sku: "HORRUC001", grupo: "HOR" }));
+
+  it("sem filtro de grupos, a linha nova entra", () => {
+    expect(mesclarItensNovos(base, [rucula]).map((i) => i.sku)).toEqual(["PROCAR001", "HORRUC001"]);
+  });
+
+  it("com filtro, linha de grupo fora do filtro não entra", () => {
+    expect(mesclarItensNovos(base, [rucula], ["PRO"])).toBe(base);
+    expect(mesclarItensNovos(base, [rucula], ["HOR"]).map((i) => i.sku)).toEqual(["PROCAR001", "HORRUC001"]);
+  });
+
+  it("não duplica SKU que já veio do servidor", () => {
+    expect(mesclarItensNovos(base, [base[0]])).toBe(base);
+  });
+});
+
+describe("avisos do cadastro rápido", () => {
+  it("cotação: produto fora do filtro avisa o grupo", () => {
+    expect(
+      avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", foraDoFiltro: true, podeDigitar: true, avisarSetor: false }),
+    ).toContain('cadastrado em Hortifrúti, que está fora do filtro');
+  });
+
+  it("cotação: unidade com setor recebe a orientação de definir o setor", () => {
+    const texto = avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", foraDoFiltro: false, podeDigitar: true, avisarSetor: true });
+    expect(texto).toContain("Digite quanto comprar");
+    expect(texto.endsWith(AVISO_DEFINIR_SETOR)).toBe(true);
+  });
+
+  it("ficha: sem setor e insumo escolhido não precisa de aviso", () => {
+    expect(avisoInsumoFicha({ nome: "cheddar", grupo: "LAT", entrouNaFicha: true, avisarSetor: false })).toBeNull();
+  });
+
+  it("ficha: grupo fora de receita avisa, e com setor acrescenta a orientação", () => {
+    expect(avisoInsumoFicha({ nome: "detergente", grupo: "LIM", entrouNaFicha: false, avisarSetor: false })).toContain(
+      "não entra em ficha técnica",
+    );
+    expect(avisoInsumoFicha({ nome: "cheddar", grupo: "LAT", entrouNaFicha: true, avisarSetor: true })).toContain(AVISO_DEFINIR_SETOR);
+  });
+
+  it("config: sem liberação não há atalho; setor só na fonte banco", () => {
+    expect(configCadastroRapido(false, true, "banco")).toBeNull();
+    expect(configCadastroRapido(true, true, "banco")).toEqual({ avisarSetor: true });
+    expect(configCadastroRapido(true, true, "planilha")).toEqual({ avisarSetor: false });
+    expect(configCadastroRapido(true, false, "banco")).toEqual({ avisarSetor: false });
   });
 });
