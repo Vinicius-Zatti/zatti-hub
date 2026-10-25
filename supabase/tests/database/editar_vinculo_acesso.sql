@@ -91,8 +91,10 @@ select pg_temp.como_servidor();
 select is(has_function_privilege('vini_operador',
   'public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)', 'execute'), false,
   'vini_operador sem EXECUTE em editar_vinculo_acesso');
--- Só dentro desta transação (desfeito no rollback): o postgres do teste assume o papel.
+-- Só dentro desta transação (desfeito no rollback): o postgres do teste assume o papel
+-- e o papel enxerga o pgTAP.
 grant vini_operador to postgres;
+grant usage on schema extensions to vini_operador; -- só para o pgTAP (throws_ok) ser visível
 select set_config('role', 'vini_operador', true);
 select throws_ok($$ select public.editar_vinculo_acesso('00000000-0000-0000-0000-00000000e002',
     '00000000-0000-0000-0000-00000000ea04', 'equipe', 'org-ea-a', 'gestao', null) $$,
