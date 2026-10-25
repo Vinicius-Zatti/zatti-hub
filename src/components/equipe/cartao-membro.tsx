@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/equipe/actions";
 import type { MembroEquipe } from "@/app/(app)/equipe/dados";
 import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
+import { EditarAcesso } from "@/components/editar-acesso";
 import { ROTULO_FUNCAO, textoEnvio } from "./textos";
 
 const SITUACAO: Record<MembroEquipe["situacao"], { texto: string; classe: string }> = {
@@ -26,7 +27,19 @@ function formatarWhatsapp(final: string | null): string {
   return final ? `WhatsApp final ${final}` : "sem WhatsApp";
 }
 
-export function CartaoMembro({ membro }: { membro: MembroEquipe }) {
+export function CartaoMembro({
+  membro,
+  unidades,
+  podeTodas,
+  organizacaoNome,
+}: {
+  membro: MembroEquipe;
+  /** Unidades que quem está logado pode dar (gestor de loja: só a dele). */
+  unidades: { id: string; nome: string }[];
+  /** Pode dar "todas as unidades" (gestão da organização inteira ou master). */
+  podeTodas: boolean;
+  organizacaoNome: string;
+}) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
   const [editando, setEditando] = useState(false);
@@ -104,6 +117,19 @@ export function CartaoMembro({ membro }: { membro: MembroEquipe }) {
           >
             Trocar WhatsApp
           </button>
+          {membro.situacao !== "revogado" && (
+            <EditarAcesso
+              modo="equipe"
+              vinculoId={membro.vinculoId}
+              nomeExibido={membro.nome ?? membro.email}
+              roleAtual={membro.role}
+              unidadeIdAtual={membro.unidadeId}
+              unidades={unidades}
+              podeTodas={podeTodas}
+              organizacaoNome={organizacaoNome}
+              className={`${BOTAO} border-azul-noite text-azul-noite hover:bg-azul-noite/10`}
+            />
+          )}
           {membro.situacao === "revogado" ? (
             <button
               type="button"

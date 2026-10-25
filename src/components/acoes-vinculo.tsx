@@ -7,6 +7,7 @@ import {
   revogarVinculoAction,
 } from "@/app/(app)/acessos/actions";
 import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
+import { EditarAcesso } from "@/components/editar-acesso";
 
 export function AcoesVinculo({
   vinculoId,
@@ -15,6 +16,7 @@ export function AcoesVinculo({
   nomeExibido,
   whatsappFinal,
   podeGerarProvisoria,
+  edicao,
 }: {
   vinculoId: string;
   userId: string;
@@ -22,6 +24,13 @@ export function AcoesVinculo({
   nomeExibido: string;
   whatsappFinal: string | null;
   podeGerarProvisoria: boolean;
+  /** Editar papel e unidade sem revogar (24/10/2026); nulo = sem o botão. */
+  edicao: {
+    role: "gestao" | "operacional";
+    unidadeId: string | null;
+    unidades: { id: string; nome: string }[];
+    organizacaoNome: string;
+  } | null;
 }) {
   const [pendente, startTransition] = useTransition();
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -64,6 +73,19 @@ export function AcoesVinculo({
         >
           Reenviar acesso
         </button>
+        {edicao && (
+          <EditarAcesso
+            modo="master"
+            vinculoId={vinculoId}
+            nomeExibido={nomeExibido}
+            roleAtual={edicao.role}
+            unidadeIdAtual={edicao.unidadeId}
+            unidades={edicao.unidades}
+            podeTodas
+            organizacaoNome={edicao.organizacaoNome}
+            className="rounded-md border border-azul-noite px-2 py-1 text-xs font-semibold text-azul-noite hover:bg-azul-noite/10 disabled:opacity-40"
+          />
+        )}
         {status === "ativo" ? (
           <button
             type="button"

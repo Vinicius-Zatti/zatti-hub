@@ -52,3 +52,15 @@ export function textoEnvioProvisoria(
       : "Senha provisória gerada, mas o WhatsApp não saiu. Repasse a senha acima para a pessoa.",
   };
 }
+
+/** Rótulo do botão de salvar: diz o efeito ("Salvar: Ana passa a ser
+ * Operacional em Loja Centro"). `unidadeNome` nulo = todas as unidades. */
+export function textoSalvarEdicaoAcesso(params: {
+  nome: string;
+  role: "gestao" | "operacional";
+  unidadeNome: string | null;
+}): string {
+  const papel = params.role === "gestao" ? "Gestão" : "Operacional";
+  const onde = params.unidadeNome ? `em ${params.unidadeNome}` : "em todas as unidades";
+  return `Salvar: ${params.nome} passa a ser ${papel} ${onde}`;
+}

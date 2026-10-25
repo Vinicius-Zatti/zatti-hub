@@ -39,7 +39,13 @@ export default async function EquipePage() {
         {ativos.length === 0 && <p className="text-sm text-cinza-medio">Ninguém cadastrado ainda.</p>}
         <div className="grid gap-3 md:grid-cols-2">
           {ativos.map((m) => (
-            <CartaoMembro key={m.vinculoId} membro={m} />
+            <CartaoMembro
+              key={m.vinculoId}
+              membro={m}
+              unidades={unidades}
+              podeTodas={!acesso.unidadeFixa}
+              organizacaoNome={acesso.organizacaoNome}
+            />
           ))}
         </div>
       </section>
@@ -51,7 +57,13 @@ export default async function EquipePage() {
           </h2>
           <div className="grid gap-3 md:grid-cols-2">
             {semAcesso.map((m) => (
-              <CartaoMembro key={m.vinculoId} membro={m} />
+              <CartaoMembro
+              key={m.vinculoId}
+              membro={m}
+              unidades={unidades}
+              podeTodas={!acesso.unidadeFixa}
+              organizacaoNome={acesso.organizacaoNome}
+            />
             ))}
           </div>
         </section>

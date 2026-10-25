@@ -7,15 +7,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
   gerarSenhaTemporaria,
+  mensagemEditarVinculo,
   mensagemGerarProvisoria,
   normalizarWhatsapp,
   whatsappTrocadoHaPouco,
+  pedidoEdicaoValido,
   podeAdministrarVinculo,
   validarConcessao,
 } from "@/lib/equipe/regras";
 import {
   buscarUsuarioPorEmail,
   contaPendente,
+  editarVinculoNoBanco,
   gerarSenhaProvisoriaNoBanco,
   hashSenhaTemporaria,
 } from "@/lib/equipe/servidor";
@@ -433,6 +436,34 @@ export async function gerarSenhaProvisoriaMembroAction(
   });
   revalidarEquipe();
   return { ok: true, envio };
+}
+
+/** Edita função e unidade de alguém da equipe sem tirar o acesso (24/10/2026).
+ * Nunca o próprio, nunca master, nunca promove a master; gestor de uma unidade
+ * só mexe dentro dela. O banco confere tudo de novo (com a organização da
+ * sessão), recusa duplicata e a última gestão, troca e grava a auditoria. */
+export async function editarAcessoMembroAction(
+  vinculoId: string,
+  role: string,
+  unidadeId: string | null,
+): Promise<Resultado> {
+  const acesso = await requireEquipe();
+  if (!pedidoEdicaoValido(vinculoId, role, unidadeId)) return { erro: "Pedido inválido." };
+  const admin = createAdminClient();
+  const carregado = await carregarAlvo(admin, acesso, vinculoId);
+  if ("erro" in carregado) return carregado;
+  const codigo = await editarVinculoNoBanco(admin, {
+    atorId: acesso.userId,
+    vinculoId: carregado.alvo.id,
+    escopo: "equipe",
+    organizacaoId: acesso.organizacaoId,
+    role,
+    unidadeId,
+  });
+  const erro = mensagemEditarVinculo(codigo);
+  if (erro) return { erro };
+  revalidarEquipe();
+  return { ok: true };
 }
 
 /** Corrige o WhatsApp de alguém da equipe. */

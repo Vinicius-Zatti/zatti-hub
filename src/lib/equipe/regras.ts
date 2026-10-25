@@ -209,3 +209,68 @@ export function whatsappTrocadoHaPouco(alteradoEm: string | null, agora: Date): 
   if (Number.isNaN(quando)) return true; // na dúvida, espera (falha fechada)
   return agora.getTime() - quando < MINUTOS_ESPERA_WHATSAPP_TROCADO * 60_000;
 }
+
+// ── Editar acesso sem revogar (24/10/2026) ─────────────────────────────
+// Quem pode e a troca em si são do banco (`editar_vinculo_acesso`, migration
+// 20261024200000). Aqui só o texto da tela.
+
+/** Respostas de `editar_vinculo_acesso`. */
+export type CodigoEditarVinculo =
+  | "ok"
+  | "sem_mudanca"
+  | "sem_permissao"
+  | "nao_encontrado"
+  | "proprio_vinculo"
+  | "vinculo_master"
+  | "revogado"
+  | "papel_invalido"
+  | "operacional_sem_unidade"
+  | "unidade_invalida"
+  | "fora_da_unidade"
+  | "duplicado"
+  | "ultima_gestao";
+
+/** Texto para a tela a partir da resposta do banco. `null` = deu certo.
+ * Resposta desconhecida vira erro genérico (falha fechada). */
+export function mensagemEditarVinculo(codigo: unknown): string | null {
+  switch (codigo) {
+    case "ok":
+      return null;
+    case "sem_mudanca":
+      return "Nada mudou: esse já é o acesso dessa pessoa.";
+    case "sem_permissao":
+      return "Você não tem permissão para editar acessos.";
+    case "nao_encontrado":
+      return "Acesso não encontrado.";
+    case "proprio_vinculo":
+      return "Você não pode editar o seu próprio acesso. Peça para outra pessoa da gestão ou para a Zatti.";
+    case "vinculo_master":
+      return "Acesso master é gerenciado fora do painel.";
+    case "revogado":
+      return "Esse acesso foi tirado. Devolva o acesso antes de editar.";
+    case "papel_invalido":
+      return "Escolha Gestão ou Operacional.";
+    case "operacional_sem_unidade":
+      return "Operacional precisa de uma unidade.";
+    case "unidade_invalida":
+      return "Essa unidade não está ativa neste cliente.";
+    case "fora_da_unidade":
+      return "Você só pode dar acesso à sua unidade.";
+    case "duplicado":
+      return "Essa pessoa já tem esse acesso. Tire o outro antes, se quiser trocar.";
+    case "ultima_gestao":
+      return "Essa é a última pessoa de gestão que cobre esse acesso. Cadastre outra antes.";
+    default:
+      return "Não foi possível editar o acesso.";
+  }
+}
+
+/** Forma do pedido de edição vindo do navegador (o resto é do banco). */
+export function pedidoEdicaoValido(vinculoId: unknown, role: unknown, unidadeId: unknown): boolean {
+  return (
+    typeof vinculoId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vinculoId) &&
+    (role === "gestao" || role === "operacional") &&
+    (unidadeId === null || (typeof unidadeId === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(unidadeId)))
+  );
+}

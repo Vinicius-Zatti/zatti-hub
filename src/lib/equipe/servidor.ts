@@ -79,3 +79,33 @@ export async function gerarSenhaProvisoriaNoBanco(
   const codigo = String(data);
   return { codigo, senha: codigo === "ok" ? senha : null, validaAte };
 }
+
+/** Troca papel e unidade de um vínculo sem revogar (Equipe ou Acessos). O
+ * banco confere de novo o papel de `ator` (lido da sessão pelo chamador),
+ * organização, unidade, duplicata e última gestão, faz a troca e grava a
+ * auditoria numa transação só. Devolve o código do banco. */
+export async function editarVinculoNoBanco(
+  admin: Admin,
+  params: {
+    atorId: string;
+    vinculoId: string;
+    escopo: "master" | "equipe";
+    organizacaoId: string | null;
+    role: string;
+    unidadeId: string | null;
+  },
+): Promise<string> {
+  const { data, error } = await admin.rpc("editar_vinculo_acesso", {
+    p_ator: params.atorId,
+    p_vinculo_id: params.vinculoId,
+    p_escopo: params.escopo,
+    p_organizacao_id: params.organizacaoId,
+    p_novo_role: params.role,
+    p_nova_unidade_id: params.unidadeId,
+  });
+  if (error) {
+    console.error("[acessos] falha ao editar vínculo", { codigo: error.code });
+    return "erro";
+  }
+  return String(data);
+}
