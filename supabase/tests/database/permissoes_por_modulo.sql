@@ -12,6 +12,9 @@ create extension if not exists pgtap with schema extensions;
 
 select plan(54);
 
+-- O usuário dos testes precisa poder assumir o papel do operador do Vini (só nesta transação).
+grant vini_operador to current_user;
+
 -- ── Fixture ──────────────────────────────────────────────────────────────
 -- f001 master | f002 dono (gestão org inteira) | f003 gerente sem Financeiro |
 -- f004 operacional | f005 gerente só vê (Financeiro, Vendas, Cardápio) |
