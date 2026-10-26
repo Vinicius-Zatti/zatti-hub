@@ -5,6 +5,7 @@ import {
   sincronizarFormularios,
 } from "./pedidos-feitos-formulario";
 import type { Pedido } from "@/lib/types";
+import { filtrarPorFornecedorOuItem } from "@/lib/busca-lista";
 
 function pedido(id: string, versao: number, quantidadeRecebida: number | null, observacao: string | null = null): Pedido {
   return {
@@ -66,5 +67,41 @@ describe("formulário de recebimento em Pedidos Feitos", () => {
     const atuais = sincronizarFormularios({}, [pedido("a", 1, null)]);
     const proximos = sincronizarFormularios(atuais, [pedido("b", 1, null)]);
     expect(Object.keys(proximos)).toEqual(["b"]);
+  });
+});
+
+describe("busca por item ou fornecedor em Pedidos Feitos", () => {
+  const megaG: Pedido = {
+    ...pedido("mega", 1, null),
+    fornecedor: "Mega G",
+    itens: [
+      { ...pedido("x", 1, null).itens[0], sku: "S1", nome: "coca lata", nomeCompra: "refrigerante cola" },
+      { ...pedido("x", 1, null).itens[0], sku: "S2", nome: "guaraná lata", nomeCompra: "" },
+    ],
+  };
+  const outro: Pedido = { ...pedido("hortifruti", 1, null), fornecedor: "Hortifruti Central" };
+  const visiveis = (termo: string) =>
+    [megaG, outro]
+      .map((p) => ({ fornecedor: p.fornecedor, itens: filtrarPorFornecedorOuItem(p.fornecedor, p.itens, termo, (i) => [i.nomeCompra]) }))
+      .filter((p) => p.itens.length > 0)
+      .map((p) => `${p.fornecedor}: ${p.itens.map((i) => i.sku).join(",")}`);
+
+  it("busca pelo fornecedor traz o pedido inteiro dele", () => {
+    expect(visiveis("mega g")).toEqual(["Mega G: S1,S2"]);
+  });
+
+  it("busca por item continua trazendo só o item", () => {
+    expect(visiveis("guarana")).toEqual(["Mega G: S2"]);
+    expect(visiveis("limao")).toEqual(["Hortifruti Central: HORLIM001"]);
+  });
+
+  it("o digitado fica guardado e o Salvar manda o pedido inteiro", () => {
+    let formulario = formularioDoPedido(megaG);
+    formulario = { ...formulario, editado: true, quantidades: { ...formulario.quantidades, S1: "3,5", S2: "2" } };
+    // Busca esconde o S1, depois troca para o fornecedor e depois limpa: o formulário não muda.
+    expect(visiveis("guarana")).toEqual(["Mega G: S2"]);
+    expect(visiveis("mega")).toEqual(["Mega G: S1,S2"]);
+    expect(formulario.quantidades).toEqual({ S1: "3,5", S2: "2" });
+    expect(Object.keys(formulario.quantidades)).toEqual(megaG.itens.map((i) => i.sku));
   });
 });
