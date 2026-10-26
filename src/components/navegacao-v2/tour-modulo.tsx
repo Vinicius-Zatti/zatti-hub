@@ -16,6 +16,8 @@ import {
   type PosicaoBalaoTour,
 } from "@/lib/tour/passos";
 import { ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/roteiros";
+import { CartaoBoasVindas } from "@/components/videos-ajuda";
+import { CHAVE_VIDEO_BOAS_VINDAS, deveOferecerBoasVindas, proximoAvisoPrimeiroAcesso } from "@/lib/videos-ajuda/regras";
 
 // Tour no primeiro acesso de cada módulo (Navegação V2, fase 4, 25/10/2026),
 // só no piloto. Aparece sozinho UMA vez por usuário e módulo (gravado em
@@ -26,14 +28,27 @@ import { ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/rotei
 // Não abre em tela em modo foco (Contagem, preenchimento do Garante), em tela
 // marcada com `data-sem-tour` (começo da Contagem) nem com modal ou busca
 // abertos. Com o tour aberto, Ctrl+K e "/" não abrem a busca por baixo dele.
+// Avisos do primeiro acesso, um de cada vez (26/10/2026): tour, depois o cartão
+// do vídeo de boas-vindas (oferecido uma vez, gravado em `tours_vistos`) e só
+// então o convite de instalar o app (`lib/videos-ajuda/regras.ts`).
 
 const ESPERA_ABRIR_MS = 800;
+// Depois do tour (ou na primeira tela sem tour), o cartão espera a tela assentar.
+const ESPERA_BOAS_VINDAS_MS = 1200;
+const BLOQUEIOS_AVISO = "[data-modo-foco], [data-sem-tour], [data-modal-flutuante], [aria-modal='true']";
 
 const ReverTourContexto = createContext<(() => void) | null>(null);
+// Fora do shell da Navegação V2 não há tour nem cartão: o convite fica liberado.
+const ConviteLiberadoContexto = createContext(true);
 
 /** Abre de novo o tour do módulo atual; null fora do piloto ou sem tour. */
 export function useReverTour() {
   return useContext(ReverTourContexto);
+}
+
+/** O convite de instalar só aparece depois do tour e do cartão de boas-vindas. */
+export function useConviteInstalarLiberado() {
+  return useContext(ConviteLiberadoContexto);
 }
 
 type TourAberto = { modulo: ModuloTour; passos: PassoTour[]; indice: number; em: string };
@@ -96,9 +111,34 @@ export function TourModuloProvider({
     if (modulo) abrir(modulo, false);
   }, [modulo, abrir]);
 
+  // Cartão do vídeo de boas-vindas: depois do tour, uma vez por usuário. Grava
+  // ao aparecer (como o tour), então "Agora não" ou fechar a aba não o traz de volta.
+  const [cartaoBoasVindas, setCartaoBoasVindas] = useState(false);
+  const tourPendente = tourAtivo !== null || deveMostrarTour(modulo, vistosLocal);
+  const proximo = proximoAvisoPrimeiroAcesso({
+    tourPendente,
+    boasVindasPendente: cartaoBoasVindas || deveOferecerBoasVindas(vistosLocal),
+    conviteElegivel: true,
+  });
+
+  useEffect(() => {
+    if (proximo !== "boas-vindas" || cartaoBoasVindas) return;
+    const espera = window.setTimeout(() => {
+      if (document.querySelector(BLOQUEIOS_AVISO)) return;
+      setCartaoBoasVindas(true);
+      setVistosLocal((atual) => new Set([...(atual ?? []), CHAVE_VIDEO_BOAS_VINDAS]));
+      void marcarTourVistoAction(CHAVE_VIDEO_BOAS_VINDAS).then((resultado) => {
+        if (!resultado.ok) console.warn("[tour] não gravou o cartão de boas-vindas visto");
+      });
+    }, ESPERA_BOAS_VINDAS_MS);
+    return () => window.clearTimeout(espera);
+  }, [proximo, cartaoBoasVindas, pathname]);
+
   return (
     <ReverTourContexto.Provider value={modulo ? rever : null}>
+      <ConviteLiberadoContexto.Provider value={proximo === "instalar"}>
       {children}
+      {cartaoBoasVindas && createPortal(<CartaoBoasVindas aoFechar={() => setCartaoBoasVindas(false)} />, document.body)}
       {tourAtivo &&
         createPortal(
           <BalaoTour
@@ -114,6 +154,7 @@ export function TourModuloProvider({
           />,
           document.body,
         )}
+      </ConviteLiberadoContexto.Provider>
     </ReverTourContexto.Provider>
   );
 }

@@ -26,6 +26,7 @@ import {
 import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import { confirmarPreenchidos, quantidadeDigitada } from "@/lib/contagem/confirmar-preenchidos";
 import { IconeNavegacao } from "@/components/icones-navegacao";
+import { LinkVideoContagem } from "@/components/videos-ajuda";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -623,7 +624,9 @@ export function ContagemForm({
       <div className="mx-auto max-w-md pb-10 text-center" data-sem-tour>
         <h1 className="font-display text-2xl font-bold text-azul-noite">Contagem de Estoque</h1>
         <p className="mt-1 text-sm text-cinza-medio">Informe a data da contagem para começar.</p>
-        <div className="mt-8 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
+        {/* Vídeo da contagem (26/10/2026): o (?) do cabeçalho só reabre o tour, então fica aqui. */}
+        <LinkVideoContagem />
+        <div className="mt-6 rounded-xl border border-cinza-claro bg-branco p-5 text-left">
           <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-cinza-medio">
             Data da contagem
           </label>
