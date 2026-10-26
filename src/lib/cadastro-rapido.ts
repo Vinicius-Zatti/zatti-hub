@@ -71,38 +71,24 @@ export const ALERTA_FORA_DA_CONTAGEM = "Confirmado fora da contagem";
  * continua aparecendo depois de recarregar a página, com a etiqueta
  * `ALERTA_FORA_DA_CONTAGEM` - sem isso a quantidade ficava gravada, mas a
  * linha sumia da tela. Confirmado com zero não volta (não há compra a
- * mostrar). Respeita o filtro de grupos escolhido e ignora produto inativo ou
- * já presente. */
+ * mostrar). Ignora produto inativo ou já presente. */
 export function completarComItensConfirmados(
   itens: SugestaoCompra[],
   produtos: Produto[],
   quantidadesSalvas: Record<string, number>,
-  grupos: string[] = [],
 ): SugestaoCompra[] {
   const presentes = new Set(itens.map((i) => i.sku));
-  const filtroGrupos = grupos.length > 0 ? new Set(grupos) : null;
   const extras = produtos
-    .filter(
-      (p) =>
-        p.ativo &&
-        !presentes.has(p.sku) &&
-        (quantidadesSalvas[p.sku] ?? 0) > 0 &&
-        (!filtroGrupos || filtroGrupos.has(p.grupo)),
-    )
+    .filter((p) => p.ativo && !presentes.has(p.sku) && (quantidadesSalvas[p.sku] ?? 0) > 0)
     .map((p) => produtoParaSugestaoCompra(p, ALERTA_FORA_DA_CONTAGEM));
   return extras.length > 0 ? [...itens, ...extras] : itens;
 }
 
-/** Linhas cadastradas pelo atalho que entram na tela: só as do filtro de
- * grupos escolhido (sem filtro, todas) e sem duplicar SKU que já veio do
- * servidor. */
-export function mesclarItensNovos(
-  itens: SugestaoCompra[],
-  novos: SugestaoCompra[],
-  grupos: string[] = [],
-): SugestaoCompra[] {
+/** Linhas cadastradas pelo atalho que entram na tela, sem duplicar SKU que já
+ * veio do servidor. */
+export function mesclarItensNovos(itens: SugestaoCompra[], novos: SugestaoCompra[]): SugestaoCompra[] {
   const presentes = new Set(itens.map((i) => i.sku));
-  const extras = novos.filter((n) => (grupos.length === 0 || grupos.includes(n.grupo)) && !presentes.has(n.sku));
+  const extras = novos.filter((n) => !presentes.has(n.sku));
   return extras.length > 0 ? [...itens, ...extras] : itens;
 }
 
@@ -124,16 +110,13 @@ export function comAvisoSetor(texto: string, avisarSetor: boolean): string {
 export function avisoProdutoCotacao(opcoes: {
   nome: string;
   grupoNome: string;
-  foraDoFiltro: boolean;
   podeDigitar: boolean;
   avisarSetor: boolean;
 }): string {
-  const { nome, grupoNome, foraDoFiltro, podeDigitar, avisarSetor } = opcoes;
-  const texto = foraDoFiltro
-    ? `"${nome}" cadastrado em ${grupoNome}, que está fora do filtro. Inclua ${grupoNome} no escopo para ver a linha.`
-    : podeDigitar
-      ? `"${nome}" cadastrado. Digite quanto comprar na linha marcada em ${grupoNome}.`
-      : `"${nome}" cadastrado e incluído em ${grupoNome}.`;
+  const { nome, grupoNome, podeDigitar, avisarSetor } = opcoes;
+  const texto = podeDigitar
+    ? `"${nome}" cadastrado. Digite quanto comprar na linha marcada em ${grupoNome}.`
+    : `"${nome}" cadastrado e incluído em ${grupoNome}.`;
   return comAvisoSetor(texto, avisarSetor);
 }
 

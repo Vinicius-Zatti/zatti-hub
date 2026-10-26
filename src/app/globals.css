@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Celular deitado (26/10/2026): pouca altura na tela. Telas com tabela larga
+   (`data-tabela-larga`: Criar cotação e Editor de espelhos) soltam o cabeçalho
+   do módulo e a barra inferior nesse caso, para a tabela ganhar a altura. */
+@custom-variant deitado (@media (orientation: landscape) and (max-height: 500px));
+
 :root {
   --azul-noite: #0d1f2d;
   --azul-petroleo: #1a3a52;

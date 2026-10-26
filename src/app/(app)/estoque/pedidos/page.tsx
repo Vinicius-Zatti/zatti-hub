@@ -7,7 +7,7 @@ import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
-import { datasComplementares, escolherDatasContagem, listaDoParametro } from "@/lib/contagem/varias-datas";
+import { datasComplementares, escolherDatasContagem } from "@/lib/contagem/varias-datas";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { completarComItensConfirmados, configCadastroRapido } from "@/lib/cadastro-rapido";
 
@@ -16,12 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ data?: string | string[]; grupos?: string | string[] }>;
+  searchParams: Promise<{ data?: string | string[] }>;
 }) {
   const acesso = await requireGestao();
   redirecionarSemEdicao(acesso, "/estoque/pedidos");
+  // Sem filtro por grupo (26/10/2026): a cotação usa tudo o que foi contado
+  // nas datas escolhidas. `?grupos=` de link antigo não é lido.
   const params = await searchParams;
-  const grupos = listaDoParametro(params.grupos);
 
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
@@ -55,7 +56,7 @@ export default async function PedidosPage({
     dataBase ? listPedidosPorContagemBase(acesso.unidadeId, dataBase) : null,
   ]);
 
-  const resultado = await gerarPedido({ datas: datasEscolhidas, grupos, escopo, andamento }, acesso.spreadsheetId);
+  const resultado = await gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId);
 
   const pedidoMinimoPorFornecedor = Object.fromEntries(
     fornecedores
@@ -85,7 +86,7 @@ export default async function PedidosPage({
   // tela ao recarregar. Fora do piloto a lista fica exatamente como era.
   const cadastroRapido = usaNavegacaoV2(acesso);
   const itens = cadastroRapido
-    ? completarComItensConfirmados(resultado.itens, produtos, quantidadesSalvas, grupos)
+    ? completarComItensConfirmados(resultado.itens, produtos, quantidadesSalvas)
     : resultado.itens;
 
   return (
@@ -95,7 +96,6 @@ export default async function PedidosPage({
       datasUsadas={resultado.datasUsadas}
       datasDisponiveis={datas}
       andamentoPorData={Object.fromEntries(andamentoPorData)}
-      gruposSelecionados={grupos}
       gruposContadosNoDia={resultado.gruposContadosNoDia}
       organizacaoNome={acesso.organizacaoNome}
       pedidoMinimoPorFornecedor={pedidoMinimoPorFornecedor}

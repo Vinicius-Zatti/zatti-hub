@@ -7,6 +7,7 @@ import {
   datasComplementares,
   escolherDatasContagem,
   escopoDeVariasDatas,
+  hrefCriarCotacao,
   listaDoParametro,
   motivoBloqueioContagem,
 } from "./varias-datas";
@@ -252,5 +253,25 @@ describe("datasComplementares e motivoBloqueioContagem", () => {
     expect(datasComplementares([D12, D11], objeto)).toEqual([D12, D11]);
     expect(motivoBloqueioContagem([], D05, objeto)).toBeNull();
     expect(datasComplementares([], objeto)).toEqual([]);
+  });
+});
+
+describe("hrefCriarCotacao (sem filtro por grupo, 26/10/2026)", () => {
+  it("leva só as contagens marcadas, separadas por vírgula", () => {
+    expect(hrefCriarCotacao("/estoque/pedidos", ["13/10/2026", "12/10/2026"])).toBe(
+      "/estoque/pedidos?data=13%2F10%2F2026%2C12%2F10%2F2026",
+    );
+  });
+
+  it("sem contagem marcada volta para a rota limpa", () => {
+    expect(hrefCriarCotacao("/estoque/pedidos", [])).toBe("/estoque/pedidos");
+  });
+
+  it("link antigo com ?grupos=: trocar a contagem gera URL sem grupos", () => {
+    const antigo = new URLSearchParams("data=12/10/2026&grupos=BEB,HOR");
+    const datas = listaDoParametro(antigo.get("data") ?? undefined);
+    const novo = hrefCriarCotacao("/estoque/pedidos", datas);
+    expect(novo).not.toContain("grupos");
+    expect(new URLSearchParams(novo.split("?")[1]).get("data")).toBe("12/10/2026");
   });
 });

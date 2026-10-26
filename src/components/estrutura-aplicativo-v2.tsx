@@ -526,9 +526,11 @@ export function EstruturaAplicativoV2({
       </aside>
 
       {/* Celular: espaço no fim para o conteúdo não ficar atrás da barra inferior
-          (sem barra no modo foco, onde a própria tela tem botões no rodapé). */}
+          (sem barra no modo foco, onde a própria tela tem botões no rodapé).
+          Celular deitado em tela de tabela larga: a barra desce para o fim da
+          página (não fica por cima da tabela) e o espaço some. */}
       <div
-        className={`flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-200 group-has-[[data-modo-foco]]/app:pb-0 lg:pb-0 ${recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64"}`}
+        className={`flex min-h-dvh flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] transition-[padding-left] duration-200 group-has-[[data-modo-foco]]/app:pb-0 group-has-[[data-tabela-larga]]/app:deitado:pb-0 lg:pb-0 ${recolhido ? "lg:pl-[5.5rem]" : "lg:pl-64"}`}
       >
         <main
           id="conteudo-principal"
@@ -556,7 +558,7 @@ export function EstruturaAplicativoV2({
 
       <nav
         aria-label="Atalhos"
-        className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl border-t border-cinza-claro bg-branco pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_20px_rgba(13,31,45,0.08)] group-has-[[data-modo-foco]]/app:hidden lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl border-t border-cinza-claro bg-branco pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_20px_rgba(13,31,45,0.08)] group-has-[[data-modo-foco]]/app:hidden group-has-[[data-tabela-larga]]/app:deitado:static lg:hidden"
       >
         <ul
           className="mx-auto grid max-w-lg gap-1 px-2 pb-1.5 pt-1.5"

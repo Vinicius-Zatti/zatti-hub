@@ -59,8 +59,9 @@ export async function datasDisponiveis(spreadsheetId: string | null): Promise<st
  * O escopo é sempre limitado aos grupos que foram DE VERDADE contados na
  * data escolhida (`gruposContadosNoDia`) - se no dia 21/07 só rolou contagem
  * de Limpeza, Pedidos não mostra Proteínas/Hortifrúti/etc como "não
- * contado", porque isso nunca fez parte daquela contagem. `opcoes.grupos`
- * (escolha manual da pessoa) só pode ESTREITAR esse escopo, nunca alargar.
+ * contado", porque isso nunca fez parte daquela contagem. Não existe mais
+ * filtro manual por grupo (26/10/2026): a cotação usa sempre tudo o que foi
+ * contado nas datas escolhidas - se só um setor contou, só ele aparece.
  *
  * `datas` (13/10/2026): mais de uma contagem base junta os setores que
  * contaram em dias diferentes - regra em `lib/contagem/varias-datas.ts`. A
@@ -70,7 +71,6 @@ export async function gerarPedido(
   opcoes: {
     data?: string;
     datas?: string[];
-    grupos?: string[];
     /** Snapshot do escopo da data (fonte banco, com setor cadastrado). Vazio
      * em contagem legada e em unidade na planilha, e aí vale a regra antiga
      * de escopo por grupo contado. Com várias datas, já vem consolidado. */
@@ -132,9 +132,6 @@ export async function gerarPedido(
   }
   const gruposContadosNoDia = ordenarGrupos(Array.from(gruposContados));
 
-  const gruposEscolhidos =
-    opcoes.grupos && opcoes.grupos.length > 0 ? new Set(opcoes.grupos) : null;
-
   const usaSetor = skusDoEscopoConcluido.size > 0;
 
   const itens: SugestaoCompra[] = [];
@@ -145,7 +142,6 @@ export async function gerarPedido(
     } else if (!gruposContados.has(produto.grupo)) {
       continue;
     }
-    if (gruposEscolhidos && !gruposEscolhidos.has(produto.grupo)) continue;
 
     // Sem ponto de reposição o item entra mesmo assim (antes sumia da cotação,
     // 23/10/2026): sem sugestão, com etiqueta, e o comprador adiciona à mão.

@@ -5,14 +5,16 @@ import { CampoBusca } from "@/components/campo-busca";
 import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import { useRouter, usePathname } from "next/navigation";
 import type { Fornecedor, Produto, SugestaoCompra } from "@/lib/types";
-import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
+import { nomeGrupo } from "@/lib/grupos";
 import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos, SEM_FORNECEDOR } from "@/lib/pedido";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { BlocoFornecedorCotacao } from "@/components/bloco-fornecedor-cotacao";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { AvisoVariasContagens, DICA_VARIAS_CONTAGENS, SeletorContagens } from "@/components/seletor-contagens";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
+import { hrefCriarCotacao } from "@/lib/contagem/varias-datas";
 import { formatarQuantidade, textoEdicaoQuantidade } from "@/lib/unidades";
 import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
 import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
@@ -42,7 +44,6 @@ export function PedidoCompras({
   datasUsadas,
   datasDisponiveis,
   andamentoPorData,
-  gruposSelecionados,
   gruposContadosNoDia,
   organizacaoNome,
   pedidoMinimoPorFornecedor,
@@ -60,7 +61,6 @@ export function PedidoCompras({
   datasDisponiveis: string[];
   /** Setores de cada data, pra liberar só as contagens que se completam. */
   andamentoPorData: Record<string, AndamentoSetor[]>;
-  gruposSelecionados: string[];
   gruposContadosNoDia: string[];
   organizacaoNome: string;
   pedidoMinimoPorFornecedor: Record<string, number | null>;
@@ -83,18 +83,9 @@ export function PedidoCompras({
 
   // `data` leva todas as contagens marcadas separadas por vírgula; o servidor
   // só aceita datas que existem na unidade e põe a mais recente como base.
-  function atualizarUrl(novasDatas: string[], novosGrupos: string[]) {
-    const params = new URLSearchParams();
-    if (novasDatas.length > 0) params.set("data", novasDatas.join(","));
-    if (novosGrupos.length > 0) params.set("grupos", novosGrupos.join(","));
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
-  }
-
-  function alternarGrupo(codigo: string) {
-    const ativo = gruposSelecionados.includes(codigo);
-    const novos = ativo ? gruposSelecionados.filter((g) => g !== codigo) : [...gruposSelecionados, codigo];
-    atualizarUrl(datasUsadas, novos);
+  // Não há filtro por grupo (26/10/2026): vale tudo o que foi contado.
+  function atualizarUrl(novasDatas: string[]) {
+    router.push(hrefCriarCotacao(pathname, novasDatas));
   }
 
   // Correção manual da quantidade sugerida - compartilhada entre a tabela de
@@ -113,19 +104,16 @@ export function PedidoCompras({
   const [itensNovos, setItensNovos] = useState<SugestaoCompra[]>([]);
   const [novoProdutoAberto, setNovoProdutoAberto] = useState(false);
   const [avisoNovoProduto, setAvisoNovoProduto] = useState<string | null>(null);
-  // Trocar contagem ou escopo (router.push não remonta este componente) zera as
+  // Trocar de contagem (router.push não remonta este componente) zera as
   // linhas cadastradas aqui: a partir daí vale o que o servidor devolve.
-  const chaveTela = `${datasUsadas.join(",")}|${gruposSelecionados.join(",")}`;
+  const chaveTela = datasUsadas.join(",");
   const [chaveItensNovos, setChaveItensNovos] = useState(chaveTela);
   if (chaveItensNovos !== chaveTela) {
     setChaveItensNovos(chaveTela);
     setItensNovos([]);
     setAvisoNovoProduto(null);
   }
-  const itensTela = useMemo(
-    () => mesclarItensNovos(itens, itensNovos, gruposSelecionados),
-    [itens, itensNovos, gruposSelecionados],
-  );
+  const itensTela = useMemo(() => mesclarItensNovos(itens, itensNovos), [itens, itensNovos]);
   const skusNovos = useMemo(() => new Set(itensNovos.map((i) => i.sku)), [itensNovos]);
   const temForaDaContagem = itensTela.some((i) => skusNovos.has(i.sku) || i.alerta === ALERTA_FORA_DA_CONTAGEM);
 
@@ -236,14 +224,12 @@ export function PedidoCompras({
   function produtoCadastrado(produto: Produto) {
     setNovoProdutoAberto(false);
     const item = produtoParaSugestaoCompra(produto);
-    const foraDoFiltro = gruposSelecionados.length > 0 && !gruposSelecionados.includes(produto.grupo);
     setItensNovos((atual) => incluirPorSku(atual, item));
-    if (podeConfirmar && !foraDoFiltro) setEditando((e) => ({ ...e, [item.sku]: "" }));
+    if (podeConfirmar) setEditando((e) => ({ ...e, [item.sku]: "" }));
     setAvisoNovoProduto(
       avisoProdutoCotacao({
         nome: produto.nome,
         grupoNome: nomeGrupo(produto.grupo),
-        foraDoFiltro,
         podeDigitar: podeConfirmar,
         avisarSetor: cadastroRapidoProduto?.avisarSetor ?? false,
       }),
@@ -256,14 +242,15 @@ export function PedidoCompras({
   }, 0);
 
   return (
-    <div className="flex flex-col gap-5 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-5 pb-10" data-tabela-larga>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-3xl font-bold text-azul-noite">Criar Cotação</h1>
           <p className="text-sm text-cinza-medio">
-            Todo mundo do escopo escolhido, pra conferir se o pedido foi montado certo - inclusive quem
-            não precisa comprar. Confirmar já grava na hora. Depois, compartilha a cotação de cada
-            fornecedor lá embaixo.
+            Tudo o que foi contado {variasContagens ? "nas contagens escolhidas" : "na contagem escolhida"}, pra
+            conferir se o pedido foi montado certo - inclusive o que não precisa comprar. Confirmar já
+            grava na hora. Depois, compartilha a cotação de cada fornecedor lá embaixo.
           </p>
         </div>
         {cadastroRapidoProduto && (
@@ -313,47 +300,8 @@ export function PedidoCompras({
           datasDisponiveis={datasDisponiveis}
           datasUsadas={datasUsadas}
           andamentoPorData={andamentoPorData}
-          onChange={(novasDatas) => atualizarUrl(novasDatas, gruposSelecionados)}
+          onChange={atualizarUrl}
         />
-
-        <div className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-          Escopo
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => atualizarUrl(datasUsadas, [])}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                gruposSelecionados.length === 0
-                  ? "border-azul-noite bg-azul-noite text-branco"
-                  : "border-cinza-claro text-cinza-medio hover:border-azul-noite"
-              }`}
-            >
-              Pedido completo
-            </button>
-            {GRUPO_OPCOES.map((g) => (
-              <button
-                key={g.codigo}
-                type="button"
-                onClick={() => alternarGrupo(g.codigo)}
-                disabled={!gruposContadosNoDia.includes(g.codigo)}
-                title={
-                  !gruposContadosNoDia.includes(g.codigo)
-                    ? variasContagens
-                      ? "Não foi contado nessas contagens"
-                      : "Não foi contado nessa data"
-                    : undefined
-                }
-                className={`rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-30 ${
-                  gruposSelecionados.includes(g.codigo)
-                    ? "border-ambar bg-ambar/10 text-ambar"
-                    : "border-cinza-claro text-cinza-medio hover:border-ambar"
-                }`}
-              >
-                {g.descricao}
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div className="ml-auto text-sm text-cinza-medio">
           Total do pedido{" "}
@@ -377,7 +325,7 @@ export function PedidoCompras({
 
       {itensTela.length === 0 && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
-          Nenhum produto ativo nesse escopo.
+          Nenhum produto ativo {variasContagens ? "nessas contagens" : "nessa contagem"}.
         </div>
       )}
 
@@ -390,6 +338,7 @@ export function PedidoCompras({
           </p>
           <div className="mb-3 flex flex-col gap-1">
             <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item da conferência por nome ou SKU" />
+            <DicaVirarCelular />
             {buscando && (
               <p className="text-xs text-cinza-medio">
                 {gruposVisiveis.length === 0

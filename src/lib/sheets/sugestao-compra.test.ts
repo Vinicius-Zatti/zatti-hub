@@ -287,3 +287,30 @@ describe("varias contagens base (13/10/2026)", () => {
     expect(resultado.setoresPendentes).toEqual(["Bar"]);
   });
 });
+
+describe("cotação sem filtro por grupo (26/10/2026)", () => {
+  it("traz todos os grupos contados na data e nenhum que não foi contado", async () => {
+    listProdutosMock.mockResolvedValue([
+      produto("HORLTA001", 5, "HOR"),
+      produto("BEBCOC001", 24, "BEB"),
+      produto("LIMDET001", 2, "LIM"),
+    ]);
+    listInventarioMock.mockResolvedValue([item("HORLTA001", 2, undefined, "HOR"), item("BEBCOC001", 6, undefined, "BEB")]);
+
+    const resultado = await gerarPedido({ data: DATA }, null);
+
+    expect(resultado.itens.map((i) => i.sku).sort()).toEqual(["BEBCOC001", "HORLTA001"]);
+    expect(resultado.gruposContadosNoDia).toEqual(expect.arrayContaining(["BEB", "HOR"]));
+    expect(resultado.gruposContadosNoDia).not.toContain("LIM");
+  });
+
+  it("opção grupos de chamada antiga não estreita mais a lista", async () => {
+    listProdutosMock.mockResolvedValue([produto("HORLTA001", 5, "HOR"), produto("BEBCOC001", 24, "BEB")]);
+    listInventarioMock.mockResolvedValue([item("HORLTA001", 2, undefined, "HOR"), item("BEBCOC001", 6, undefined, "BEB")]);
+
+    const opcoesAntigas = { data: DATA, grupos: ["BEB"] } as Parameters<typeof gerarPedido>[0];
+    const { itens } = await gerarPedido(opcoesAntigas, null);
+
+    expect(itens.map((i) => i.sku).sort()).toEqual(["BEBCOC001", "HORLTA001"]);
+  });
+});

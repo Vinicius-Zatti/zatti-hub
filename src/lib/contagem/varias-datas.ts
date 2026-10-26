@@ -18,7 +18,7 @@ import { ordenarDatasContagemBase } from "@/lib/pedido";
 /** Parâmetro de URL como o Next entrega: texto, lista (chave repetida, ex.
  * `?data=11/10/2026&data=12/10/2026`) ou ausente. Vira a lista de valores
  * separados por vírgula, sem vazios e sem repetir - ainda sem validar nada
- * (`?data=`, `?grupos=`). */
+ * (`?data=`). */
 export function listaDoParametro(param: string | string[] | undefined): string[] {
   const partes = (Array.isArray(param) ? param : [param ?? ""]).flatMap((valor) =>
     typeof valor === "string" ? valor.split(",") : [],
@@ -199,4 +199,12 @@ export function motivoBloqueioContagem(
   return setoresPendentesDe(andamento, [candidata]).size === 0
     ? `contagem de ${diaMes(candidata)} já está completa`
     : "não completa nenhum setor pendente";
+}
+
+/** Link da Criar Cotação para as contagens marcadas. Só leva `?data=`: o
+ * filtro por grupo saiu em 26/10/2026 e um `?grupos=` de link antigo é
+ * ignorado pela página e some no próximo clique. */
+export function hrefCriarCotacao(pathname: string, datas: string[]): string {
+  if (datas.length === 0) return pathname;
+  return `${pathname}?${new URLSearchParams({ data: datas.join(",") }).toString()}`;
 }

@@ -74,7 +74,9 @@ export function TabelaRolavel({
   const { scrollRef, handlers, arrastando } = useArrastarParaRolar<HTMLDivElement>();
 
   return (
-    <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : "flex flex-col gap-2"}>
+    // Celular deitado (26/10/2026): em tela de tabela larga a tabela usa quase
+    // a altura toda; na tela cheia, borda e espaço menores sobram para as linhas.
+    <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3 deitado:gap-1 deitado:p-2" : "flex flex-col gap-2"}>
       <div className="flex items-center justify-end">
         <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
       </div>
@@ -85,7 +87,7 @@ export function TabelaRolavel({
         aria-label={ariaLabel}
         tabIndex={0}
         className={`${className} overflow-auto overscroll-x-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar ${
-          expandido ? "!min-h-0 !max-h-none flex-1" : ""
+          expandido ? "!min-h-0 !max-h-none flex-1" : "group-has-[[data-tabela-larga]]/app:deitado:max-h-[calc(100dvh-4rem)]"
         } ${arrastando ? "cursor-grabbing select-none" : "cursor-grab"}`}
       >
         {children}
