@@ -4,9 +4,19 @@
 // instalar o app (PR #56): arquivos em `public/videos/` (h264, faststart, capa
 // jpg), `preload="none"` e nunca tocam sozinhos.
 
-export type IdVideoAjuda = "boas-vindas" | "contagem";
+export type IdVideoAjuda = "boas-vindas" | "contagem" | "cotacao" | "espelhos";
 
-export type VideoAjuda = { titulo: string; src: string; capa: string; duracao: string };
+export type VideoAjuda = {
+  titulo: string;
+  src: string;
+  capa: string;
+  duracao: string;
+  /** Tamanho do quadro do vídeo: o player tira daí a proporção, sem cortar nem
+   * deformar. Os verticais (768x1664) cabem na caixa estreita; os horizontais
+   * (1664x768, telas de tabela larga) abrem na caixa larga. */
+  largura: number;
+  altura: number;
+};
 
 export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
   "boas-vindas": {
@@ -14,14 +24,39 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-boas-vindas.mp4",
     capa: "/videos/zatti-hub-boas-vindas-capa.jpg",
     duracao: "2 min",
+    largura: 768,
+    altura: 1664,
   },
   contagem: {
     titulo: "Como fazer a contagem de estoque",
     src: "/videos/zatti-hub-contagem-de-estoque.mp4",
     capa: "/videos/zatti-hub-contagem-de-estoque-capa.jpg",
     duracao: "2 min",
+    largura: 768,
+    altura: 1664,
+  },
+  cotacao: {
+    titulo: "Como fazer a cotação",
+    src: "/videos/zatti-hub-criar-cotacao.mp4",
+    capa: "/videos/zatti-hub-criar-cotacao-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  espelhos: {
+    titulo: "Como usar o Editor de espelhos",
+    src: "/videos/zatti-hub-editor-de-espelhos.mp4",
+    capa: "/videos/zatti-hub-editor-de-espelhos-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
   },
 };
+
+/** Vídeo deitado: o player abre na caixa larga e usa a altura da tela. */
+export function ehVideoHorizontal(video: Pick<VideoAjuda, "largura" | "altura">): boolean {
+  return video.largura > video.altura;
+}
 
 /** Gravado em `tours_vistos` (mesma tabela do tour, por usuário) quando o
  * cartão de boas-vindas aparece: ele é oferecido uma vez só, em qualquer aparelho. */

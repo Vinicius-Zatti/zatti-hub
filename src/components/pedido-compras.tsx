@@ -20,6 +20,7 @@ import { confirmarItemAction } from "@/app/(app)/estoque/pedidos/cotacoes/action
 import { useSincronizarCotacao } from "@/components/use-sincronizar-cotacao";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { NovoProdutoForm } from "@/components/novo-produto-form";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import {
   ALERTA_FORA_DA_CONTAGEM,
   avisoProdutoCotacao,
@@ -252,6 +253,10 @@ export function PedidoCompras({
             conferir se o pedido foi montado certo - inclusive o que não precisa comprar. Confirmar já
             grava na hora. Depois, compartilha a cotação de cada fornecedor lá embaixo.
           </p>
+          {/* Vídeo da cotação (26/10/2026), mesmo link discreto da Contagem. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="cotacao" pergunta="Como fazer a cotação?" />
+          </div>
         </div>
         {cadastroRapidoProduto && (
           <button

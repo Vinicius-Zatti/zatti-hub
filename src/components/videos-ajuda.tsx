@@ -2,12 +2,13 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import { ModalFlutuante } from "@/components/modal-flutuante";
-import { VIDEOS_AJUDA, type IdVideoAjuda } from "@/lib/videos-ajuda/regras";
+import { ehVideoHorizontal, VIDEOS_AJUDA, type IdVideoAjuda } from "@/lib/videos-ajuda/regras";
 
 // Vídeos explicativos dentro do app (26/10/2026). Um player só para o shell da
 // Navegação V2, no mesmo `ModalFlutuante` do convite de instalar (PR #56):
 // abre pelo cartão de boas-vindas (primeiro acesso, `navegacao-v2/tour-modulo.tsx`),
-// pelo item "Vídeo de boas-vindas" do menu e pelo link do começo da Contagem.
+// pelo item "Vídeo de boas-vindas" do menu e pelos links do começo da Contagem,
+// de Criar cotação e do Editor de espelhos (`LinkVideoAjuda`).
 // Nunca toca sozinho (`preload="none"`, sem autoplay).
 
 const AbrirVideoContexto = createContext<((id: IdVideoAjuda) => void) | null>(null);
@@ -21,34 +22,58 @@ export function VideosAjudaProvider({ children }: { children: React.ReactNode })
   const [aberto, setAberto] = useState<IdVideoAjuda | null>(null);
   const abrir = useCallback((id: IdVideoAjuda) => setAberto(id), []);
   const video = aberto ? VIDEOS_AJUDA[aberto] : null;
+  const horizontal = video !== null && ehVideoHorizontal(video);
 
   return (
     <AbrirVideoContexto.Provider value={abrir}>
       {children}
-      <ModalFlutuante aberto={video !== null} onFechar={() => setAberto(null)}>
+      {/* Vídeo deitado (Criar cotação, Editor de espelhos): caixa larga no desktop e
+          no celular deitado; com o celular em pé ele ocupa a largura e fica pequeno,
+          por isso a abertura do vídeo pede para virar o celular. */}
+      <ModalFlutuante aberto={video !== null} onFechar={() => setAberto(null)} larga={horizontal} cheiaDeitado={horizontal}>
         {video && (
           <>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-bold text-azul-noite">{video.titulo}</h2>
+              <h2 className={`text-base font-bold text-azul-noite ${horizontal ? "deitado:text-sm" : ""}`}>{video.titulo}</h2>
               <button
                 type="button"
                 onClick={() => setAberto(null)}
-                className="min-h-10 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-semibold text-cinza-medio transition-colors hover:bg-branco hover:text-azul-noite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+                className={`min-h-10 shrink-0 ${horizontal ? "deitado:min-h-8" : ""} whitespace-nowrap rounded-lg px-3 text-sm font-semibold text-cinza-medio transition-colors hover:bg-branco hover:text-azul-noite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar`}
               >
                 Fechar o vídeo
               </button>
             </div>
-            <video
-              key={video.src}
-              src={video.src}
-              poster={video.capa}
-              controls
-              playsInline
-              preload="none"
-              className="mx-auto mt-3 max-h-[72vh] w-auto max-w-full rounded-xl bg-azul-noite"
-            >
-              Seu navegador não abriu o vídeo.
-            </video>
+            {horizontal ? (
+              // width/height do quadro dão a proporção (nada corta nem deforma); a
+              // largura cede quando falta altura, para o vídeo caber inteiro na tela
+              // (a altura livre desconta a moldura do modal, o título e o espaço).
+              <video
+                key={video.src}
+                src={video.src}
+                poster={video.capa}
+                width={video.largura}
+                height={video.altura}
+                controls
+                playsInline
+                preload="none"
+                style={{ "--proporcao-video": video.largura / video.altura } as React.CSSProperties}
+                className="mx-auto mt-3 block h-auto w-[min(100%,calc((92dvh-6rem)*var(--proporcao-video)))] rounded-xl bg-azul-noite deitado:mt-2 deitado:w-[min(100%,calc((100dvh-5.5rem)*var(--proporcao-video)))]"
+              >
+                Seu navegador não abriu o vídeo.
+              </video>
+            ) : (
+              <video
+                key={video.src}
+                src={video.src}
+                poster={video.capa}
+                controls
+                playsInline
+                preload="none"
+                className="mx-auto mt-3 max-h-[72vh] w-auto max-w-full rounded-xl bg-azul-noite"
+              >
+                Seu navegador não abriu o vídeo.
+              </video>
+            )}
           </>
         )}
       </ModalFlutuante>
@@ -136,20 +161,27 @@ export function ItemMenuVideoBoasVindas({
   );
 }
 
-/** Começo da Contagem: o (?) do cabeçalho só reabre o tour, então o vídeo fica num link discreto. */
-export function LinkVideoContagem() {
+/** Link discreto no começo da tela: o (?) do cabeçalho só reabre o tour, então o vídeo fica aqui. */
+export function LinkVideoAjuda({ id, pergunta }: { id: IdVideoAjuda; pergunta: string }) {
   const abrirVideo = useAbrirVideoAjuda();
   if (!abrirVideo) return null;
   return (
     <button
       type="button"
-      onClick={() => abrirVideo("contagem")}
-      className="mt-1 inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-azul-petroleo underline decoration-ambar underline-offset-4 transition-colors hover:text-azul-noite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+      onClick={() => abrirVideo(id)}
+      className="mt-1 inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-left text-sm font-semibold text-azul-petroleo underline decoration-ambar underline-offset-4 transition-colors hover:text-azul-noite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
     >
       <IconePlay className="h-4 w-4" />
-      Como contar? Ver o vídeo ({VIDEOS_AJUDA.contagem.duracao})
+      <span>
+        {pergunta} <span className="whitespace-nowrap">Ver o vídeo ({VIDEOS_AJUDA[id].duracao})</span>
+      </span>
     </button>
   );
+}
+
+/** Começo da Contagem. */
+export function LinkVideoContagem() {
+  return <LinkVideoAjuda id="contagem" pergunta="Como contar?" />;
 }
 
 export function IconePlay({ className = "h-5 w-5" }: { className?: string }) {

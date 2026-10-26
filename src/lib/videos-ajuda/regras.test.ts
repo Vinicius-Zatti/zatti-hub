@@ -3,6 +3,7 @@ import { ehModuloTour } from "@/lib/tour/passos";
 import {
   CHAVE_VIDEO_BOAS_VINDAS,
   deveOferecerBoasVindas,
+  ehVideoHorizontal,
   proximoAvisoPrimeiroAcesso,
   VIDEOS_AJUDA,
 } from "./regras";
@@ -67,5 +68,12 @@ describe("VIDEOS_AJUDA", () => {
       expect(video.src).toMatch(/^\/videos\/[a-z0-9-]+\.mp4$/);
       expect(video.capa).toMatch(/^\/videos\/[a-z0-9-]+-capa\.jpg$/);
     }
+  });
+
+  it("cotação e espelhos são deitados (caixa larga); boas-vindas e contagem seguem em pé", () => {
+    expect(ehVideoHorizontal(VIDEOS_AJUDA.cotacao)).toBe(true);
+    expect(ehVideoHorizontal(VIDEOS_AJUDA.espelhos)).toBe(true);
+    expect(ehVideoHorizontal(VIDEOS_AJUDA["boas-vindas"])).toBe(false);
+    expect(ehVideoHorizontal(VIDEOS_AJUDA.contagem)).toBe(false);
   });
 });
