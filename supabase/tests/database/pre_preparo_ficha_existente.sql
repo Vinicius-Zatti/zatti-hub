@@ -81,8 +81,8 @@ values
 
 insert into produto_conversoes (unidade_id, produto_sku, unidade_saida, fator_por_unidade_base)
 values
-  ('uni-fe', 'PRECEBCAR', 'G', 1000),
-  ('uni-fe', 'PREBARGOI', 'G', 1000);
+  ('uni-fe', 'PRECEBCAR', 'UN', 40),
+  ('uni-fe', 'PREBARGOI', 'UN', 25);
 
 -- Histórico: a cebola e a maionese de limão já foram contadas; a cebola tem extrato.
 insert into contagens (id, unidade_id, data, mes, modalidade)
@@ -179,7 +179,7 @@ select results_eq(
 select results_eq(
   $$select produto_sku, unidade_saida, fator_por_unidade_base from produto_conversoes
      where unidade_id = 'uni-fe' and produto_sku in ('PREBARGOI', 'PREMOLBGO')$$,
-  $$values ('PREMOLBGO'::text, 'G'::text, 1000.0000::numeric(14,4))$$,
+  $$values ('PREMOLBGO'::text, 'UN'::text, 25.0000::numeric(14,4))$$,
   'a conversão vai junto para o SKU novo'
 );
 select is(
