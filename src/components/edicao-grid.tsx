@@ -17,6 +17,7 @@ import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { ControlesTabela } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { StatCard } from "@/components/stat-card";
 import { InfoIcon } from "@/components/info-icon";
 import { CampoNumero } from "@/components/campo-numero";
@@ -103,7 +104,8 @@ export function EdicaoGrid({
   fichasParecidas?: Record<string, ParPrePreparo[]>;
 }) {
   return (
-    <div className="flex flex-col gap-8 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-8 pb-10" data-tabela-larga>
       {pendentes.length > 0 && (
         <div>
           <h2 className="mb-1 font-display text-xl font-bold text-azul-noite">
@@ -410,9 +412,11 @@ function CadastroSection({
         </button>
         <StatCard label="Grupos" value={String(new Set(produtos.map((p) => p.grupo)).size)} />
       </div>
-      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
+      {/* Tela cheia com o celular deitado: borda e espaço menores, como em `TabelaRolavel`,
+          e sem o título e a explicação, que comiam um terço da altura. */}
+      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3 deitado:gap-1 deitado:p-2" : ""}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-xl font-bold text-azul-noite">
+          <h2 className={`font-display text-xl font-bold text-azul-noite ${expandido ? "deitado:hidden" : ""}`}>
             Cadastro completo ({filtrados.length}
             {filtrados.length !== produtos.length ? ` de ${produtos.length}` : ""})
           </h2>
@@ -458,14 +462,15 @@ function CadastroSection({
               : "Nenhum produto tinha o que recalcular (ou falta Qtd. Base/Embalagem pra saber a conversão)."}
           </p>
         )}
-        <p className="text-xs text-cinza-medio">
+        <p className={`text-xs text-cinza-medio ${expandido ? "deitado:hidden" : ""}`}>
           Células em destaque estão vazias. Segura o fundo da tabela (ou a barra de espaço, fora de
           um campo) pra arrastar e rolar.
         </p>
+        {!expandido && <DicaVirarCelular />}
         <div
           ref={scrollRef}
           {...handlers}
-          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto overscroll-x-contain rounded-lg border border-cinza-claro bg-branco select-none ${
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh] group-has-[[data-tabela-larga]]/app:deitado:max-h-[calc(100dvh-4rem)]"} overflow-auto overscroll-x-contain rounded-lg border border-cinza-claro bg-branco select-none ${
             arrastando ? "cursor-grabbing" : "cursor-grab"
           }`}
         >
