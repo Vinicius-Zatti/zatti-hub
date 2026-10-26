@@ -101,7 +101,7 @@ describe("Edição de Dados grava só o que mudou (parecer do Codex de 26/10/202
       "uni-1"
     );
     // Nada de linha inteira (que mandaria fornecedor_2 vazio de volta).
-    expect(banco.salvarProdutosBanco).toHaveBeenCalledWith([], "uni-1");
+    expect(banco.salvarProdutosBanco).not.toHaveBeenCalled();
   });
 
   it("Salvar todos: uma chamada só, linhas sem mudança ficam de fora", async () => {
@@ -119,10 +119,17 @@ describe("Edição de Dados grava só o que mudou (parecer do Codex de 26/10/202
     );
   });
 
-  it("produto sem original (não existia quando a grade abriu) segue gravando inteiro", async () => {
-    await salvarProdutosEditados([{ produto }], null);
-    expect(banco.salvarCamposProdutosBanco).toHaveBeenCalledWith([], "uni-1");
-    expect(banco.salvarProdutosBanco).toHaveBeenCalledWith([produto], "uni-1");
+  it("sem original ou com SKU diferente: recusa, nunca grava a linha inteira (parecer v2)", async () => {
+    await expect(salvarProdutosEditados([{ produto }], null)).rejects.toThrow(/Recarregue a página/);
+    await expect(
+      salvarProdutosEditados([{ produto, original: { ...produto, sku: "HORCEB001" } }], null)
+    ).rejects.toThrow(/Recarregue a página/);
+    // Lote com uma linha ruim não grava nenhuma.
+    await expect(
+      salvarProdutosEditados([{ produto: { ...produto, nome: "x" }, original: produto }, { produto }], null)
+    ).rejects.toThrow();
+    expect(banco.salvarCamposProdutosBanco).not.toHaveBeenCalled();
+    expect(banco.salvarProdutosBanco).not.toHaveBeenCalled();
   });
 
   it("função ausente no banco: falha, sem cair na linha inteira", async () => {

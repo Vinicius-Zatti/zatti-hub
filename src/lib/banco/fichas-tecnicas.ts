@@ -1108,7 +1108,7 @@ export async function salvarConversaoProduto(params: {
 }
 
 /** "Salvar todos" da grade de Conversões - um upsert só com todas as linhas
- * alteradas, mesmo padrão de `salvarProdutosBanco`. */
+ * alteradas, uma chamada só para o lote, como `salvarCamposProdutosBanco`. */
 export async function salvarConversoesProduto(params: {
   unidadeId: string;
   entradas: {

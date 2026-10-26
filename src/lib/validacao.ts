@@ -67,6 +67,44 @@ export const produtoSchema = z
 
 export const produtosSchema = z.array(produtoSchema).min(1).max(500);
 
+/** O produto como a grade da Edição de Dados o carregou, mandado junto ao
+ * salvar só para o servidor saber o que mudou (nunca é gravado). Tolerante
+ * de propósito (parecer do Codex de 26/10/2026): o banco tem produto com
+ * unidade vazia, nome vazio, número fora da faixa da tela etc., e um original
+ * assim tem que continuar valendo como base da comparação - se ele fosse
+ * descartado, a linha inteira voltaria a ser gravada e apagaria um fornecedor
+ * ligado pela cotação. Só o produto editado passa pela validação estrita. */
+const textoOriginal = z
+  .string()
+  .max(10_000)
+  .nullable()
+  .transform((v) => (v ?? "").trim());
+const numeroOriginal = z.number().finite().nullable();
+export const produtoOriginalSchema = z
+  .object({
+    sku: identificador,
+    posicao: numeroOriginal,
+    grupo: textoOriginal,
+    nome: textoOriginal,
+    unidadeBase: textoOriginal,
+    precoUnitario: numeroOriginal,
+    estoqueNecessarioSemana: numeroOriginal,
+    estoqueMinimo: numeroOriginal,
+    nomeCompra: textoOriginal,
+    unidadeEmbalagemFornecedor: textoOriginal,
+    qtdUnidadeBasePorEmbalagem: numeroOriginal,
+    precoFornecedor: numeroOriginal,
+    fornecedor1: textoOriginal,
+    fornecedor2: textoOriginal,
+    fornecedor3: textoOriginal,
+    fornecedor4: textoOriginal,
+    observacoes: textoOriginal,
+    ativo: z.boolean(),
+    revenda: z.boolean(),
+    prePreparo: z.boolean().optional(),
+  })
+  .strict();
+
 export const fornecedorSchema = z
   .object({
     codigo: identificador,
