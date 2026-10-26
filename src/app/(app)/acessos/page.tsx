@@ -1,35 +1,22 @@
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { requireMaster } from "@/lib/acesso";
-import { AcoesVinculo } from "@/components/acoes-vinculo";
-import { GerarSenhaProvisoria } from "@/components/gerar-senha-provisoria";
 import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { ResponsavelAvisos, TextoResponsavelAvisos } from "@/components/garante/responsavel-avisos";
 import { definirResponsavelAvisosGaranteAction } from "./actions";
 import { carregarAvisosGaranteAcessos, carregarPainelAcessos } from "./dados";
-
-const ROTULO_TIPO_CLIENTE: Record<string, string> = {
-  consultoria: "Consultoria",
-  saas: "SaaS",
-  hybrid: "Híbrido",
-};
-
-const ROTULO_ROLE: Record<string, string> = {
-  master: "Master",
-  gestao: "Gestão",
-  operacional: "Operacional",
-};
-
-function Pill({ tom, children }: { tom: "verde" | "vermelho" | "ambar" | "cinza"; children: React.ReactNode }) {
-  const cores = {
-    verde: "bg-verde/10 text-verde",
-    vermelho: "bg-vermelho/10 text-vermelho",
-    ambar: "bg-ambar/15 text-ambar",
-    cinza: "bg-cinza-claro text-cinza-medio",
-  }[tom];
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cores}`}>{children}</span>;
-}
+import {
+  AcoesDoVinculo,
+  CartoesAvisosGarante,
+  CartoesOrganizacoes,
+  CartoesUnidades,
+  CartoesVinculos,
+  Pill,
+  ROTULO_ROLE,
+  ROTULO_TIPO_CLIENTE,
+  tomSituacaoVinculo,
+} from "./cartoes";
 
 export default async function AcessosPage() {
   const [{ organizacoes, unidades, vinculos }, avisosGarante, acesso] = await Promise.all([
@@ -45,6 +32,8 @@ export default async function AcessosPage() {
           Organizações <span className="text-sm font-normal text-cinza-medio">({organizacoes.length})</span>
         </h2>
         <div className="mt-2">
+          <CartoesOrganizacoes organizacoes={organizacoes} />
+          <div className="hidden md:block">
           <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Organizações">
           <table className="w-full text-sm">
             <thead>
@@ -78,6 +67,7 @@ export default async function AcessosPage() {
             </tbody>
           </table>
           </TabelaRolavel>
+          </div>
         </div>
       </section>
 
@@ -86,6 +76,8 @@ export default async function AcessosPage() {
           Unidades <span className="text-sm font-normal text-cinza-medio">({unidades.length})</span>
         </h2>
         <div className="mt-2">
+          <CartoesUnidades unidades={unidades} />
+          <div className="hidden md:block">
           <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Unidades">
           <table className="w-full text-sm">
             <thead>
@@ -139,6 +131,7 @@ export default async function AcessosPage() {
             </tbody>
           </table>
           </TabelaRolavel>
+          </div>
         </div>
       </section>
 
@@ -150,6 +143,8 @@ export default async function AcessosPage() {
           Quem recebe no WhatsApp, pelo Vini, os avisos de checklist atrasado, não concluído e item crítico fora da meta. Só unidades com o Checklist Garante ligado; a gestão do cliente também troca em Garante &gt; Modelos &gt; Regras da unidade.
         </p>
         <div className="mt-2">
+          <CartoesAvisosGarante avisos={avisosGarante} />
+          <div className="hidden md:block">
           <TabelaRolavel className="max-h-[40vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Quem acompanha o Garante por unidade">
             <table className="w-full text-sm">
               <thead>
@@ -190,6 +185,7 @@ export default async function AcessosPage() {
               </tbody>
             </table>
           </TabelaRolavel>
+          </div>
         </div>
       </section>
 
@@ -198,6 +194,8 @@ export default async function AcessosPage() {
           Usuários e vínculos <span className="text-sm font-normal text-cinza-medio">({vinculos.length})</span>
         </h2>
         <div className="mt-2">
+          <CartoesVinculos vinculos={vinculos} unidades={unidades} meuUserId={acesso.userId} />
+          <div className="hidden md:block">
           <TabelaRolavel className="max-h-[50vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Usuários e vínculos">
           <table className="w-full min-w-[820px] text-sm">
             <thead>
@@ -229,7 +227,7 @@ export default async function AcessosPage() {
                   <td className="px-3 py-2">{v.unidadeNome ?? "Todas as unidades"}</td>
                   <td className="px-3 py-2 text-center">{ROTULO_ROLE[v.role] ?? v.role}</td>
                   <td className="px-3 py-2 text-center">
-                    <Pill tom={v.status === "ativo" ? "verde" : v.status === "revogado" ? "vermelho" : "ambar"}>
+                    <Pill tom={tomSituacaoVinculo(v.status)}>
                       {v.status}
                     </Pill>
                   </td>
@@ -239,47 +237,14 @@ export default async function AcessosPage() {
                     </Pill>
                   </td>
                   <td className="px-3 py-2">
-                    {v.role === "master" ? (
-                      <div className="flex flex-col items-end gap-1">
-                        <p className="text-right text-xs text-cinza-medio">Gerenciado fora do painel</p>
-                        {v.userId !== acesso.userId && v.status !== "revogado" && (
-                          <GerarSenhaProvisoria
-                            modo="master"
-                            vinculoId={v.id}
-                            nomeExibido={v.nome ?? v.email}
-                            whatsappFinal={v.whatsappFinal}
-                            className="rounded-md border border-ambar px-2 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10 disabled:opacity-40"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <AcoesVinculo
-                        vinculoId={v.id}
-                        userId={v.userId}
-                        status={v.status}
-                        nomeExibido={v.nome ?? v.email}
-                        whatsappFinal={v.whatsappFinal}
-                        podeGerarProvisoria={v.userId !== acesso.userId && v.status !== "revogado"}
-                        edicao={
-                          v.userId !== acesso.userId && v.status !== "revogado"
-                            ? {
-                                role: v.role as "gestao" | "operacional",
-                                unidadeId: v.unidadeId,
-                                unidades: unidades
-                                  .filter((u) => u.organizacaoId === v.organizacaoId && u.ativo)
-                                  .map((u) => ({ id: u.id, nome: u.nome })),
-                                organizacaoNome: v.organizacaoNome,
-                              }
-                            : null
-                        }
-                      />
-                    )}
+                    <AcoesDoVinculo vinculo={v} unidades={unidades} meuUserId={acesso.userId} layout="tabela" />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           </TabelaRolavel>
+          </div>
         </div>
       </section>
     </div>
