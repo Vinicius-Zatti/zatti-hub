@@ -764,7 +764,10 @@ function LinhaComponente({
 
   return (
     <div className="rounded-md border border-cinza-claro p-3">
-      <div className="flex items-center justify-between gap-2">
+      {/* No celular o tipo ocupa a linha inteira e as ações descem pra linha de
+          baixo: o select mede pela opção mais longa e empurrava "Remover" pra
+          fora da tela em 360-390px. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <select
           value={componente.tipo}
           onChange={(e) =>
@@ -776,19 +779,34 @@ function LinhaComponente({
               unidadeUso: "",
             })
           }
-          className="rounded-md border border-cinza-claro px-2 py-1 text-xs font-semibold text-cinza"
+          aria-label="Tipo do componente"
+          className="w-full min-w-0 rounded-md border border-cinza-claro px-2 py-1 text-xs font-semibold text-cinza sm:w-auto"
         >
           <option value="produto">Produto do Estoque</option>
           <option value="ficha">Receita (outra ficha - pré-preparo ou venda)</option>
         </select>
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={onSubir} disabled={!podeSubir} className="rounded border border-cinza-claro px-2 py-0.5 text-xs disabled:opacity-30">
+        <div className="flex shrink-0 items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={onSubir}
+            disabled={!podeSubir}
+            aria-label="Subir componente"
+            title="Subir componente"
+            className="rounded border border-cinza-claro px-2 py-0.5 text-xs disabled:opacity-30"
+          >
             ↑
           </button>
-          <button type="button" onClick={onDescer} disabled={!podeDescer} className="rounded border border-cinza-claro px-2 py-0.5 text-xs disabled:opacity-30">
+          <button
+            type="button"
+            onClick={onDescer}
+            disabled={!podeDescer}
+            aria-label="Descer componente"
+            title="Descer componente"
+            className="rounded border border-cinza-claro px-2 py-0.5 text-xs disabled:opacity-30"
+          >
             ↓
           </button>
-          <button type="button" onClick={onRemover} className="text-xs font-semibold text-vermelho">
+          <button type="button" onClick={onRemover} aria-label="Remover componente" className="px-1 text-xs font-semibold text-vermelho">
             Remover
           </button>
         </div>

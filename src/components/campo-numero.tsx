@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatarNumeroCampo, interpretarNumeroDigitado } from "@/lib/numero-campo";
 
 const VAZIO_CLASSE = "border-ambar bg-ambar/10";
 const NORMAL_CLASSE = "border-cinza-claro bg-branco";
@@ -26,32 +27,21 @@ export function CampoNumero({
     setEdicao(value === null ? "" : String(value).replace(".", ","));
   }
 
-  function interpretar(texto: string): number | null {
-    // "R$ 1.500,00" colado ou digitado vale 1500 (antes virava NaN e o campo
-    // aparecia vazio ao sair dele).
-    const limpo = texto.replace(/R\$/gi, "").replace(/\s/g, "");
-    if (limpo === "") {
-      return null;
-    }
-    const num = Number(limpo.replace(/\./g, "").replace(",", "."));
-    return Number.isNaN(num) ? null : num;
-  }
-
   function aoAlterar(texto: string) {
     setEdicao(texto);
     // Atualiza a fonte real enquanto digita. Se deixasse só no blur, o
     // último campo antes de Salvar poderia enviar o valor anterior.
-    onChange(interpretar(texto));
+    onChange(interpretarNumeroDigitado(texto));
   }
 
   function aoDesfocar() {
     // Texto que não virou número fica na tela como foi digitado (campo segue
     // marcado como vazio) - nunca apaga o que a pessoa escreveu.
-    if (edicao !== null && edicao.trim() !== "" && interpretar(edicao) === null) return;
+    if (edicao !== null && edicao.trim() !== "" && interpretarNumeroDigitado(edicao) === null) return;
     setEdicao(null);
   }
 
-  const texto = edicao !== null ? edicao : formatar(value, decimais);
+  const texto = edicao !== null ? edicao : formatarNumeroCampo(value, decimais);
 
   return (
     <input
@@ -66,12 +56,4 @@ export function CampoNumero({
       } ${className}`}
     />
   );
-}
-
-function formatar(value: number | null, decimais: number): string {
-  if (value === null) return "";
-  // minimum = maximum: sem isso, um valor sem parte fracionária (ex: 1300)
-  // aparece sem decimal nenhum enquanto outro com fração (ex: 1,1) aparece
-  // com decimal variável - mesma coluna mostrando formatos diferentes.
-  return value.toLocaleString("pt-BR", { minimumFractionDigits: decimais, maximumFractionDigits: decimais });
 }
