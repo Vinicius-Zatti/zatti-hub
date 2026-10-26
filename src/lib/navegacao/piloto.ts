@@ -1,10 +1,6 @@
-// Navegação V2 (24/10/2026), fase 0: chave do piloto. Só a unidade da lista
-// (id da tabela `unidades`) vê o menu novo em sanfona; todas as outras e a
-// área interna (Zatti HUB do Vinícius) seguem com o menu atual até Vinícius
-// aprovar. Lista provisória: some na fase 8 (liberar para todas as unidades).
-export const UNIDADES_PILOTO_NAVEGACAO: readonly string[] = ["zatti-burger"];
-
+// Navegação V2: piloto no Zatti Burger de 24 a 25/10/2026; liberada para todas as unidades em
+// 26/10/2026 com o ok de Vinícius (fase 8). Só a área interna (Zatti HUB do Vinícius) segue com o
+// menu antigo. O nome da função fica para não mexer nos 40 lugares que a chamam.
 export function usaNavegacaoV2(acesso: { unidadeId: string; areaInterna: boolean }): boolean {
-  if (acesso.areaInterna) return false;
-  return UNIDADES_PILOTO_NAVEGACAO.includes(acesso.unidadeId);
+  return !acesso.areaInterna;
 }

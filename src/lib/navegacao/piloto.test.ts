@@ -1,23 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { UNIDADES_PILOTO_NAVEGACAO, usaNavegacaoV2 } from "./piloto";
+import { usaNavegacaoV2 } from "./piloto";
 
-describe("piloto da Navegação V2", () => {
-  it("a lista começa só com o Zatti Burger", () => {
-    expect(UNIDADES_PILOTO_NAVEGACAO).toEqual(["zatti-burger"]);
-  });
-
-  it("unidade piloto vê o menu novo", () => {
-    expect(usaNavegacaoV2({ unidadeId: "zatti-burger", areaInterna: false })).toBe(true);
-  });
-
-  it("unidade fora do piloto segue com o menu atual", () => {
-    for (const unidadeId of ["zatti-teste", "dom-quixote", "zatti-burger-2", "ZATTI-BURGER", ""]) {
-      expect(usaNavegacaoV2({ unidadeId, areaInterna: false })).toBe(false);
+describe("Navegação V2 liberada para todos (26/10/2026)", () => {
+  it("toda unidade de cliente vê o menu novo", () => {
+    for (const unidadeId of ["zatti-burger", "zatti-teste", "dom-quixote", "the-house-food-fun"]) {
+      expect(usaNavegacaoV2({ unidadeId, areaInterna: false })).toBe(true);
     }
   });
 
-  it("área interna (Zatti HUB do Vinícius) nunca entra no piloto", () => {
-    expect(usaNavegacaoV2({ unidadeId: "zatti-burger", areaInterna: true })).toBe(false);
+  it("área interna (Zatti HUB do Vinícius) segue com o menu antigo", () => {
     expect(usaNavegacaoV2({ unidadeId: "zatti-hub", areaInterna: true })).toBe(false);
   });
 });

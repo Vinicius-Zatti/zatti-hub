@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Barreira de verdade de Configurações > Módulos: a action. `requireMaster` é
 // simulado como o real (redireciona quem não é master); a escrita é
 // `alterarFlagModulo`, compartilhada com /acessos.
-const estado = vi.hoisted(() => ({ role: "master" as string, unidadeId: "zatti-burger" }));
+const estado = vi.hoisted(() => ({ role: "master" as string, unidadeId: "zatti-burger", areaInterna: false }));
 const alterar = vi.hoisted(() => vi.fn());
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/acesso", () => ({
   requireMaster: vi.fn(async () => {
     if (estado.role !== "master") throw new Error("NEXT_REDIRECT /estoque/pedidos");
-    return { role: "master", unidadeId: estado.unidadeId, organizacaoId: "org-burger", areaInterna: false };
+    return { role: "master", unidadeId: estado.unidadeId, organizacaoId: "org-burger", areaInterna: estado.areaInterna };
   }),
 }));
 vi.mock("@/lib/acessos/alterar-flag", () => ({
@@ -23,6 +23,7 @@ const { definirModuloAction } = await import("@/app/(app)/configuracoes/actions"
 beforeEach(() => {
   estado.role = "master";
   estado.unidadeId = "zatti-burger";
+  estado.areaInterna = false;
   alterar.mockReset();
   alterar.mockResolvedValue({ ok: true, mudou: true });
 });
@@ -60,10 +61,10 @@ describe("definirModuloAction", () => {
     );
   });
 
-  it("recusa chave inválida, Estoque (sem chave) e unidade fora do piloto", async () => {
+  it("recusa chave inválida, Estoque (sem chave) e área interna", async () => {
     expect(await definirModuloAction("unidades", true)).toEqual({ erro: "Pedido inválido." });
     expect("erro" in (await definirModuloAction("estoque", false))).toBe(true);
-    estado.unidadeId = "outra-unidade";
+    estado.areaInterna = true;
     expect("erro" in (await definirModuloAction("garante", true))).toBe(true);
     expect(alterar).not.toHaveBeenCalled();
   });
