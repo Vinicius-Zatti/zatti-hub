@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
+import { buscarTudo, buscarTudoEmLotes, TAMANHO_PAGINA } from "@/lib/banco/paginacao";
 import type { Pedido, PedidoItem } from "@/lib/types";
+import type { ParticipacaoCotacao } from "@/lib/pedido";
 import { ErroPublico } from "@/lib/erros";
 import { registrarRecebimentoBanco, type ResultadoRecebimento } from "@/lib/banco/extrato";
 
@@ -318,6 +319,38 @@ export async function desfazerVencedor(params: {
     p_preco_antigo: params.item.precoAntigo,
   });
   if (error) throw erroGravacaoItem(error);
+}
+
+/** Fornecedores que participaram da cotação (unidade + contagem base), por
+ * SKU - ver `cotacao_participacoes` em
+ * 20261026140000_cotacao_participacoes.sql. Com `sku`, só desse item. Sem a
+ * tabela no banco (migration ainda não aplicada) devolve vazio: a tela segue
+ * como antes, sem restaurar o concorrente avulso, em vez de quebrar. */
+export async function listarParticipacoesCotacao(
+  unidadeId: string,
+  dataContagemBase: string,
+  sku?: string
+): Promise<ParticipacaoCotacao[]> {
+  const supabase = await createClient();
+  // Paginação na mão (mesma regra de `buscarTudo`), para enxergar o código do
+  // erro: `buscarTudo` só repassa a mensagem. (fornecedor, sku) é único dentro
+  // da unidade + contagem base, então a ordem é determinística.
+  const todas: ParticipacaoCotacao[] = [];
+  for (let de = 0; ; ) {
+    let consulta = supabase
+      .from("cotacao_participacoes")
+      .select("fornecedor, sku")
+      .eq("unidade_id", unidadeId)
+      .eq("data_contagem_base", dataContagemBase);
+    if (sku) consulta = consulta.eq("sku", sku);
+    const { data, error } = await consulta.order("fornecedor").order("sku").range(de, de + TAMANHO_PAGINA - 1);
+    if (error?.code === "PGRST205" || error?.code === "42P01") return [];
+    if (error) throw new Error(`Não foi possível carregar os fornecedores da cotação: ${error.message}`);
+    const linhas = (data as ParticipacaoCotacao[] | null) ?? [];
+    if (linhas.length === 0) return todas;
+    todas.push(...linhas.map((l) => ({ fornecedor: l.fornecedor, sku: l.sku })));
+    de += linhas.length;
+  }
 }
 
 /** Atualiza só a previsão de entrega de um fornecedor - campo isolado, sem

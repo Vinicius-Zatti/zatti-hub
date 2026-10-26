@@ -559,11 +559,14 @@ export function EditorEspelhos({
       delete novo[sku];
       return novo;
     });
+    // Concorrentes recriados pelo servidor: os da tela mais quem participou da
+    // cotação do item e a tela não conhecia mais (ver `desfazerVencedorAction`).
+    const recriados = Array.from(new Set([...outros, ...resultado.concorrentes]));
     // O concorrente volta com o preço atual do Cadastro apenas como referência.
     // Ele precisa ser confirmado de novo antes de participar da comparação.
     setPrecosTexto((p) => {
       const novo = { ...p };
-      for (const f of outros) {
+      for (const f of recriados) {
         const k = chave(f, sku);
         if (precoAtualCadastro === null) delete novo[k];
         else novo[k] = formatNumero(precoAtualCadastro);
@@ -572,7 +575,7 @@ export function EditorEspelhos({
     });
     setPrecosTextoEmbalagem((p) => {
       const novo = { ...p };
-      for (const f of outros) {
+      for (const f of recriados) {
         const concorrente = itemPorSku(f, sku);
         const k = chave(f, sku);
         if (precoAtualCadastro === null || !concorrente?.qtdUnidadeBasePorEmbalagem) {
@@ -587,7 +590,7 @@ export function EditorEspelhos({
     });
     setPrecosConfirmados((p) => {
       const novo = { ...p };
-      for (const f of outros) novo[chave(f, sku)] = false;
+      for (const f of recriados) novo[chave(f, sku)] = false;
       return novo;
     });
     setConfirmarTroca(null);

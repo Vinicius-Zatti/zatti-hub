@@ -167,3 +167,56 @@ export function vincularFornecedorAoProduto(produto: Produto, fornecedor: string
   if (!livre) return "sem_vaga";
   return { ...produto, [livre]: fornecedor };
 }
+
+/** Participação de um fornecedor na cotação de um item (tabela
+ * `cotacao_participacoes`): nasce quando o item entra no pedido dele e não sai
+ * quando outro fornecedor vence (parecer do Codex de 24/10/2026, ponto 3). */
+export type ParticipacaoCotacao = { fornecedor: string; sku: string };
+
+/** Devolve aos blocos do Editor de Espelhos o item de cada fornecedor que
+ * participou da cotação dele mas não está mais no bloco (perdeu para o
+ * vencedor e o fornecedor não está no Fornecedor 1 a 4 do Cadastro, caso do
+ * "+ Adicionar item" sem vaga ou com vínculo falhado). Sem isso, depois de
+ * recarregar, o desfazer vencedor não sabia que ele existia. O bloco continua
+ * escondendo o item enquanto houver vencedor em outro fornecedor. Nome do
+ * fornecedor resolvido pelo Cadastro como nos pedidos salvos; `itemDoSku`
+ * devolve null para SKU que saiu do Cadastro (fica de fora). */
+export function incluirParticipacoes(
+  itensPorFornecedor: Record<string, SugestaoCompra[]>,
+  participacoes: ParticipacaoCotacao[],
+  fornecedoresCadastro: string[],
+  itemDoSku: (sku: string) => SugestaoCompra | null
+): Record<string, SugestaoCompra[]> {
+  const mapa: Record<string, SugestaoCompra[]> = { ...itensPorFornecedor };
+  for (const participacao of participacoes) {
+    const fornecedor = nomeFornecedorCanonico(participacao.fornecedor, fornecedoresCadastro);
+    const bloco = mapa[fornecedor] ?? [];
+    if (bloco.some((i) => i.sku === participacao.sku)) continue;
+    const item = itemDoSku(participacao.sku);
+    if (!item) continue;
+    mapa[fornecedor] = [...bloco, item];
+  }
+  return mapa;
+}
+
+/** Concorrentes que o desfazer vencedor recria: os que a tela mandou mais os
+ * que participaram da cotação do item (gravados no banco), sem repetir o
+ * mesmo fornecedor com grafia diferente e sem o vencedor atual. A tela pode
+ * ter perdido um concorrente (recarregou, vínculo falhou); o banco não. */
+export function unirConcorrentes(
+  fornecedorAtual: string,
+  daTela: string[],
+  participantes: string[],
+  fornecedoresCadastro: string[]
+): string[] {
+  const vistos = new Set([chaveNormalizada(fornecedorAtual)]);
+  const resultado: string[] = [];
+  for (const bruto of [...daTela, ...participantes]) {
+    const nome = nomeFornecedorCanonico(bruto, fornecedoresCadastro);
+    const chave = chaveNormalizada(nome);
+    if (!nome.trim() || vistos.has(chave)) continue;
+    vistos.add(chave);
+    resultado.push(nome);
+  }
+  return resultado;
+}

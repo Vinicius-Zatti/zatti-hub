@@ -2,8 +2,13 @@ import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listProdutos } from "@/lib/sheets/produtos";
-import { listPedidosPorContagemBase } from "@/lib/pedidos";
-import { agruparPorFornecedor, mesclarPedidosPorFornecedorCanonico, ordenarFornecedores } from "@/lib/pedido";
+import { listPedidosPorContagemBase, listarParticipacoesCotacao } from "@/lib/pedidos";
+import {
+  agruparPorFornecedor,
+  incluirParticipacoes,
+  mesclarPedidosPorFornecedorCanonico,
+  ordenarFornecedores,
+} from "@/lib/pedido";
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
@@ -67,11 +72,12 @@ export default async function EditorEspelhosPage({
   // velocidade): a base é a mais recente das datas escolhidas, a mesma que
   // `gerarPedido` usa. Sem data na URL nem contagem, cai na leitura de depois.
   const dataBase = datasEscolhidas[0];
-  const [{ escopo, andamento }, pedidosDaBase] = await Promise.all([
+  const [{ escopo, andamento }, pedidosDaBase, participacoesDaBase] = await Promise.all([
     porSetor && datasEscolhidas.length > 0
       ? carregarEscopoEAndamentoBanco(acesso.unidadeId, datasEscolhidas, andamentoPorData)
       : { escopo: [], andamento: [] },
     dataBase ? listPedidosPorContagemBase(acesso.unidadeId, dataBase) : null,
+    dataBase ? listarParticipacoesCotacao(acesso.unidadeId, dataBase) : null,
   ]);
 
   const resultado = await gerarPedido({ datas: datasEscolhidas, escopo, andamento }, acesso.spreadsheetId);
@@ -96,18 +102,38 @@ export default async function EditorEspelhosPage({
     nomesFornecedoresCadastro
   );
 
-  const fornecedores = ordenarFornecedores(
-    Array.from(new Set([...Object.keys(itensPorFornecedorFresco), ...pedidosSalvos.map((p) => p.fornecedor)]))
-  );
-
   const skuParaProduto = new Map(produtos.map((p) => [p.sku, p]));
   const skuParaItemFresco = new Map(resultado.itens.map((item) => [item.sku, item]));
+
+  // Fornecedor que participou da cotação de um item e perdeu para o vencedor
+  // (o item saiu do pedido dele) volta ao bloco, escondido enquanto houver
+  // vencedor - é o que deixa o desfazer restaurá-lo mesmo fora das 4 vagas do
+  // Cadastro (parecer do Codex de 24/10/2026, ponto 3).
+  const participacoes =
+    participacoesDaBase && dataBase === resultado.dataUsada
+      ? participacoesDaBase
+      : await listarParticipacoesCotacao(acesso.unidadeId, resultado.dataUsada);
+  const itensComParticipacoes = incluirParticipacoes(
+    itensPorFornecedorFresco,
+    participacoes,
+    nomesFornecedoresCadastro,
+    (sku) => {
+      const itemFresco = skuParaItemFresco.get(sku);
+      if (itemFresco) return itemFresco;
+      const produto = skuParaProduto.get(sku);
+      return produto ? produtoParaSugestao(produto, null) : null;
+    }
+  );
+
+  const fornecedores = ordenarFornecedores(
+    Array.from(new Set([...Object.keys(itensComParticipacoes), ...pedidosSalvos.map((p) => p.fornecedor)]))
+  );
 
   const itensPorFornecedor: Record<string, SugestaoCompra[]> = {};
   const pedidoSalvoPorFornecedor: Record<string, (typeof pedidosSalvos)[number] | null> = {};
 
   for (const fornecedor of fornecedores) {
-    const itensFrescos = itensPorFornecedorFresco[fornecedor] ?? [];
+    const itensFrescos = itensComParticipacoes[fornecedor] ?? [];
     const skusFrescos = new Set(itensFrescos.map((item) => item.sku));
     const pedidoDoFornecedor = pedidosSalvos.find((p) => p.fornecedor === fornecedor) ?? null;
     pedidoSalvoPorFornecedor[fornecedor] = pedidoDoFornecedor;

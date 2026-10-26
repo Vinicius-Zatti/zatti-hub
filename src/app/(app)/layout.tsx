@@ -14,6 +14,7 @@ import {
 import { UnidadeSuporteProvider } from "@/components/contexto-suporte";
 import { GuardaContagemProvider } from "@/components/guarda-contagem";
 import { GuardaEdicaoProvider } from "@/components/guarda-edicao";
+import { SincronizadorCotacao } from "@/components/use-sincronizar-cotacao";
 import { getAcessoAtual } from "@/lib/acesso";
 import { lerFlagsConciliacao } from "@/lib/banco/conciliacao";
 import { headers } from "next/headers";
@@ -129,6 +130,8 @@ export default async function AppLayout({
   return (
     <GuardaContagemProvider>
       <GuardaEdicaoProvider>
+        {/* Pendência de sincronização da cotação: fica viva entre telas. */}
+        <SincronizadorCotacao />
         {navegacaoV2 ? (
           // Barra inferior do celular e abas dos módulos: tirados do mesmo menu (papel e flags iguais).
           <EstruturaAplicativoV2
