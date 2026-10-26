@@ -2,6 +2,7 @@ import { getAcessoAtual, temPermissao } from "@/lib/acesso";
 import { carregarFichaTecnicaParaExibir, getConfiguracaoFinanceira } from "@/lib/banco/fichas-tecnicas";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
+import { fichaParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { configCadastroRapido } from "@/lib/cadastro-rapido";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
@@ -12,9 +13,11 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
   const acesso = await getAcessoAtual();
   const { id } = await params;
   const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "cardapio", "editar");
+  // Chef (26/10/2026): edita a ficha e vê o custo, sem margem nem preço oficial.
+  const podeEditarFicha = temPermissao(acesso, "cardapio", "chef");
 
   const [dados, configuracao] = await Promise.all([
-    carregarFichaTecnicaParaExibir(acesso.unidadeId, id, podeGerir),
+    carregarFichaTecnicaParaExibir(acesso.unidadeId, id, podeEditarFicha),
     podeGerir ? getConfiguracaoFinanceira(acesso.unidadeId) : Promise.resolve(null),
   ]);
 
@@ -30,10 +33,11 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
 
   return (
     <FichaTecnicaDetalhe
-      ficha={dados.ficha}
+      ficha={fichaParaVisao(dados.ficha, visaoDaFicha(podeGerir, podeEditarFicha))}
       fotoUrl={dados.fotoUrl}
       vinculoContagem={dados.vinculoContagem}
       podeGerir={podeGerir}
+      podeEditarFicha={podeEditarFicha}
       categorias={dados.categorias}
       produtos={dados.produtos}
       fichasDisponiveis={dados.fichasDisponiveis}

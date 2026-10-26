@@ -7,15 +7,21 @@
  * continua exatamente como hoje. A barreira de verdade é o banco; aqui é o menu, as rotas e as
  * Server Actions falhando antes, com mensagem clara. */
 
-export type NivelModulo = "sem_acesso" | "ver" | "editar";
+/** "chef" (26/10/2026) existe só no Cardápio: cria e edita ficha e modo de preparo, vê custo e
+ * CMV e grava o preço de venda como rascunho; não vê margem nem precificação. */
+export type NivelModulo = "sem_acesso" | "ver" | "chef" | "editar";
 
-export const NIVEIS: readonly NivelModulo[] = ["sem_acesso", "ver", "editar"];
+export const NIVEIS: readonly NivelModulo[] = ["sem_acesso", "ver", "chef", "editar"];
 
 export const ROTULO_NIVEL: Record<NivelModulo, string> = {
   sem_acesso: "Sem acesso",
   ver: "Ver",
+  chef: "Chef",
   editar: "Editar",
 };
+
+/** Módulo que aceita o nível "chef". */
+export const MODULO_CHEF: ChaveModulo = "cardapio";
 
 export type ChaveModulo =
   | "estoque"
@@ -43,14 +49,14 @@ export type DefinicaoModulo = {
 
 /** Ordem do menu do piloto (Início fica sempre visível e não entra). */
 export const MODULOS: readonly DefinicaoModulo[] = [
-  { chave: "estoque", nome: "Estoque", descricao: "Contagem, pedidos, CMV Real e produtos", liberado: false },
+  { chave: "estoque", nome: "Estoque", descricao: "Contagem, pedidos, CMV Real, perdas e movimentações", liberado: true },
   { chave: "vendas", nome: "Vendas", descricao: "Lançamento das vendas do dia", liberado: true },
   { chave: "financeiro", nome: "Financeiro", descricao: "Contas, lançamentos, cartões e conciliação", liberado: true },
   { chave: "cardapio", nome: "Cardápio", descricao: "Fichas técnicas e precificação", liberado: true },
-  { chave: "garante", nome: "Garante", descricao: "Rotinas com foto, nota e planos de ação", liberado: false },
+  { chave: "garante", nome: "Garante", descricao: "Rotinas com foto, nota e planos de ação", liberado: true },
   { chave: "equipe", nome: "Equipe", descricao: "Quem usa o Zatti Hub e o que cada um acessa", liberado: true },
   { chave: "relatorios", nome: "Relatórios", descricao: "DRE, Fluxo de Caixa, DFC e Painel M.E.G.A.", liberado: true },
-  { chave: "cadastros", nome: "Cadastros", descricao: "Produtos, setores, fornecedores e planos", liberado: false },
+  { chave: "cadastros", nome: "Cadastros", descricao: "Produtos, setores e fornecedores", liberado: true },
   { chave: "configuracoes", nome: "Configurações", descricao: "Dados da unidade e módulos ligados", liberado: true },
 ];
 
@@ -91,20 +97,22 @@ export function ehChavePermissao(valor: unknown): valor is ChavePermissao {
 }
 
 export function ehNivel(valor: unknown): valor is NivelModulo {
-  return valor === "sem_acesso" || valor === "ver" || valor === "editar";
+  return valor === "sem_acesso" || valor === "ver" || valor === "chef" || valor === "editar";
 }
 
+/** Igual a `permissao_nivel_rank` no banco. */
 export function rank(nivel: NivelModulo): number {
-  return nivel === "editar" ? 2 : nivel === "ver" ? 1 : 0;
+  return nivel === "editar" ? 3 : nivel === "chef" ? 2 : nivel === "ver" ? 1 : 0;
 }
 
 export type PapelPermissao = "master" | "gestao" | "operacional";
 
-/** Padrão do papel = o que a pessoa faz hoje, sem exceção. `orgInteira` = vínculo sem unidade
- * (dono). Igual a `permissao_nivel_padrao` no banco. */
-export function nivelPadrao(role: PapelPermissao, orgInteira: boolean, chave: ChavePermissao): NivelModulo {
+/** Padrão do papel = o que a pessoa faz hoje, sem exceção. `ehDono` = titular da organização
+ * (ou, sem titular marcado, gestão da organização inteira); só muda Configurações. Igual a
+ * `permissao_nivel_padrao` no banco (com `vinculo_e_dono`). */
+export function nivelPadrao(role: PapelPermissao, ehDono: boolean, chave: ChavePermissao): NivelModulo {
   if (role === "master") return "editar";
-  if (chave === "configuracoes") return role === "gestao" && orgInteira ? "ver" : "sem_acesso";
+  if (chave === "configuracoes") return role === "gestao" && ehDono ? "ver" : "sem_acesso";
   if (chave === "relatorios") return "ver";
   if (role === "gestao") return "editar";
   if (chave === "estoque" || chave === "vendas" || chave === "financeiro" || chave === "garante") return "editar";
@@ -112,11 +120,12 @@ export function nivelPadrao(role: PapelPermissao, orgInteira: boolean, chave: Ch
   return "sem_acesso";
 }
 
-/** Teto da exceção: nunca acima do papel, menos Configurações "ver" para gestão. Igual a
- * `permissao_nivel_maximo` no banco. */
-export function nivelMaximo(role: PapelPermissao, orgInteira: boolean, chave: ChavePermissao): NivelModulo {
+/** Teto da exceção: nunca acima do papel, menos Configurações "ver" para gestão e o chef no
+ * Cardápio para a operação. Igual a `permissao_nivel_maximo` no banco. */
+export function nivelMaximo(role: PapelPermissao, ehDono: boolean, chave: ChavePermissao): NivelModulo {
   if (role === "gestao" && chave === "configuracoes") return "ver";
-  return nivelPadrao(role, orgInteira, chave);
+  if (role === "operacional" && chave === MODULO_CHEF) return "chef";
+  return nivelPadrao(role, ehDono, chave);
 }
 
 export function chaveLiberada(chave: ChavePermissao): boolean {
@@ -124,17 +133,25 @@ export function chaveLiberada(chave: ChavePermissao): boolean {
   return MODULOS.find((m) => m.chave === chave)?.liberado ?? false;
 }
 
+/** Nível acima do teto cai no teto, menos o chef: ele só existe quando foi escolhido. Quem pede
+ * "editar" no Cardápio para a operação (ex.: copiando de um gerente) fica no padrão ("ver"). */
+function acimaDoTeto(nivel: NivelModulo, maximo: NivelModulo, padrao: NivelModulo): NivelModulo {
+  if (rank(nivel) <= rank(maximo)) return nivel;
+  return maximo === "chef" ? padrao : maximo;
+}
+
 export type Excecoes = Partial<Record<ChavePermissao, NivelModulo>>;
 export type NiveisCompletos = Record<ChavePermissao, NivelModulo>;
 
 /** Nível efetivo de cada chave: exceção (limitada ao teto) ou padrão. Ação sensível só vale
  * com o módulo em "editar". */
-export function niveisEfetivos(role: PapelPermissao, orgInteira: boolean, excecoes: Excecoes): NiveisCompletos {
+export function niveisEfetivos(role: PapelPermissao, ehDono: boolean, excecoes: Excecoes): NiveisCompletos {
   const saida = {} as NiveisCompletos;
   for (const chave of CHAVES) {
-    const maximo = nivelMaximo(role, orgInteira, chave);
-    const pedido = excecoes[chave] ?? nivelPadrao(role, orgInteira, chave);
-    saida[chave] = rank(pedido) > rank(maximo) ? maximo : pedido;
+    const maximo = nivelMaximo(role, ehDono, chave);
+    const padrao = nivelPadrao(role, ehDono, chave);
+    const pedido = excecoes[chave] ?? padrao;
+    saida[chave] = acimaDoTeto(pedido, maximo, padrao);
   }
   for (const acao of ACOES) {
     if (saida[acao.modulo] !== "editar") saida[acao.chave] = "sem_acesso";
@@ -168,49 +185,52 @@ export function excecoesDasLinhas(linhas: readonly { modulo: string; nivel: stri
 }
 
 /** Só o que difere do padrão (o que o banco grava). */
-export function apenasExcecoes(role: PapelPermissao, orgInteira: boolean, niveis: Partial<NiveisCompletos>): Excecoes {
+export function apenasExcecoes(role: PapelPermissao, ehDono: boolean, niveis: Partial<NiveisCompletos>): Excecoes {
   const saida: Excecoes = {};
   for (const chave of CHAVES) {
     const nivel = niveis[chave];
-    if (nivel && nivel !== nivelPadrao(role, orgInteira, chave)) saida[chave] = nivel;
+    if (nivel && nivel !== nivelPadrao(role, ehDono, chave)) saida[chave] = nivel;
   }
   return saida;
 }
 
 /** Estado inicial da tela: exceções salvas por cima do padrão, ajustadas ao que a função
  * permite hoje (exceção antiga acima do teto, depois de trocar a função, cai no teto). */
-export function rascunhoInicial(role: PapelPermissao, orgInteira: boolean, excecoes: Excecoes): NiveisCompletos {
+export function rascunhoInicial(role: PapelPermissao, ehDono: boolean, excecoes: Excecoes): NiveisCompletos {
   const bruto = {} as NiveisCompletos;
-  for (const chave of CHAVES) bruto[chave] = excecoes[chave] ?? nivelPadrao(role, orgInteira, chave);
-  return copiarNiveis({ role, orgInteira }, bruto);
+  for (const chave of CHAVES) bruto[chave] = excecoes[chave] ?? nivelPadrao(role, ehDono, chave);
+  return copiarNiveis({ role, ehDono }, bruto);
 }
 
 /** "Copiar de...": níveis efetivos da outra pessoa, ajustados ao papel de quem recebe (nunca
  * acima do teto; chave ainda travada fica no padrão). */
 export function copiarNiveis(
-  destino: { role: PapelPermissao; orgInteira: boolean },
+  destino: { role: PapelPermissao; ehDono: boolean },
   origem: NiveisCompletos,
 ): NiveisCompletos {
   const saida = {} as NiveisCompletos;
   for (const chave of CHAVES) {
-    const padrao = nivelPadrao(destino.role, destino.orgInteira, chave);
+    const padrao = nivelPadrao(destino.role, destino.ehDono, chave);
     if (!chaveLiberada(chave)) {
       saida[chave] = padrao;
       continue;
     }
-    const maximo = nivelMaximo(destino.role, destino.orgInteira, chave);
+    const maximo = nivelMaximo(destino.role, destino.ehDono, chave);
     let nivel = origem[chave];
-    if (chave.includes(".") && nivel === "ver") nivel = "sem_acesso";
-    saida[chave] = rank(nivel) > rank(maximo) ? maximo : nivel;
+    if (chave.includes(".") && (nivel === "ver" || nivel === "chef")) nivel = "sem_acesso";
+    if (nivel === "chef" && chave !== MODULO_CHEF) nivel = "ver";
+    saida[chave] = acimaDoTeto(nivel, maximo, padrao);
   }
   return saida;
 }
 
 /** Opções que a pessoa pode escolher numa chave (o resto aparece desabilitado). */
-export function niveisPermitidos(role: PapelPermissao, orgInteira: boolean, chave: ChavePermissao): NivelModulo[] {
-  if (!chaveLiberada(chave)) return [nivelPadrao(role, orgInteira, chave)];
-  const maximo = nivelMaximo(role, orgInteira, chave);
-  const opcoes = chave.includes(".") ? (["sem_acesso", "editar"] as NivelModulo[]) : [...NIVEIS];
+export function niveisPermitidos(role: PapelPermissao, ehDono: boolean, chave: ChavePermissao): NivelModulo[] {
+  if (!chaveLiberada(chave)) return [nivelPadrao(role, ehDono, chave)];
+  const maximo = nivelMaximo(role, ehDono, chave);
+  const opcoes = chave.includes(".")
+    ? (["sem_acesso", "editar"] as NivelModulo[])
+    : NIVEIS.filter((n) => n !== "chef" || chave === MODULO_CHEF);
   return opcoes.filter((n) => rank(n) <= rank(maximo));
 }
 
@@ -225,7 +245,7 @@ export function mudancas(antes: NiveisCompletos, depois: NiveisCompletos): Chave
 
 function textoNivel(chave: ChavePermissao, nivel: NivelModulo): string {
   if (chave.includes(".")) return nivel === "editar" ? "liberado" : "bloqueado";
-  return nivel === "sem_acesso" ? "sem acesso" : nivel === "ver" ? "só ver" : "editar";
+  return nivel === "sem_acesso" ? "sem acesso" : nivel === "ver" ? "só ver" : nivel === "chef" ? "chef" : "editar";
 }
 
 /** Rótulo do botão de salvar, dizendo o efeito: "Salvar: Ana fica com Financeiro só ver e
@@ -249,7 +269,7 @@ export function mensagemSalvarPermissoes(codigo: unknown): string | null {
     case "pedido_invalido":
       return "Pedido inválido. Recarregue a página e tente de novo.";
     case "sem_permissao":
-      return "Só o dono (gestão de todas as unidades) ou a Zatti mudam permissões.";
+      return "Só o titular do cliente ou a Zatti mudam permissões. Sem titular marcado, vale a gestão de todas as unidades.";
     case "fora_do_piloto":
       return "Permissões por módulo ainda estão em teste e não valem para este cliente.";
     case "nao_encontrado":
@@ -259,7 +279,7 @@ export function mensagemSalvarPermissoes(codigo: unknown): string | null {
     case "revogado":
       return "Esse acesso foi tirado. Devolva o acesso antes de mudar permissões.";
     case "alvo_dono":
-      return "Permissões de outro dono (gestão de todas as unidades) só a Zatti muda.";
+      return "Essa pessoa também responde pelo cliente (gestão de todas as unidades, sem titular marcado). As permissões dela só a Zatti muda.";
     case "acima_do_papel":
       return "Essa função não permite esse nível. Mude a função em \"Editar acesso\" primeiro.";
     case "modulo_indisponivel":

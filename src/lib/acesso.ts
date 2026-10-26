@@ -7,6 +7,7 @@ import { ordenarVinculos, podeUsarEquipe } from "@/lib/equipe/regras";
 import { CABECALHO_CAMINHO, ehCaminhoAreaInterna, escolherOrganizacaoMaster } from "@/lib/area-interna/caminhos";
 import { ErroPublico } from "@/lib/erros";
 import { destinoSemEdicao } from "@/lib/permissoes/menu";
+import { ehDonoDaOrganizacao } from "@/lib/permissoes/dono";
 import {
   excecoesDasLinhas,
   niveisEfetivos,
@@ -87,8 +88,14 @@ export type AcessoAtual = {
    * `permissoes_modulo` por cima do padrão do papel. Sem exceção = o de hoje. "Sem acesso"
    * já chega dobrado nas flags acima (financeiro, vendas, cardápio, equipe). */
   permissoes: NiveisCompletos;
-  /** Gestão ativa da organização inteira (o dono): administra permissões da própria equipe. */
+  /** Dono da organização: o titular marcado pelo master (26/10/2026) ou, sem titular marcado,
+   * a gestão ativa da organização inteira (reserva, como antes). Administra as permissões da
+   * própria equipe e vê Configurações. Igual a `vinculo_e_dono` no banco. */
   ehDono: boolean;
+  /** É o titular marcado (não vale a reserva). A conta dele só o master mexe. */
+  ehTitular: boolean;
+  /** A organização tem titular marcado e válido. */
+  temTitular: boolean;
 };
 
 type VinculoRow = {
@@ -158,6 +165,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     { data: perfil },
     { data: sessaoVigente, error: erroSessao },
     { data: permissoesData, error: erroPermissoes },
+    { data: titularesData, error: erroTitulares },
   ] = await Promise.all([
     supabase
       .from("vinculos")
@@ -168,6 +176,8 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     supabase.rpc("sessao_vigente"),
     // RLS devolve só as exceções dos vínculos da própria pessoa.
     supabase.from("permissoes_modulo").select("vinculo_id, modulo, nivel").limit(500),
+    // Titular válido das organizações da própria pessoa (20261026120000_titular_e_chef.sql).
+    supabase.rpc("titulares_das_minhas_organizacoes"),
   ]);
 
   if (erroVinculos) {
@@ -186,6 +196,10 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
   // Tabela ainda não criada (SQL da fase 6 não rodou): sem exceção, igual ao banco.
   if (erroPermissoes && erroPermissoes.code !== "42P01" && erroPermissoes.code !== "PGRST205") {
     throw new Error("Não foi possível validar as permissões do usuário.");
+  }
+  // Função ainda não criada (SQL do titular não rodou): sem titular, vale a reserva.
+  if (erroTitulares && erroTitulares.code !== "PGRST202" && erroTitulares.code !== "42883") {
+    throw new Error("Não foi possível validar o titular da organização.");
   }
 
   const todosVinculos = (vinculosData as unknown as VinculoRow[] | null) ?? [];
@@ -288,14 +302,23 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     redirect("/planilha-pendente");
   }
 
-  const ehDono = !ehMaster && vinculoDaOrg?.role === "gestao" && vinculoDaOrg.unidade_id === null;
+  const titularDaOrg =
+    ((titularesData as { organizacao_id: string; vinculo_id: string }[] | null) ?? []).find(
+      (t) => t.organizacao_id === organizacaoId,
+    )?.vinculo_id ?? null;
+  const dono = ehDonoDaOrganizacao({
+    ehMaster,
+    titularVinculoId: titularDaOrg,
+    vinculosDaOrg: vinculos.filter((v) => v.organizacao_id === organizacaoId),
+    vinculoBase: vinculoDaOrg ?? null,
+  });
   // Mesma regra do banco (unidades_modulo_negadas): a exceção de QUALQUER vínculo ativo que cobre a
   // unidade da sessão restringe; o vínculo que define o papel dá a base (padrão + exceções dele).
   const todasLinhas = (permissoesData as { vinculo_id: string; modulo: string; nivel: string }[] | null) ?? [];
   const linhasDoVinculo = (id: string) => todasLinhas.filter((l) => l.vinculo_id === id);
   const permissoesBase = niveisEfetivos(
     ehMaster ? "master" : role === "gestao" ? "gestao" : "operacional",
-    ehMaster || vinculoDaOrg?.unidade_id === null,
+    ehMaster || dono.ehDono,
     ehMaster || !vinculoDaOrg ? {} : excecoesDasLinhas(linhasDoVinculo(vinculoDaOrg.id)),
   );
   const permissoes = ehMaster
@@ -328,7 +351,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
       (unidade.financeiro_liberado_equipe || titularFinanceiro) &&
       permissoes.financeiro !== "sem_acesso",
     titularFinanceiro,
-    garanteHabilitado: unidade.garante_habilitado,
+    garanteHabilitado: unidade.garante_habilitado && permissoes.garante !== "sem_acesso",
     extratoEstoqueHabilitado: unidade.extrato_estoque_habilitado,
     role,
     unidadeFixa,
@@ -336,9 +359,12 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     organizacoesDisponiveis,
     areaInterna,
     permissoes,
-    ehDono,
+    ehDono: dono.ehDono,
+    ehTitular: dono.ehTitular,
+    temTitular: titularDaOrg !== null,
   };
 });
+
 
 /** Pode `nivel` em `chave`? (master sempre; sem exceção = padrão do papel). */
 export function temPermissao(acesso: Pick<AcessoAtual, "permissoes">, chave: ChavePermissao, nivel: NivelModulo): boolean {
@@ -349,13 +375,18 @@ export function temPermissao(acesso: Pick<AcessoAtual, "permissoes">, chave: Cha
  * sensível foi tirada dela. Chamar dentro do `try` das Server Actions que gravam (o `catch`
  * devolve a mensagem). O banco recusa de novo (gatilho `exigir_permissao_modulo`). */
 export function exigirEdicao(acesso: Pick<AcessoAtual, "permissoes">, chave: ChavePermissao): void {
-  if (temPermissao(acesso, chave, "editar")) return;
+  const bloqueio = mensagemSemEdicao(acesso, chave);
+  if (bloqueio) throw new ErroPublico(bloqueio);
+}
+
+/** Mesma conferência de `exigirEdicao`, para Server Action que devolve `{ erro }` em vez de
+ * lançar: `null` = pode gravar. */
+export function mensagemSemEdicao(acesso: Pick<AcessoAtual, "permissoes">, chave: ChavePermissao): string | null {
+  if (temPermissao(acesso, chave, "editar")) return null;
   if (chave.includes(".")) {
-    throw new ErroPublico(`${nomeChave(chave)} não está liberado para você. Peça a quem administra a equipe.`);
+    return `${nomeChave(chave)} não está liberado para você. Peça a quem administra a equipe.`;
   }
-  throw new ErroPublico(
-    `Seu acesso a ${nomeChave(chave)} é só para ver. Peça a quem administra a equipe para liberar a edição.`,
-  );
+  return `Seu acesso a ${nomeChave(chave)} é só para ver. Peça a quem administra a equipe para liberar a edição.`;
 }
 
 /** Barreira real pras telas/ações só de Gestão (master conta como gestão em
@@ -395,6 +426,16 @@ export async function requireGestaoConsolidado(): Promise<AcessoAtual> {
 export async function requireFichasTecnicas(): Promise<AcessoAtual> {
   const acesso = await getAcessoAtual();
   if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  return acesso;
+}
+
+/** Ficha e modo de preparo: gestão com "editar" no Cardápio ou quem é chef (26/10/2026). O chef
+ * não grava preço oficial nem a Margem Ideal (a Server Action guarda o que já estava e o banco
+ * recusa de novo, gatilho `proteger_preco_oficial_ficha`). */
+export async function requireChefFichasTecnicas(): Promise<AcessoAtual> {
+  const acesso = await getAcessoAtual();
+  if (!acesso.fichasTecnicasHabilitado) redirect("/estoque/contagem");
+  if (!temPermissao(acesso, "cardapio", "chef")) redirect("/fichas-tecnicas");
   return acesso;
 }
 

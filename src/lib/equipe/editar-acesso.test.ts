@@ -45,6 +45,10 @@ function consulta(tabela: string) {
 }
 const admin = { rpc, from: vi.fn((tabela: string) => consulta(tabela)) };
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
+// Titular da organização (26/10/2026): cada teste escolhe; padrão = sem titular (reserva).
+let titularAtual: { vinculoId: string; userId: string } | null = null;
+vi.mock("@/lib/equipe/titular-servidor", () => ({ carregarTitularOrganizacao: vi.fn(async () => titularAtual) }));
+
 
 const { mensagemEditarVinculo, pedidoEdicaoValido } = await import("./regras");
 const { textoSalvarEdicaoAcesso } = await import("@/components/equipe/textos");
@@ -56,6 +60,7 @@ const ALVO = "33333333-3333-4333-8333-333333333333";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  titularAtual = null;
   acessoEquipeAtual = acessoGestao;
   respostaRpc = { data: "ok", error: null };
   linhas = {
@@ -101,6 +106,15 @@ describe("regras de editar acesso", () => {
 });
 
 describe("editarAcessoMembroAction (Equipe)", () => {
+  it("gestão não edita o acesso do titular (26/10/2026): nem chega ao banco", async () => {
+    titularAtual = { vinculoId: VINCULO, userId: ALVO };
+    expect(await editarAcessoMembroAction(VINCULO, "gestao", null)).toEqual({
+      erro: expect.stringMatching(/titular do cliente/),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(mensagemEditarVinculo("alvo_titular")).toMatch(/titular do cliente/);
+  });
+
   it("dono edita: quem pede e a organização vêm da sessão", async () => {
     expect(await editarAcessoMembroAction(VINCULO, "gestao", null)).toEqual({ ok: true });
     expect(rpc).toHaveBeenCalledTimes(1);

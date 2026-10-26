@@ -13,7 +13,7 @@ import {
   sincronizarPrePreparos,
 } from "@/lib/banco/pre-preparo";
 import type { Produto } from "@/lib/types";
-import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, temPermissao, type AcessoAtual } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, temPermissao, type AcessoAtual, exigirEdicao } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import {
   fornecedor1Schema,
@@ -106,6 +106,7 @@ export async function criarProdutoAction(
 ): Promise<{ ok: true; produto: Produto } | { ok: false; mensagem: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_produtos");
 
     const produto = validarEntrada(produtoSchema, {
@@ -180,6 +181,7 @@ export async function criarProdutoPendenciaAction(
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
     await inserirProduto(entrada, acesso.spreadsheetId);
@@ -205,6 +207,7 @@ export async function salvarProdutoAction(
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
     if (await prePreparoBloqueadoPeloCardapio(acesso, [entrada])) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
@@ -236,6 +239,7 @@ export async function definirFornecedor1Action(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(fornecedor1Schema, { sku, fornecedor1 });
     const produtos = await listProdutos(acesso.spreadsheetId);
@@ -269,6 +273,7 @@ export async function excluirProdutoAction(
 ): Promise<{ ok: true; fichasAfetadas: number } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("excluir_produto");
     const skuValidado = validarEntrada(skuSchema, sku).toUpperCase().trim();
     const fichasAfetadas = await excluirProduto(skuValidado, acesso.spreadsheetId);
@@ -297,6 +302,7 @@ export async function salvarProdutosAction(
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_produtos");
     const entradas = validarEntrada(produtosSchema, produtos);
     if (await prePreparoBloqueadoPeloCardapio(acesso, entradas)) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };

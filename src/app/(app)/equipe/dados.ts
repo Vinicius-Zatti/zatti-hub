@@ -2,6 +2,8 @@ import "server-only";
 import type { AcessoAtual } from "@/lib/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { excecoesDasLinhas, type Excecoes } from "@/lib/permissoes/modulos";
+import { vinculoEhDono } from "@/lib/permissoes/dono";
+import { carregarTitularOrganizacao } from "@/lib/equipe/titular-servidor";
 
 export type MembroEquipe = {
   vinculoId: string;
@@ -20,6 +22,12 @@ export type MembroEquipe = {
   ehVoce: boolean;
   /** Exceções gravadas em `permissoes_modulo` (fase 6). Vazio = padrão da função. */
   excecoes: Excecoes;
+  /** Este vínculo é o titular marcado pelo master (selo "Titular"). */
+  ehTitular: boolean;
+  /** A conta é a do titular: senha provisória, editar e tirar acesso só o master. */
+  contaTitular: boolean;
+  /** Dono: o titular ou, sem titular marcado, a gestão da organização inteira. */
+  ehDono: boolean;
 };
 
 /** Lista a equipe do cliente da sessão. Chamar só depois de `requireEquipe()`
@@ -47,8 +55,8 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
     .order("created_at");
   if (acesso.unidadeFixa) consultaVinculos = consultaVinculos.eq("unidade_id", acesso.unidadeFixa);
 
-  const [{ data: unidadesData, error: erroUnidades }, { data: vinculosData, error: erroVinculos }] =
-    await Promise.all([consultaUnidades, consultaVinculos]);
+  const [{ data: unidadesData, error: erroUnidades }, { data: vinculosData, error: erroVinculos }, titular] =
+    await Promise.all([consultaUnidades, consultaVinculos, carregarTitularOrganizacao(admin, acesso.organizacaoId)]);
   if (erroUnidades || erroVinculos) throw new Error("Não foi possível carregar a equipe.");
 
   const unidades = (unidadesData ?? []) as { id: string; nome: string }[];
@@ -108,6 +116,9 @@ export async function carregarEquipe(acesso: AcessoAtual): Promise<{
     envioEm: v.acesso_envio_em,
     ehVoce: v.user_id === acesso.userId,
     excecoes: excecoesDasLinhas(linhasPermissao.filter((l) => l.vinculo_id === v.id)),
+    ehTitular: titular?.vinculoId === v.id,
+    contaTitular: titular?.userId === v.user_id,
+    ehDono: vinculoEhDono({ id: v.id, role: v.role, unidadeId: v.unidade_id, status: v.status }, titular?.vinculoId ?? null),
   }));
 
   return { membros, unidades };

@@ -45,6 +45,10 @@ function consulta() {
 }
 const admin = { rpc, from: vi.fn(() => consulta()) };
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
+// Titular da organização (26/10/2026): cada teste escolhe; padrão = sem titular (reserva).
+let titularAtual: { vinculoId: string; userId: string } | null = null;
+vi.mock("@/lib/equipe/titular-servidor", () => ({ carregarTitularOrganizacao: vi.fn(async () => titularAtual) }));
+
 
 const { salvarPermissoesMembroAction } = await import("@/app/(app)/equipe/actions");
 
@@ -52,6 +56,7 @@ const VINCULO = "22222222-2222-4222-8222-222222222222";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  titularAtual = null;
   acessoAtual = base;
   respostaRpc = { data: "ok", error: null };
   alvo = {
@@ -111,10 +116,25 @@ describe("salvarPermissoesMembroAction", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it("com titular marcado, a outra gestão de todas as unidades não é dona: o titular muda", async () => {
+    titularAtual = { vinculoId: "44444444-4444-4444-8444-444444444444", userId: base.userId };
+    alvo = { ...(alvo as Record<string, unknown>), unidade_id: null };
+    expect(await salvarPermissoesMembroAction(VINCULO, {})).toEqual({ ok: true });
+  });
+
+  it("as permissões do titular só o master muda", async () => {
+    titularAtual = { vinculoId: VINCULO, userId: "33333333-3333-4333-8333-333333333333" };
+    expect(await salvarPermissoesMembroAction(VINCULO, {})).toEqual({
+      erro: expect.stringMatching(/só a Zatti muda/),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("dono não muda outro dono (nem chega ao banco)", async () => {
     alvo = { ...(alvo as Record<string, unknown>), unidade_id: null };
     expect(await salvarPermissoesMembroAction(VINCULO, {})).toEqual({
-      erro: "Permissões de outro dono (gestão de todas as unidades) só a Zatti muda.",
+      erro:
+        "Essa pessoa também responde pelo cliente (gestão de todas as unidades, sem titular marcado). As permissões dela só a Zatti muda.",
     });
     expect(rpc).not.toHaveBeenCalled();
   });

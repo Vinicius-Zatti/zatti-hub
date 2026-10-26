@@ -26,6 +26,23 @@ import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
 type Resultado<T = { ok: true }> = T | { erro: string };
 
+/** Respostas de `marcar_titular_organizacao`. `null` = deu certo. */
+function mensagemMarcarTitular(codigo: unknown): string | null {
+  switch (codigo) {
+    case "ok":
+    case "sem_mudanca":
+      return null;
+    case "sem_permissao":
+      return "Só a Zatti (master) marca o titular.";
+    case "nao_encontrado":
+      return "Organização não encontrada.";
+    case "vinculo_invalido":
+      return "O titular precisa ser gestão ativa deste cliente (e não pode ser master).";
+    default:
+      return "Não foi possível marcar o titular.";
+  }
+}
+
 const TIPOS_CLIENTE = ["consultoria", "saas", "hybrid"] as const;
 type TipoCliente = (typeof TIPOS_CLIENTE)[number];
 
@@ -423,6 +440,27 @@ export async function editarVinculoAction(
     unidadeId,
   });
   const erro = mensagemEditarVinculo(codigo);
+  if (erro) return { erro };
+  revalidarAcessos();
+  return { ok: true };
+}
+
+/** Marca, troca ou tira (vinculoId nulo) o titular de uma organização (26/10/2026). Só master;
+ * o banco confere de novo quem pede, o vínculo (gestão ativa daquela organização, de quem não é
+ * master) e grava a auditoria (`marcar_titular_organizacao`). */
+export async function marcarTitularAction(organizacaoId: string, vinculoId: string | null): Promise<Resultado> {
+  const acesso = await requireMaster();
+  if (typeof organizacaoId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(organizacaoId)) return { erro: "Pedido inválido." };
+  if (vinculoId !== null && (typeof vinculoId !== "string" || !/^[0-9a-f-]{36}$/i.test(vinculoId))) {
+    return { erro: "Pedido inválido." };
+  }
+  const { data, error } = await createAdminClient().rpc("marcar_titular_organizacao", {
+    p_ator: acesso.userId,
+    p_organizacao_id: organizacaoId,
+    p_vinculo_id: vinculoId,
+  });
+  if (error) return { erro: "Não foi possível marcar o titular." };
+  const erro = mensagemMarcarTitular(data);
   if (erro) return { erro };
   revalidarAcessos();
   return { ok: true };

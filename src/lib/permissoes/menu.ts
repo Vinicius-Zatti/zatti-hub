@@ -19,7 +19,31 @@ export const TELAS_DE_EDICAO: Readonly<Record<string, ChaveModulo>> = {
   "/fichas-tecnicas/conversoes": "cardapio",
   "/fichas-tecnicas/calculadora": "cardapio",
   "/fichas-tecnicas/precificacao": "cardapio",
+  // Estoque, Garante e Cadastros (26/10/2026).
+  "/estoque/contagem": "estoque",
+  "/estoque/pedidos": "estoque",
+  "/estoque/pedidos/cotacoes": "estoque",
+  "/garante/modelos": "garante",
+  "/estoque/produtos/edicao": "cadastros",
+  "/estoque/setores": "cadastros",
+  "/estoque/fornecedores/edicao": "cadastros",
+  "/estoque/fornecedores/novo": "cadastros",
 };
+
+/** Telas do Estoque que pertencem a Cadastros (moram em /estoque, mas seguem a permissão de
+ * Cadastros). */
+export const TELAS_DE_CADASTROS: readonly string[] = [
+  "/estoque/produtos/edicao",
+  "/estoque/setores",
+  "/estoque/fornecedores",
+  "/estoque/fornecedores/edicao",
+  "/estoque/fornecedores/novo",
+];
+
+/** Módulo que vale numa rota de /estoque: Cadastros nas telas de cadastro, Estoque no resto. */
+export function moduloDaRotaEstoque(caminho: string): ChaveModulo {
+  return TELAS_DE_CADASTROS.some((t) => caminho === t || caminho.startsWith(`${t}/`)) ? "cadastros" : "estoque";
+}
 
 /** Módulo do menu do piloto pelo rótulo (Início não entra: sempre visível). */
 const MODULO_DO_ITEM: Readonly<Record<string, ChaveModulo>> = {
@@ -68,5 +92,8 @@ export function destinoSemEdicao(caminho: string, permissoes: NiveisCompletos): 
   if (!modulo || rank(permissoes[modulo]) >= rank("editar")) return null;
   if (modulo === "vendas") return "/financeiro/consolidado";
   if (modulo === "cardapio") return "/fichas-tecnicas";
+  if (modulo === "estoque") return "/estoque/contagem/visualizacao";
+  if (modulo === "garante") return "/garante";
+  if (modulo === "cadastros") return "/cadastros";
   return "/financeiro-gerencial/visao-geral";
 }

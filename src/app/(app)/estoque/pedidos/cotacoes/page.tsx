@@ -1,4 +1,4 @@
-import { requireGestao } from "@/lib/acesso";
+import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { gerarPedido, datasDisponiveis } from "@/lib/sheets/sugestao-compra";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listProdutos } from "@/lib/sheets/produtos";
@@ -42,6 +42,7 @@ export default async function EditorEspelhosPage({
   searchParams: Promise<{ data?: string | string[] }>;
 }) {
   const acesso = await requireGestao();
+  redirecionarSemEdicao(acesso, "/estoque/pedidos/cotacoes");
   const params = await searchParams;
 
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão

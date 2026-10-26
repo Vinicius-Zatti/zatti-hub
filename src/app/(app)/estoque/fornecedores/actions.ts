@@ -2,7 +2,7 @@
 
 import { listFornecedores, upsertFornecedor, upsertFornecedoresBatch, proximoCodigo } from "@/lib/sheets/fornecedores";
 import type { Fornecedor } from "@/lib/types";
-import { requireGestao, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, exigirEdicao } from "@/lib/acesso";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -59,6 +59,7 @@ export async function criarFornecedorAction(formData: FormData) {
   const acesso = await requireGestao();
 
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_fornecedores");
     const dados = validarEntrada(fornecedorNovoSchema, {
       razaoSocial: String(formData.get("razaoSocial") ?? ""),
@@ -96,6 +97,7 @@ export async function criarFornecedorRapidoAction(dados: {
 }): Promise<{ fornecedor: Fornecedor } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_fornecedores");
     const entrada = validarEntrada(fornecedorNovoSchema, {
       razaoSocial: "",
@@ -127,6 +129,7 @@ export async function salvarFornecedorAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_fornecedores");
     const entrada = validarEntrada(fornecedorSchema, fornecedor);
     await upsertFornecedor(entrada, acesso.spreadsheetId);
@@ -153,6 +156,7 @@ export async function salvarFornecedoresAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("salvar_fornecedores");
     const entradas = validarEntrada(fornecedoresSchema, fornecedores);
     await upsertFornecedoresBatch(entradas, acesso.spreadsheetId);

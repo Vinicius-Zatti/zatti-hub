@@ -207,6 +207,8 @@ type FichaRow = {
   foto_path: string | null;
   observacoes_operacionais: string;
   observacoes_gerenciais: string;
+  /** Coluna de 20261026120000 (ausente antes do SQL rodar). */
+  preco_venda_rascunho?: number | null;
   status: StatusFicha;
   versao: number;
   criado_por: string;
@@ -626,6 +628,8 @@ export async function getFichaTecnicaCompleta(unidadeId: string, id: string): Pr
     precoVendaDeliveryProprio: row.preco_venda_delivery_proprio === null ? null : Number(row.preco_venda_delivery_proprio),
     precoVendaIfood: row.preco_venda_ifood === null ? null : Number(row.preco_venda_ifood),
     precoVenda99Food: row.preco_venda_99food === null ? null : Number(row.preco_venda_99food),
+    precoVendaRascunho:
+      row.preco_venda_rascunho === null || row.preco_venda_rascunho === undefined ? null : Number(row.preco_venda_rascunho),
     tempoPreparoMinutos: row.tempo_preparo_minutos,
     fotoPath: row.foto_path,
     observacoesOperacionais: row.observacoes_operacionais,
@@ -1248,6 +1252,68 @@ export async function salvarConfiguracaoFinanceira(unidadeId: string, config: Co
 /** Atualiza só o preço de venda (não passa pela transação completa de
  * salvar_ficha_tecnica - não mexe em componente/etapa/versão). Usado pela
  * edição direto na listagem. */
+/** Rascunhos de preço do chef (26/10/2026): id da ficha -> preço sugerido. Coluna ainda não
+ * criada (SQL não rodou): nenhum rascunho. */
+export async function listarRascunhosPrecoFichas(unidadeId: string): Promise<Map<string, number>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fichas_tecnicas")
+    .select("id, preco_venda_rascunho")
+    .eq("unidade_id", unidadeId)
+    .not("preco_venda_rascunho", "is", null)
+    .limit(1000);
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") return new Map();
+    throw new Error(error.message);
+  }
+  return new Map(
+    ((data ?? []) as { id: string; preco_venda_rascunho: number }[]).map((r) => [r.id, Number(r.preco_venda_rascunho)]),
+  );
+}
+
+/** Chef grava (ou apaga, com `null`) o preço sugerido. Nunca toca o preço oficial. */
+export async function salvarPrecoRascunhoFicha(unidadeId: string, fichaId: string, valor: number | null): Promise<void> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fichas_tecnicas")
+    .update({ preco_venda_rascunho: valor })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId)
+    .select("id");
+  if (error?.code === "42501") throw new ErroPublico(error.message);
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new ErroPublico("Ficha técnica não encontrada.");
+}
+
+/** Gestão aceita o rascunho: vira o preço do Salão e o rascunho some. Só aceita o valor que a
+ * pessoa viu na tela (se o chef mudou no meio, pede para conferir de novo). */
+export async function aceitarPrecoRascunhoFicha(unidadeId: string, fichaId: string, valorVisto: number): Promise<void> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fichas_tecnicas")
+    .update({ preco_venda: valorVisto, preco_venda_rascunho: null })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId)
+    .eq("preco_venda_rascunho", valorVisto)
+    .select("id");
+  if (error?.code === "42501") throw new ErroPublico(error.message);
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new ErroPublico("O rascunho mudou ou já foi aceito. Recarregue a página e confira.");
+  }
+}
+
+/** Gestão descarta o rascunho sem mudar o preço oficial. */
+export async function descartarPrecoRascunhoFicha(unidadeId: string, fichaId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("fichas_tecnicas")
+    .update({ preco_venda_rascunho: null })
+    .eq("unidade_id", unidadeId)
+    .eq("id", fichaId);
+  if (error) throw new Error(error.message);
+}
+
 export async function atualizarPrecoVendaFicha(unidadeId: string, fichaId: string, precoVenda: number | null): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase

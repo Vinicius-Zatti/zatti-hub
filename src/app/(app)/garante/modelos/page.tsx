@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireGestaoGarante } from "@/lib/acesso";
+import { requireGestaoGarante, redirecionarSemEdicao } from "@/lib/acesso";
 import { BIBLIOTECA_POPS } from "@/lib/garante/biblioteca";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-branco";
@@ -18,6 +18,7 @@ const ERROS: Record<string, string> = {
  * pronto para ajustar e publicar. */
 export default async function ModelosPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
   const acesso = await requireGestaoGarante();
+  redirecionarSemEdicao(acesso, "/garante/modelos");
   const { erro } = await searchParams;
   const hoje = hojeOperacao();
   const [modelos, regras, avisos] = await Promise.all([carregarModelos(acesso), carregarRegras(acesso, hoje), carregarAvisosGarante(acesso)]);

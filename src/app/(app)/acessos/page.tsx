@@ -5,6 +5,7 @@ import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { ResponsavelAvisos, TextoResponsavelAvisos } from "@/components/garante/responsavel-avisos";
 import { definirResponsavelAvisosGaranteAction } from "./actions";
+import { TextoTitular, TitularOrganizacao } from "@/components/acessos/titular-organizacao";
 import { carregarAvisosGaranteAcessos, carregarPainelAcessos } from "./dados";
 import {
   AcoesDoVinculo,
@@ -43,12 +44,14 @@ export default async function AcessosPage() {
                 <Th>Tipo</Th>
                 <Th align="center">Unidades</Th>
                 <Th align="center">Situação</Th>
+                <Th>Titular</Th>
+                <Th align="right">Ações</Th>
               </tr>
             </thead>
             <tbody>
               {organizacoes.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-cinza-medio">
+                  <td colSpan={7} className="px-3 py-6 text-center text-cinza-medio">
                     Nenhuma organização cadastrada ainda.
                   </td>
                 </tr>
@@ -61,6 +64,14 @@ export default async function AcessosPage() {
                   <td className="px-3 py-2 text-center">{o.totalUnidades}</td>
                   <td className="px-3 py-2 text-center">
                     <Pill tom={o.ativo ? "verde" : "cinza"}>{o.ativo ? "Ativo" : "Inativo"}</Pill>
+                  </td>
+                  <td className="px-3 py-2">
+                    <TextoTitular titular={o.titular} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end">
+                      <TitularOrganizacao organizacao={o} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -225,7 +236,14 @@ export default async function AcessosPage() {
                   </td>
                   <td className="px-3 py-2">{v.organizacaoNome}</td>
                   <td className="px-3 py-2">{v.unidadeNome ?? "Todas as unidades"}</td>
-                  <td className="px-3 py-2 text-center">{ROTULO_ROLE[v.role] ?? v.role}</td>
+                  <td className="px-3 py-2 text-center">
+                    {ROTULO_ROLE[v.role] ?? v.role}
+                    {v.ehTitular && (
+                      <span className="ml-1">
+                        <Pill tom="ambar">Titular</Pill>
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-center">
                     <Pill tom={tomSituacaoVinculo(v.status)}>
                       {v.status}

@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   expiracaoSenhaTemporaria,
   gerarSenhaTemporaria,
+  MENSAGEM_CONTA_TITULAR,
   mensagemEditarVinculo,
   mensagemGerarProvisoria,
   normalizarWhatsapp,
@@ -24,7 +25,9 @@ import {
   salvarPermissoesNoBanco,
 } from "@/lib/equipe/servidor";
 import { CHAVES, ehChavePermissao, ehNivel, mensagemSalvarPermissoes } from "@/lib/permissoes/modulos";
-import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
+import { podeAdministrarPermissoes, podeMexerNaContaDe, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
+import { vinculoEhDono } from "@/lib/permissoes/dono";
+import { carregarTitularOrganizacao } from "@/lib/equipe/titular-servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 
 // Toda ação começa por `requireEquipe()` (gestão ou master, flag ligada na
@@ -88,6 +91,19 @@ async function carregarAlvo(
     return { erro: "Acesso não encontrado." };
   }
   return { alvo };
+}
+
+/** A conta do titular (senha, WhatsApp, editar e tirar acesso) só o master mexe. O banco confere
+ * de novo na senha provisória e na edição ('alvo_titular'). */
+async function recusaContaTitular(
+  admin: ReturnType<typeof createAdminClient>,
+  acesso: AcessoAtual,
+  alvo: VinculoAlvo,
+): Promise<{ erro: string } | null> {
+  if (acesso.role === "master") return null;
+  const titular = await carregarTitularOrganizacao(admin, acesso.organizacaoId);
+  if (podeMexerNaContaDe(acesso, { ehTitular: titular?.userId === alvo.user_id })) return null;
+  return { erro: MENSAGEM_CONTA_TITULAR };
 }
 
 async function gravarResultadoEnvio(
@@ -399,6 +415,8 @@ export async function gerarSenhaProvisoriaMembroAction(
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
   const { alvo } = carregado;
+  const recusaTitular = await recusaContaTitular(admin, acesso, alvo);
+  if (recusaTitular) return recusaTitular;
 
   if (alvo.status !== "ativo") return { erro: "Só dá para gerar senha provisória para acesso ativo." };
   // Antes de trocar: sem WhatsApp, a pessoa ficaria sem senha nenhuma.
@@ -455,6 +473,8 @@ export async function editarAcessoMembroAction(
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
+  const recusaTitular = await recusaContaTitular(admin, acesso, carregado.alvo);
+  if (recusaTitular) return recusaTitular;
   const codigo = await editarVinculoNoBanco(admin, {
     atorId: acesso.userId,
     vinculoId: carregado.alvo.id,
@@ -477,8 +497,19 @@ export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: st
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
-  const { error } = await admin.from("vinculos").update({ whatsapp }).eq("id", carregado.alvo.id);
+  const recusaTitular = await recusaContaTitular(admin, acesso, carregado.alvo);
+  if (recusaTitular) return recusaTitular;
+  // O banco confere de novo quem pede e recusa a conta do titular ('alvo_titular', 26/10/2026).
+  const { data: codigo, error } = await admin.rpc("atualizar_whatsapp_vinculo", {
+    p_ator: acesso.userId,
+    p_vinculo_id: carregado.alvo.id,
+    p_escopo: "equipe",
+    p_whatsapp: whatsapp,
+  });
   if (error) return { erro: "Não foi possível salvar o WhatsApp." };
+  if (codigo === "alvo_titular") return { erro: MENSAGEM_CONTA_TITULAR };
+  if (codigo === "sem_mudanca") return { ok: true };
+  if (codigo !== "ok") return { erro: "Acesso não encontrado." };
   // Só os 4 finais (nunca o número inteiro na auditoria). A troca também marca
   // `vinculos.whatsapp_alterado_em` (gatilho no banco): a Equipe não gera senha
   // provisória para esse vínculo nos 30 minutos seguintes.
@@ -504,11 +535,19 @@ export async function revogarMembroAction(vinculoId: string): Promise<Resultado>
   if ("erro" in carregado) return carregado;
   const { alvo } = carregado;
   if (alvo.status === "revogado") return { ok: true };
+  const recusaTitular = await recusaContaTitular(admin, acesso, alvo);
+  if (recusaTitular) return recusaTitular;
 
   // Trava a gestão do cliente no banco: dois gestores não se revogam ao
   // mesmo tempo e o cliente nunca fica sem gestão geral nem loja sem gestão.
-  const { data: resultado, error } = await admin.rpc("revogar_vinculo_equipe", { p_vinculo_id: alvo.id });
+  // O banco também confere quem pede e recusa a conta do titular ('alvo_titular', 26/10/2026).
+  const { data: resultado, error } = await admin.rpc("revogar_vinculo_equipe", {
+    p_ator: acesso.userId,
+    p_vinculo_id: alvo.id,
+    p_escopo: "equipe",
+  });
   if (error) return { erro: "Não foi possível tirar o acesso." };
+  if (resultado === "alvo_titular") return { erro: MENSAGEM_CONTA_TITULAR };
   if (resultado === "ultima_gestao") {
     return { erro: "Essa é a última pessoa de gestão que cobre esse acesso. Cadastre outra antes." };
   }
@@ -562,7 +601,7 @@ export async function reativarMembroAction(vinculoId: string): Promise<Resultado
 }
 
 /** Permissões por módulo de alguém da equipe (Navegação V2, fase 6 - 25/10/2026). Só master ou
- * o dono (gestão da organização inteira, com a Equipe em "editar"), só no piloto. `niveis` é o
+ * o titular (sem titular marcado, a gestão da organização inteira), com a Equipe em "editar". `niveis` é o
  * estado completo da tela (o rascunho só grava aqui). O banco confere tudo de novo, guarda só
  * as exceções ao padrão da função e grava a auditoria. */
 export async function salvarPermissoesMembroAction(vinculoId: string, niveis: unknown): Promise<Resultado> {
@@ -580,7 +619,12 @@ export async function salvarPermissoesMembroAction(vinculoId: string, niveis: un
   const admin = createAdminClient();
   const carregado = await carregarAlvo(admin, acesso, vinculoId);
   if ("erro" in carregado) return carregado;
-  if (!podeMudarPermissoesDe(acesso, { role: carregado.alvo.role, unidadeId: carregado.alvo.unidade_id })) {
+  const titular = await carregarTitularOrganizacao(admin, acesso.organizacaoId);
+  const alvoDono = vinculoEhDono(
+    { id: carregado.alvo.id, role: carregado.alvo.role, unidadeId: carregado.alvo.unidade_id, status: carregado.alvo.status },
+    titular?.vinculoId ?? null,
+  );
+  if (!podeMudarPermissoesDe(acesso, { ehDono: alvoDono })) {
     return { erro: mensagemSalvarPermissoes("alvo_dono") ?? "" };
   }
   const codigo = await salvarPermissoesNoBanco(admin, {

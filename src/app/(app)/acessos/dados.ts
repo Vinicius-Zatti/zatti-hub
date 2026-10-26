@@ -10,6 +10,11 @@ export type OrganizacaoPainel = {
   tipoCliente: string;
   ativo: boolean;
   totalUnidades: number;
+  /** Titular marcado pelo master (26/10/2026). `valido = false`: deixou de ser gestão ativa e,
+   * até marcar de novo, vale a reserva (gestão de todas as unidades conta como dono). */
+  titular: { vinculoId: string; nome: string; valido: boolean } | null;
+  /** Quem pode ser titular: gestão ativa da organização, de quem não é master. */
+  candidatosTitular: { vinculoId: string; nome: string; alcance: string }[];
 };
 
 export type UnidadePainel = {
@@ -40,6 +45,8 @@ export type VinculoPainel = {
   /** Só os 4 últimos dígitos do WhatsApp do vínculo (o número inteiro não vai ao navegador). */
   whatsappFinal: string | null;
   criadoEm: string;
+  /** Este vínculo é o titular marcado da organização (selo "Titular"). */
+  ehTitular: boolean;
 };
 
 export type PainelAcessos = {
@@ -68,6 +75,14 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
     admin.from("vinculos").select("id, user_id, organizacao_id, unidade_id, role, status, whatsapp, created_at").order("created_at", { ascending: false }),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
+  // Tabela do titular (20261026120000): ainda não criada = ninguém marcado.
+  const titularesResp = await admin.from("titulares_organizacao").select("organizacao_id, vinculo_id");
+  if (titularesResp.error && titularesResp.error.code !== "42P01" && titularesResp.error.code !== "PGRST205") {
+    throw new Error(titularesResp.error.message);
+  }
+  const titularPorOrg = new Map(
+    ((titularesResp.data ?? []) as { organizacao_id: string; vinculo_id: string }[]).map((t) => [t.organizacao_id, t.vinculo_id]),
+  );
 
   if (orgsResp.error) throw new Error(orgsResp.error.message);
   if (unidadesResp.error) throw new Error(unidadesResp.error.message);
@@ -97,13 +112,37 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
     unidadesPorOrganizacao.set(u.organizacao_id, (unidadesPorOrganizacao.get(u.organizacao_id) ?? 0) + 1);
   }
 
-  const organizacoes: OrganizacaoPainel[] = organizacoesBrutas.map((o) => ({
-    id: o.id,
-    nome: o.nome,
-    tipoCliente: o.tipo_cliente,
-    ativo: o.ativo,
-    totalUnidades: unidadesPorOrganizacao.get(o.id) ?? 0,
-  }));
+  const masters = new Set(vinculosBrutos.filter((v) => v.role === "master" && v.status === "ativo").map((v) => v.user_id));
+  const nomeDoVinculo = (v: { user_id: string }) =>
+    perfilNomePorId.get(v.user_id) || usuarioPorId.get(v.user_id)?.email || "(sem nome)";
+  const organizacoes: OrganizacaoPainel[] = organizacoesBrutas.map((o) => {
+    const titularId = titularPorOrg.get(o.id) ?? null;
+    const vinculoTitular = titularId ? vinculosBrutos.find((v) => v.id === titularId) : undefined;
+    return {
+      id: o.id,
+      nome: o.nome,
+      tipoCliente: o.tipo_cliente,
+      ativo: o.ativo,
+      totalUnidades: unidadesPorOrganizacao.get(o.id) ?? 0,
+      titular: titularId
+        ? {
+            vinculoId: titularId,
+            nome: vinculoTitular ? nomeDoVinculo(vinculoTitular) : "(acesso não encontrado)",
+            valido: Boolean(
+              vinculoTitular && vinculoTitular.role === "gestao" && vinculoTitular.status === "ativo" &&
+                vinculoTitular.organizacao_id === o.id,
+            ),
+          }
+        : null,
+      candidatosTitular: vinculosBrutos
+        .filter((v) => v.organizacao_id === o.id && v.role === "gestao" && v.status === "ativo" && !masters.has(v.user_id))
+        .map((v) => ({
+          vinculoId: v.id,
+          nome: nomeDoVinculo(v),
+          alcance: v.unidade_id ? unidadeNomePorId.get(v.unidade_id) ?? v.unidade_id : "Todas as unidades",
+        })),
+    };
+  });
 
   const unidades: UnidadePainel[] = unidadesBrutas.map((u) => ({
     id: u.id,
@@ -133,6 +172,7 @@ export async function carregarPainelAcessos(): Promise<PainelAcessos> {
       confirmado: usuario?.confirmado ?? false,
       whatsappFinal: v.whatsapp ? String(v.whatsapp).slice(-4) : null,
       criadoEm: v.created_at,
+      ehTitular: titularPorOrg.get(v.organizacao_id) === v.id,
     };
   });
 

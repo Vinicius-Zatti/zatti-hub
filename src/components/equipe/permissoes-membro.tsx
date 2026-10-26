@@ -8,6 +8,8 @@ import { salvarPermissoesMembroAction } from "@/app/(app)/equipe/actions";
 import {
   ACOES,
   MODULOS,
+  MODULO_CHEF,
+  NIVEIS,
   ROTULO_NIVEL,
   chaveLiberada,
   copiarNiveis,
@@ -29,12 +31,16 @@ export type PessoaPermissoes = {
   vinculoId: string;
   nome: string;
   role: Papel;
-  /** Vínculo sem unidade (dono). */
-  orgInteira: boolean;
+  /** Dono do cliente: o titular ou, sem titular marcado, a gestão de todas as unidades. */
+  ehDono: boolean;
   excecoes: Excecoes;
 };
 
 const ROTULO_FUNCAO: Record<Papel, string> = { gestao: "Gestão", operacional: "Operacional" };
+
+/** O que o nível "chef" do Cardápio libera (26/10/2026). */
+const DESCRICAO_CHEF =
+  "Chef cria e edita fichas e modo de preparo, vê custo e CMV e sugere o preço de venda como rascunho (a gestão aprova). Não vê margem nem precificação";
 
 /** Botão "Permissões" + grade módulo x nível (Navegação V2, fase 6 - 25/10/2026). Tudo é
  * rascunho na tela: "Copiar de...", "Voltar ao padrão" e cada toque entram no histórico do
@@ -54,8 +60,8 @@ export function PermissoesMembro({
   const [pendente, startTransition] = useTransition();
   const [aberto, setAberto] = useState(false);
   const salvo = useMemo(
-    () => rascunhoInicial(pessoa.role, pessoa.orgInteira, pessoa.excecoes),
-    [pessoa.role, pessoa.orgInteira, pessoa.excecoes],
+    () => rascunhoInicial(pessoa.role, pessoa.ehDono, pessoa.excecoes),
+    [pessoa.role, pessoa.ehDono, pessoa.excecoes],
   );
   const [rascunho, setRascunho] = useState<NiveisCompletos>(salvo);
   const [historico, setHistorico] = useState<NiveisCompletos[]>([]);
@@ -64,7 +70,7 @@ export function PermissoesMembro({
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const padrao = (c: ChavePermissao) => nivelPadrao(pessoa.role, pessoa.orgInteira, c);
+  const padrao = (c: ChavePermissao) => nivelPadrao(pessoa.role, pessoa.ehDono, c);
   const alteradas = mudancas(salvo, rascunho);
   const qtdExcecoes = MODULOS.filter((m) => rascunho[m.chave] !== padrao(m.chave)).length +
     ACOES.filter((a) => rascunho[a.modulo] === "editar" && rascunho[a.chave] !== padrao(a.chave)).length;
@@ -100,15 +106,15 @@ export function PermissoesMembro({
   }
 
   function voltarAoPadrao() {
-    aplicar(rascunhoInicial(pessoa.role, pessoa.orgInteira, {}), "Tudo no padrão da função. Salve para valer.");
+    aplicar(rascunhoInicial(pessoa.role, pessoa.ehDono, {}), "Tudo no padrão da função. Salve para valer.");
   }
 
   function copiar(vinculoId: string) {
     setCopiadoDe(vinculoId);
     const origem = outras.find((o) => o.vinculoId === vinculoId);
     if (!origem) return;
-    const efetivos = niveisEfetivos(origem.role, origem.orgInteira, origem.excecoes);
-    const copia = copiarNiveis({ role: pessoa.role, orgInteira: pessoa.orgInteira }, efetivos);
+    const efetivos = niveisEfetivos(origem.role, origem.ehDono, origem.excecoes);
+    const copia = copiarNiveis({ role: pessoa.role, ehDono: pessoa.ehDono }, efetivos);
     const ajustou = MODULOS.some((m) => m.liberado && copia[m.chave] !== efetivos[m.chave]);
     aplicar(
       copia,
@@ -134,7 +140,7 @@ export function PermissoesMembro({
   const visivel = (c: ChavePermissao) => !somenteAlterados || rascunho[c] !== padrao(c) || rascunho[c] !== salvo[c];
   const opcoesCopia = outras
     .filter((o) => o.vinculoId !== pessoa.vinculoId)
-    .map((o) => ({ id: o.vinculoId, label: `${o.nome} (${ROTULO_FUNCAO[o.role]}${o.orgInteira ? ", todas as unidades" : ""})` }));
+    .map((o) => ({ id: o.vinculoId, label: `${o.nome} (${ROTULO_FUNCAO[o.role]}${o.ehDono ? ", titular" : ""})` }));
 
   return (
     <>
@@ -146,7 +152,7 @@ export function PermissoesMembro({
         <h2 className="font-display text-xl font-bold text-azul-noite">Permissões</h2>
         <p className="mt-1 truncate text-sm text-cinza-medio" title={pessoa.nome}>
           {pessoa.nome} · {ROTULO_FUNCAO[pessoa.role]}
-          {pessoa.orgInteira ? " em todas as unidades" : ""}
+          {pessoa.ehDono ? " · responde pelo cliente" : ""}
         </p>
 
         <div className="mt-3 flex flex-col gap-2">
@@ -194,29 +200,33 @@ export function PermissoesMembro({
         <ul className="mt-3 flex flex-col divide-y divide-cinza-claro rounded-lg border border-cinza-claro bg-branco">
           {MODULOS.filter((m) => visivel(m.chave) || ACOES.some((a) => a.modulo === m.chave && rascunho[m.chave] === "editar" && visivel(a.chave))).map((m) => {
             const acoes = ACOES.filter(
-              (a) => a.modulo === m.chave && rascunho[m.chave] === "editar" && niveisPermitidos(pessoa.role, pessoa.orgInteira, a.chave).length > 1 && visivel(a.chave),
+              (a) => a.modulo === m.chave && rascunho[m.chave] === "editar" && niveisPermitidos(pessoa.role, pessoa.ehDono, a.chave).length > 1 && visivel(a.chave),
             );
             return (
               <li key={m.chave} className="flex flex-col gap-2 p-3">
                 <LinhaNivel
                   chave={m.chave}
                   nome={m.nome}
-                  descricao={m.liberado ? m.descricao : `Ainda não muda por aqui (chega na próxima etapa). Vale o padrão da função: ${ROTULO_NIVEL[padrao(m.chave)]}.`}
+                  descricao={m.chave === MODULO_CHEF ? `${m.descricao}. ${DESCRICAO_CHEF}` : m.descricao}
                   valor={rascunho[m.chave]}
                   padrao={padrao(m.chave)}
                   salvo={salvo[m.chave]}
-                  permitidos={niveisPermitidos(pessoa.role, pessoa.orgInteira, m.chave)}
+                  permitidos={niveisPermitidos(pessoa.role, pessoa.ehDono, m.chave)}
                   bloqueado={!chaveLiberada(m.chave)}
                   explicacaoBloqueio={
                     m.chave === "configuracoes"
                       ? "Ligar e desligar módulos fica com a Zatti (módulo pode ser pago)."
-                      : !m.liberado
-                        ? `${m.nome} ainda não muda por aqui. Por enquanto vale o padrão da função.`
-                        : `A função ${ROTULO_FUNCAO[pessoa.role]} não permite. Mude a função em "Editar acesso".`
+                      : `A função ${ROTULO_FUNCAO[pessoa.role]} não permite. Mude a função em "Editar acesso".`
                   }
                   onTrocar={(n) => trocar(m.chave, n)}
                   desabilitado={pendente}
                 />
+                {m.chave === "cadastros" && rascunho.cadastros !== "editar" && padrao("cadastros") === "editar" && (
+                  <p className="rounded-md bg-ambar/10 px-2 py-1 text-xs text-azul-noite">
+                    Os produtos, setores e fornecedores continuam aparecendo na contagem, nos pedidos e nas fichas.
+                    Sem Editar em Cadastros, {pessoa.nome} não cria nem muda o cadastro deles.
+                  </p>
+                )}
                 {m.chave === "cardapio" && padrao("cardapio") === "editar" && rascunho.cardapio !== "editar" && (
                   <p className="rounded-md bg-ambar/10 px-2 py-1 text-xs text-azul-noite">
                     Sem Editar no Cardápio, {pessoa.nome} também não marca nem desmarca pré-preparo em Cadastros
@@ -232,7 +242,7 @@ export function PermissoesMembro({
                       valor={rascunho[a.chave]}
                       padrao={padrao(a.chave)}
                       salvo={salvo[a.chave]}
-                      permitidos={niveisPermitidos(pessoa.role, pessoa.orgInteira, a.chave)}
+                      permitidos={niveisPermitidos(pessoa.role, pessoa.ehDono, a.chave)}
                       bloqueado={false}
                       explicacaoBloqueio=""
                       onTrocar={(n) => trocar(a.chave, n)}
@@ -309,7 +319,7 @@ function LinhaNivel({
         { nivel: "sem_acesso", rotulo: "Bloqueado" },
         { nivel: "editar", rotulo: "Liberado" },
       ]
-    : (["sem_acesso", "ver", "editar"] as NivelModulo[]).map((n) => ({ nivel: n, rotulo: ROTULO_NIVEL[n] }));
+    : NIVEIS.filter((n) => n !== "chef" || chave === MODULO_CHEF).map((n) => ({ nivel: n, rotulo: ROTULO_NIVEL[n] }));
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -331,7 +341,9 @@ function LinhaNivel({
       <div
         role="radiogroup"
         aria-label={`Nível de ${nome}`}
-        className={`grid shrink-0 overflow-hidden rounded-md border border-cinza-claro ${acao ? "grid-cols-2" : "grid-cols-3"} sm:w-64`}
+        className={`grid shrink-0 overflow-hidden rounded-md border border-cinza-claro ${
+          acao ? "grid-cols-2" : opcoes.length === 4 ? "grid-cols-4" : "grid-cols-3"
+        } ${opcoes.length === 4 ? "sm:w-80" : "sm:w-64"}`}
       >
         {opcoes.map((o) => {
           const permitido = !bloqueado && permitidos.includes(o.nivel);
@@ -353,7 +365,9 @@ function LinhaNivel({
                     ? "bg-vermelho text-branco"
                     : o.nivel === "ver"
                       ? "bg-azul-petroleo text-branco"
-                      : "bg-verde text-branco"
+                      : o.nivel === "chef"
+                        ? "bg-ambar text-azul-noite"
+                        : "bg-verde text-branco"
                   : permitido
                     ? "bg-branco text-cinza hover:bg-off-white"
                     : "bg-off-white text-cinza-claro"
