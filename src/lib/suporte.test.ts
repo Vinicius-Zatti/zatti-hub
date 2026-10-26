@@ -4,7 +4,9 @@ import {
   WHATSAPP_VINICIUS,
   formatarDataHoraSuporte,
   identificadorDoErro,
+  montarLinkDuvidaWhatsApp,
   montarLinkSuporteWhatsApp,
+  montarMensagemDuvidaSuporte,
   montarMensagemSuporte,
 } from "./suporte";
 
@@ -114,5 +116,17 @@ describe("texto de erro do navegador para o log", () => {
     expect(sanitizarTextoErroParaLog("Cannot read properties of undefined (reading 'nome')")).toBe(
       "Cannot read properties of undefined (reading 'nome')",
     );
+  });
+});
+
+describe("item Falar com o suporte (WhatsApp) do Menu", () => {
+  it("mensagem curta só com a unidade, no número único do suporte", () => {
+    expect(montarMensagemDuvidaSuporte("The House - Matriz")).toBe(
+      "Oi Vinícius, preciso de ajuda no Zatti Hub.\nUnidade: The House - Matriz",
+    );
+    expect(montarMensagemDuvidaSuporte(null)).toBe("Oi Vinícius, preciso de ajuda no Zatti Hub.\nUnidade: não identificada");
+    const link = montarLinkDuvidaWhatsApp("X-Tudo");
+    expect(link.startsWith(`https://wa.me/${WHATSAPP_VINICIUS}?text=`)).toBe(true);
+    expect(decodeURIComponent(link.split("?text=")[1])).toBe(montarMensagemDuvidaSuporte("X-Tudo"));
   });
 });

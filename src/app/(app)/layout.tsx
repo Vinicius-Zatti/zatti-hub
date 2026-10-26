@@ -121,35 +121,38 @@ export default async function AppLayout({
     usuarioNome: acesso.usuarioNome,
   };
   const conteudo = (
-    // Nome da unidade para a mensagem de suporte do cartão de erro.
-    <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
+    <>
       {faixa ? <FaixaAssinatura faixa={faixa} link={assinatura?.link ?? null} /> : null}
       {children}
       {/* Convite para instalar como app: só celular, fora do app instalado, depois do tour. */}
       <ConviteInstalarApp comBarraInferior={navegacaoV2} />
-    </UnidadeSuporteProvider>
+    </>
   );
 
   return (
-    <GuardaContagemProvider>
-      <GuardaEdicaoProvider>
-        {/* Pendência de sincronização da cotação: fica viva entre telas. */}
-        <SincronizadorCotacao />
-        {navegacaoV2 ? (
-          // Barra inferior do celular e abas dos módulos: tirados do mesmo menu (papel e flags iguais).
-          <EstruturaAplicativoV2
-            {...propsEstrutura}
-            atalhos={escolherAtalhos(itensRestaurante)}
-            entradasBusca={montarEntradasBusca(itensRestaurante, acoesDisponiveis(itensRestaurante, podeGerir))}
-            unidadeNome={acesso.unidadeNome}
-            toursVistos={toursVistos}
-          >
-            {conteudo}
-          </EstruturaAplicativoV2>
-        ) : (
-          <EstruturaAplicativo {...propsEstrutura}>{conteudo}</EstruturaAplicativo>
-        )}
-      </GuardaEdicaoProvider>
-    </GuardaContagemProvider>
+    // Nome da unidade para a mensagem de suporte: cartão de erro e o item
+    // "Falar com o suporte (WhatsApp)" do Menu, por isso envolve o shell.
+    <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
+      <GuardaContagemProvider>
+        <GuardaEdicaoProvider>
+          {/* Pendência de sincronização da cotação: fica viva entre telas. */}
+          <SincronizadorCotacao />
+          {navegacaoV2 ? (
+            // Barra inferior do celular e abas dos módulos: tirados do mesmo menu (papel e flags iguais).
+            <EstruturaAplicativoV2
+              {...propsEstrutura}
+              atalhos={escolherAtalhos(itensRestaurante)}
+              entradasBusca={montarEntradasBusca(itensRestaurante, acoesDisponiveis(itensRestaurante, podeGerir))}
+              unidadeNome={acesso.unidadeNome}
+              toursVistos={toursVistos}
+            >
+              {conteudo}
+            </EstruturaAplicativoV2>
+          ) : (
+            <EstruturaAplicativo {...propsEstrutura}>{conteudo}</EstruturaAplicativo>
+          )}
+        </GuardaEdicaoProvider>
+      </GuardaContagemProvider>
+    </UnidadeSuporteProvider>
   );
 }

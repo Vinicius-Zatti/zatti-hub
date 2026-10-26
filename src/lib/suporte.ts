@@ -96,6 +96,20 @@ export function montarMensagemSuporte(dados: DadosSuporte): string {
   ].join("\n");
 }
 
+function linkWhatsAppSuporte(texto: string): string {
+  return `https://wa.me/${WHATSAPP_VINICIUS}?text=${encodeURIComponent(texto)}`;
+}
+
 export function montarLinkSuporteWhatsApp(dados: DadosSuporte): string {
-  return `https://wa.me/${WHATSAPP_VINICIUS}?text=${encodeURIComponent(montarMensagemSuporte(dados))}`;
+  return linkWhatsAppSuporte(montarMensagemSuporte(dados));
+}
+
+/** Item "Falar com o suporte (WhatsApp)" do Menu (26/10/2026): mensagem curta
+ * só com a unidade da sessão, para o usuário completar com a dúvida. */
+export function montarMensagemDuvidaSuporte(unidade: string | null): string {
+  return ["Oi Vinícius, preciso de ajuda no Zatti Hub.", `Unidade: ${limpar(unidade) || "não identificada"}`].join("\n");
+}
+
+export function montarLinkDuvidaWhatsApp(unidade: string | null): string {
+  return linkWhatsAppSuporte(montarMensagemDuvidaSuporte(unidade));
 }

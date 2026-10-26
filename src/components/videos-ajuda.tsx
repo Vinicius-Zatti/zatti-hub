@@ -7,7 +7,8 @@ import { VIDEOS_AJUDA, type IdVideoAjuda } from "@/lib/videos-ajuda/regras";
 // Vídeos explicativos dentro do app (26/10/2026). Um player só para o shell da
 // Navegação V2, no mesmo `ModalFlutuante` do convite de instalar (PR #56):
 // abre pelo cartão de boas-vindas (primeiro acesso, `navegacao-v2/tour-modulo.tsx`),
-// pelo item "Vídeo de boas-vindas" do menu e pelo link do começo da Contagem.
+// pela central de Vídeos explicativos do Menu (`central-videos-ajuda.tsx`) e
+// pelos links "Ver o vídeo" de cada tela.
 // Nunca toca sozinho (`preload="none"`, sem autoplay).
 
 const AbrirVideoContexto = createContext<((id: IdVideoAjuda) => void) | null>(null);
@@ -91,7 +92,7 @@ export function CartaoBoasVindas({ aoFechar }: { aoFechar: () => void }) {
           Ver o vídeo
         </button>
         <div className="mt-1 flex items-center justify-between gap-2">
-          <p className="px-2 text-xs text-cinza-medio">Fica no Menu para ver depois.</p>
+          <p className="px-2 text-xs text-cinza-medio">Fica no Menu, em Vídeos explicativos.</p>
           <button
             type="button"
             onClick={aoFechar}
@@ -102,37 +103,6 @@ export function CartaoBoasVindas({ aoFechar }: { aoFechar: () => void }) {
         </div>
       </div>
     </section>
-  );
-}
-
-/** Item fixo do Menu (gaveta do celular e menu lateral): o vídeo de boas-vindas sempre à mão. */
-export function ItemMenuVideoBoasVindas({
-  aoAbrir,
-  classeRotulo,
-  classeAlinhamento,
-}: {
-  /** Fecha a gaveta do celular antes de abrir o vídeo. */
-  aoAbrir: () => void;
-  /** Some com o menu recolhido no desktop (só o ícone fica). */
-  classeRotulo: string;
-  classeAlinhamento: string;
-}) {
-  const abrirVideo = useAbrirVideoAjuda();
-  if (!abrirVideo) return null;
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        aoAbrir();
-        abrirVideo("boas-vindas");
-      }}
-      aria-label={`Ver o vídeo de boas-vindas (${VIDEOS_AJUDA["boas-vindas"].duracao})`}
-      title={`Ver o vídeo de boas-vindas (${VIDEOS_AJUDA["boas-vindas"].duracao})`}
-      className={`mb-1 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar lg:min-h-10 ${classeAlinhamento}`}
-    >
-      <IconePlay />
-      <span className={classeRotulo}>Vídeo de boas-vindas</span>
-    </button>
   );
 }
 
