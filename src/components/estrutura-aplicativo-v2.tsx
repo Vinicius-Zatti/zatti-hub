@@ -11,7 +11,8 @@ import { CabecalhoModuloV2 } from "@/components/navegacao-v2/cabecalho-modulo";
 import { NavegacaoV2Provider } from "@/components/navegacao-v2/contexto";
 import { AlternadorTema } from "@/components/navegacao-v2/alternador-tema";
 import { TourModuloProvider } from "@/components/navegacao-v2/tour-modulo";
-import { ItemMenuVideoBoasVindas, VideosAjudaProvider } from "@/components/videos-ajuda";
+import { ItemMenuSuporteWhatsApp, ItemMenuVideosExplicativos } from "@/components/itens-menu-ajuda";
+import { VideosAjudaProvider } from "@/components/videos-ajuda";
 import { cabecalhoDoModulo } from "@/lib/navegacao/abas";
 import { teclaAbreBusca, type EntradaBusca } from "@/lib/navegacao/busca";
 import { filtrarMenus, normalizarBusca } from "@/lib/navegacao/filtro";
@@ -492,8 +493,10 @@ export function EstruturaAplicativoV2({
           {/* Tema da tela (fase 7): preferência deste usuário neste aparelho. */}
           <AlternadorTema usuario={usuarioEmail || usuarioNome || ""} className={someRecolhido} />
 
-          {/* Vídeo de boas-vindas sempre à mão (o cartão do primeiro acesso aparece uma vez só). */}
-          <ItemMenuVideoBoasVindas aoAbrir={fecharGaveta} classeRotulo={someRecolhido} classeAlinhamento={alinhamentoItem} />
+          {/* Ajuda sempre à mão: a central de vídeos (o cartão de boas-vindas do
+              primeiro acesso aparece uma vez só) e o suporte pelo WhatsApp. */}
+          <ItemMenuVideosExplicativos aoAbrir={fecharGaveta} classeRotulo={someRecolhido} classeAlinhamento={alinhamentoItem} />
+          <ItemMenuSuporteWhatsApp aoAbrir={fecharGaveta} classeRotulo={someRecolhido} classeAlinhamento={alinhamentoItem} />
 
           {/* Recolhido no desktop: a inicial da organização expande o menu para trocar de cliente. */}
           <button

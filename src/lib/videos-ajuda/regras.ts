@@ -4,7 +4,14 @@
 // instalar o app (PR #56): arquivos em `public/videos/` (h264, faststart, capa
 // jpg), `preload="none"` e nunca tocam sozinhos.
 
-export type IdVideoAjuda = "boas-vindas" | "contagem" | "cotacao" | "espelhos";
+export type IdVideoAjuda =
+  | "boas-vindas"
+  | "instalar-iphone"
+  | "instalar-android"
+  | "contagem"
+  | "cotacao"
+  | "espelhos"
+  | "pedido-feito";
 
 export type VideoAjuda = {
   titulo: string;
@@ -24,6 +31,24 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-boas-vindas.mp4",
     capa: "/videos/zatti-hub-boas-vindas-capa.jpg",
     duracao: "2 min",
+    largura: 768,
+    altura: 1664,
+  },
+  // Os mesmos do convite de instalar (`convite-instalar-app.tsx`), para a
+  // central de Vídeos explicativos (`/ajuda/videos`).
+  "instalar-iphone": {
+    titulo: "Como instalar o app no iPhone",
+    src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4",
+    capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg",
+    duracao: "45s",
+    largura: 768,
+    altura: 1664,
+  },
+  "instalar-android": {
+    titulo: "Como instalar o app no Android",
+    src: "/videos/zatti-hub-como-app-no-celular-android.mp4",
+    capa: "/videos/zatti-hub-como-app-no-celular-android-capa.jpg",
+    duracao: "43s",
     largura: 768,
     altura: 1664,
   },
@@ -48,6 +73,14 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-editor-de-espelhos.mp4",
     capa: "/videos/zatti-hub-editor-de-espelhos-capa.jpg",
     duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "pedido-feito": {
+    titulo: "Como receber o pedido",
+    src: "/videos/zatti-hub-pedido-feito-recebimento.mp4",
+    capa: "/videos/zatti-hub-pedido-feito-recebimento-capa.jpg",
+    duracao: "1 min",
     largura: 1664,
     altura: 768,
   },

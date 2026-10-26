@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IconeNavegacao } from "@/components/icones-navegacao";
 import { itemAtivo, type ItemNavegacao, type SecaoNavegacao } from "@/lib/navegacao/tipos";
+import { ItemMenuSuporteWhatsApp, ItemMenuVideosExplicativos } from "@/components/itens-menu-ajuda";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { signOutAction } from "@/lib/supabase/actions";
 import { limparTodosRascunhos } from "@/lib/rascunho-local";
@@ -83,6 +84,8 @@ export function EstruturaAplicativo({
   const recuoConteudo = recolhido ? "pl-0 lg:pl-[5.5rem]" : "pl-16 lg:pl-64";
   const alinhamentoItem = recolhido ? "lg:justify-center" : "lg:justify-start";
   const ocultoNoMobile = recolhido ? "max-lg:invisible" : "";
+  // Mesmo comportamento do rótulo de Sair: só no desktop com o menu aberto.
+  const rotuloAjuda = recolhido ? "hidden" : "hidden lg:block";
 
   return (
     <div className="min-h-dvh">
@@ -262,6 +265,10 @@ export function EstruturaAplicativo({
               {organizacaoNome.charAt(0).toUpperCase() || "?"}
             </span>
           </button>
+
+          {/* Ajuda (26/10/2026): central de vídeos e suporte pelo WhatsApp. */}
+          <ItemMenuVideosExplicativos classeRotulo={rotuloAjuda} classeAlinhamento={alinhamentoItem} />
+          <ItemMenuSuporteWhatsApp classeRotulo={rotuloAjuda} classeAlinhamento={alinhamentoItem} />
 
           {/* Sair limpa os rascunhos de Contagem/Desempenho deste aparelho. */}
           <form action={signOutAction} onSubmit={limparTodosRascunhos}>
