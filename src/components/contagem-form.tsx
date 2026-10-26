@@ -23,6 +23,9 @@ import {
   quandoFoiSalvo,
   salvarRascunho,
 } from "@/lib/rascunho-local";
+import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
+import { confirmarPreenchidos, quantidadeDigitada } from "@/lib/contagem/confirmar-preenchidos";
+import { IconeNavegacao } from "@/components/icones-navegacao";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -170,6 +173,10 @@ export function ContagemForm({
   const [confirmados, setConfirmados] = useState<Record<string, number>>({});
   const [addNome, setAddNome] = useState("");
   const [addUnidade, setAddUnidade] = useState("UN");
+  // Busca na lista (26/10/2026): só decide o que aparece. Valores e
+  // confirmados ficam nos estados acima, pelo SKU, e não mudam com ela.
+  const [busca, setBusca] = useState("");
+  const addNomeRef = useRef<HTMLInputElement>(null);
   const [enviado, setEnviado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [avisoRascunho, setAvisoRascunho] = useState<string | null>(null);
@@ -226,6 +233,11 @@ export function ContagemForm({
     ...Array.from(new Set(semPosicao.map((p) => p.grupo))).filter((g) => !GRUPO_ORDEM.includes(g)),
   ];
   const todos = [...ativos, ...customItens];
+  const buscando = busca.trim() !== "";
+  const comPosicaoVisiveis = filtrarPorNomeOuSku(comPosicao, busca);
+  const semPosicaoVisiveis = filtrarPorNomeOuSku(semPosicao, busca);
+  const customVisiveis = filtrarPorNomeOuSku(customItens, busca);
+  const totalVisiveis = comPosicaoVisiveis.length + semPosicaoVisiveis.length + customVisiveis.length;
   const totalItens = todos.length;
   const confirmadosCount = todos.filter((i) => confirmados[i.sku] !== undefined).length;
   const pct = totalItens > 0 ? (confirmadosCount / totalItens) * 100 : 0;
@@ -342,13 +354,13 @@ export function ContagemForm({
 
   useEffect(() => {
     function focarPrimeiroPendente() {
+      // Item escondido pela busca não tem campo na tela: vai pro primeiro visível.
       for (const item of todos) {
         if (confirmados[item.sku] === undefined) {
           const el = inputRefs.current.get(item.sku);
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            setTimeout(() => el.focus(), 250);
-          }
+          if (!el) continue;
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => el.focus(), 250);
           break;
         }
       }
@@ -406,24 +418,21 @@ export function ContagemForm({
     for (let j = idx + 1; j < todos.length; j++) {
       if (confirmados[todos[j].sku] === undefined) {
         const el = inputRefs.current.get(todos[j].sku);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          setTimeout(() => el.focus(), 250);
-        }
+        if (!el) continue;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => el.focus(), 250);
         break;
       }
     }
   }
 
   function confirmarItem(sku: string) {
-    const raw = (valores[sku] ?? "").trim();
-    const val = Number(raw.replace(",", "."));
-    if (raw === "" || Number.isNaN(val) || val < 0) {
+    const qty = quantidadeDigitada(valores[sku] ?? "");
+    if (qty === null) {
       const el = inputRefs.current.get(sku);
       el?.focus();
       return;
     }
-    const qty = Number.isInteger(val) ? val : Number(val.toFixed(3));
     setConfirmados((c) => ({ ...c, [sku]: qty }));
     setValores((v) => ({ ...v, [sku]: String(qty) }));
     focarProximo(sku);
@@ -456,17 +465,13 @@ export function ContagemForm({
     (item) => confirmados[item.sku] === undefined && (valores[item.sku] ?? "").trim() !== ""
   );
 
+  // Vale para a contagem inteira (`todos`), nunca só para o que a busca mostra.
   function confirmarTodosPreenchidos() {
-    const novosConfirmados: Record<string, number> = {};
-    const novosValores: Record<string, string> = {};
-    for (const item of pendentesComValor) {
-      const raw = valores[item.sku].trim();
-      const val = Number(raw.replace(",", "."));
-      if (Number.isNaN(val) || val < 0) continue;
-      const qty = Number.isInteger(val) ? val : Number(val.toFixed(3));
-      novosConfirmados[item.sku] = qty;
-      novosValores[item.sku] = String(qty);
-    }
+    const { confirmados: novosConfirmados, valores: novosValores } = confirmarPreenchidos(
+      todos,
+      valores,
+      confirmados,
+    );
     if (Object.keys(novosConfirmados).length === 0) return;
     setConfirmados((c) => ({ ...c, ...novosConfirmados }));
     setValores((v) => ({ ...v, ...novosValores }));
@@ -478,10 +483,9 @@ export function ContagemForm({
         if (novosConfirmados[item.sku] !== undefined) continue;
         if (confirmados[item.sku] !== undefined) continue;
         const el = inputRefs.current.get(item.sku);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          setTimeout(() => el.focus(), 250);
-        }
+        if (!el) continue;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => el.focus(), 250);
         break;
       }
     }, 50);
@@ -773,19 +777,92 @@ export function ContagemForm({
   // ── TELA 3: INVENTÁRIO ───────────────────────────────────────────────
   // `data-modo-foco`: a barra inferior da Navegação V2 some, o rodapé fixo é desta tela.
   // Lista de itens: a mesma nas duas versões da tela (padrão e compacta do piloto).
+  /** Atalho do "sem resultado": leva o termo buscado para o "Item não
+   * encontrado na lista?", que já existia, e põe o foco no nome. */
+  function levarParaItemNaoEncontrado() {
+    setAddNome(busca.trim());
+    setTimeout(() => {
+      const el = addNomeRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
+    }, 50);
+  }
+
+  // Campo de busca dentro do cabeçalho fixo da tela: continua à mão ao rolar.
+  // Mesmo visual do "Filtrar menus" da Navegação V2 (fundo azul-noite).
+  function renderBusca() {
+    return (
+      <div className="mt-2">
+        <div className="relative">
+          <IconeNavegacao
+            nome="buscar"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50"
+          />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && busca) {
+                e.stopPropagation();
+                setBusca("");
+              }
+            }}
+            placeholder="Buscar item por nome ou SKU"
+            aria-label="Buscar item da contagem por nome ou SKU"
+            autoComplete="off"
+            spellCheck={false}
+            className="min-h-10 w-full rounded-lg border border-white/15 bg-white/5 py-1.5 pl-9 pr-10 text-base text-branco placeholder:text-white/45 focus:border-ambar focus:outline-none focus-visible:ring-1 focus-visible:ring-ambar"
+          />
+          {buscando && (
+            <button
+              type="button"
+              onClick={() => setBusca("")}
+              aria-label="Limpar busca e mostrar todos os itens"
+              title="Limpar busca e mostrar todos os itens"
+              className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-white/60 hover:bg-white/10 hover:text-branco focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
+            >
+              <IconeNavegacao nome="fechar" className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {buscando && (
+          <p className="mt-1 text-[11px] leading-snug text-cinza-claro">
+            Mostrando {totalVisiveis} de {totalItens} {totalItens === 1 ? "item" : "itens"}. O que você
+            digitou nos outros continua guardado, e Confirmar e Enviar valem para a contagem inteira.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   function renderLista() {
     return (
         <div className="mt-2 flex flex-col gap-4">
-          {comPosicao.length > 0 && (
+          {buscando && totalVisiveis === 0 && (
+            <div className="rounded-lg border border-cinza-claro bg-branco px-4 py-4 text-sm text-cinza">
+              <p>Nenhum item com &quot;{busca.trim()}&quot; nesta contagem.</p>
+              <button
+                type="button"
+                onClick={levarParaItemNaoEncontrado}
+                className="mt-3 min-h-11 w-full rounded-md bg-azul-noite px-4 py-2.5 text-sm font-bold text-off-white hover:bg-azul-petroleo"
+              >
+                Adicionar &quot;{busca.trim()}&quot; como item não encontrado
+              </button>
+            </div>
+          )}
+
+          {comPosicaoVisiveis.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
               <div className="flex items-center justify-between bg-azul-petroleo px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
                 <span>Ordem de contagem</span>
                 <span className="font-normal text-cinza-claro">
-                  {comPosicao.length} {comPosicao.length === 1 ? "item" : "itens"}
+                  {comPosicaoVisiveis.length} {comPosicaoVisiveis.length === 1 ? "item" : "itens"}
                 </span>
               </div>
               <div className="divide-y divide-cinza-claro">
-                {comPosicao.map((p) => (
+                {comPosicaoVisiveis.map((p) => (
                   <ItemRow
                     key={p.sku}
                     sku={p.sku}
@@ -809,7 +886,7 @@ export function ContagemForm({
           )}
 
           {gruposPresentes.map((g) => {
-            const itens = semPosicao.filter((p) => p.grupo === g);
+            const itens = semPosicaoVisiveis.filter((p) => p.grupo === g);
             if (itens.length === 0) return null;
             return (
               <div key={g} className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
@@ -846,13 +923,13 @@ export function ContagemForm({
             );
           })}
 
-          {customItens.length > 0 && (
+          {customVisiveis.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-cinza-claro bg-branco">
               <div className="bg-azul-noite px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-off-white">
                 Itens Adicionados
               </div>
               <div className="divide-y divide-cinza-claro">
-                {customItens.map((c) => (
+                {customVisiveis.map((c) => (
                   <ItemRow
                     key={c.sku}
                     sku={c.sku}
@@ -882,6 +959,7 @@ export function ContagemForm({
             <div className="flex flex-col gap-2 p-3.5">
               <div className="flex gap-2">
                 <input
+                  ref={addNomeRef}
                   type="text"
                   placeholder="Nome do produto"
                   value={addNome}
@@ -941,6 +1019,7 @@ export function ContagemForm({
           <div className="mt-1.5 h-[3px] overflow-hidden rounded bg-azul-petroleo">
             <div className="h-full rounded bg-ambar transition-all" style={{ width: `${pct}%` }} />
           </div>
+          {renderBusca()}
         </div>
 
         {renderLista()}
@@ -995,6 +1074,7 @@ export function ContagemForm({
               {!tudoConfirmado && pendentesComValor.length > 0 && (
                 <button
                   onClick={confirmarTodosPreenchidos}
+                  title="Confirma todo item com quantidade digitada, inclusive os que a busca esconde"
                   className="min-h-11 shrink-0 rounded-lg border border-ambar bg-ambar/10 px-3 text-sm font-bold text-ambar hover:bg-ambar/20"
                 >
                   Confirmar preenchidos ({pendentesComValor.length})
@@ -1042,6 +1122,7 @@ export function ContagemForm({
         <div className="mt-1 text-right text-[10px] text-cinza-claro">
           {confirmadosCount} de {totalItens} itens confirmados
         </div>
+        {renderBusca()}
       </div>
 
       <div className="mt-3 rounded-lg border border-ambar/40 bg-ambar/10 px-3 py-2.5 text-xs leading-relaxed text-cinza sm:hidden">
@@ -1078,7 +1159,7 @@ export function ContagemForm({
               onClick={confirmarTodosPreenchidos}
               className="mb-2 block w-full rounded-lg border border-ambar bg-ambar/10 px-4 py-3 text-sm font-bold text-ambar hover:bg-ambar/20"
             >
-              Confirmar preenchidos ({pendentesComValor.length})
+              {buscando ? "Confirmar preenchidos de toda a contagem" : "Confirmar preenchidos"} ({pendentesComValor.length})
             </button>
           )}
 
