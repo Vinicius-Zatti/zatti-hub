@@ -10,9 +10,15 @@ create extension if not exists pgtap with schema extensions;
 create extension if not exists dblink with schema extensions;
 select plan(4);
 
-select extensions.dblink_connect('prep', 'host=127.0.0.1 port=5432 dbname=postgres user=postgres password=postgres');
-select extensions.dblink_connect('a', 'host=127.0.0.1 port=5432 dbname=postgres user=postgres password=postgres');
-select extensions.dblink_connect('b', 'host=127.0.0.1 port=5432 dbname=postgres user=postgres password=postgres');
+-- Pelo endereço da rede do container (não 127.0.0.1, que entra sem senha e o dblink recusa
+-- para quem não é superusuário). Senha padrão do Supabase local.
+select format('host=%s port=%s dbname=postgres user=postgres password=postgres',
+              coalesce(host(inet_server_addr()), 'localhost'), coalesce(inet_server_port(), 5432)) as conexao
+\gset
+
+select extensions.dblink_connect('prep', :'conexao');
+select extensions.dblink_connect('a', :'conexao');
+select extensions.dblink_connect('b', :'conexao');
 
 select extensions.dblink_exec('prep', $q$
   insert into public.organizacoes (id, nome, tipo_cliente, ativo)
