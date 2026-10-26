@@ -5,8 +5,7 @@ import {
   excluirProduto,
   inserirProduto,
   listProdutos,
-  upsertProduto,
-  upsertProdutosBatch,
+  salvarProdutosEditados,
 } from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import { listInventario } from "@/lib/sheets/inventario";
@@ -206,16 +205,27 @@ export async function criarProdutoPendenciaAction(
   }
 }
 
-/** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados. */
+/** O produto como a grade o carregou, só para comparar (nunca é gravado).
+ * Original que não passa na validação vira "sem original": grava a linha
+ * inteira, como antes. */
+function originalValidado(original: unknown): Produto | undefined {
+  const r = produtoSchema.safeParse(original);
+  return r.success ? r.data : undefined;
+}
+
+/** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados.
+ * Com `original` (o produto como a grade o carregou), grava só os campos
+ * alterados - ver `salvarProdutosEditados`. */
 export async function salvarProdutoAction(
-  produto: Produto
+  produto: Produto,
+  original?: Produto
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
     if (await prePreparoBloqueadoPeloCardapio(acesso, [entrada])) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
-    await upsertProduto(entrada, acesso.spreadsheetId);
+    await salvarProdutosEditados([{ produto: entrada, original: originalValidado(original) }], acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
@@ -300,14 +310,20 @@ export async function excluirProdutoAction(
  * lento. Aqui é 1 leitura + 1 escrita em lote + 1 auditoria em lote,
  * não importa quantas linhas mudaram. */
 export async function salvarProdutosAction(
-  produtos: Produto[]
+  produtos: Produto[],
+  /** Mesmo índice de `produtos`: o produto como a grade o carregou. */
+  originais?: (Produto | undefined)[]
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     await exigirLimiteRequisicao("salvar_produtos");
     const entradas = validarEntrada(produtosSchema, produtos);
     if (await prePreparoBloqueadoPeloCardapio(acesso, entradas)) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
-    await upsertProdutosBatch(entradas, acesso.spreadsheetId);
+    const lista = Array.isArray(originais) ? originais.slice(0, entradas.length) : [];
+    await salvarProdutosEditados(
+      entradas.map((produto, i) => ({ produto, original: originalValidado(lista[i]) })),
+      acesso.spreadsheetId
+    );
     await registrarAuditoriaBatch(
       entradas.map((produto) => ({
         acesso,

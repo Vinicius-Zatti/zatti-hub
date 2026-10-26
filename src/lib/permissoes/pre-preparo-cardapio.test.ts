@@ -18,14 +18,14 @@ vi.mock("@/lib/acesso", async () => {
       rank(a.permissoes[chave] as never) >= rank(nivel as never),
   };
 });
-const upsertProduto = vi.fn(async () => undefined);
-const upsertProdutosBatch = vi.fn(async () => undefined);
+// Salvar e Salvar todos da grade gravam pelo mesmo caminho (só campos alterados, 26/10/2026).
+const salvarProdutosEditados = vi.fn(async () => undefined);
 vi.mock("@/lib/sheets/produtos", () => ({
   excluirProduto: vi.fn(),
   inserirProduto: vi.fn(),
   listProdutos: vi.fn(),
-  upsertProduto: (...a: unknown[]) => upsertProduto(...(a as [])),
-  upsertProdutosBatch: (...a: unknown[]) => upsertProdutosBatch(...(a as [])),
+  definirFornecedor1NoProduto: vi.fn(),
+  salvarProdutosEditados: (...a: unknown[]) => salvarProdutosEditados(...(a as [])),
 }));
 vi.mock("@/lib/skus/sugerir", () => ({ sugerirSku: vi.fn() }));
 vi.mock("@/lib/sheets/inventario", () => ({ listInventario: vi.fn() }));
@@ -83,26 +83,37 @@ describe("pré-preparo sem Editar no Cardápio", () => {
     const r = await salvarProdutoAction(produto as never);
     expect(r).toHaveProperty("erro");
     expect((r as { erro: string }).erro).toMatch(/Nada foi salvo/);
-    expect(upsertProduto).not.toHaveBeenCalled();
+    expect(salvarProdutosEditados).not.toHaveBeenCalled();
     expect(sincronizarPrePreparos).not.toHaveBeenCalled();
   });
 
   it("grade em lote também não salva pela metade", async () => {
     const r = await salvarProdutosAction([{ ...produto, prePreparo: false, sku: "PRE000002" }, produto] as never);
     expect(r).toHaveProperty("erro");
-    expect(upsertProdutosBatch).not.toHaveBeenCalled();
+    expect(salvarProdutosEditados).not.toHaveBeenCalled();
   });
 
   it("sem mudar a chave de pré-preparo, o produto salva normalmente", async () => {
     marcadosHoje = new Map([["PRE000001", { prePreparo: true, fichaId: "f1", fichaStatus: null }]]);
     const r = await salvarProdutoAction(produto as never);
     expect(r).toEqual({ ok: true });
-    expect(upsertProduto).toHaveBeenCalledTimes(1);
+    expect(salvarProdutosEditados).toHaveBeenCalledTimes(1);
   });
 
   it("com Editar no Cardápio segue como hoje", async () => {
     acessoAtual = { ...acessoAtual, permissoes: niveisEfetivos("gestao", false, {}) };
     expect(await salvarProdutoAction(produto as never)).toEqual({ ok: true });
     expect(sincronizarPrePreparos).toHaveBeenCalledTimes(1);
+  });
+
+  it("Salvar todos manda o produto como a grade o carregou, para gravar só o que mudou", async () => {
+    marcadosHoje = new Map([["PRE000001", { prePreparo: true, fichaId: "f1", fichaStatus: null }]]);
+    const original = { ...produto, nome: "molho antigo" };
+    const r = await salvarProdutosAction([produto] as never, [original] as never);
+    expect(r).toEqual({ ok: true });
+    expect(salvarProdutosEditados).toHaveBeenCalledWith(
+      [expect.objectContaining({ produto: expect.objectContaining({ nome: "molho da casa" }), original: expect.objectContaining({ nome: "molho antigo" }) })],
+      null
+    );
   });
 });

@@ -11,8 +11,10 @@ import {
   vincularFornecedorProdutoBanco,
   atualizarPrecoProdutoBanco,
   atualizarFornecedor1ProdutoBanco,
+  salvarCamposProdutosBanco,
 } from "@/lib/banco/estoque";
 import { vincularFornecedorAoProduto } from "@/lib/pedido";
+import { camposAlteradosProduto } from "@/lib/produto-alteracoes";
 import { paraCelulaSegura } from "./seguranca";
 import { ErroPublico } from "@/lib/erros";
 
@@ -206,6 +208,30 @@ export async function upsertProdutosBatch(
     return;
   }
   await upsertProdutosPlanilha(produtos, fonte.spreadsheetId!);
+}
+
+/** Salvar / Salvar todos da Edição de Dados. Com o produto como a grade o
+ * carregou (`original`), o banco recebe só os campos alterados (parecer do
+ * Codex de 26/10/2026: a linha inteira apagava um vínculo gravado pela
+ * cotação depois de a grade abrir). Produto sem original (não existia quando
+ * a grade abriu) segue o caminho de sempre. A planilha legada não tem gravação
+ * por campo e continua gravando a linha. */
+export async function salvarProdutosEditados(
+  itens: { produto: Produto; original?: Produto }[],
+  spreadsheetId: string | null
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte !== "banco") {
+    await upsertProdutosPlanilha(itens.map((i) => i.produto), fonte.spreadsheetId!);
+    return;
+  }
+  const parciais = itens
+    .filter((i) => i.original && i.original.sku === i.produto.sku)
+    .map((i) => ({ sku: i.produto.sku, campos: camposAlteradosProduto(i.original!, i.produto) }))
+    .filter((l) => Object.keys(l.campos).length > 0);
+  const inteiros = itens.filter((i) => !i.original || i.original.sku !== i.produto.sku).map((i) => i.produto);
+  await salvarCamposProdutosBanco(parciais, fonte.unidadeId);
+  await salvarProdutosBanco(inteiros, fonte.unidadeId);
 }
 
 async function upsertProdutosPlanilha(

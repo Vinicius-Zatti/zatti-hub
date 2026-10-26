@@ -1,3 +1,4 @@
+import type { CamposProdutoBanco } from "@/lib/produto-alteracoes";
 import { createClient } from "@/lib/supabase/server";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
@@ -151,6 +152,26 @@ export async function salvarProdutosBanco(
   );
   // Regra de negócio dos triggers (ex.: unidade de pré-preparo vinculado à
   // ficha) vai pra tela como está.
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
+  if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
+}
+
+/** Grava só os campos alterados de cada produto, numa transação (ver
+ * `salvar_produtos_campos` em 20261026130000_salvar_produtos_campos.sql). É o
+ * Salvar / Salvar todos da Edição de Dados: um vínculo de fornecedor ou preço
+ * gravado depois de a grade carregar não é apagado. Uma chamada só, como o
+ * upsert de antes. Sem a função no banco, falha: nunca volta a gravar a linha
+ * inteira. */
+export async function salvarCamposProdutosBanco(
+  linhas: { sku: string; campos: CamposProdutoBanco }[],
+  unidadeId: string,
+): Promise<void> {
+  if (linhas.length === 0) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("salvar_produtos_campos", {
+    p_unidade_id: unidadeId,
+    p_linhas: linhas,
+  });
   if (error?.code === "P0001") throw new ErroPublico(error.message);
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
 }
