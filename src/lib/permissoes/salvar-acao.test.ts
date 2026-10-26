@@ -92,8 +92,8 @@ describe("salvarPermissoesMembroAction", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("fora do piloto não chega ao banco", async () => {
-    acessoAtual = { ...base, unidadeId: "outra-unidade" };
+  it("área interna (fora da Navegação V2) não chega ao banco", async () => {
+    acessoAtual = { ...base, areaInterna: true };
     expect(await salvarPermissoesMembroAction(VINCULO, { financeiro: "ver" })).toHaveProperty("erro");
     expect(rpc).not.toHaveBeenCalled();
   });

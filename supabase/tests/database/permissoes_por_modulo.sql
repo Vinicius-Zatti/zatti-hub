@@ -161,10 +161,9 @@ select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f004', 'org-pm', '0000
   '{"financeiro":"ver"}'), 'sem_permissao', 'operacional não administra permissões');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f007', 'org-pm', '00000000-0000-0000-0000-0000000f0a03',
   '{"financeiro":"ver"}'), 'sem_permissao', 'dono de outro cliente não mexe aqui');
-select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f007', 'org-pm-fora', '00000000-0000-0000-0000-0000000f0a08',
-  '{"financeiro":"ver"}'), 'fora_do_piloto', 'cliente fora do piloto não muda nada');
-select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f001', 'org-pm-fora', '00000000-0000-0000-0000-0000000f0a08',
-  '{"financeiro":"ver"}'), 'fora_do_piloto', 'nem o master muda cliente fora do piloto');
+-- Liberado para todos em 26/10/2026 (20261026060000): não existe mais cliente fora do piloto.
+select ok(public.organizacao_no_piloto_permissoes('org-pm-fora'), 'liberado: qualquer cliente administra permissões');
+select ok(public.organizacao_no_piloto_permissoes('org-pm'), 'liberado: o antigo piloto segue liberado');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a02',
   '{"financeiro":"ver"}'), 'proprio_vinculo', 'dono não mexe no próprio acesso');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a01',
