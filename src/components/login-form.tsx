@@ -45,8 +45,8 @@ export function LoginForm() {
       setCaptchaReset((valor) => valor + 1);
       setErro(
         error.message === "Invalid login credentials"
-          ? "Email ou senha incorretos."
-          : "Nao foi possivel entrar. Confira os dados e tente novamente.",
+          ? "E-mail ou senha incorretos. Se sua senha foi redefinida, use a senha provisória que você recebeu."
+          : "Não foi possível entrar. Confira os dados e tente novamente.",
       );
       return;
     }
