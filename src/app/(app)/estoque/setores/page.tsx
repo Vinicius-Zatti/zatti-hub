@@ -1,4 +1,4 @@
-import { requireGestao } from "@/lib/acesso";
+import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listarDesignacoesBanco, listarSetoresBanco } from "@/lib/banco/setores";
 import { PainelSetores } from "@/components/painel-setores";
@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SetoresPage() {
   const acesso = await requireGestao();
+  redirecionarSemEdicao(acesso, "/estoque/setores");
 
   if (acesso.fonteDadosEstoque !== "banco") {
     return (

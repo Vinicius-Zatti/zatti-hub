@@ -63,6 +63,8 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Manifesto e ícones do app ficam fora: o Android busca os dois sem sessão ao
+// instalar na tela inicial; redirecionar pro /login quebra a instalação.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon|brand/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon|brand/|manifest.webmanifest|icones/).*)"],
 };

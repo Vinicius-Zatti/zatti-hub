@@ -55,6 +55,10 @@ const admin = {
   auth: { admin: { getUserById: vi.fn(async () => ({ data: { user: { email: "pessoa@teste.local" } }, error: null })) } },
 };
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
+// Titular da organização (26/10/2026): cada teste escolhe; padrão = sem titular (reserva).
+let titularAtual: { vinculoId: string; userId: string } | null = null;
+vi.mock("@/lib/equipe/titular-servidor", () => ({ carregarTitularOrganizacao: vi.fn(async () => titularAtual) }));
+
 
 const { mensagemGerarProvisoria, formatarValidadeProvisoria, whatsappTrocadoHaPouco } = await import("./regras");
 const { hashSenhaTemporaria, gerarSenhaProvisoriaNoBanco } = await import("./servidor");
@@ -68,6 +72,7 @@ const ALVO = "33333333-3333-4333-8333-333333333333";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  titularAtual = null;
   respostaRpc = { data: "ok", error: null };
   linhas = {
     vinculos: {
@@ -113,6 +118,20 @@ describe("proteções da revisão de segurança", () => {
     expect(whatsappTrocadoHaPouco("2026-10-25T11:45:00Z", agora)).toBe(true);
     expect(whatsappTrocadoHaPouco("2026-10-25T11:29:00Z", agora)).toBe(false);
     expect(whatsappTrocadoHaPouco("data-quebrada", agora)).toBe(true);
+  });
+});
+
+describe("conta do titular (26/10/2026)", () => {
+  it("mensagem própria para a recusa do banco", () => {
+    expect(mensagemGerarProvisoria("alvo_titular")).toMatch(/titular do cliente/);
+  });
+  it("gestão não gera para o titular: nem chega ao banco", async () => {
+    titularAtual = { vinculoId: VINCULO, userId: ALVO };
+    const { gerarSenhaProvisoriaMembroAction } = await import("@/app/(app)/equipe/actions");
+    const r = await gerarSenhaProvisoriaMembroAction(VINCULO);
+    expect(r).toEqual({ erro: expect.stringMatching(/titular do cliente/) });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(enviarAcessoPeloVini).not.toHaveBeenCalled();
   });
 });
 

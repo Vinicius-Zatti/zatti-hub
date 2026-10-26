@@ -1,11 +1,12 @@
 import { garantirCodigos } from "@/lib/sheets/fornecedores";
 import { EdicaoFornecedoresGrid } from "@/components/edicao-fornecedores-grid";
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, redirecionarSemEdicao } from "@/lib/acesso";
 
 export const dynamic = "force-dynamic";
 
 export default async function EdicaoFornecedoresPage() {
   const acesso = await getAcessoAtual();
+  redirecionarSemEdicao(acesso, "/estoque/fornecedores/edicao");
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.

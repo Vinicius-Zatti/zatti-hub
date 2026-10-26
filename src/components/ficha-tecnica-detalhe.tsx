@@ -9,6 +9,7 @@ import { ExcluirFichaTecnicaBotao } from "@/components/excluir-ficha-tecnica-bot
 import { FotoFichaTecnica } from "@/components/foto-ficha-tecnica";
 import { FichaTecnicaForm, type OpcaoFicha, type OpcaoProduto } from "@/components/ficha-tecnica-form";
 import { PrecosCanalFicha } from "@/components/precos-canal-ficha";
+import { PrecoRascunhoFicha } from "@/components/preco-rascunho-ficha";
 import { FichaNaContagem } from "@/components/ficha-na-contagem";
 import type { VinculoContagemFicha } from "@/lib/banco/pre-preparo-leitura";
 import type { CategoriaFicha, ComponenteFicha, FichaTecnica } from "@/lib/types";
@@ -31,6 +32,7 @@ export function FichaTecnicaDetalhe({
   fotoUrl,
   vinculoContagem = null,
   podeGerir,
+  podeEditarFicha = podeGerir,
   categorias,
   produtos,
   fichasDisponiveis,
@@ -49,6 +51,9 @@ export function FichaTecnicaDetalhe({
   /** Pré-preparo na contagem (piloto) - `null` fora do piloto ou em ficha de Venda. */
   vinculoContagem?: VinculoContagemFicha | null;
   podeGerir: boolean;
+  /** Gestão ou chef (26/10/2026): edita a ficha e vê o custo e o CMV. Margem, preços por canal,
+   * observações gerenciais, foto, contagem e excluir seguem só com `podeGerir`. */
+  podeEditarFicha?: boolean;
   categorias: CategoriaFicha[];
   produtos: OpcaoProduto[];
   fichasDisponiveis: OpcaoFicha[];
@@ -77,7 +82,8 @@ export function FichaTecnicaDetalhe({
         categorias={categorias}
         produtos={produtos}
         fichasDisponiveis={fichasDisponiveis}
-        cadastroRapidoProduto={cadastroRapidoProduto}
+        cadastroRapidoProduto={podeGerir ? cadastroRapidoProduto : null}
+        modoChef={!podeGerir}
         onSalvo={(id) => {
           setEditando(false);
           if (aoSalvar) aoSalvar(id);
@@ -105,7 +111,7 @@ export function FichaTecnicaDetalhe({
             {ficha.sku} · {CAMADA_LABEL[ficha.camada]} · {ficha.categoriaNome} · {STATUS_LABEL[ficha.status]}
           </p>
         </div>
-        {podeGerir && (
+        {podeEditarFicha && (
           <div className="flex shrink-0 items-start gap-2">
             <button
               type="button"
@@ -114,7 +120,7 @@ export function FichaTecnicaDetalhe({
             >
               Editar
             </button>
-            <ExcluirFichaTecnicaBotao id={ficha.id} aoExcluir={aoFechar} />
+            {podeGerir && <ExcluirFichaTecnicaBotao id={ficha.id} aoExcluir={aoFechar} />}
           </div>
         )}
       </div>
@@ -151,7 +157,7 @@ export function FichaTecnicaDetalhe({
         podeGerir={podeGerir}
       />
 
-      {podeGerir && (
+      {podeEditarFicha && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Custo</div>
           {ficha.custo.custoTotal === null ? (
@@ -189,6 +195,14 @@ export function FichaTecnicaDetalhe({
                       {ficha.precoVenda !== null ? ficha.precoVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-"}
                     </span>
                   </div>
+                  {podeGerir && ficha.precoVendaRascunho != null && (
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-sm text-cinza-medio">Sugerido pelo chef (aprovar na Precificação)</span>
+                      <span className="font-semibold text-ambar">
+                        {ficha.precoVendaRascunho.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
+                  )}
                   {ficha.custo.custoPorUnidade !== null && ficha.precoVenda !== null && ficha.precoVenda > 0 && (
                     <div className="mt-1 flex items-center justify-between">
                       <span className="text-sm text-cinza-medio">CMV</span>
@@ -206,6 +220,15 @@ export function FichaTecnicaDetalhe({
             </>
           )}
         </div>
+      )}
+
+      {podeEditarFicha && !podeGerir && ficha.camada === "VEN" && (
+        <PrecoRascunhoFicha
+          key={`${ficha.id}:${ficha.precoVendaRascunho ?? ""}`}
+          fichaId={ficha.id}
+          custoPorUnidade={ficha.custo.custoPorUnidade}
+          rascunhoInicial={ficha.precoVendaRascunho ?? null}
+        />
       )}
 
       {podeGerir && ficha.camada === "VEN" && (
@@ -239,7 +262,7 @@ export function FichaTecnicaDetalhe({
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-cinza">{c.nomeExibicao}</div>
                   {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
-                  {podeGerir && <CustoDoComponente componente={c} />}
+                  {podeEditarFicha && <CustoDoComponente componente={c} />}
                 </div>
                 <span className="shrink-0 text-sm font-bold text-azul-noite">
                   {formatarQuantidade(c.quantidade)} {c.unidadeUso}
@@ -264,7 +287,7 @@ export function FichaTecnicaDetalhe({
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-cinza">{c.nomeExibicao}</div>
                     {c.observacoes && <div className="text-xs text-cinza-medio">{c.observacoes}</div>}
-                  {podeGerir && <CustoDoComponente componente={c} />}
+                  {podeEditarFicha && <CustoDoComponente componente={c} />}
                   </div>
                   <span className="shrink-0 text-sm font-bold text-azul-noite">
                     {formatarQuantidade(c.quantidade)} {c.unidadeUso}

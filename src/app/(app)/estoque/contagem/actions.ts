@@ -5,7 +5,7 @@ import {
   atualizarQuantidadeInventario,
   type NovaContagemLinha,
 } from "@/lib/sheets/inventario";
-import { getAcessoAtual, registrarAuditoria } from "@/lib/acesso";
+import { getAcessoAtual, registrarAuditoria, exigirEdicao } from "@/lib/acesso";
 import {
   abrirContagemSchema,
   atualizarQuantidadeContagemSchema,
@@ -63,6 +63,7 @@ export async function registrarContagemAction(
 
 async function registrarContagemLegada(linhas: NovaContagemLinha[], dataISO?: string) {
   const acesso = await getAcessoAtual();
+  exigirEdicao(acesso, "estoque");
   await exigirLimiteRequisicao("registrar_contagem");
   const entrada = validarEntrada(registrarContagemSchema, { linhas, dataISO });
 
@@ -101,6 +102,7 @@ export async function atualizarQuantidadeContagemAction(
 ): Promise<{ ok: true } | { erro: string }> {
   const acesso = await getAcessoAtual();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("corrigir_contagem");
     const entrada = validarEntrada(atualizarQuantidadeContagemSchema, { data, sku, quantidade });
     await atualizarQuantidadeInventario(
@@ -164,6 +166,7 @@ export async function abrirContagemAction(
       throw new ErroPublico("A contagem por setor ainda não está ativa nesta versão.");
     }
     const acesso = await getAcessoAtual();
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("contagem_abrir");
     const entrada = validarEntrada(abrirContagemSchema, { dataISO, setorId });
 
@@ -215,6 +218,7 @@ export async function registrarContagemSetorAction(
       throw new ErroPublico("A contagem por setor ainda não está ativa nesta versão.");
     }
     const acesso = await getAcessoAtual();
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("registrar_contagem");
     const entrada = validarEntrada(registrarContagemSetorSchema, {
       dataISO,
@@ -270,6 +274,7 @@ export async function corrigirItemContagemAction(
 ) {
   try {
     const acesso = await getAcessoAtual();
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("corrigir_contagem");
     const entrada = validarEntrada(corrigirItemContagemSchema, {
       itemId,

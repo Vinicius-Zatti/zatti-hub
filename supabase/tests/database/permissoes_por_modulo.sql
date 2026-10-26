@@ -172,8 +172,9 @@ select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '0000
   '{"cardapio":"editar"}'), 'acima_do_papel', 'exceção não dá ao operacional mais do que o papel');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a03',
   '{"configuracoes":"editar"}'), 'acima_do_papel', 'Configurações editar segue só master');
+-- Estoque, Garante e Cadastros ganharam a barreira do banco em 20261026130000: viram exceção.
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a03',
-  '{"estoque":"ver"}'), 'modulo_indisponivel', 'Estoque ainda sem barreira no banco: não muda');
+  '{"estoque":"chef"}'), 'pedido_invalido', 'chef só existe no Cardápio');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a03',
   '{"marketing":"ver"}'), 'pedido_invalido', 'chave desconhecida recusada');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000f002', 'org-pm', '00000000-0000-0000-0000-0000000f0a03',

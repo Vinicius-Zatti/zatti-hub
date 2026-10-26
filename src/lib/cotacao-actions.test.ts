@@ -10,6 +10,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/acesso", () => ({
   requireGestao: vi.fn(async () => ({ unidadeId: "uni-1", spreadsheetId: null, userId: "u-1" })),
   registrarAuditoria: vi.fn(async () => undefined),
+  exigirEdicao: vi.fn(),
 }));
 vi.mock("@/lib/rate-limit", () => ({ exigirLimiteRequisicao: vi.fn(async () => undefined) }));
 vi.mock("@/lib/banco/pre-preparo", () => ({ sincronizarCustosPrePreparoMelhorEsforco: vi.fn() }));

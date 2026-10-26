@@ -1,6 +1,6 @@
 "use server";
 
-import { requireGestao, registrarAuditoria } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, exigirEdicao } from "@/lib/acesso";
 import {
   confirmarItem,
   confirmarVencedor,
@@ -128,6 +128,7 @@ export async function confirmarItemAction(input: {
 }): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(confirmarItemSchema, input);
     await confirmarItem({
@@ -158,6 +159,7 @@ export async function confirmarVencedorAction(input: {
 }): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(confirmarVencedorSchema, input);
     await confirmarVencedor({
@@ -194,6 +196,7 @@ export async function desfazerVencedorAction(input: {
 }): Promise<{ ok: true; concorrentes: string[] } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(desfazerVencedorSchema, input);
     const [participacoes, fornecedoresCadastro] = await Promise.all([
@@ -230,6 +233,7 @@ export async function atualizarPrevisaoEntregaAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(previsaoEntregaSchema, input);
     await atualizarPrevisaoEntrega({

@@ -14,6 +14,7 @@ vi.mock("@/lib/acesso", async () => {
     requireGestao: vi.fn(async () => acessoAtual),
     registrarAuditoria: vi.fn(async () => undefined),
     registrarAuditoriaBatch: vi.fn(async () => undefined),
+    exigirEdicao: vi.fn(),
     temPermissao: (a: { permissoes: Record<string, string> }, chave: string, nivel: string) =>
       rank(a.permissoes[chave] as never) >= rank(nivel as never),
   };

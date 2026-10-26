@@ -1,8 +1,20 @@
 "use server";
 
+import { fichaParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
+
 import { revalidatePath } from "next/cache";
-import { getAcessoAtual, requireGestaoFichasTecnicas, registrarAuditoria, registrarAuditoriaBatch } from "@/lib/acesso";
 import {
+  getAcessoAtual,
+  requireChefFichasTecnicas,
+  requireGestaoFichasTecnicas,
+  registrarAuditoria,
+  registrarAuditoriaBatch,
+  temPermissao,
+} from "@/lib/acesso";
+import {
+  aceitarPrecoRascunhoFicha,
+  descartarPrecoRascunhoFicha,
+  salvarPrecoRascunhoFicha,
   atualizarPrecoVendaFicha,
   atualizarPrecosCanaisFicha,
   atualizarPrecosTodosCanaisFichas,
@@ -52,15 +64,17 @@ function revalidarListagem() {
   revalidatePath("/fichas-tecnicas");
 }
 
-/** Cria (fichaId null) ou edita ficha existente - sempre Gestão/master,
- * unidadeId sempre resolvido no servidor via `requireGestaoFichasTecnicas`,
- * nunca aceito do cliente. Delega pra `salvar_ficha_tecnica` no Postgres,
- * que grava ficha + componentes + etapas + versão numa única transação. */
+/** Cria (fichaId null) ou edita ficha existente - Gestão/master ou o chef
+ * (26/10/2026), unidadeId sempre resolvido no servidor, nunca aceito do
+ * cliente. Delega pra `salvar_ficha_tecnica` no Postgres, que grava ficha +
+ * componentes + etapas + versão numa única transação. O chef não mexe no
+ * preço oficial nem nas observações gerenciais: vale o que já estava (o
+ * preço dele vai como rascunho, `salvarPrecoRascunhoFichaAction`). */
 export async function salvarFichaTecnicaAction(
   fichaId: string | null,
   input: EntradaFichaTecnica,
 ): Promise<ResultadoSalvarFicha> {
-  const acesso = await requireGestaoFichasTecnicas();
+  const acesso = await requireChefFichasTecnicas();
 
   try {
     await exigirLimiteRequisicao("ficha_salvar");
@@ -74,7 +88,14 @@ export async function salvarFichaTecnicaAction(
     // janela de milissegundos (salvar e trocar a foto ao mesmo tempo) em que
     // o caminho antigo volta: fechar exige mudar a RPC salvar_ficha_tecnica.
     // Risco aceito em 09/10/2026 (perder a foto é aceitável, anexa de novo).
-    const entrada = { ...entradaValidada, fotoPath: antes?.fotoPath ?? null };
+    const ehChef = !temPermissao(acesso, "cardapio", "editar");
+    const entrada = {
+      ...entradaValidada,
+      fotoPath: antes?.fotoPath ?? null,
+      ...(ehChef
+        ? { precoVenda: antes?.precoVenda ?? null, observacoesGerenciais: antes?.observacoesGerenciais ?? "" }
+        : {}),
+    };
     const salva = await salvarFichaTecnica({ unidadeId: acesso.unidadeId, fichaId: idValidado, entrada });
 
     await registrarAuditoria({
@@ -87,8 +108,9 @@ export async function salvarFichaTecnicaAction(
     });
 
     // Pré-preparo na contagem (piloto): o custo novo desta ficha, ou de uma
-    // ficha que usa esta como ingrediente, vira o preço do produto.
-    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
+    // ficha que usa esta como ingrediente, vira o preço do produto. Pelo
+    // servidor, já que o chef não grava produto (a barreira foi conferida acima).
+    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId, { escritaPeloServidor: true });
 
     revalidarListagem();
     revalidatePath(`/fichas-tecnicas/${salva.id}`);
@@ -339,20 +361,23 @@ export async function salvarConversoesProdutoAction(
 }
 
 export type ResultadoAbrirFicha =
-  | { ok: true; dados: FichaTecnicaParaExibir; podeGerir: boolean }
+  | { ok: true; dados: FichaTecnicaParaExibir; podeGerir: boolean; podeEditarFicha: boolean }
   | { ok: false; mensagem: string };
 
 /** Busca do cliente pra abrir a ficha numa janela sobreposta à listagem
  * (sem navegar pra outra URL) - consulta é liberada a todos os papéis. */
 export async function abrirFichaTecnicaAction(id: string): Promise<ResultadoAbrirFicha> {
   const acesso = await getAcessoAtual();
-  const podeGerir = acesso.role !== "operacional";
+  const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "cardapio", "editar");
+  const podeEditarFicha = temPermissao(acesso, "cardapio", "chef");
 
   try {
     const idValidado = validarEntrada(idUuidSchema, id);
-    const dados = await carregarFichaTecnicaParaExibir(acesso.unidadeId, idValidado, podeGerir);
+    const dados = await carregarFichaTecnicaParaExibir(acesso.unidadeId, idValidado, podeEditarFicha);
     if (!dados) return { ok: false, mensagem: "Ficha técnica não encontrada." };
-    return { ok: true, dados, podeGerir };
+    // Chef e "ver" não recebem o que não podem ver (preço de canal, gerencial; custo e preço no "ver").
+    const ficha = fichaParaVisao(dados.ficha, visaoDaFicha(podeGerir, podeEditarFicha));
+    return { ok: true, dados: { ...dados, ficha }, podeGerir, podeEditarFicha };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar a ficha técnica.") };
   }
@@ -405,6 +430,68 @@ export async function atualizarPrecoVendaFichaAction(id: string, precoVenda: num
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar o preço de venda.") };
+  }
+}
+
+/** Preço de venda (Salão) como rascunho: o chef sugere, a gestão aceita na Precificação
+ * (26/10/2026). `null` apaga a sugestão. Nunca muda o preço oficial. */
+export async function salvarPrecoRascunhoFichaAction(id: string, precoVenda: number | null): Promise<ResultadoAcao> {
+  const acesso = await requireChefFichasTecnicas();
+
+  try {
+    await exigirLimiteRequisicao("ficha_preco_venda_salvar");
+    const entrada = validarEntrada(precoVendaFichaEntradaSchema, { id, precoVenda });
+    await salvarPrecoRascunhoFicha(acesso.unidadeId, entrada.id, entrada.precoVenda);
+
+    await registrarAuditoria({
+      acesso,
+      acao: "salvar",
+      entidade: "ficha_tecnica_preco_rascunho",
+      entidadeId: entrada.id,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath(`/fichas-tecnicas/${entrada.id}`);
+    revalidatePath("/fichas-tecnicas/precificacao");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar o preço sugerido.") };
+  }
+}
+
+/** Gestão aceita (vira o preço do Salão) ou descarta o rascunho do chef. `valorVisto` é o
+ * rascunho que estava na tela: se o chef mudou no meio, não aceita. */
+export async function decidirPrecoRascunhoFichaAction(
+  id: string,
+  decisao: "aceitar" | "descartar",
+  valorVisto: number | null,
+): Promise<ResultadoAcao> {
+  const acesso = await requireGestaoFichasTecnicas();
+
+  try {
+    if (decisao !== "aceitar" && decisao !== "descartar") throw new ErroPublico("Pedido inválido.");
+    await exigirLimiteRequisicao("ficha_preco_venda_salvar");
+    const entrada = validarEntrada(precoVendaFichaEntradaSchema, { id, precoVenda: valorVisto });
+    if (decisao === "aceitar") {
+      if (entrada.precoVenda === null) throw new ErroPublico("Pedido inválido.");
+      await aceitarPrecoRascunhoFicha(acesso.unidadeId, entrada.id, entrada.precoVenda);
+    } else {
+      await descartarPrecoRascunhoFicha(acesso.unidadeId, entrada.id);
+    }
+
+    await registrarAuditoria({
+      acesso,
+      acao: decisao === "aceitar" ? "aceitar" : "descartar",
+      entidade: "ficha_tecnica_preco_rascunho",
+      entidadeId: entrada.id,
+      dadosNovos: entrada,
+    });
+
+    revalidatePath("/fichas-tecnicas/precificacao");
+    revalidarListagem();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível decidir o preço sugerido.") };
   }
 }
 
@@ -508,7 +595,7 @@ export type ResultadoNovaFicha = { ok: true; dados: DadosNovaFichaTecnica } | { 
 /** Busca do cliente pra abrir "Criar Nova F.T" na janela sobreposta da
  * listagem, sem navegar pra outra página. */
 export async function prepararNovaFichaTecnicaAction(): Promise<ResultadoNovaFicha> {
-  const acesso = await requireGestaoFichasTecnicas();
+  const acesso = await requireChefFichasTecnicas();
   try {
     const dados = await carregarDadosNovaFichaTecnica(acesso.unidadeId);
     return { ok: true, dados };

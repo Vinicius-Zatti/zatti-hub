@@ -4,6 +4,7 @@ import { ChaveExtratoEstoque } from "@/components/chave-extrato-estoque";
 import { EditarNomeVinculo } from "@/components/editar-nome-vinculo";
 import { ResponsavelAvisos, TextoResponsavelAvisos } from "@/components/garante/responsavel-avisos";
 import { definirResponsavelAvisosGaranteAction } from "./actions";
+import { TextoTitular, TitularOrganizacao } from "@/components/acessos/titular-organizacao";
 import type { AvisosGaranteUnidade, OrganizacaoPainel, UnidadePainel, VinculoPainel } from "./dados";
 
 /** Versão em cartões das tabelas de Acessos, só abaixo de `md` (26/10/2026).
@@ -128,6 +129,13 @@ export function CartoesOrganizacoes({ organizacoes }: { organizacoes: Organizaca
           <p className="truncate font-mono text-[11px] text-cinza-medio" title={o.id}>
             ID {o.id}
           </p>
+          <div className="flex flex-col gap-2 border-t border-cinza-claro pt-3">
+            <p className="text-sm text-cinza">
+              <span className="text-xs font-semibold text-cinza-medio">Titular: </span>
+              <TextoTitular titular={o.titular} />
+            </p>
+            <TitularOrganizacao organizacao={o} />
+          </div>
         </li>
       ))}
     </ul>
@@ -234,6 +242,7 @@ export function CartoesVinculos({
           </p>
           <div className="flex flex-wrap gap-1.5">
             <Pill tom="azul">{ROTULO_ROLE[v.role] ?? v.role}</Pill>
+            {v.ehTitular && <Pill tom="ambar">Titular</Pill>}
             <Pill tom={tomSituacaoVinculo(v.status)}>{v.status}</Pill>
             <Pill tom={v.confirmado ? "verde" : "ambar"}>
               {v.confirmado ? "conta confirmada" : "conta aguardando"}

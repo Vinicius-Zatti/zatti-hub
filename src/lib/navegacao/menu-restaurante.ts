@@ -1,3 +1,4 @@
+import type { NivelModulo } from "@/lib/permissoes/modulos";
 import type { ItemNavegacao, SecaoNavegacao } from "./tipos";
 
 // Menu do restaurante (tudo que não é a área interna do Vinícius). Saiu de
@@ -15,8 +16,8 @@ export type ContextoMenuRestaurante = {
   equipeHabilitado: boolean;
   garanteHabilitado: boolean;
   conciliacaoHabilitada: boolean;
-  /** Configurações do piloto: master ou dono (gestão da organização inteira,
-   * vínculo sem unidade fixa). Ausente = não vê. */
+  /** Configurações do piloto: master, o dono (titular; sem titular, a gestão da
+   * organização inteira) ou a gestão que recebeu "ver" em Configurações. Ausente = não vê. */
   podeConfigurar?: boolean;
 };
 
@@ -576,7 +577,7 @@ export function contextoMenuRestaurante(
     fichasTecnicasHabilitado: boolean;
     equipeHabilitado: boolean;
     garanteHabilitado: boolean;
-    unidadeFixa: string | null;
+    permissoes: { configuracoes: NivelModulo };
   },
   conciliacaoHabilitada: boolean,
 ): ContextoMenuRestaurante {
@@ -592,8 +593,10 @@ export function contextoMenuRestaurante(
   };
 }
 
-/** Configurações (piloto): master, ou gestão com vínculo na organização
- * inteira (o dono). Gestor preso a uma unidade e operacional não veem. */
-export function podeVerConfiguracoes(acesso: { role: string; unidadeFixa: string | null }): boolean {
-  return acesso.role === "master" || (acesso.role === "gestao" && acesso.unidadeFixa === null);
+/** Configurações (piloto): master, ou gestão com "ver" em Configurações. O padrão dá "ver" só
+ * ao dono (o titular; sem titular marcado, a gestão da organização inteira) e o dono pode dar a
+ * outra gestão (`nivelPadrao`/`nivelMaximo`). Operacional nunca vê. */
+export function podeVerConfiguracoes(acesso: { role: string; permissoes: { configuracoes: NivelModulo } }): boolean {
+  if (acesso.role === "master") return true;
+  return acesso.role === "gestao" && acesso.permissoes.configuracoes !== "sem_acesso";
 }

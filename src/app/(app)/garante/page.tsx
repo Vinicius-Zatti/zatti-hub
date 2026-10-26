@@ -3,6 +3,7 @@ import { DICA_GARANTE, dataDoDiaAgenda, mostrarNaAgenda } from "@/lib/garante/re
 import { CartaoAgenda } from "@/components/garante/cartao-agenda";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { carregarAgenda } from "./dados";
+import { AvisoSomenteVer } from "@/components/aviso-somente-ver";
 
 /** Hoje: os checklists do dia de quem está logado (gestão vê todos). Os de
  * ontem que ficaram abertos aparecem embaixo enquanto a janela deles (horário
@@ -32,6 +33,7 @@ export default async function GaranteHojePage() {
           {agenda.length > 0 && feitos === agenda.length && " · Dia 100%"}
         </p>
       </div>
+      <AvisoSomenteVer acesso={acesso} modulo="garante" />
       {agenda.length === 0 ? (
         <p data-tour="garante-checklists" className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">
           Nenhum checklist para hoje.

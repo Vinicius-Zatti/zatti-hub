@@ -1,6 +1,6 @@
 import { listProdutos } from "@/lib/sheets/produtos";
 import { ContagemForm } from "@/components/contagem-form";
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, redirecionarSemEdicao } from "@/lib/acesso";
 import {
   listarAndamentoBanco,
   listarModalidadesBanco,
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ContagemPage() {
   const acesso = await getAcessoAtual();
+  redirecionarSemEdicao(acesso, "/estoque/contagem");
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.

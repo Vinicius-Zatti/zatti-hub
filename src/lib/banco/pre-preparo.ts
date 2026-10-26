@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { buscarTudo } from "@/lib/banco/paginacao";
 import { linhaProdutoBanco } from "@/lib/banco/estoque";
 import { calcularCustoFicha } from "@/lib/banco/fichas-tecnicas";
@@ -135,9 +136,15 @@ async function statusAoReativar(unidadeId: string, fichaId: string): Promise<Sta
  * depois de tudo que muda custo de insumo ou de ficha. O preço fica gravado
  * (e não calculado na leitura) porque a contagem congela o preço do produto
  * no momento em que é feita, inclusive dentro das funções do banco. */
-export async function sincronizarCustosPrePreparo(unidadeId: string): Promise<void> {
+export async function sincronizarCustosPrePreparo(
+  unidadeId: string,
+  opcoes: { escritaPeloServidor?: boolean } = {},
+): Promise<void> {
   if (!(await prePreparoVinculadoHabilitado(unidadeId))) return;
   const supabase = await createClient();
+  // Chef (26/10/2026) salva ficha mas não grava produto (Cadastros): depois da barreira da
+  // Server Action, o preço calculado vai pelo servidor. O custo é calculado, nunca digitado.
+  const escrita = opcoes.escritaPeloServidor ? createAdminClient() : supabase;
   const linhas = await lerVinculos(unidadeId, true);
   const vinculados = linhas.filter((r) => r.ficha_pre_preparo_id && r.ficha && r.ficha.status !== "inativa");
   if (vinculados.length === 0) return;
@@ -167,13 +174,19 @@ export async function sincronizarCustosPrePreparo(unidadeId: string): Promise<vo
     const mudancas = custos.filter(([sku, novo]) => novo !== null && precoAtual.get(sku) !== novo);
     if (mudancas.length === 0) return;
     for (const [sku, novo] of mudancas) {
-      const { error } = await supabase
+      const { data: gravadas, error } = await escrita
         .from("produtos")
         .update({ preco_unitario: novo, atualizado_em: new Date().toISOString() })
         .eq("unidade_id", unidadeId)
-        .eq("sku", sku);
+        .eq("sku", sku)
+        .select("sku");
       if (error) {
         console.error(`Falha ao gravar o custo do pré-preparo ${sku}:`, error);
+        return;
+      }
+      if (!gravadas || gravadas.length === 0) {
+        // Nada mudou (ex.: sem permissão de escrita no produto): avisa em vez de calar.
+        console.error(`Custo do pré-preparo ${sku} não gravou nenhuma linha.`);
         return;
       }
       precoAtual.set(sku, novo);
@@ -183,9 +196,12 @@ export async function sincronizarCustosPrePreparo(unidadeId: string): Promise<vo
 
 /** Melhor esforço: o que disparou (salvar ficha, produto ou pedido) já deu
  * certo, e o próximo salvamento tenta de novo. */
-export async function sincronizarCustosPrePreparoMelhorEsforco(unidadeId: string): Promise<void> {
+export async function sincronizarCustosPrePreparoMelhorEsforco(
+  unidadeId: string,
+  opcoes: { escritaPeloServidor?: boolean } = {},
+): Promise<void> {
   try {
-    await sincronizarCustosPrePreparo(unidadeId);
+    await sincronizarCustosPrePreparo(unidadeId, opcoes);
   } catch (err) {
     console.error("Falha ao atualizar o custo dos pré-preparos:", err);
   }
