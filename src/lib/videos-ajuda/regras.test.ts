@@ -5,6 +5,7 @@ import {
   deveOferecerBoasVindas,
   ehVideoHorizontal,
   proximoAvisoPrimeiroAcesso,
+  videoDaTela,
   VIDEOS_AJUDA,
 } from "./regras";
 
@@ -77,5 +78,34 @@ describe("VIDEOS_AJUDA", () => {
     expect(ehVideoHorizontal(VIDEOS_AJUDA["instalar-iphone"])).toBe(false);
     expect(ehVideoHorizontal(VIDEOS_AJUDA["boas-vindas"])).toBe(false);
     expect(ehVideoHorizontal(VIDEOS_AJUDA.contagem)).toBe(false);
+  });
+});
+
+describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
+  it("contagem, criar cotação, editor de espelhos e pedidos feitos", () => {
+    expect(videoDaTela("/estoque/contagem")).toBe("contagem");
+    expect(videoDaTela("/estoque/pedidos")).toBe("cotacao");
+    expect(videoDaTela("/estoque/pedidos/cotacoes")).toBe("espelhos");
+    expect(videoDaTela("/estoque/pedidos/feitos")).toBe("pedido-feito");
+  });
+
+  it("ignora barra no fim e parâmetros", () => {
+    expect(videoDaTela("/estoque/pedidos/")).toBe("cotacao");
+    expect(videoDaTela("/estoque/pedidos?data=2026-10-20")).toBe("cotacao");
+  });
+
+  it("tela sem vídeo (inclusive irmãs e o Início): null, o (?) segue no tour", () => {
+    expect(videoDaTela("/estoque/contagem/visualizacao")).toBeNull();
+    expect(videoDaTela("/estoque/contagem/perdas")).toBeNull();
+    expect(videoDaTela("/estoque/visao-geral")).toBeNull();
+    expect(videoDaTela("/inicio")).toBeNull();
+    expect(videoDaTela("/constructor")).toBeNull();
+    expect(videoDaTela(null)).toBeNull();
+  });
+
+  it("todo vídeo do mapa existe em VIDEOS_AJUDA", () => {
+    for (const rota of ["/estoque/contagem", "/estoque/pedidos", "/estoque/pedidos/cotacoes", "/estoque/pedidos/feitos"]) {
+      expect(VIDEOS_AJUDA[videoDaTela(rota)!]).toBeDefined();
+    }
   });
 });

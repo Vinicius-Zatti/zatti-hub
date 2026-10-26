@@ -130,7 +130,7 @@ export function CartaoBoasVindas({ aoFechar }: { aoFechar: () => void }) {
   );
 }
 
-/** Link discreto no começo da tela: o (?) do cabeçalho só reabre o tour, então o vídeo fica aqui. */
+/** Link discreto no começo da tela; o (?) do cabeçalho abre o mesmo vídeo (`videoDaTela`). */
 export function LinkVideoAjuda({ id, pergunta }: { id: IdVideoAjuda; pergunta: string }) {
   const abrirVideo = useAbrirVideoAjuda();
   if (!abrirVideo) return null;

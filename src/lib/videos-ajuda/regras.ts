@@ -86,6 +86,22 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
   },
 };
 
+/** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
+ * reabrir o tour (pedido de Vinícius em 26/10/2026). Rota exata, sem `?data=`. */
+const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
+  "/estoque/contagem": "contagem",
+  "/estoque/pedidos": "cotacao",
+  "/estoque/pedidos/cotacoes": "espelhos",
+  "/estoque/pedidos/feitos": "pedido-feito",
+};
+
+/** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */
+export function videoDaTela(pathname: string | null | undefined): IdVideoAjuda | null {
+  if (!pathname) return null;
+  const rota = pathname.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+  return Object.hasOwn(VIDEO_DA_TELA, rota) ? VIDEO_DA_TELA[rota] : null;
+}
+
 /** Vídeo deitado: o player abre na caixa larga e usa a altura da tela. */
 export function ehVideoHorizontal(video: Pick<VideoAjuda, "largura" | "altura">): boolean {
   return video.largura > video.altura;
