@@ -8,6 +8,8 @@
 // visível (tela sem aquele elemento, papel sem a aba, celular x computador),
 // o passo é pulado. Por isso dá para listar passos que só a gestão vê.
 
+import { videoDaTela } from "@/lib/videos-ajuda/regras";
+
 export type ModuloTour =
   | "inicio"
   | "estoque"
@@ -56,6 +58,20 @@ const PASSO_REVER: PassoTour = {
   titulo: "Rever o tour",
   texto: "Quer ver estas dicas de novo? Toque aqui quando quiser.",
 };
+
+/** Nas telas com vídeo próprio o (?) abre o vídeo (`videoDaTela`), então o
+ * último passo diz isso em vez de "rever o tour" (26/10/2026). */
+const PASSO_VIDEO_DA_TELA: PassoTour = {
+  alvos: REVER,
+  titulo: "Vídeo desta tela",
+  texto: "Ficou com dúvida? Toque aqui para ver o vídeo desta tela.",
+};
+
+/** Passos do tour para a tela aberta: troca o passo do (?) quando a tela tem vídeo. */
+export function passosDaTela(passos: readonly PassoTour[], pathname: string | null | undefined): readonly PassoTour[] {
+  if (!videoDaTela(pathname)) return passos;
+  return passos.map((passo) => (passo === PASSO_REVER ? PASSO_VIDEO_DA_TELA : passo));
+}
 
 const PASSO_DICA: PassoTour = {
   alvos: DICA,

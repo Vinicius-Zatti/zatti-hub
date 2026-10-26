@@ -15,7 +15,7 @@ import {
   textoContador,
   type PosicaoBalaoTour,
 } from "@/lib/tour/passos";
-import { ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/roteiros";
+import { passosDaTela, ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/roteiros";
 import { CartaoBoasVindas, useAbrirVideoAjuda } from "@/components/videos-ajuda";
 import {
   CHAVE_VIDEO_BOAS_VINDAS,
@@ -77,7 +77,9 @@ export function TourModuloProvider({
   const tourAtivo = tour && tour.em === pathname ? tour : null;
 
   const abrir = useCallback((alvoModulo: ModuloTour, gravar: boolean) => {
-    const passos = passosVisiveis(ROTEIROS_TOUR[alvoModulo], (alvos) => acharAlvo(alvos) !== null);
+    // Tela com vídeo: o último passo aponta o (?) como "ver o vídeo desta tela".
+    const roteiro = passosDaTela(ROTEIROS_TOUR[alvoModulo], window.location.pathname);
+    const passos = passosVisiveis(roteiro, (alvos) => acharAlvo(alvos) !== null);
     if (passos.length === 0) return;
     setTour({ modulo: alvoModulo, passos, indice: 0, em: window.location.pathname });
     if (!gravar) return;
