@@ -71,3 +71,16 @@ export function skuDaUniaoPrePreparo(params: {
     ? { skuFinal: params.ficha.sku, muda: "produto" }
     : { skuFinal: params.produto.sku, muda: "ficha" };
 }
+
+/** Linha da Edição de Dados depois de "usar a ficha existente": a união já
+ * foi gravada no banco, então a chave entra ligada nos três retratos da grade
+ * (o editado, o de comparação e o `gravado`, que é a referência da gravação
+ * parcial). Assim a linha não fica "alterada" e salvar depois não manda nada
+ * a mais. As outras edições da linha, se houver, continuam pendentes. */
+export function aplicarUniaoNaLinha<T extends { prePreparo?: boolean }>(
+  mapas: { estado: Record<string, T>; baseline: Record<string, T>; gravado: Record<string, T> },
+  sku: string,
+): { estado: Record<string, T>; baseline: Record<string, T>; gravado: Record<string, T> } {
+  const ligar = (m: Record<string, T>) => (m[sku] ? { ...m, [sku]: { ...m[sku], prePreparo: true } } : m);
+  return { estado: ligar(mapas.estado), baseline: ligar(mapas.baseline), gravado: ligar(mapas.gravado) };
+}

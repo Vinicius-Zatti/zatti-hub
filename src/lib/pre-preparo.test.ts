@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  aplicarUniaoNaLinha,
   distanciaNomesPrePreparo,
   nomeComparavelPrePreparo,
   nomeContagemSugerido,
   precoDoCustoDaFicha,
   skuDaUniaoPrePreparo,
 } from "./pre-preparo";
+import { camposAlteradosProduto } from "./produto-alteracoes";
+import type { Produto } from "./types";
 
 describe("precoDoCustoDaFicha", () => {
   it("usa o custo por unidade de rendimento, em centavos", () => {
@@ -82,5 +85,35 @@ describe("skuDaUniaoPrePreparo (quem nasce primeiro manda)", () => {
 
   it("mesmo instante: fica o SKU do produto, como no banco", () => {
     expect(skuDaUniaoPrePreparo({ produto, ficha: { sku: "PRERECCCA", criadoEm: produto.criadoEm } }).muda).toBe("ficha");
+  });
+});
+
+describe("aplicarUniaoNaLinha (grade depois de usar a ficha existente)", () => {
+  const produto: Produto = {
+    sku: "PRECEBCAR", posicao: null, grupo: "PRE", nome: "cebola caramelizada", unidadeBase: "KG",
+    precoUnitario: 30, estoqueNecessarioSemana: 1, estoqueMinimo: 1, nomeCompra: "", unidadeEmbalagemFornecedor: "",
+    qtdUnidadeBasePorEmbalagem: null, precoFornecedor: null, fornecedor1: "", fornecedor2: "", fornecedor3: "",
+    fornecedor4: "", observacoes: "", ativo: true, revenda: false, prePreparo: false,
+  };
+  const outro: Produto = { ...produto, sku: "MERCEB001", grupo: "MER", nome: "cebola" };
+
+  it("a linha unida não fica alterada nem manda campo nenhum ao salvar", () => {
+    const comNome = { ...produto, nomeCompra: produto.nome };
+    const r = aplicarUniaoNaLinha(
+      { estado: { PRECEBCAR: comNome, MERCEB001: outro }, baseline: { PRECEBCAR: comNome, MERCEB001: outro }, gravado: { PRECEBCAR: produto, MERCEB001: outro } },
+      "PRECEBCAR",
+    );
+    expect(r.estado.PRECEBCAR.prePreparo).toBe(true);
+    expect(JSON.stringify(r.estado.PRECEBCAR)).toBe(JSON.stringify(r.baseline.PRECEBCAR));
+    expect(r.gravado.PRECEBCAR.prePreparo).toBe(true);
+    // Só o nome de compra padrão da grade, como em qualquer linha recém-carregada; nada do pré-preparo.
+    expect(camposAlteradosProduto(r.gravado.PRECEBCAR, r.estado.PRECEBCAR)).toEqual({ nome_compra: "cebola caramelizada" });
+    expect(r.estado.MERCEB001).toBe(outro);
+  });
+
+  it("sem nome de compra padrão, salvar depois não grava nada", () => {
+    const r = aplicarUniaoNaLinha({ estado: { PRECEBCAR: produto }, baseline: { PRECEBCAR: produto }, gravado: { PRECEBCAR: produto } }, "PRECEBCAR");
+    expect(camposAlteradosProduto(r.gravado.PRECEBCAR, r.estado.PRECEBCAR)).toEqual({});
+    expect(JSON.stringify(r.estado.PRECEBCAR)).toBe(JSON.stringify(r.baseline.PRECEBCAR));
   });
 });

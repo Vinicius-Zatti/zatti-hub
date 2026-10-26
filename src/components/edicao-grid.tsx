@@ -28,6 +28,7 @@ import { normalizarBusca } from "@/lib/busca";
 import { useRouter } from "next/navigation";
 import { EscolhaFichaExistente } from "@/components/escolha-ficha-existente";
 import type { ParPrePreparo } from "@/lib/banco/pre-preparo-uniao";
+import { aplicarUniaoNaLinha } from "@/lib/pre-preparo";
 
 // Mensagem quando a chamada nem chega a responder (rede, servidor fora do ar).
 const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexão e tente de novo.";
@@ -605,8 +606,10 @@ function CadastroSection({
           onUnido={(skuFinal) => {
             // Já gravado no banco: a chave entra ligada e sem pendência na linha.
             const sku = escolhaPrePreparo;
-            setEstado((e) => ({ ...e, [sku]: { ...e[sku], prePreparo: true } }));
-            setBaseline((b) => ({ ...b, [sku]: { ...b[sku], prePreparo: true } }));
+            const unido = aplicarUniaoNaLinha({ estado, baseline, gravado }, sku);
+            setEstado(unido.estado);
+            setBaseline(unido.baseline);
+            setGravado(unido.gravado);
             setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok", msg: `Unido à ficha existente (SKU ${skuFinal}).` } }));
             setEscolhaPrePreparo(null);
             router.refresh();
