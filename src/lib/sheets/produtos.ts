@@ -10,6 +10,7 @@ import {
   inserirProdutoBanco,
   vincularFornecedorProdutoBanco,
   atualizarPrecoProdutoBanco,
+  atualizarFornecedor1ProdutoBanco,
 } from "@/lib/banco/estoque";
 import { vincularFornecedorAoProduto } from "@/lib/pedido";
 import { paraCelulaSegura } from "./seguranca";
@@ -106,8 +107,12 @@ export async function upsertProduto(
 export type ResultadoVinculoFornecedor = "vinculado" | "ja_vinculado" | "sem_vaga" | "sem_produto";
 
 /** Liga o fornecedor na primeira vaga livre do produto (Fornecedor 1 a 4),
- * nunca sobrescrevendo. No banco é atômico, com a linha travada; na planilha
- * legada (sem trava) segue lendo e regravando o produto. */
+ * nunca sobrescrevendo. No banco é sempre a função atômica, com a linha
+ * travada: sem ela (migration ausente ou erro) o vínculo falha e quem chama
+ * mostra o aviso, mas nunca lê e regrava a linha inteira (parecer do Codex de
+ * 24/10/2026: duas confirmações liam a mesma vaga vazia e a segunda apagava o
+ * vínculo da primeira). Só a planilha legada, que não tem trava, segue lendo e
+ * regravando o produto. */
 export async function vincularFornecedorNoProduto(
   sku: string,
   fornecedor: string,
@@ -116,15 +121,12 @@ export async function vincularFornecedorNoProduto(
   const fonte = await resolverFonteDadosEstoque(spreadsheetId);
   if (fonte.fonte === "banco") {
     const resultado = await vincularFornecedorProdutoBanco(fonte.unidadeId, sku, fornecedor);
-    if (resultado !== null) {
-      if (resultado === "ja_vinculado" || resultado === "sem_vaga" || resultado === "sem_produto") return resultado;
-      return "vinculado";
-    }
+    if (resultado === "ja_vinculado" || resultado === "sem_vaga" || resultado === "sem_produto") return resultado;
+    return "vinculado";
   }
   // Leitura fresca, fora do `cache` da requisição: o vencedor acabou de gravar
   // o preço novo e a lista cacheada ainda tem o antigo (regravaria por cima).
-  const lista =
-    fonte.fonte === "banco" ? await listarProdutosBanco(fonte.unidadeId) : await listProdutosPlanilha(fonte.spreadsheetId!);
+  const lista = await listProdutosPlanilha(fonte.spreadsheetId!);
   const produto = lista.find((p) => p.sku === sku);
   if (!produto) return "sem_produto";
   const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
@@ -132,6 +134,22 @@ export async function vincularFornecedorNoProduto(
   if (vinculado === "sem_vaga") return "sem_vaga";
   await upsertProduto(vinculado, spreadsheetId);
   return "vinculado";
+}
+
+/** Define o Fornecedor 1 (bloco "Sem fornecedor cadastrado" de Criar
+ * Cotação). No banco grava só essa coluna, sem regravar o resto da linha (um
+ * vínculo ou preço gravado no meio não se perde). */
+export async function definirFornecedor1NoProduto(
+  produto: Produto,
+  fornecedor1: string,
+  spreadsheetId: string | null
+): Promise<void> {
+  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
+  if (fonte.fonte === "banco") {
+    await atualizarFornecedor1ProdutoBanco(fonte.unidadeId, produto.sku, fornecedor1);
+    return;
+  }
+  await upsertProduto({ ...produto, fornecedor1 }, spreadsheetId);
 }
 
 /** Grava só o preço do produto. No banco não regrava o resto da linha. */

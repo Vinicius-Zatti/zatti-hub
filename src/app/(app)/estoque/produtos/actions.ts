@@ -1,6 +1,13 @@
 "use server";
 
-import { excluirProduto, inserirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
+import {
+  definirFornecedor1NoProduto,
+  excluirProduto,
+  inserirProduto,
+  listProdutos,
+  upsertProduto,
+  upsertProdutosBatch,
+} from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import { listInventario } from "@/lib/sheets/inventario";
 import { salvarDesignacoesBanco } from "@/lib/banco/setores";
@@ -228,8 +235,9 @@ export async function salvarProdutoAction(
 /** Atribui o Fornecedor 1 de um produto que ainda não tinha nenhum
  * fornecedor cadastrado - usado no bloco "Sem fornecedor cadastrado" de
  * Criar Cotação, pra completar o cadastro sem precisar ir em Produtos >
- * Edição de Dados. Busca o produto inteiro antes de gravar (a Server
- * Action só recebe o SKU + fornecedor escolhido, não o resto dos campos). */
+ * Edição de Dados. Lê o produto só para conferir que existe e auditar o
+ * valor anterior; no banco grava apenas a coluna Fornecedor 1, sem regravar
+ * a linha inteira (parecer do Codex de 24/10/2026). */
 export async function definirFornecedor1Action(
   sku: string,
   fornecedor1: string
@@ -242,8 +250,7 @@ export async function definirFornecedor1Action(
     const produto = produtos.find((p) => p.sku === entrada.sku);
     if (!produto) return { erro: "Produto não encontrado - a lista pode ter mudado, recarrega a página." };
 
-    const atualizado: Produto = { ...produto, fornecedor1: entrada.fornecedor1 };
-    await upsertProduto(atualizado, acesso.spreadsheetId);
+    await definirFornecedor1NoProduto(produto, entrada.fornecedor1, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "definir_fornecedor_via_cotacao",

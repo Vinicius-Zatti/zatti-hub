@@ -1,84 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { sincronizarCotacaoAction } from "@/app/(app)/estoque/pedidos/cotacoes/actions";
+import { criarSincronizadorCotacao } from "@/lib/sincronizacao-cotacao";
 
-const ESPERA_MS = 2500;
-const ESPERA_NOVA_TENTATIVA_MS = 5000;
-const MAX_TENTATIVAS = 3;
+/** Um só por aba, fora de qualquer componente: a pendência sobrevive à
+ * desmontagem do editor (trocar de contagem, ir para outra tela). Ver
+ * `lib/sincronizacao-cotacao.ts`. */
+export const sincronizadorCotacao = criarSincronizadorCotacao({
+  sincronizar: () => sincronizarCotacaoAction(),
+  agendar: (fn, ms) => setTimeout(fn, ms),
+  cancelar: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+  online: () => typeof navigator === "undefined" || navigator.onLine !== false,
+});
 
 /** Confirmar na Criar Cotação e no Editor de Espelhos não revalida mais a cada
  * clique (fase 3 de velocidade, 23/10/2026). Sem nenhuma revalidação, o
  * voltar/avançar do navegador remontava a tela como ela era antes das
- * confirmações. Este hook agenda uma sincronização depois de uma pausa nos
- * cliques: um recálculo por pausa, em vez de um por clique. O estado digitado
- * fica (mesma `key`).
- *
- * Parecer do Codex (24/10/2026): a pendência só sai depois de uma
- * sincronização que deu certo (confirmação feita durante a requisição continua
- * pendente), falha tenta de novo, e aba escondida ou saída da tela são só
- * tentativas a mais. Navegação que precisa dos dados atuais espera
- * `sincronizarAgora`. */
+ * confirmações. `agendar` marca a pendência e sincroniza depois de uma pausa
+ * nos cliques: um recálculo por pausa, em vez de um por clique. Navegação que
+ * precisa dos dados atuais espera `sincronizarAgora`. Sair da tela adianta a
+ * tentativa; a pendência continua no `sincronizadorCotacao` até dar certo. */
 export function useSincronizarCotacao(): { agendar: () => void; sincronizarAgora: () => Promise<void> } {
-  const agendado = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const geracao = useRef(0);
-  const sincronizada = useRef(0);
-
-  const limparTimer = useCallback(() => {
-    if (agendado.current) clearTimeout(agendado.current);
-    agendado.current = null;
-  }, []);
-
-  // Uma requisição por vez: timer, aba escondida, saída e troca de contagem
-  // podem chamar juntos; quem chega no meio espera a que está em voo e só
-  // abre outra se ainda sobrar confirmação pendente.
-  const emVoo = useRef<Promise<void> | null>(null);
-
-  const sincronizarAgora = useCallback(async () => {
-    limparTimer();
-    while (emVoo.current) await emVoo.current;
-    if (geracao.current <= sincronizada.current) return;
-    const rodada = (async () => {
-      for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
-        const alvo = geracao.current;
-        try {
-          await sincronizarCotacaoAction();
-          sincronizada.current = Math.max(sincronizada.current, alvo);
-          return;
-        } catch {
-          if (tentativa < MAX_TENTATIVAS) {
-            await new Promise((resolver) => setTimeout(resolver, ESPERA_NOVA_TENTATIVA_MS));
-          }
-        }
-      }
-    })();
-    emVoo.current = rodada;
-    try {
-      await rodada;
-    } finally {
-      emVoo.current = null;
-    }
-  }, [limparTimer]);
-
   useEffect(() => {
-    function aoEsconder() {
-      if (document.visibilityState === "hidden" && geracao.current > sincronizada.current) {
-        void sincronizarAgora();
-      }
-    }
-    document.addEventListener("visibilitychange", aoEsconder);
     return () => {
-      document.removeEventListener("visibilitychange", aoEsconder);
-      if (geracao.current > sincronizada.current) void sincronizarAgora();
-      limparTimer();
+      if (sincronizadorCotacao.temPendencia()) void sincronizadorCotacao.sincronizarAgora();
     };
-  }, [sincronizarAgora, limparTimer]);
-
-  const agendar = useCallback(() => {
-    geracao.current += 1;
-    limparTimer();
-    agendado.current = setTimeout(() => void sincronizarAgora(), ESPERA_MS);
-  }, [sincronizarAgora, limparTimer]);
-
+  }, []);
+  const agendar = useCallback(() => sincronizadorCotacao.marcarPendente(), []);
+  const sincronizarAgora = useCallback(() => sincronizadorCotacao.sincronizarAgora(), []);
   return { agendar, sincronizarAgora };
+}
+
+/** Montado uma vez no layout do app (não desmonta entre telas): retoma a
+ * pendência quando a conexão volta, quando a aba volta a aparecer (ou vai ser
+ * escondida, última chance antes de o navegador congelar os timers) e quando a
+ * página volta do cache do voltar/avançar. Não desenha nada. */
+export function SincronizadorCotacao(): null {
+  useEffect(() => {
+    const retomar = () => sincronizadorCotacao.retomar();
+    window.addEventListener("online", retomar);
+    window.addEventListener("pageshow", retomar);
+    document.addEventListener("visibilitychange", retomar);
+    return () => {
+      window.removeEventListener("online", retomar);
+      window.removeEventListener("pageshow", retomar);
+      document.removeEventListener("visibilitychange", retomar);
+    };
+  }, []);
+  return null;
 }

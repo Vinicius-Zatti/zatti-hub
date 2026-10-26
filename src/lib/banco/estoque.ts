@@ -157,23 +157,34 @@ export async function salvarProdutosBanco(
 
 /** Liga o fornecedor ao produto numa transação com a linha travada (ver
  * 20261024120000_vincular_fornecedor_produto.sql): duas confirmações ao mesmo
- * tempo nunca escolhem a mesma vaga e nada além da vaga é regravado. Devolve
- * null se a função ainda não existe no banco (migration não aplicada), pra o
- * chamador cair no caminho antigo. */
+ * tempo nunca escolhem a mesma vaga e nada além da vaga é regravado. Sem a
+ * função no banco (PGRST202) falha como qualquer outro erro: não existe mais
+ * caminho alternativo que regrave a linha inteira. */
 export async function vincularFornecedorProdutoBanco(
   unidadeId: string,
   sku: string,
   fornecedor: string,
-): Promise<string | null> {
+): Promise<string> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("vincular_fornecedor_produto", {
     p_unidade_id: unidadeId,
     p_sku: sku,
     p_fornecedor: fornecedor,
   });
-  if (error?.code === "PGRST202") return null;
   if (error) throw new Error(`Não foi possível ligar o fornecedor ao produto: ${error.message}`);
   return String(data);
+}
+
+/** Grava só o Fornecedor 1, sem regravar o resto da linha. */
+export async function atualizarFornecedor1ProdutoBanco(unidadeId: string, sku: string, fornecedor1: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("produtos")
+    .update({ fornecedor_1: fornecedor1, atualizado_em: new Date().toISOString() })
+    .eq("unidade_id", unidadeId)
+    .eq("sku", sku);
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
+  if (error) throw new Error(`Não foi possível definir o fornecedor do produto: ${error.message}`);
 }
 
 /** Atualiza só o preço do produto, sem regravar o resto da linha (um vínculo
