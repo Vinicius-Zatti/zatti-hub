@@ -323,7 +323,7 @@ export async function desfazerVencedor(params: {
 
 /** Fornecedores que participaram da cotação (unidade + contagem base), por
  * SKU - ver `cotacao_participacoes` em
- * 20261026120000_cotacao_participacoes.sql. Com `sku`, só desse item. Sem a
+ * 20261026140000_cotacao_participacoes.sql. Com `sku`, só desse item. Sem a
  * tabela no banco (migration ainda não aplicada) devolve vazio: a tela segue
  * como antes, sem restaurar o concorrente avulso, em vez de quebrar. */
 export async function listarParticipacoesCotacao(

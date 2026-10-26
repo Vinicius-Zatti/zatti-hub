@@ -157,7 +157,7 @@ export async function salvarProdutosBanco(
 }
 
 /** Grava só os campos alterados de cada produto, numa transação (ver
- * `salvar_produtos_campos` em 20261026130000_salvar_produtos_campos.sql). É o
+ * `salvar_produtos_campos` em 20261026150000_salvar_produtos_campos.sql). É o
  * Salvar / Salvar todos da Edição de Dados: um vínculo de fornecedor ou preço
  * gravado depois de a grade carregar não é apagado. Uma chamada só, como o
  * upsert de antes. Sem a função no banco, falha: nunca volta a gravar a linha
