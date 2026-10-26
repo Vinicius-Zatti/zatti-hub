@@ -24,3 +24,14 @@ describe("filtrarPorNomeOuSku", () => {
     expect(filtrarPorNomeOuSku(itens, "picanha")).toEqual([]);
   });
 });
+
+describe("filtrarPorNomeOuSku com outros nomes", () => {
+  it("acha pelo Nome de Compra quando informado", () => {
+    const lista = [
+      { sku: "S1", nome: "Coca lata", nomeCompra: "Refrigerante Coca-Cola 350ml" },
+      { sku: "S2", nome: "Guaraná", nomeCompra: null },
+    ];
+    expect(filtrarPorNomeOuSku(lista, "refrigerante", (i) => [i.nomeCompra]).map((i) => i.sku)).toEqual(["S1"]);
+    expect(filtrarPorNomeOuSku(lista, "refrigerante")).toEqual([]);
+  });
+});

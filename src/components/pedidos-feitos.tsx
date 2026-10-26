@@ -14,6 +14,8 @@ import {
   sincronizarFormularios,
   type FormularioRecebimento,
 } from "@/lib/pedidos-feitos-formulario";
+import { CampoBusca } from "@/components/campo-busca";
+import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -80,6 +82,16 @@ export function PedidosFeitos({
 
   const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
+  // Busca (26/10/2026): só esconde linhas. As quantidades digitadas ficam em
+  // `formularios`, pelo SKU, e o Salvar manda o pedido inteiro.
+  const [busca, setBusca] = useState("");
+  const buscando = busca.trim() !== "";
+  const itensVisiveisPorPedido = new Map(
+    pedidos.map((pedido) => [pedido.id, filtrarPorNomeOuSku(pedido.itens, busca, (item) => [item.nomeCompra])]),
+  );
+  const pedidosVisiveis = buscando
+    ? pedidos.filter((pedido) => (itensVisiveisPorPedido.get(pedido.id) ?? []).length > 0)
+    : pedidos;
 
   function editar(pedido: Pedido, mudanca: (f: FormularioRecebimento) => Partial<FormularioRecebimento>) {
     setFormularios((fs) => {
@@ -161,7 +173,17 @@ export function PedidosFeitos({
   return (
     <div className="flex flex-col gap-4 pb-10">
       {seletorData}
-      {pedidos.map((pedido) => {
+      <div className="flex flex-col gap-1">
+        <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos pedidos por nome ou SKU" />
+        {buscando && (
+          <p className="text-xs text-cinza-medio">
+            {pedidosVisiveis.length === 0
+              ? `Nenhum item com "${busca.trim()}" nos pedidos desta contagem.`
+              : "Mostrando só os itens encontrados. O que você digitou nos outros continua guardado, e o Salvar e os totais valem para o pedido inteiro."}
+          </p>
+        )}
+      </div>
+      {pedidosVisiveis.map((pedido) => {
         const totalVolumes = pedido.itens.reduce((soma, it) => soma + it.quantidadePedida, 0);
         const totalPedido = pedido.itens.reduce((soma, it) => soma + (precoTotalDe(it) ?? 0), 0);
         const formulario = formularios[pedido.id];
@@ -191,7 +213,7 @@ export function PedidosFeitos({
                   </tr>
                 </thead>
                 <tbody>
-                  {pedido.itens.map((item) => {
+                  {(itensVisiveisPorPedido.get(pedido.id) ?? pedido.itens).map((item) => {
                     const precoTotal = precoTotalDe(item);
                     return (
                       <tr key={item.sku} className="border-t border-cinza-claro">
