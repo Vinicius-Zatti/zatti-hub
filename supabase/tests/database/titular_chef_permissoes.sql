@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(84);
+select plan(97);
 
 grant vini_operador to current_user;
 grant select, insert, update, delete on garante_modelos, garante_itens, garante_publicacoes,
@@ -29,7 +29,8 @@ insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, 
   ('00000000-0000-0000-0000-00000000e005', 'tc-oper@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000e006', 'tc-chef@teste.local', 'x', now(), 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-00000000e007', 'tc-sem@teste.local', 'x', now(), 'authenticated', 'authenticated'),
-  ('00000000-0000-0000-0000-00000000e008', 'tc-ver@teste.local', 'x', now(), 'authenticated', 'authenticated');
+  ('00000000-0000-0000-0000-00000000e008', 'tc-ver@teste.local', 'x', now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e009', 'tc-sai@teste.local', 'x', now(), 'authenticated', 'authenticated');
 
 insert into organizacoes (id, nome, tipo_cliente, ativo, equipe_habilitado) values
   ('org-tc', 'Cliente TC', 'saas', true, true),
@@ -48,7 +49,8 @@ insert into vinculos (id, user_id, organizacao_id, unidade_id, role, status) val
   ('00000000-0000-0000-0000-0000000e0a05', '00000000-0000-0000-0000-00000000e005', 'org-tc', 'tc-loja1', 'operacional', 'ativo'),
   ('00000000-0000-0000-0000-0000000e0a06', '00000000-0000-0000-0000-00000000e006', 'org-tc', 'tc-loja1', 'operacional', 'ativo'),
   ('00000000-0000-0000-0000-0000000e0a07', '00000000-0000-0000-0000-00000000e007', 'org-tc', 'tc-loja1', 'operacional', 'ativo'),
-  ('00000000-0000-0000-0000-0000000e0a08', '00000000-0000-0000-0000-00000000e008', 'org-tc', 'tc-loja1', 'operacional', 'ativo');
+  ('00000000-0000-0000-0000-0000000e0a08', '00000000-0000-0000-0000-00000000e008', 'org-tc', 'tc-loja1', 'operacional', 'ativo'),
+  ('00000000-0000-0000-0000-0000000e0a09', '00000000-0000-0000-0000-00000000e009', 'org-tc', 'tc-loja1', 'operacional', 'ativo');
 
 insert into categorias_ficha (id, unidade_id, camada, codigo, nome) values
   ('00000000-0000-0000-0000-0000000e0c01', 'tc-loja1', 'PRE', 'MOL', 'molhos');
@@ -58,6 +60,12 @@ insert into contagens (id, unidade_id, data, mes, criado_por, modalidade) values
   ('00000000-0000-0000-0000-0000000e0d01', 'tc-loja1', '2026-10-01', '2026-10', '00000000-0000-0000-0000-00000000e005', 'legada');
 insert into contagem_itens (contagem_id, sku, quantidade) values
   ('00000000-0000-0000-0000-0000000e0d01', 'HORTOM001', 3);
+
+insert into pedidos (id, unidade_id, fornecedor, data_contagem_base, criado_por) values
+  ('00000000-0000-0000-0000-0000000e0b11', 'tc-loja1', 'Fornecedor TC', '2026-10-01', '00000000-0000-0000-0000-00000000e002');
+insert into pedido_itens (pedido_id, sku, nome, unidade_base, quantidade_pedida) values
+  ('00000000-0000-0000-0000-0000000e0b11', 'HORTOM001', 'tomate', 'KG', 2);
+insert into fornecedores (unidade_id, codigo, nome_fantasia) values ('tc-loja1', 'FTC001', 'Fornecedor TC');
 
 insert into garante_modelos (id, unidade_id, nome) values
   ('00000000-0000-0000-0000-0000000e0b01', 'tc-loja1', 'Abertura TC'),
@@ -123,6 +131,11 @@ select ok(not has_function_privilege('vini_operador', 'public.usuario_e_chef_car
 select ok(not has_function_privilege('vini_operador', 'public.gerar_senha_provisoria_conta(uuid, uuid, text, text, text, timestamptz)', 'EXECUTE')
   and not has_function_privilege('vini_operador', 'public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)', 'EXECUTE'),
   'operador do Vini segue sem senha provisória e sem editar acesso');
+select ok(not has_function_privilege('vini_operador', 'public.revogar_vinculo_equipe(uuid, uuid, text)', 'EXECUTE')
+  and not has_function_privilege('vini_operador', 'public.atualizar_whatsapp_vinculo(uuid, uuid, text, text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.revogar_vinculo_equipe(uuid, uuid, text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.atualizar_whatsapp_vinculo(uuid, uuid, text, text)', 'EXECUTE'),
+  'tirar acesso e trocar WhatsApp: só o servidor executa');
 select ok(not has_table_privilege('vini_operador', 'public.titulares_organizacao', 'INSERT')
   and not has_table_privilege('vini_operador', 'public.titulares_organizacao', 'UPDATE'),
   'operador do Vini só lê a tabela de titulares');
@@ -198,6 +211,14 @@ select is(public.editar_vinculo_acesso('00000000-0000-0000-0000-00000000e003', '
   'equipe', 'org-tc', 'gestao', null), 'ok', 'o titular edita o acesso de outra pessoa');
 select is(public.gerar_senha_provisoria_conta('00000000-0000-0000-0000-00000000e001', '00000000-0000-0000-0000-0000000e0a03',
   'master', null, repeat('b', 64), now() + interval '1 day'), 'ok', 'master gera senha provisória para o titular');
+select is(public.revogar_vinculo_equipe('00000000-0000-0000-0000-00000000e002'::uuid, '00000000-0000-0000-0000-0000000e0a03'::uuid,
+  'equipe'), 'alvo_titular', 'gestão não tira o acesso do titular');
+select is(public.atualizar_whatsapp_vinculo('00000000-0000-0000-0000-00000000e002', '00000000-0000-0000-0000-0000000e0a03',
+  'equipe', '+5531999990001'), 'alvo_titular', 'gestão não troca o WhatsApp do titular');
+select is(public.atualizar_whatsapp_vinculo('00000000-0000-0000-0000-00000000e001', '00000000-0000-0000-0000-0000000e0a03',
+  'master', '+5531999990002'), 'ok', 'master troca o WhatsApp do titular');
+select is(public.revogar_vinculo_equipe('00000000-0000-0000-0000-00000000e003'::uuid, '00000000-0000-0000-0000-0000000e0a09'::uuid,
+  'equipe'), 'ok', 'o titular tira o acesso de outra pessoa (quem chama hoje segue funcionando)');
 
 -- ── Tirar o titular volta à reserva ──────────────────────────────────────
 select is(pg_temp.marcar('00000000-0000-0000-0000-00000000e001', null), 'ok', 'master tira o titular');
@@ -215,6 +236,12 @@ select is(pg_temp.salvar('00000000-0000-0000-0000-00000000e001', '00000000-0000-
   'pedido_invalido', 'chef só existe no Cardápio');
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000e001', '00000000-0000-0000-0000-0000000e0a04',
   '{"cardapio":"chef","cadastros":"ver"}'), 'ok', 'gerente vira chef no Cardápio e só vê Cadastros');
+select pg_temp.como('00000000-0000-0000-0000-00000000e004');
+select throws_ok($$insert into produto_conversoes (unidade_id, produto_sku, unidade_uso, quantidade_unidade_base)
+  values ('tc-loja1', 'HORTOM001', 'G', 1000)$$, '42501',
+  'Seu acesso ao Cardápio não inclui conversões de unidade. Peça a quem administra a equipe.',
+  'gerente rebaixado a chef não grava conversão de unidade');
+select pg_temp.servidor();
 select throws_ok($$insert into permissoes_modulo (vinculo_id, modulo, nivel)
   values ('00000000-0000-0000-0000-0000000e0a05', 'vendas', 'chef')$$, '23514', null,
   'a tabela recusa chef fora do Cardápio');
@@ -298,6 +325,8 @@ select throws_ok($$insert into contagens (unidade_id, data, mes, criado_por, mod
   'Estoque sem acesso: não abre contagem');
 select is((select count(*)::int from garante_modelos), 0, 'Garante sem acesso: não lê modelos');
 select ok(not public.usuario_pode_usar_garante('tc-loja1'), 'Garante sem acesso: helper nega (e as RPCs junto)');
+select is((select count(*)::int from pedidos), 0, 'Estoque sem acesso: não lê pedidos');
+select is((select count(*)::int from pedido_itens), 0, 'Estoque sem acesso: não lê itens do pedido');
 select is((select count(*)::int from produtos where unidade_id = 'tc-loja1'), 1, 'Estoque sem acesso não tira o cadastro de produtos');
 
 -- ── Ver ──────────────────────────────────────────────────────────────────
@@ -310,6 +339,7 @@ select throws_ok($$insert into contagem_itens (contagem_id, sku, quantidade)
 select throws_ok($$update contagem_itens set quantidade = 9 where contagem_id = '00000000-0000-0000-0000-0000000e0d01'$$,
   '42501', null, 'Estoque ver: não corrige a contagem');
 select is((select count(*)::int from garante_modelos), 2, 'Garante ver: lê os modelos');
+select is((select count(*)::int from pedido_itens), 1, 'Estoque ver: lê os itens do pedido');
 select throws_ok($$select public.garante_iniciar('00000000-0000-0000-0000-0000000e0f02', public.garante_hoje())$$,
   '42501', null, 'Garante ver: não cumpre o checklist (nem sendo o responsável)');
 
@@ -326,7 +356,15 @@ select lives_ok($$update produtos set preco_unitario = 6 where unidade_id = 'tc-
 select pg_temp.como('00000000-0000-0000-0000-00000000e002');
 select lives_ok($$update produtos set nome = 'tomate italiano' where unidade_id = 'tc-loja1' and sku = 'HORTOM001'$$,
   'sem exceção, a gestão muda o cadastro como hoje');
+select lives_ok($$insert into garante_modelos (unidade_id, nome) values ('tc-loja1', 'Limpeza TC')$$,
+  'sem exceção, a gestão cria modelo do Garante como hoje');
+select lives_ok($$insert into pedidos (unidade_id, fornecedor, data_contagem_base, criado_por)
+  values ('tc-loja1', 'Outro TC', '2026-10-02', auth.uid())$$, 'sem exceção, a gestão cria pedido como hoje');
+select lives_ok($$update fornecedores set nome_fantasia = 'Fornecedor TC novo' where unidade_id = 'tc-loja1' and codigo = 'FTC001'$$,
+  'sem exceção, a gestão muda o fornecedor como hoje');
 select pg_temp.servidor();
+select is((select count(*)::int from fornecedores where codigo = 'FTC001' and nome_fantasia = 'Fornecedor TC novo'), 1,
+  'a mudança do fornecedor ficou');
 select is((select nome || ' ' || preco_unitario::text from produtos where unidade_id = 'tc-loja1' and sku = 'HORTOM001'),
   'tomate italiano 6', 'só as gravações permitidas ficaram');
 

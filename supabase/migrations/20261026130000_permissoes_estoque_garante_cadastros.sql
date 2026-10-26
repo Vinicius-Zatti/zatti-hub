@@ -130,6 +130,93 @@ create policy estoque_inicio_select_por_unidade on public.estoque_extrato_inicio
     and unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
   );
 
+-- Tabelas-filhas: além da policy da linha-mãe, o filtro do módulo fica explícito na própria
+-- policy (não depende de a subconsulta herdar o RLS da mãe). Mesmo corpo de
+-- 20261022120000_rls_fase2_unidades_acessiveis.sql com a linha a mais.
+alter policy contagem_itens_select_por_vinculo on public.contagem_itens
+  using (contagem_id in (
+    select c.id from public.contagens c
+     where c.unidade_id in (select public.unidades_acessiveis())
+       and c.unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
+  ));
+alter policy contagem_escopo_select_por_vinculo on public.contagem_escopo
+  using (contagem_id in (
+    select c.id from public.contagens c
+     where c.unidade_id in (select public.unidades_acessiveis())
+       and c.unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
+  ));
+alter policy contagem_setores_select_por_vinculo on public.contagem_setores
+  using (contagem_id in (
+    select c.id from public.contagens c
+     where c.unidade_id in (select public.unidades_acessiveis())
+       and c.unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
+  ));
+alter policy contagem_envios_select_por_vinculo on public.contagem_envios
+  using (contagem_id in (
+    select c.id from public.contagens c
+     where c.unidade_id in (select public.unidades_acessiveis())
+       and c.unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
+  ));
+alter policy pedido_itens_select_por_vinculo on public.pedido_itens
+  using (pedido_id in (
+    select p.id from public.pedidos p
+     where p.unidade_id in (select public.unidades_acessiveis())
+       and p.unidade_id not in (select public.unidades_modulo_negadas('estoque', 'ver'))
+  ));
+
+-- Helpers de pedido e contagem (usados nas policies de escrita): exigem "ver" no Estoque.
+-- antes (20260811090000_seguranca_rls.sql): sem a última linha.
+create or replace function public.usuario_tem_acesso_pedido(p_pedido_id uuid, p_papeis text[] default null)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.pedidos p
+    where p.id = p_pedido_id
+      and public.usuario_tem_acesso_unidade(p.unidade_id, p_papeis)
+      and public.pode_modulo('estoque', 'ver', p.unidade_id)
+  );
+$$;
+
+-- antes (20261012090000_contagem_setor_integridade.sql): sem a última linha.
+create or replace function public.usuario_pode_escrever_contagem_legada(p_contagem_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.contagens c
+    where c.id = p_contagem_id
+      and c.modalidade = 'legada'
+      and public.usuario_tem_acesso_unidade(c.unidade_id, null)
+      and public.pode_modulo('estoque', 'ver', c.unidade_id)
+  );
+$$;
+
+-- antes (20260811090000_seguranca_rls.sql): sem a última linha.
+create or replace function public.usuario_tem_acesso_contagem(p_contagem_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.contagens c
+    where c.id = p_contagem_id
+      and public.usuario_tem_acesso_unidade(c.unidade_id, null)
+      and public.pode_modulo('estoque', 'ver', c.unidade_id)
+  );
+$$;
+
 -- ── Garante: leitura (e toda RPC que confere o helper) ───────────────────
 
 -- antes (20261011140000_checklist_garante.sql): sem a última linha.

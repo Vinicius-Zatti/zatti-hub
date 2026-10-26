@@ -18,6 +18,12 @@
 --    (`fichas_tecnicas.preco_venda_rascunho`). Não grava preço oficial (Salão e os 3 canais),
 --    nem a Margem Ideal (`configuracao_financeira`), nem categorias, conversões ou exclusão.
 --    A gestão aceita o rascunho na Precificação (vira `preco_venda`).
+--    Limite conhecido da leitura: a policy de select de `fichas_tecnicas` (e de componentes) não
+--    muda. Quem tem "ver" ou "chef" e consulta a Data API direto ainda lê preço oficial, preços de
+--    canal, rascunho e observações gerenciais. O app não manda esses campos ao navegador de quem
+--    não pode ver (src/lib/fichas-tecnicas-visibilidade.ts); fechar no banco exige separar as
+--    colunas (view ou tabela própria) numa próxima fatia.
+--    Conversões de unidade (`produto_conversoes`) passam a ter o gatilho do Cardápio ("editar").
 --
 -- Quem chama as funções de escrita: o servidor (service_role) com o id de quem está logado
 -- (`p_ator`, lido da sessão). Toda função nova revoga o vini_operador (default privileges de
@@ -416,6 +422,13 @@ begin
   end loop;
 end;
 $$;
+
+-- Conversões de unidade são da gestão: exigem "editar" no Cardápio (faltavam em 20261025090000).
+drop trigger if exists permissao_modulo_editar on public.produto_conversoes;
+create trigger permissao_modulo_editar
+  before insert or update or delete on public.produto_conversoes
+  for each row execute function public.exigir_permissao_modulo(
+    'cardapio', 'Seu acesso ao Cardápio não inclui conversões de unidade. Peça a quem administra a equipe.');
 
 drop trigger if exists permissao_cardapio_apagar_ficha on public.fichas_tecnicas;
 create trigger permissao_cardapio_apagar_ficha
@@ -1037,7 +1050,110 @@ revoke all on function public.editar_vinculo_acesso(uuid, uuid, text, text, text
 grant execute on function public.editar_vinculo_acesso(uuid, uuid, text, text, text, text)
   to service_role;
 
+-- ══ Tirar acesso e trocar WhatsApp: a conta do titular só o master mexe ═
+
+-- Mesma regra de quem pede das outras duas: escopo 'master' (p_ator master ativo) ou 'equipe'
+-- (p_ator master ou gestão ativa da organização do vínculo). Delega a revogação a
+-- `revogar_vinculo_equipe(uuid)` (trava e "última gestão" de sempre), que continua existindo.
+-- Devolve 'ok', 'sem_permissao', 'nao_encontrado', 'alvo_titular' ou 'ultima_gestao'.
+create or replace function public.revogar_vinculo_equipe(p_ator uuid, p_vinculo_id uuid, p_escopo text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_alvo record;
+  v_ator_master boolean;
+begin
+  if p_ator is null or p_vinculo_id is null or p_escopo is null or p_escopo not in ('master', 'equipe') then
+    raise exception 'parametro_invalido' using errcode = '22023';
+  end if;
+  select id, user_id, organizacao_id, role into v_alvo from public.vinculos where id = p_vinculo_id;
+  if not found or v_alvo.role = 'master' then
+    return 'nao_encontrado';
+  end if;
+  -- Mesma trava de revogar_vinculo_equipe(uuid): organização antes do vínculo.
+  perform 1 from public.organizacoes where id = v_alvo.organizacao_id for update;
+
+  v_ator_master := exists (
+    select 1 from public.vinculos where user_id = p_ator and status = 'ativo' and role = 'master'
+  );
+  if p_escopo = 'master' and not v_ator_master then
+    return 'sem_permissao';
+  end if;
+  if p_escopo = 'equipe' and not v_ator_master and not exists (
+    select 1 from public.vinculos
+     where user_id = p_ator and status = 'ativo' and role = 'gestao' and organizacao_id = v_alvo.organizacao_id
+  ) then
+    return 'sem_permissao';
+  end if;
+  if not v_ator_master and public.conta_e_titular(v_alvo.user_id) then
+    return 'alvo_titular';
+  end if;
+  return public.revogar_vinculo_equipe(p_vinculo_id);
+end;
+$$;
+
+revoke all on function public.revogar_vinculo_equipe(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.revogar_vinculo_equipe(uuid, uuid, text) to service_role;
+
+-- Trocar o WhatsApp de alguém da equipe. O gatilho de 20261024150000 marca a troca (espera de 30
+-- minutos para senha provisória). Devolve 'ok', 'sem_permissao', 'nao_encontrado',
+-- 'alvo_titular' ou 'sem_mudanca'. O número vem já normalizado pelo servidor.
+create or replace function public.atualizar_whatsapp_vinculo(
+  p_ator uuid,
+  p_vinculo_id uuid,
+  p_escopo text,
+  p_whatsapp text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_alvo record;
+  v_ator_master boolean;
+begin
+  if p_ator is null or p_vinculo_id is null or p_escopo is null or p_escopo not in ('master', 'equipe')
+     or p_whatsapp is null or p_whatsapp !~ '^\+?[0-9]{8,15}$' then
+    raise exception 'parametro_invalido' using errcode = '22023';
+  end if;
+  select id, user_id, organizacao_id, role, whatsapp into v_alvo
+    from public.vinculos where id = p_vinculo_id for update;
+  if not found or v_alvo.role = 'master' then
+    return 'nao_encontrado';
+  end if;
+  v_ator_master := exists (
+    select 1 from public.vinculos where user_id = p_ator and status = 'ativo' and role = 'master'
+  );
+  if p_escopo = 'master' and not v_ator_master then
+    return 'sem_permissao';
+  end if;
+  if p_escopo = 'equipe' and not v_ator_master and not exists (
+    select 1 from public.vinculos
+     where user_id = p_ator and status = 'ativo' and role = 'gestao' and organizacao_id = v_alvo.organizacao_id
+  ) then
+    return 'sem_permissao';
+  end if;
+  if not v_ator_master and public.conta_e_titular(v_alvo.user_id) then
+    return 'alvo_titular';
+  end if;
+  if v_alvo.whatsapp is not distinct from p_whatsapp then
+    return 'sem_mudanca';
+  end if;
+  update public.vinculos set whatsapp = p_whatsapp where id = v_alvo.id;
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.atualizar_whatsapp_vinculo(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.atualizar_whatsapp_vinculo(uuid, uuid, text, text) to service_role;
+
 -- Default privileges de 20261019180000 dão EXECUTE em toda função nova ao vini_operador.
+revoke execute on function public.revogar_vinculo_equipe(uuid, uuid, text) from vini_operador;
+revoke execute on function public.atualizar_whatsapp_vinculo(uuid, uuid, text, text) from vini_operador;
 revoke execute on function public.titular_valido_da_organizacao(text) from vini_operador;
 revoke execute on function public.vinculo_e_dono(uuid) from vini_operador;
 revoke execute on function public.conta_e_titular(uuid) from vini_operador;

@@ -1,5 +1,7 @@
 "use server";
 
+import { fichaParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
+
 import { revalidatePath } from "next/cache";
 import {
   getAcessoAtual,
@@ -106,8 +108,9 @@ export async function salvarFichaTecnicaAction(
     });
 
     // Pré-preparo na contagem (piloto): o custo novo desta ficha, ou de uma
-    // ficha que usa esta como ingrediente, vira o preço do produto.
-    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId);
+    // ficha que usa esta como ingrediente, vira o preço do produto. Pelo
+    // servidor, já que o chef não grava produto (a barreira foi conferida acima).
+    await sincronizarCustosPrePreparoMelhorEsforco(acesso.unidadeId, { escritaPeloServidor: true });
 
     revalidarListagem();
     revalidatePath(`/fichas-tecnicas/${salva.id}`);
@@ -372,7 +375,9 @@ export async function abrirFichaTecnicaAction(id: string): Promise<ResultadoAbri
     const idValidado = validarEntrada(idUuidSchema, id);
     const dados = await carregarFichaTecnicaParaExibir(acesso.unidadeId, idValidado, podeEditarFicha);
     if (!dados) return { ok: false, mensagem: "Ficha técnica não encontrada." };
-    return { ok: true, dados, podeGerir, podeEditarFicha };
+    // Chef e "ver" não recebem o que não podem ver (preço de canal, gerencial; custo e preço no "ver").
+    const ficha = fichaParaVisao(dados.ficha, visaoDaFicha(podeGerir, podeEditarFicha));
+    return { ok: true, dados: { ...dados, ficha }, podeGerir, podeEditarFicha };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível carregar a ficha técnica.") };
   }

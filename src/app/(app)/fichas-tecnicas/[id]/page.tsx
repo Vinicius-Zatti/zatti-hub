@@ -2,6 +2,7 @@ import { getAcessoAtual, temPermissao } from "@/lib/acesso";
 import { carregarFichaTecnicaParaExibir, getConfiguracaoFinanceira } from "@/lib/banco/fichas-tecnicas";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { FichaTecnicaDetalhe } from "@/components/ficha-tecnica-detalhe";
+import { fichaParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { configCadastroRapido } from "@/lib/cadastro-rapido";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
@@ -32,7 +33,7 @@ export default async function FichaTecnicaPage({ params }: { params: Promise<{ i
 
   return (
     <FichaTecnicaDetalhe
-      ficha={dados.ficha}
+      ficha={fichaParaVisao(dados.ficha, visaoDaFicha(podeGerir, podeEditarFicha))}
       fotoUrl={dados.fotoUrl}
       vinculoContagem={dados.vinculoContagem}
       podeGerir={podeGerir}

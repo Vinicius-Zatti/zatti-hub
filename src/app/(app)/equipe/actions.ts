@@ -499,8 +499,17 @@ export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: st
   if ("erro" in carregado) return carregado;
   const recusaTitular = await recusaContaTitular(admin, acesso, carregado.alvo);
   if (recusaTitular) return recusaTitular;
-  const { error } = await admin.from("vinculos").update({ whatsapp }).eq("id", carregado.alvo.id);
+  // O banco confere de novo quem pede e recusa a conta do titular ('alvo_titular', 26/10/2026).
+  const { data: codigo, error } = await admin.rpc("atualizar_whatsapp_vinculo", {
+    p_ator: acesso.userId,
+    p_vinculo_id: carregado.alvo.id,
+    p_escopo: "equipe",
+    p_whatsapp: whatsapp,
+  });
   if (error) return { erro: "Não foi possível salvar o WhatsApp." };
+  if (codigo === "alvo_titular") return { erro: MENSAGEM_CONTA_TITULAR };
+  if (codigo === "sem_mudanca") return { ok: true };
+  if (codigo !== "ok") return { erro: "Acesso não encontrado." };
   // Só os 4 finais (nunca o número inteiro na auditoria). A troca também marca
   // `vinculos.whatsapp_alterado_em` (gatilho no banco): a Equipe não gera senha
   // provisória para esse vínculo nos 30 minutos seguintes.
@@ -531,8 +540,14 @@ export async function revogarMembroAction(vinculoId: string): Promise<Resultado>
 
   // Trava a gestão do cliente no banco: dois gestores não se revogam ao
   // mesmo tempo e o cliente nunca fica sem gestão geral nem loja sem gestão.
-  const { data: resultado, error } = await admin.rpc("revogar_vinculo_equipe", { p_vinculo_id: alvo.id });
+  // O banco também confere quem pede e recusa a conta do titular ('alvo_titular', 26/10/2026).
+  const { data: resultado, error } = await admin.rpc("revogar_vinculo_equipe", {
+    p_ator: acesso.userId,
+    p_vinculo_id: alvo.id,
+    p_escopo: "equipe",
+  });
   if (error) return { erro: "Não foi possível tirar o acesso." };
+  if (resultado === "alvo_titular") return { erro: MENSAGEM_CONTA_TITULAR };
   if (resultado === "ultima_gestao") {
     return { erro: "Essa é a última pessoa de gestão que cobre esse acesso. Cadastre outra antes." };
   }
