@@ -24,13 +24,14 @@ import { revalidatePath } from "next/cache";
 import {
   fornecedor1Schema,
   nomeProdutoSchema,
+  produtoOriginalSchema,
   produtoSchema,
   produtosSchema,
   skuSchema,
   validarEntrada,
 } from "@/lib/validacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
-import { mensagemErroPublica } from "@/lib/erros";
+import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 
 function revalidarTudo() {
   revalidatePath("/estoque/produtos");
@@ -207,12 +208,20 @@ export async function criarProdutoPendenciaAction(
   }
 }
 
+const MENSAGEM_ORIGINAL_INVALIDO =
+  "Não foi possível salvar: os dados desta linha na tela estão desatualizados. Recarregue a página e salve de novo.";
+
 /** O produto como a grade o carregou, só para comparar (nunca é gravado).
- * Original que não passa na validação vira "sem original": grava a linha
- * inteira, como antes. */
-function originalValidado(original: unknown): Produto | undefined {
-  const r = produtoSchema.safeParse(original);
-  return r.success ? r.data : undefined;
+ * Validado com o schema tolerante (aceita o dado incompleto que existe no
+ * banco). Original enviado que não passa nem nele, ou com SKU diferente do
+ * editado, é erro: nunca libera a gravação da linha inteira (parecer do Codex
+ * de 26/10/2026). Ausente segue ausente e `salvarProdutosEditados` recusa no
+ * banco. */
+function originalParaComparar(original: unknown, sku: string): Produto | undefined {
+  if (original === undefined || original === null) return undefined;
+  const r = produtoOriginalSchema.safeParse(original);
+  if (!r.success || r.data.sku !== sku) throw new ErroPublico(MENSAGEM_ORIGINAL_INVALIDO);
+  return r.data;
 }
 
 /** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados.
@@ -228,7 +237,7 @@ export async function salvarProdutoAction(
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
     if (await prePreparoBloqueadoPeloCardapio(acesso, [entrada])) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
-    await salvarProdutosEditados([{ produto: entrada, original: originalValidado(original) }], acesso.spreadsheetId);
+    await salvarProdutosEditados([{ produto: entrada, original: originalParaComparar(original, entrada.sku) }], acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
@@ -327,7 +336,7 @@ export async function salvarProdutosAction(
     if (await prePreparoBloqueadoPeloCardapio(acesso, entradas)) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
     const lista = Array.isArray(originais) ? originais.slice(0, entradas.length) : [];
     await salvarProdutosEditados(
-      entradas.map((produto, i) => ({ produto, original: originalValidado(lista[i]) })),
+      entradas.map((produto, i) => ({ produto, original: originalParaComparar(lista[i], produto.sku) })),
       acesso.spreadsheetId
     );
     await registrarAuditoriaBatch(

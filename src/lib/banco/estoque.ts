@@ -140,22 +140,6 @@ export function linhaProdutoBanco(produto: Produto, unidadeId: string) {
   };
 }
 
-export async function salvarProdutosBanco(
-  produtos: Produto[],
-  unidadeId: string,
-): Promise<void> {
-  if (produtos.length === 0) return;
-  const supabase = await createClient();
-  const { error } = await supabase.from("produtos").upsert(
-    produtos.map((produto) => linhaProdutoBanco(produto, unidadeId)),
-    { onConflict: "unidade_id,sku" },
-  );
-  // Regra de negócio dos triggers (ex.: unidade de pré-preparo vinculado à
-  // ficha) vai pra tela como está.
-  if (error?.code === "P0001") throw new ErroPublico(error.message);
-  if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
-}
-
 /** Grava só os campos alterados de cada produto, numa transação (ver
  * `salvar_produtos_campos` em 20261026150000_salvar_produtos_campos.sql). É o
  * Salvar / Salvar todos da Edição de Dados: um vínculo de fornecedor ou preço

@@ -5,7 +5,6 @@ import type { Produto } from "@/lib/types";
 import { resolverFonteDadosEstoque } from "@/lib/estoque/fonte-dados";
 import {
   listarProdutosBanco,
-  salvarProdutosBanco,
   excluirProdutoBanco,
   inserirProdutoBanco,
   vincularFornecedorProdutoBanco,
@@ -99,13 +98,6 @@ export const listProdutos = cache(async (spreadsheetId: string | null): Promise<
   return listProdutosPlanilha(fonte.spreadsheetId!);
 });
 
-export async function upsertProduto(
-  produto: Produto,
-  spreadsheetId: string | null
-): Promise<void> {
-  await upsertProdutosBatch([produto], spreadsheetId);
-}
-
 export type ResultadoVinculoFornecedor = "vinculado" | "ja_vinculado" | "sem_vaga" | "sem_produto";
 
 /** Liga o fornecedor na primeira vaga livre do produto (Fornecedor 1 a 4),
@@ -134,7 +126,7 @@ export async function vincularFornecedorNoProduto(
   const vinculado = vincularFornecedorAoProduto(produto, fornecedor);
   if (vinculado === null) return "ja_vinculado";
   if (vinculado === "sem_vaga") return "sem_vaga";
-  await upsertProduto(vinculado, spreadsheetId);
+  await upsertProdutosPlanilha([vinculado], fonte.spreadsheetId!);
   return "vinculado";
 }
 
@@ -151,7 +143,7 @@ export async function definirFornecedor1NoProduto(
     await atualizarFornecedor1ProdutoBanco(fonte.unidadeId, produto.sku, fornecedor1);
     return;
   }
-  await upsertProduto({ ...produto, fornecedor1 }, spreadsheetId);
+  await upsertProdutosPlanilha([{ ...produto, fornecedor1 }], fonte.spreadsheetId!);
 }
 
 /** Grava só o preço do produto. No banco não regrava o resto da linha. */
@@ -165,7 +157,7 @@ export async function atualizarPrecoProduto(
     await atualizarPrecoProdutoBanco(fonte.unidadeId, produto.sku, preco);
     return;
   }
-  await upsertProduto({ ...produto, precoUnitario: preco }, spreadsheetId);
+  await upsertProdutosPlanilha([{ ...produto, precoUnitario: preco }], fonte.spreadsheetId!);
 }
 
 /** Cria um produto sem nunca sobrescrever um SKU existente (fluxos de
@@ -193,29 +185,13 @@ export async function inserirProduto(produto: Produto, spreadsheetId: string | n
   });
 }
 
-/** Salva vários produtos de uma vez - uma única leitura da coluna de SKU
- * pra achar as linhas, um único `batchUpdate` pra gravar todas. Usada pelo
- * "Salvar todos" da grade de Edição de Dados: salvar item por item (1
- * leitura + 1 escrita cada, em paralelo) esbarrava em limite de taxa da
- * API do Sheets a partir de ~10 itens de uma vez. */
-export async function upsertProdutosBatch(
-  produtos: Produto[],
-  spreadsheetId: string | null
-): Promise<void> {
-  const fonte = await resolverFonteDadosEstoque(spreadsheetId);
-  if (fonte.fonte === "banco") {
-    await salvarProdutosBanco(produtos, fonte.unidadeId);
-    return;
-  }
-  await upsertProdutosPlanilha(produtos, fonte.spreadsheetId!);
-}
-
 /** Salvar / Salvar todos da Edição de Dados. Com o produto como a grade o
  * carregou (`original`), o banco recebe só os campos alterados (parecer do
  * Codex de 26/10/2026: a linha inteira apagava um vínculo gravado pela
- * cotação depois de a grade abrir). Produto sem original (não existia quando
- * a grade abriu) segue o caminho de sempre. A planilha legada não tem gravação
- * por campo e continua gravando a linha. */
+ * cotação depois de a grade abrir). No banco o original é obrigatório e tem o
+ * mesmo SKU: sem ele, recusa (a grade sempre manda; tela antiga em cache pede
+ * recarregar) - nunca cai na gravação da linha inteira. A planilha legada não
+ * tem gravação por campo e continua gravando a linha. */
 export async function salvarProdutosEditados(
   itens: { produto: Produto; original?: Produto }[],
   spreadsheetId: string | null
@@ -225,15 +201,21 @@ export async function salvarProdutosEditados(
     await upsertProdutosPlanilha(itens.map((i) => i.produto), fonte.spreadsheetId!);
     return;
   }
+  if (itens.some((i) => !i.original || i.original.sku !== i.produto.sku)) {
+    throw new ErroPublico(
+      "Não foi possível salvar: os dados desta linha na tela estão desatualizados. Recarregue a página e salve de novo."
+    );
+  }
   const parciais = itens
-    .filter((i) => i.original && i.original.sku === i.produto.sku)
     .map((i) => ({ sku: i.produto.sku, campos: camposAlteradosProduto(i.original!, i.produto) }))
     .filter((l) => Object.keys(l.campos).length > 0);
-  const inteiros = itens.filter((i) => !i.original || i.original.sku !== i.produto.sku).map((i) => i.produto);
   await salvarCamposProdutosBanco(parciais, fonte.unidadeId);
-  await salvarProdutosBanco(inteiros, fonte.unidadeId);
 }
 
+/** Planilha legada (sem gravação por campo): grava a linha inteira, uma
+ * leitura da coluna de SKU + um `batchUpdate`. No banco não existe mais
+ * escritor de linha inteira de produto existente (parecer do Codex de
+ * 26/10/2026): cada caminho grava só as colunas dele. */
 async function upsertProdutosPlanilha(
   produtos: Produto[],
   spreadsheetId: string,
@@ -284,7 +266,7 @@ async function upsertProdutosPlanilha(
   }
 }
 
-/** Exclui o produto - dá o mesmo dispatch por `fonte` de `upsertProduto`.
+/** Exclui o produto - dispatch por `fonte` como os outros escritores.
  * Devolve quantos componentes de Ficha Técnica perderam esse produto (a
  * Ficha Técnica sempre lê do banco, mesmo pra unidade que ainda está na
  * planilha - ver `listarProdutosParaFicha`), pra UI avisar. */
