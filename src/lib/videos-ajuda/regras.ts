@@ -4,7 +4,7 @@
 // instalar o app (PR #56): arquivos em `public/videos/` (h264, faststart, capa
 // jpg), `preload="none"` e nunca tocam sozinhos.
 
-export type IdVideoAjuda = "boas-vindas" | "contagem";
+export type IdVideoAjuda = "boas-vindas" | "instalar-iphone" | "instalar-android" | "contagem";
 
 export type VideoAjuda = { titulo: string; src: string; capa: string; duracao: string };
 
@@ -14,6 +14,20 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-boas-vindas.mp4",
     capa: "/videos/zatti-hub-boas-vindas-capa.jpg",
     duracao: "2 min",
+  },
+  // Os mesmos do convite de instalar (`convite-instalar-app.tsx`), para a
+  // central de Vídeos explicativos (`/ajuda/videos`).
+  "instalar-iphone": {
+    titulo: "Como instalar o app no iPhone",
+    src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4",
+    capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg",
+    duracao: "45s",
+  },
+  "instalar-android": {
+    titulo: "Como instalar o app no Android",
+    src: "/videos/zatti-hub-como-app-no-celular-android.mp4",
+    capa: "/videos/zatti-hub-como-app-no-celular-android-capa.jpg",
+    duracao: "43s",
   },
   contagem: {
     titulo: "Como fazer a contagem de estoque",
