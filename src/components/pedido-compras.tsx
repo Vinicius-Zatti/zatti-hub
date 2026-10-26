@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CampoBusca } from "@/components/campo-busca";
-import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
+import { filtrarPorFornecedorOuItem, filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import { useRouter, usePathname } from "next/navigation";
 import type { Fornecedor, Produto, SugestaoCompra } from "@/lib/types";
 import { nomeGrupo } from "@/lib/grupos";
@@ -217,6 +217,18 @@ export function PedidoCompras({
     [itensEfetivos, nomesFornecedoresCadastro]
   );
   const fornecedores = ordenarFornecedores(Object.keys(porFornecedor));
+  // Busca do Por Fornecedor (26/10/2026): termo que bate com o fornecedor traz
+  // o bloco inteiro; senão, só os itens. Só esconde linhas, como a de cima.
+  const [buscaFornecedor, setBuscaFornecedor] = useState("");
+  const buscandoFornecedor = buscaFornecedor.trim() !== "";
+  const fornecedoresVisiveis = fornecedores
+    .map((fornecedor) => ({
+      fornecedor,
+      linhas: filtrarPorFornecedorOuItem(fornecedor, porFornecedor[fornecedor], buscaFornecedor, (item) => [
+        item.nomeCompra,
+      ]),
+    }))
+    .filter((f) => !buscandoFornecedor || f.linhas.length > 0);
 
   const [parcialLiberada, setParcialLiberada] = useState(false);
   const contagemParcial = setoresPendentes.length > 0;
@@ -380,12 +392,28 @@ export function PedidoCompras({
           <h2 className="mb-2 font-display text-xl font-bold text-azul-noite">
             Por Fornecedor - cotação e compartilhamento
           </h2>
+          <div className="mb-3 flex flex-col gap-1">
+            <CampoBusca
+              valor={buscaFornecedor}
+              onChange={setBuscaFornecedor}
+              rotulo="Buscar nos blocos por fornecedor por item ou fornecedor"
+              placeholder="Buscar item ou fornecedor"
+            />
+            {buscandoFornecedor && (
+              <p className="text-xs text-cinza-medio">
+                {fornecedoresVisiveis.length === 0
+                  ? `Nenhum item ou fornecedor com "${buscaFornecedor.trim()}" nesta cotação.`
+                  : "Mostrando só o que foi encontrado. Subtotal, pedido mínimo e Compartilhar continuam com todos os itens do fornecedor."}
+              </p>
+            )}
+          </div>
           <div className="flex flex-col gap-4">
-            {fornecedores.map((fornecedor) => (
+            {fornecedoresVisiveis.map(({ fornecedor, linhas }) => (
               <BlocoFornecedorCotacao
                 key={fornecedor}
                 fornecedor={fornecedor}
                 linhas={porFornecedor[fornecedor]}
+                linhasNaTela={linhas}
                 pedidoMinimo={pedidoMinimoPorFornecedor[fornecedor] ?? null}
                 legenda={legenda}
                 valorAtual={valorAtual}

@@ -27,7 +27,7 @@ import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
 import { SEM_FORNECEDOR, nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
 import { CampoBusca } from "@/components/campo-busca";
-import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
+import { filtrarPorFornecedorOuItem, fornecedorCasaBusca } from "@/lib/busca-lista";
 import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 function formatMoeda(v: number): string {
@@ -696,12 +696,16 @@ export function EditorEspelhos({
     setTimeout(() => setStatus((s) => ({ ...s, [fornecedor]: "" })), 6000);
   }
 
-  const filtrarBusca = (itens: SugestaoCompra[]) => filtrarPorNomeOuSku(itens, busca, (item) => [item.nomeCompra]);
+  // Termo que bate com o fornecedor traz o bloco inteiro dele (26/10/2026).
+  const filtrarBusca = (fornecedor: string, itens: SugestaoCompra[]) =>
+    filtrarPorFornecedorOuItem(fornecedor, itens, busca, (item) => [item.nomeCompra]);
   const nenhumNaBusca =
     buscando &&
     fornecedores.every(
       (fornecedor) =>
+        !fornecedorCasaBusca(fornecedor, busca) &&
         filtrarBusca(
+          fornecedor,
           itensVisiveisDoFornecedor(fornecedor).filter(
             (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)],
           ),
@@ -737,13 +741,18 @@ export function EditorEspelhos({
 
       {fornecedores.length > 0 && (
         <div className="flex flex-col gap-1">
-          <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos espelhos por nome ou SKU" />
+          <CampoBusca
+            valor={busca}
+            onChange={setBusca}
+            rotulo="Buscar nos espelhos por item ou fornecedor"
+            placeholder="Buscar item ou fornecedor"
+          />
           <DicaVirarCelular />
           {buscando && (
             <p className="text-xs text-cinza-medio">
               {nenhumNaBusca
-                ? `Nenhum item com "${busca.trim()}" nos espelhos desta contagem. Item escondido de um fornecedor aparece no "+ Adicionar item" do bloco dele.`
-                : "Mostrando só os itens encontrados. O que você digitou nos outros continua guardado, e subtotal, pedido mínimo e Compartilhar valem para o espelho inteiro."}
+                ? `Nenhum item ou fornecedor com "${busca.trim()}" nos espelhos desta contagem. Item escondido de um fornecedor aparece no "+ Adicionar item" do bloco dele.`
+                : "Mostrando só o que foi encontrado. O que você digitou nos outros continua guardado, e subtotal, pedido mínimo e Compartilhar valem para o espelho inteiro."}
             </p>
           )}
         </div>
@@ -765,8 +774,8 @@ export function EditorEspelhos({
             (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
           );
           const opcoesAdicionar = opcoesParaAdicionar(fornecedor, itensOcultos);
-          const itensNaTela = filtrarBusca(itensExibidos);
-          if (buscando && itensNaTela.length === 0) return null;
+          const itensNaTela = filtrarBusca(fornecedor, itensExibidos);
+          if (buscando && itensNaTela.length === 0 && !fornecedorCasaBusca(fornecedor, busca)) return null;
           const subtotal = itensExibidos.reduce((soma, item) => {
             const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;

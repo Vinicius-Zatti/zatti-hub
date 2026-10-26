@@ -38,6 +38,7 @@ function itemIncompleto(item: SugestaoCompra): boolean {
 export function BlocoFornecedorCotacao({
   fornecedor,
   linhas,
+  linhasNaTela = linhas,
   pedidoMinimo,
   legenda,
   valorAtual,
@@ -50,6 +51,8 @@ export function BlocoFornecedorCotacao({
 }: {
   fornecedor: string;
   linhas: SugestaoCompra[];
+  /** Só o que a busca deixou à mostra. Subtotal, pedido mínimo e Compartilhar usam `linhas`. */
+  linhasNaTela?: SugestaoCompra[];
   pedidoMinimo: number | null;
   legenda: string;
   valorAtual: (item: SugestaoCompra) => number;
@@ -235,7 +238,7 @@ export function BlocoFornecedorCotacao({
             </tr>
           </thead>
           <tbody>
-            {linhas.map((item) => {
+            {linhasNaTela.map((item) => {
               const emEdicao = editando[item.sku] !== undefined;
               const incompleto = modo === "fornecedor" && itemIncompleto(item);
               const qtdExibida = valorExibido(item);
