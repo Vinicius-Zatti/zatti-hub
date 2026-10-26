@@ -24,6 +24,7 @@ import { FaixaAssinatura } from "@/components/assinatura/faixa-assinatura";
 import { getAssinaturaAtual } from "@/lib/assinatura/app";
 import { faixaAssinatura } from "@/lib/assinatura/regras";
 import { lerToursVistos } from "@/lib/tour/banco";
+import { ConviteInstalarApp } from "@/components/convite-instalar-app";
 
 export default async function AppLayout({
   children,
@@ -124,6 +125,8 @@ export default async function AppLayout({
     <UnidadeSuporteProvider unidade={nomeUnidadeSuporte}>
       {faixa ? <FaixaAssinatura faixa={faixa} link={assinatura?.link ?? null} /> : null}
       {children}
+      {/* Convite para instalar como app: só celular, fora do app instalado, depois do tour. */}
+      <ConviteInstalarApp comBarraInferior={navegacaoV2} />
     </UnidadeSuporteProvider>
   );
 
