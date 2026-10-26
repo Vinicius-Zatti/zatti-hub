@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { SCRIPT_TEMA_INICIAL } from "@/lib/tema";
+import { SCRIPT_CAPTURA_INSTALACAO } from "@/lib/instalar-app/regras";
 
 // Fontes auto-hospedadas (não `next/font/google`) de propósito: build
 // deixa de depender de rede pra buscar fonte - uma falha passageira nesse
@@ -60,6 +61,9 @@ export default function RootLayout({
         {/* Tema da tela antes da pintura (sem piscar claro). As cores escuras
             só valem no shell da Navegação V2 (piloto) - ver globals.css. */}
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA_INICIAL }} />
+        {/* Pedido de instalação do Chrome (Android) guardado antes da hidratação,
+            para o convite de instalar o app (`components/convite-instalar-app.tsx`). */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_CAPTURA_INSTALACAO }} />
       </head>
       <body className="min-h-full flex flex-col bg-off-white text-cinza">
         {children}
