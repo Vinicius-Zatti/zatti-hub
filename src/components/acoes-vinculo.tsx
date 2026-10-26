@@ -17,6 +17,7 @@ export function AcoesVinculo({
   whatsappFinal,
   podeGerarProvisoria,
   edicao,
+  layout = "tabela",
 }: {
   vinculoId: string;
   userId: string;
@@ -31,6 +32,9 @@ export function AcoesVinculo({
     unidades: { id: string; nome: string }[];
     organizacaoNome: string;
   } | null;
+  /** "cartao" (celular, 26/10/2026): botões alinhados à esquerda, sem quebrar
+   * palavra, área de toque maior e Revogar/Reativar separado à direita. */
+  layout?: "tabela" | "cartao";
 }) {
   const [pendente, startTransition] = useTransition();
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -53,23 +57,50 @@ export function AcoesVinculo({
     });
   }
 
+  const cartao = layout === "cartao";
+  // Mesmas cores e textos nos dois layouts; o cartão só muda tamanho e alinhamento.
+  const base = cartao
+    ? "whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+    : "rounded-md border px-2 py-1 text-xs font-semibold disabled:opacity-40";
+
+  const botaoSituacao =
+    status === "ativo" ? (
+      <button
+        type="button"
+        disabled={pendente}
+        onClick={() => rodar(() => revogarVinculoAction(vinculoId))}
+        className={`${base} border-vermelho text-vermelho hover:bg-vermelho/10`}
+      >
+        Revogar
+      </button>
+    ) : (
+      <button
+        type="button"
+        disabled={pendente}
+        onClick={() => rodar(() => reativarVinculoAction(vinculoId))}
+        className={`${base} border-verde text-verde hover:bg-verde/10`}
+      >
+        Reativar
+      </button>
+    );
+
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap justify-end gap-2">
+    <div className={`flex flex-col gap-1 ${cartao ? "items-stretch" : "items-end"}`}>
+      <div className={`flex flex-wrap gap-2 ${cartao ? "items-center" : "justify-end"}`}>
         {podeGerarProvisoria && (
           <GerarSenhaProvisoria
             modo="master"
             vinculoId={vinculoId}
             nomeExibido={nomeExibido}
             whatsappFinal={whatsappFinal}
-            className="rounded-md border border-ambar px-2 py-1 text-xs font-semibold text-ambar hover:bg-ambar/10 disabled:opacity-40"
+            className={`${base} border-ambar text-ambar hover:bg-ambar/10`}
           />
         )}
         <button
           type="button"
           disabled={pendente}
           onClick={() => rodar(() => reenviarAcessoAction(userId))}
-          className="rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10 disabled:opacity-40"
+          className={`${base} border-azul-petroleo text-azul-petroleo hover:bg-azul-petroleo/10`}
         >
           Reenviar acesso
         </button>
@@ -83,27 +114,13 @@ export function AcoesVinculo({
             unidades={edicao.unidades}
             podeTodas
             organizacaoNome={edicao.organizacaoNome}
-            className="rounded-md border border-azul-noite px-2 py-1 text-xs font-semibold text-azul-noite hover:bg-azul-noite/10 disabled:opacity-40"
+            className={`${base} border-azul-noite text-azul-noite hover:bg-azul-noite/10`}
           />
         )}
-        {status === "ativo" ? (
-          <button
-            type="button"
-            disabled={pendente}
-            onClick={() => rodar(() => revogarVinculoAction(vinculoId))}
-            className="rounded-md border border-vermelho px-2 py-1 text-xs font-semibold text-vermelho hover:bg-vermelho/10 disabled:opacity-40"
-          >
-            Revogar
-          </button>
+        {cartao ? (
+          <div className="ml-auto border-l border-cinza-claro pl-2">{botaoSituacao}</div>
         ) : (
-          <button
-            type="button"
-            disabled={pendente}
-            onClick={() => rodar(() => reativarVinculoAction(vinculoId))}
-            className="rounded-md border border-verde px-2 py-1 text-xs font-semibold text-verde hover:bg-verde/10 disabled:opacity-40"
-          >
-            Reativar
-          </button>
+          botaoSituacao
         )}
       </div>
       {mensagem && (
