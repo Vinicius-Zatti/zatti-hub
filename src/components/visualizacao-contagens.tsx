@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { ItemInventario } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { CampoBusca } from "@/components/campo-busca";
+import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import {
   atualizarQuantidadeContagemAction,
   corrigirItemContagemAction,
@@ -120,6 +122,11 @@ export function VisualizacaoContagens({
   }, [itens, filtro, ultimaData]);
 
   const totalValor = filtrados.reduce((soma, it) => soma + (it.total ?? 0), 0);
+  // Busca (26/10/2026): só esconde linhas. Correções digitadas ficam em
+  // `edicoes`, pela chave do item; total e "Salvar todos" valem para o filtro inteiro.
+  const [busca, setBusca] = useState("");
+  const buscando = busca.trim() !== "";
+  const linhasNaTela = filtrarPorNomeOuSku(filtrados, busca);
 
   // Consolidada = soma por SKU DENTRO de cada data. Somar datas diferentes
   // seria juntar contagens de semanas distintas no mesmo número.
@@ -143,6 +150,7 @@ export function VisualizacaoContagens({
         return a.nome.localeCompare(b.nome, "pt-BR");
       });
   }, [filtrados, ultimaData, escopoUltimaData]);
+  const consolidadosNaTela = filtrarPorNomeOuSku(consolidados, busca);
 
   const andamentoUltima = andamentoPorData.get(ultimaData) ?? [];
   const modalidadeUltima = modalidadePorData.get(ultimaData);
@@ -271,6 +279,7 @@ export function VisualizacaoContagens({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item das contagens por nome ou SKU" />
         <label className="flex items-center gap-2 text-sm font-semibold text-cinza-medio">
           Filtrar
           <select
@@ -309,6 +318,7 @@ export function VisualizacaoContagens({
             </div>
           )}
           <div className="text-sm text-cinza-medio">
+            {buscando && `${linhasNaTela.length} de `}
             {filtrados.length} {filtrados.length === 1 ? "item" : "itens"} · Total{" "}
             <span className="font-bold text-azul-noite">{formatMoeda(totalValor)}</span>
           </div>
@@ -364,7 +374,7 @@ export function VisualizacaoContagens({
             </tr>
           </thead>
           <tbody>
-            {filtrados.map((it, i) => {
+            {linhasNaTela.map((it, i) => {
               const chave = chaveItem(it);
               const status = statusPorItem[chave];
               const pending = status?.tipo === "salvando";
@@ -441,10 +451,12 @@ export function VisualizacaoContagens({
                 </tr>
               );
             })}
-            {filtrados.length === 0 && (
+            {linhasNaTela.length === 0 && (
               <tr>
                 <td colSpan={(editavel ? 9 : 8) + (temSetor ? 1 : 0)} className="px-3 py-8 text-center text-cinza-medio">
-                  Nenhuma contagem registrada com esse filtro.
+                  {buscando && filtrados.length > 0
+                    ? `Nenhum item com "${busca.trim()}" nesta seleção de contagens.`
+                    : "Nenhuma contagem registrada com esse filtro."}
                 </td>
               </tr>
             )}
@@ -470,7 +482,7 @@ export function VisualizacaoContagens({
               </tr>
             </thead>
             <tbody>
-              {consolidados.map((item, i) => (
+              {consolidadosNaTela.map((item, i) => (
                 <tr
                   key={`${item.data}-${item.sku}`}
                   className={`border-t border-cinza-claro ${i % 2 === 1 ? "bg-off-white/60" : ""}`}
@@ -505,10 +517,12 @@ export function VisualizacaoContagens({
                   </td>
                 </tr>
               ))}
-              {consolidados.length === 0 && (
+              {consolidadosNaTela.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-8 text-center text-cinza-medio">
-                    Nenhuma contagem registrada com esse filtro.
+                    {buscando && consolidados.length > 0
+                      ? `Nenhum item com "${busca.trim()}" nesta seleção de contagens.`
+                      : "Nenhuma contagem registrada com esse filtro."}
                   </td>
                 </tr>
               )}

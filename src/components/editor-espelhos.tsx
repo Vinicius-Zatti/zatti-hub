@@ -25,6 +25,8 @@ import {
 import { toNumeroBR, arredondarPreco } from "@/lib/sheets/numero";
 import { textoEdicaoQuantidade } from "@/lib/unidades";
 import { SEM_FORNECEDOR, nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
+import { CampoBusca } from "@/components/campo-busca";
+import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -295,6 +297,11 @@ export function EditorEspelhos({
   const [editandoQtd, setEditandoQtd] = useState<Record<string, string>>({});
   const [editandoPreco, setEditandoPreco] = useState<Record<string, string>>({});
   const [confirmandoVencedor, setConfirmandoVencedor] = useState<Record<string, boolean>>({});
+  // Busca (26/10/2026): só esconde linhas da tela. Quantidade e preço em
+  // edição ficam nos estados acima, pelo SKU; subtotal, pedido mínimo e o
+  // Compartilhar continuam com o espelho inteiro do fornecedor.
+  const [busca, setBusca] = useState("");
+  const buscando = busca.trim() !== "";
 
   // Quantidade/preço só gravam de verdade quando a pessoa confirma aquele
   // campo (ver comentário no topo do arquivo) - enquanto o campo está aberto
@@ -687,6 +694,18 @@ export function EditorEspelhos({
     setTimeout(() => setStatus((s) => ({ ...s, [fornecedor]: "" })), 6000);
   }
 
+  const filtrarBusca = (itens: SugestaoCompra[]) => filtrarPorNomeOuSku(itens, busca, (item) => [item.nomeCompra]);
+  const nenhumNaBusca =
+    buscando &&
+    fornecedores.every(
+      (fornecedor) =>
+        filtrarBusca(
+          itensVisiveisDoFornecedor(fornecedor).filter(
+            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)],
+          ),
+        ).length === 0,
+    );
+
   return (
     <div className="flex flex-col gap-5 pb-10">
       <div>
@@ -709,6 +728,19 @@ export function EditorEspelhos({
 
       <AvisoVariasContagens datasUsadas={datasUsadas} />
 
+      {fornecedores.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos espelhos por nome ou SKU" />
+          {buscando && (
+            <p className="text-xs text-cinza-medio">
+              {nenhumNaBusca
+                ? `Nenhum item com "${busca.trim()}" nos espelhos desta contagem. Item escondido de um fornecedor aparece no "+ Adicionar item" do bloco dele.`
+                : "Mostrando só os itens encontrados. O que você digitou nos outros continua guardado, e subtotal, pedido mínimo e Compartilhar valem para o espelho inteiro."}
+            </p>
+          )}
+        </div>
+      )}
+
       {fornecedores.length === 0 && (
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-center text-cinza-medio">
           Nenhum fornecedor com item pra pedir nessa contagem.
@@ -725,6 +757,8 @@ export function EditorEspelhos({
             (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
           );
           const opcoesAdicionar = opcoesParaAdicionar(fornecedor, itensOcultos);
+          const itensNaTela = filtrarBusca(itensExibidos);
+          if (buscando && itensNaTela.length === 0) return null;
           const subtotal = itensExibidos.reduce((soma, item) => {
             const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;
@@ -814,7 +848,7 @@ export function EditorEspelhos({
                     </tr>
                   </thead>
                   <tbody>
-                    {itensExibidos.map((item) => {
+                    {itensNaTela.map((item) => {
                       const disputado = (fornecedoresPorSku[item.sku] ?? []).length > 1;
                       const jaVencido = vencedor[item.sku] === fornecedor;
                       const kPreco = chave(fornecedor, item.sku);

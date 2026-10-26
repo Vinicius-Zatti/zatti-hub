@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CampoBusca } from "@/components/campo-busca";
+import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import { useRouter, usePathname } from "next/navigation";
 import type { Fornecedor, Produto, SugestaoCompra } from "@/lib/types";
 import { GRUPO_OPCOES, nomeGrupo } from "@/lib/grupos";
@@ -208,6 +210,14 @@ export function PedidoCompras({
 
   const porGrupo = useMemo(() => agruparPorGrupo(itensEfetivos), [itensEfetivos]);
   const grupos = ordenarGrupos(Object.keys(porGrupo));
+  // Busca na Conferência por Grupo (26/10/2026): só esconde linhas. O que está
+  // em edição fica em `editando`, pelo SKU; subtotais, total e os blocos por
+  // fornecedor (compartilhar) continuam com tudo.
+  const [busca, setBusca] = useState("");
+  const buscando = busca.trim() !== "";
+  const gruposVisiveis = grupos
+    .map((grupo) => ({ grupo, linhas: filtrarPorNomeOuSku(porGrupo[grupo], busca) }))
+    .filter((g) => !buscando || g.linhas.length > 0);
 
   const nomesFornecedoresCadastro = useMemo(
     () => fornecedoresCadastro.map((f) => f.nomeFantasia || f.razaoSocial).filter(Boolean),
@@ -378,12 +388,23 @@ export function PedidoCompras({
             Antes de enviar as cotações para os fornecedores, lembre-se de fazer a conferência - e
             edite na coluna Comprar se for necessário.
           </p>
+          <div className="mb-3 flex flex-col gap-1">
+            <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item da conferência por nome ou SKU" />
+            {buscando && (
+              <p className="text-xs text-cinza-medio">
+                {gruposVisiveis.length === 0
+                  ? `Nenhum item com "${busca.trim()}" nesta cotação.`
+                  : "Mostrando só os itens encontrados. Subtotais, total e os blocos por fornecedor continuam com todos os itens."}
+              </p>
+            )}
+          </div>
           <div className="flex flex-col gap-4">
-            {grupos.map((grupo) => (
+            {gruposVisiveis.map(({ grupo, linhas }) => (
               <TabelaItens
                 key={grupo}
                 titulo={nomeGrupo(grupo)}
-                linhas={porGrupo[grupo]}
+                linhas={linhas}
+                todasLinhas={porGrupo[grupo]}
                 valorAtual={valorAtual}
                 editando={editando}
                 confirmando={confirmando}
@@ -440,6 +461,7 @@ export function PedidoCompras({
 function TabelaItens({
   titulo,
   linhas,
+  todasLinhas = linhas,
   valorAtual,
   editando,
   confirmando,
@@ -453,6 +475,8 @@ function TabelaItens({
 }: {
   titulo: string;
   linhas: SugestaoCompra[];
+  /** Grupo inteiro, para o subtotal não mudar quando a busca esconde linhas. */
+  todasLinhas?: SugestaoCompra[];
   valorAtual: (item: SugestaoCompra) => number;
   editando: Record<string, string>;
   confirmando: Record<string, boolean>;
@@ -466,7 +490,7 @@ function TabelaItens({
   onConfirmarEdicao: (item: SugestaoCompra) => void;
   onChangeEditando: (sku: string, valor: string) => void;
 }) {
-  const subtotal = linhas.reduce((soma, item) => {
+  const subtotal = todasLinhas.reduce((soma, item) => {
     if (item.precoUnitario === null) return soma;
     return soma + valorAtual(item) * item.precoUnitario;
   }, 0);
