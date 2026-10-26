@@ -1,3 +1,4 @@
+import type { CamposProdutoBanco } from "@/lib/produto-alteracoes";
 import { createClient } from "@/lib/supabase/server";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import { buscarTudo, buscarTudoEmLotes } from "@/lib/banco/paginacao";
@@ -155,25 +156,56 @@ export async function salvarProdutosBanco(
   if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
 }
 
+/** Grava só os campos alterados de cada produto, numa transação (ver
+ * `salvar_produtos_campos` em 20261026150000_salvar_produtos_campos.sql). É o
+ * Salvar / Salvar todos da Edição de Dados: um vínculo de fornecedor ou preço
+ * gravado depois de a grade carregar não é apagado. Uma chamada só, como o
+ * upsert de antes. Sem a função no banco, falha: nunca volta a gravar a linha
+ * inteira. */
+export async function salvarCamposProdutosBanco(
+  linhas: { sku: string; campos: CamposProdutoBanco }[],
+  unidadeId: string,
+): Promise<void> {
+  if (linhas.length === 0) return;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("salvar_produtos_campos", {
+    p_unidade_id: unidadeId,
+    p_linhas: linhas,
+  });
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
+  if (error) throw new Error(`Não foi possível salvar os produtos: ${error.message}`);
+}
+
 /** Liga o fornecedor ao produto numa transação com a linha travada (ver
  * 20261024120000_vincular_fornecedor_produto.sql): duas confirmações ao mesmo
- * tempo nunca escolhem a mesma vaga e nada além da vaga é regravado. Devolve
- * null se a função ainda não existe no banco (migration não aplicada), pra o
- * chamador cair no caminho antigo. */
+ * tempo nunca escolhem a mesma vaga e nada além da vaga é regravado. Sem a
+ * função no banco (PGRST202) falha como qualquer outro erro: não existe mais
+ * caminho alternativo que regrave a linha inteira. */
 export async function vincularFornecedorProdutoBanco(
   unidadeId: string,
   sku: string,
   fornecedor: string,
-): Promise<string | null> {
+): Promise<string> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("vincular_fornecedor_produto", {
     p_unidade_id: unidadeId,
     p_sku: sku,
     p_fornecedor: fornecedor,
   });
-  if (error?.code === "PGRST202") return null;
   if (error) throw new Error(`Não foi possível ligar o fornecedor ao produto: ${error.message}`);
   return String(data);
+}
+
+/** Grava só o Fornecedor 1, sem regravar o resto da linha. */
+export async function atualizarFornecedor1ProdutoBanco(unidadeId: string, sku: string, fornecedor1: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("produtos")
+    .update({ fornecedor_1: fornecedor1, atualizado_em: new Date().toISOString() })
+    .eq("unidade_id", unidadeId)
+    .eq("sku", sku);
+  if (error?.code === "P0001") throw new ErroPublico(error.message);
+  if (error) throw new Error(`Não foi possível definir o fornecedor do produto: ${error.message}`);
 }
 
 /** Atualiza só o preço do produto, sem regravar o resto da linha (um vínculo

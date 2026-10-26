@@ -1,6 +1,12 @@
 "use server";
 
-import { excluirProduto, inserirProduto, listProdutos, upsertProduto, upsertProdutosBatch } from "@/lib/sheets/produtos";
+import {
+  definirFornecedor1NoProduto,
+  excluirProduto,
+  inserirProduto,
+  listProdutos,
+  salvarProdutosEditados,
+} from "@/lib/sheets/produtos";
 import { sugerirSku } from "@/lib/skus/sugerir";
 import { listInventario } from "@/lib/sheets/inventario";
 import { salvarDesignacoesBanco } from "@/lib/banco/setores";
@@ -201,9 +207,20 @@ export async function criarProdutoPendenciaAction(
   }
 }
 
-/** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados. */
+/** O produto como a grade o carregou, só para comparar (nunca é gravado).
+ * Original que não passa na validação vira "sem original": grava a linha
+ * inteira, como antes. */
+function originalValidado(original: unknown): Produto | undefined {
+  const r = produtoSchema.safeParse(original);
+  return r.success ? r.data : undefined;
+}
+
+/** Cria ou atualiza um produto (por SKU) direto da grade de Edição de Dados.
+ * Com `original` (o produto como a grade o carregou), grava só os campos
+ * alterados - ver `salvarProdutosEditados`. */
 export async function salvarProdutoAction(
-  produto: Produto
+  produto: Produto,
+  original?: Produto
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
@@ -211,7 +228,7 @@ export async function salvarProdutoAction(
     await exigirLimiteRequisicao("salvar_produtos");
     const entrada = validarEntrada(produtoSchema, produto);
     if (await prePreparoBloqueadoPeloCardapio(acesso, [entrada])) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
-    await upsertProduto(entrada, acesso.spreadsheetId);
+    await salvarProdutosEditados([{ produto: entrada, original: originalValidado(original) }], acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "salvar",
@@ -231,8 +248,9 @@ export async function salvarProdutoAction(
 /** Atribui o Fornecedor 1 de um produto que ainda não tinha nenhum
  * fornecedor cadastrado - usado no bloco "Sem fornecedor cadastrado" de
  * Criar Cotação, pra completar o cadastro sem precisar ir em Produtos >
- * Edição de Dados. Busca o produto inteiro antes de gravar (a Server
- * Action só recebe o SKU + fornecedor escolhido, não o resto dos campos). */
+ * Edição de Dados. Lê o produto só para conferir que existe e auditar o
+ * valor anterior; no banco grava apenas a coluna Fornecedor 1, sem regravar
+ * a linha inteira (parecer do Codex de 24/10/2026). */
 export async function definirFornecedor1Action(
   sku: string,
   fornecedor1: string
@@ -246,8 +264,7 @@ export async function definirFornecedor1Action(
     const produto = produtos.find((p) => p.sku === entrada.sku);
     if (!produto) return { erro: "Produto não encontrado - a lista pode ter mudado, recarrega a página." };
 
-    const atualizado: Produto = { ...produto, fornecedor1: entrada.fornecedor1 };
-    await upsertProduto(atualizado, acesso.spreadsheetId);
+    await definirFornecedor1NoProduto(produto, entrada.fornecedor1, acesso.spreadsheetId);
     await registrarAuditoria({
       acesso,
       acao: "definir_fornecedor_via_cotacao",
@@ -298,7 +315,9 @@ export async function excluirProdutoAction(
  * lento. Aqui é 1 leitura + 1 escrita em lote + 1 auditoria em lote,
  * não importa quantas linhas mudaram. */
 export async function salvarProdutosAction(
-  produtos: Produto[]
+  produtos: Produto[],
+  /** Mesmo índice de `produtos`: o produto como a grade o carregou. */
+  originais?: (Produto | undefined)[]
 ): Promise<{ ok: true; aviso?: string } | { erro: string }> {
   const acesso = await requireGestao();
   try {
@@ -306,7 +325,11 @@ export async function salvarProdutosAction(
     await exigirLimiteRequisicao("salvar_produtos");
     const entradas = validarEntrada(produtosSchema, produtos);
     if (await prePreparoBloqueadoPeloCardapio(acesso, entradas)) return { erro: MENSAGEM_PRE_PREPARO_SEM_CARDAPIO };
-    await upsertProdutosBatch(entradas, acesso.spreadsheetId);
+    const lista = Array.isArray(originais) ? originais.slice(0, entradas.length) : [];
+    await salvarProdutosEditados(
+      entradas.map((produto, i) => ({ produto, original: originalValidado(lista[i]) })),
+      acesso.spreadsheetId
+    );
     await registrarAuditoriaBatch(
       entradas.map((produto) => ({
         acesso,

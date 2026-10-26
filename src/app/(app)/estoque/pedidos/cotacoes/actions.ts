@@ -1,9 +1,16 @@
 "use server";
 
 import { requireGestao, registrarAuditoria, exigirEdicao } from "@/lib/acesso";
-import { confirmarItem, confirmarVencedor, desfazerVencedor, atualizarPrevisaoEntrega } from "@/lib/pedidos";
+import {
+  confirmarItem,
+  confirmarVencedor,
+  desfazerVencedor,
+  atualizarPrevisaoEntrega,
+  listarParticipacoesCotacao,
+} from "@/lib/pedidos";
 import { listProdutos, atualizarPrecoProduto, vincularFornecedorNoProduto } from "@/lib/sheets/produtos";
-import { SEM_FORNECEDOR } from "@/lib/pedido";
+import { SEM_FORNECEDOR, unirConcorrentes } from "@/lib/pedido";
+import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { sincronizarCustosPrePreparoMelhorEsforco } from "@/lib/banco/pre-preparo";
 import type { PedidoItem } from "@/lib/types";
 import { revalidatePath } from "next/cache";
@@ -175,28 +182,43 @@ export async function confirmarVencedorAction(input: {
 
 /** Desfaz a confirmação de vencedor - desmarca o fornecedor atual e recria o
  * item nos concorrentes que tinham perdido (se houver). O preço do Cadastro
- * volta apenas como referência na tela e precisa ser confirmado de novo. */
+ * volta apenas como referência na tela e precisa ser confirmado de novo.
+ *
+ * Concorrentes: os da tela mais os que participaram da cotação do item
+ * (`cotacao_participacoes`, parecer do Codex de 24/10/2026). O avulso do "+
+ * Adicionar item" fora das 4 vagas do Cadastro volta mesmo que a tela tenha
+ * sido recarregada ou o vínculo tenha falhado. Devolve quem foi recriado. */
 export async function desfazerVencedorAction(input: {
   dataContagemBase: string;
   fornecedorAtual: string;
   outrosFornecedores: string[];
   item: Omit<ItemConfirmar, "precoAtualizado" | "precoConfirmado">;
-}): Promise<{ ok: true } | { erro: string }> {
+}): Promise<{ ok: true; concorrentes: string[] } | { erro: string }> {
   const acesso = await requireGestao();
   try {
     exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(desfazerVencedorSchema, input);
+    const [participacoes, fornecedoresCadastro] = await Promise.all([
+      listarParticipacoesCotacao(acesso.unidadeId, entrada.dataContagemBase, entrada.item.sku),
+      listFornecedores(acesso.spreadsheetId),
+    ]);
+    const concorrentes = unirConcorrentes(
+      entrada.fornecedorAtual,
+      entrada.outrosFornecedores,
+      participacoes.map((p) => p.fornecedor),
+      fornecedoresCadastro.map((f) => f.nomeFantasia || f.razaoSocial).filter(Boolean)
+    );
     await desfazerVencedor({
       unidadeId: acesso.unidadeId,
       dataContagemBase: entrada.dataContagemBase,
       fornecedorAtual: entrada.fornecedorAtual,
-      outrosFornecedores: entrada.outrosFornecedores,
+      outrosFornecedores: concorrentes,
       item: entrada.item,
       criadoPor: acesso.userId,
     });
     revalidarPedidos();
-    return { ok: true };
+    return { ok: true, concorrentes };
   } catch (err) {
     return { erro: mensagemErroPublica(err, "Nao foi possivel desfazer a confirmacao.") };
   }

@@ -160,6 +160,14 @@ function CadastroSection({
   const [estado, setEstado] = useState<Record<string, Produto>>(() =>
     Object.fromEntries(produtos.map((p) => [p.sku, comNomeCompraPadrao(p)]))
   );
+  // Produto como está gravado no banco (sem o nome de compra padrão da grade),
+  // mandado junto ao salvar: o servidor grava só o que mudou em relação a ele
+  // (parecer do Codex de 26/10/2026). Sem isso, salvar um campo devolvia a
+  // linha inteira e apagava um fornecedor ligado pela cotação depois de a
+  // grade abrir. Depois de salvar, passa a ser o que foi salvo.
+  const [gravado, setGravado] = useState<Record<string, Produto>>(() =>
+    Object.fromEntries(produtos.map((p) => [p.sku, p]))
+  );
   // Recarregamento da página (pendência salva, produto criado em outra aba ou
   // por outra pessoa) traz SKU que a grade ainda não conhecia. Sem isso a
   // linha nova chegava sem estado e derrubava a tela inteira.
@@ -170,6 +178,7 @@ function CadastroSection({
     setProdutosIncorporados(produtos);
     setBaseline((b) => incorporarNovosPorSku(b, produtos, comNomeCompraPadrao));
     setEstado((e) => incorporarNovosPorSku(e, produtos, comNomeCompraPadrao));
+    setGravado((g) => incorporarNovosPorSku(g, produtos, (p) => p));
   }
   const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
@@ -271,7 +280,7 @@ function CadastroSection({
       setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "salvando" } }));
       let r: Awaited<ReturnType<typeof salvarProdutoAction>>;
       try {
-        r = await salvarProdutoAction(estado[sku]);
+        r = await salvarProdutoAction(estado[sku], gravado[sku]);
       } catch {
         r = { erro: ERRO_CONEXAO };
       }
@@ -280,10 +289,11 @@ function CadastroSection({
         return false;
       }
       setBaseline((b) => ({ ...b, [sku]: estado[sku] }));
+      setGravado((g) => ({ ...g, [sku]: estado[sku] }));
       setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok", msg: r.aviso } }));
       return true;
     },
-    [estado]
+    [estado, gravado]
   );
 
   async function salvarTodos(): Promise<boolean> {
@@ -297,7 +307,10 @@ function CadastroSection({
     });
     let r: Awaited<ReturnType<typeof salvarProdutosAction>>;
     try {
-      r = await salvarProdutosAction(skus.map((sku) => estado[sku]));
+      r = await salvarProdutosAction(
+        skus.map((sku) => estado[sku]),
+        skus.map((sku) => gravado[sku])
+      );
     } catch {
       r = { erro: ERRO_CONEXAO };
     }
@@ -312,6 +325,11 @@ function CadastroSection({
     }
     setBaseline((b) => {
       const novo = { ...b };
+      for (const sku of skus) novo[sku] = estado[sku];
+      return novo;
+    });
+    setGravado((g) => {
+      const novo = { ...g };
       for (const sku of skus) novo[sku] = estado[sku];
       return novo;
     });
