@@ -2,15 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { ehModuloTour } from "./passos";
+import { CHAVE_VIDEO_BOAS_VINDAS } from "@/lib/videos-ajuda/regras";
 
 /**
  * Marca o tour do módulo como visto para quem está logado. O user_id vem da
  * sessão, nunca do navegador; a RLS de `tours_vistos` só deixa inserir a
  * própria linha. Já visto (23505) conta como sucesso. Falha (ex.: migration
- * ainda não aplicada) só loga: o tour não pode quebrar a tela.
+ * ainda não aplicada) só loga: o tour não pode quebrar a tela. Também grava o
+ * cartão do vídeo de boas-vindas (`video_boas_vindas`), oferecido uma vez.
  */
 export async function marcarTourVistoAction(modulo: string): Promise<{ ok: boolean }> {
-  if (!ehModuloTour(modulo)) return { ok: false };
+  if (!ehModuloTour(modulo) && modulo !== CHAVE_VIDEO_BOAS_VINDAS) return { ok: false };
   try {
     const supabase = await createClient();
     const { data: claims } = await supabase.auth.getClaims();

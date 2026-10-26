@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { useConviteInstalarLiberado } from "@/components/navegacao-v2/tour-modulo";
 import {
   CHAVE_INSTALADO,
   CHAVE_RECUSA,
@@ -20,6 +21,8 @@ import {
 // do Chrome é guardado pelo script do <head> (`SCRIPT_CAPTURA_INSTALACAO`).
 // Não empilha com o tour, modal, busca nem tela em modo foco: espera a tela
 // assentar (o tour abre em 0,8 s) e some enquanto qualquer um deles estiver aberto.
+// Ordem do primeiro acesso (26/10/2026): tour, cartão do vídeo de boas-vindas e
+// só depois este convite (`useConviteInstalarLiberado`).
 
 const ESPERA_ABRIR_MS = 2500;
 const BLOQUEIOS = "[aria-modal='true'], [data-modal-flutuante], [data-modo-foco]";
@@ -88,10 +91,13 @@ export function ConviteInstalarApp({ comBarraInferior }: { comBarraInferior: boo
   const [bloqueado, setBloqueado] = useState(false);
   const [temPrompt, setTemPrompt] = useState(false);
   const [videoAberto, setVideoAberto] = useState(false);
+  const liberado = useConviteInstalarLiberado();
   const elegivel = plataforma !== null;
 
-  // Decide depois que a tela assenta (só no navegador: localStorage e user agent).
+  // Decide depois que a tela assenta (só no navegador: localStorage e user agent)
+  // e depois do tour e do cartão de boas-vindas.
   useEffect(() => {
+    if (!liberado) return;
     const espera = window.setTimeout(() => {
       const p = detectarPlataforma(navigator.userAgent, navigator.maxTouchPoints ?? 0);
       const standalone = rodandoInstalado();
@@ -109,7 +115,7 @@ export function ConviteInstalarApp({ comBarraInferior }: { comBarraInferior: boo
       setPlataforma(p);
     }, ESPERA_ABRIR_MS);
     return () => window.clearTimeout(espera);
-  }, []);
+  }, [liberado]);
 
   // Pedido do Chrome chegou depois (ou o app foi instalado por fora).
   useEffect(() => {
@@ -160,7 +166,7 @@ export function ConviteInstalarApp({ comBarraInferior }: { comBarraInferior: boo
   }, []);
 
   if (!plataforma) return null;
-  if (bloqueado && !videoAberto) return null;
+  if ((bloqueado || !liberado) && !videoAberto) return null;
 
   const modo = modoConvite(plataforma, temPrompt);
   const sistema = plataforma === "ios" ? "ios" : "android";
