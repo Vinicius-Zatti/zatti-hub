@@ -109,17 +109,10 @@ describe("completarComItensConfirmados", () => {
     expect(resultado[1].alerta).toBe(ALERTA_FORA_DA_CONTAGEM);
   });
 
-  it("respeita o filtro de grupos e ignora produto inativo ou sem confirmação", () => {
-    const hortifruti = produto({ sku: "HORALF001", grupo: "HOR" });
+  it("ignora produto inativo ou sem confirmação, de qualquer grupo", () => {
     const inativo = produto({ sku: "PROFRA001", ativo: false });
     const semConfirmacao = produto({ sku: "PROLIN001" });
-    const resultado = completarComItensConfirmados(
-      itens,
-      [hortifruti, inativo, semConfirmacao],
-      { HORALF001: 2, PROFRA001: 1 },
-      ["PRO"],
-    );
-    expect(resultado).toBe(itens);
+    expect(completarComItensConfirmados(itens, [inativo, semConfirmacao], { PROFRA001: 1 })).toBe(itens);
   });
 });
 
@@ -127,13 +120,8 @@ describe("mesclarItensNovos", () => {
   const base = [produtoParaSugestaoCompra(produto({ sku: "PROCAR001" }))];
   const rucula = produtoParaSugestaoCompra(produto({ sku: "HORRUC001", grupo: "HOR" }));
 
-  it("sem filtro de grupos, a linha nova entra", () => {
+  it("a linha nova entra, de qualquer grupo", () => {
     expect(mesclarItensNovos(base, [rucula]).map((i) => i.sku)).toEqual(["PROCAR001", "HORRUC001"]);
-  });
-
-  it("com filtro, linha de grupo fora do filtro não entra", () => {
-    expect(mesclarItensNovos(base, [rucula], ["PRO"])).toBe(base);
-    expect(mesclarItensNovos(base, [rucula], ["HOR"]).map((i) => i.sku)).toEqual(["PROCAR001", "HORRUC001"]);
   });
 
   it("não duplica SKU que já veio do servidor", () => {
@@ -142,14 +130,14 @@ describe("mesclarItensNovos", () => {
 });
 
 describe("avisos do cadastro rápido", () => {
-  it("cotação: produto fora do filtro avisa o grupo", () => {
-    expect(
-      avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", foraDoFiltro: true, podeDigitar: true, avisarSetor: false }),
-    ).toContain('cadastrado em Hortifrúti, que está fora do filtro');
+  it("cotação: produto novo pede a quantidade na linha do grupo, sem falar em filtro", () => {
+    const texto = avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", podeDigitar: true, avisarSetor: false });
+    expect(texto).toBe('"rúcula" cadastrado. Digite quanto comprar na linha marcada em Hortifrúti.');
+    expect(texto).not.toMatch(/filtro|escopo/);
   });
 
   it("cotação: unidade com setor recebe a orientação de definir o setor", () => {
-    const texto = avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", foraDoFiltro: false, podeDigitar: true, avisarSetor: true });
+    const texto = avisoProdutoCotacao({ nome: "rúcula", grupoNome: "Hortifrúti", podeDigitar: true, avisarSetor: true });
     expect(texto).toContain("Digite quanto comprar");
     expect(texto.endsWith(AVISO_DEFINIR_SETOR)).toBe(true);
   });

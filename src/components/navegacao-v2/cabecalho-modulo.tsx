@@ -15,12 +15,14 @@ import { comContagemBase, type AbaModulo, type CabecalhoModulo } from "@/lib/nav
 // centralizada. Dois níveis (24/10): a barra principal tem as seções do módulo
 // e, quando a seção atual tem mais de uma tela, uma linha menor logo abaixo
 // (texto com sublinhado âmbar) lista as telas dela, presa no topo junto. Telas em modo foco (Contagem em andamento, preenchimento do
-// Garante) têm a própria barra presa no topo: lá o cabeçalho rola junto.
+// Garante) têm a própria barra presa no topo: lá o cabeçalho rola junto. Com o
+// celular deitado, telas de tabela larga (`data-tabela-larga`) também soltam o
+// cabeçalho, que comeria quase metade da altura (26/10/2026).
 
 export function CabecalhoModuloV2({ cabecalho, unidadeNome }: { cabecalho: CabecalhoModulo; unidadeNome: string }) {
   const { modulo, entrada, abas, abaAtiva, subAbas, subAbaAtiva, naEntrada, titulo } = cabecalho;
   return (
-    <div data-tour="cabecalho-modulo" className="sticky top-0 z-30 -mx-3 -mt-5 mb-4 bg-off-white px-3 pt-3 group-has-[[data-modo-foco]]/app:static sm:-mx-6 sm:px-6 lg:-mt-6">
+    <div data-tour="cabecalho-modulo" className="sticky top-0 z-30 -mx-3 -mt-5 mb-4 bg-off-white px-3 pt-3 group-has-[[data-modo-foco]]/app:static group-has-[[data-tabela-larga]]/app:deitado:static sm:-mx-6 sm:px-6 lg:-mt-6">
       <div className="flex items-center gap-2 px-0.5 pb-2">
         {!naEntrada && (
           <Link

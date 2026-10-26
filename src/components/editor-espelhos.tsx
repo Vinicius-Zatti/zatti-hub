@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { SugestaoCompra, Pedido } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { CodigoSelect } from "@/components/codigo-select";
 import { AvisoVariasContagens, SeletorContagens } from "@/components/seletor-contagens";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
@@ -707,7 +708,8 @@ export function EditorEspelhos({
     );
 
   return (
-    <div className="flex flex-col gap-5 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-5 pb-10" data-tabela-larga>
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Editor de Espelhos de Compras</h1>
         <p className="text-sm text-cinza-medio">
@@ -731,6 +733,7 @@ export function EditorEspelhos({
       {fornecedores.length > 0 && (
         <div className="flex flex-col gap-1">
           <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos espelhos por nome ou SKU" />
+          <DicaVirarCelular />
           {buscando && (
             <p className="text-xs text-cinza-medio">
               {nenhumNaBusca
