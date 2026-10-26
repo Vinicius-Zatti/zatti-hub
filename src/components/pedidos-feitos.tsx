@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import type { Pedido, PedidoItem } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { marcarRecebidoAction } from "@/app/(app)/estoque/pedidos/feitos/actions";
 import { toNumeroBR } from "@/lib/sheets/numero";
 import { formatarQuantidade } from "@/lib/unidades";
@@ -171,10 +172,12 @@ export function PedidosFeitos({
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-4 pb-10" data-tabela-larga>
       {seletorData}
       <div className="flex flex-col gap-1">
         <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos pedidos por nome ou SKU" />
+        <DicaVirarCelular />
         {buscando && (
           <p className="text-xs text-cinza-medio">
             {pedidosVisiveis.length === 0
