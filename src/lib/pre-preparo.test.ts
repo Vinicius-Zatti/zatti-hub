@@ -66,6 +66,32 @@ describe("nomes parecidos de pré-preparo (usar a ficha existente)", () => {
   });
 });
 
+describe("nomes parecidos: exemplos negativos reais (parecer do Codex, 26/10)", () => {
+  // Pares de nomes que existem hoje nas unidades (fichas e produtos PRE) e que
+  // são itens diferentes: nenhum pode ser oferecido como "a mesma ficha".
+  it.each([
+    ["Maionese da casa", "Maionese Verde"],
+    ["Maionese da casa", "Maionese de Limão Siciliano"],
+    ["Maionese Temperada", "Maionese da casa"],
+    ["Molho de queijo", "Molho de tomate caseiro"],
+    ["Molho Bluecheese", "Molho de queijo"],
+    ["Embalagem Burger", "Delivery Burger"],
+    ["burger 180g da casa", "smash 90g da casa"],
+    ["hambúrguer de soja da casa", "burger 180g da casa"],
+    ["coxinha de frango da casa", "creme de gorgonzola da casa"],
+    ["Farofa de bacon", "Barbecue de Goiabada"],
+    ["Cebola Caramelizada", "Coleslaw"],
+    ["Molho de alho", "Molho de alho poró"],
+  ])("%s x %s não é parecido", (a, b) => {
+    expect(distanciaNomesPrePreparo(a, b)).toBeNull();
+  });
+
+  it("limite conhecido: uma letra trocada em nome curto ainda é oferecida (a pessoa confirma)", () => {
+    // Sugestão, nunca união automática: o botão mostra nome e SKU dos dois lados.
+    expect(distanciaNomesPrePreparo("Cebola roxa", "Cebola rosa")).toBe(1);
+  });
+});
+
 describe("skuDaUniaoPrePreparo (quem nasce primeiro manda)", () => {
   const produto = { sku: "PRECEBCAR", criadoEm: "2026-08-10T12:00:00+00:00" };
 
