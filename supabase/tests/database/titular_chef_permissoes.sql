@@ -237,7 +237,7 @@ select is(pg_temp.salvar('00000000-0000-0000-0000-00000000e001', '00000000-0000-
 select is(pg_temp.salvar('00000000-0000-0000-0000-00000000e001', '00000000-0000-0000-0000-0000000e0a04',
   '{"cardapio":"chef","cadastros":"ver"}'), 'ok', 'gerente vira chef no Cardápio e só vê Cadastros');
 select pg_temp.como('00000000-0000-0000-0000-00000000e004');
-select throws_ok($$insert into produto_conversoes (unidade_id, produto_sku, unidade_uso, quantidade_unidade_base)
+select throws_ok($$insert into produto_conversoes (unidade_id, produto_sku, unidade_saida, fator_por_unidade_base)
   values ('tc-loja1', 'HORTOM001', 'G', 1000)$$, '42501',
   'Seu acesso ao Cardápio não inclui conversões de unidade. Peça a quem administra a equipe.',
   'gerente rebaixado a chef não grava conversão de unidade');
