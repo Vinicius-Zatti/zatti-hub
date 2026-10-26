@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { criarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
+import { CampoNumero } from "@/components/campo-numero";
 import { GRUPO_OPCOES } from "@/lib/grupos";
 import type { Produto } from "@/lib/types";
 
@@ -148,9 +149,9 @@ export function NovoProdutoForm({
 
         <Campo label="Nome de compra" name="nomeCompra" />
         <Campo label="Unidade base (KG / LT / UN)" name="unidadeBase" defaultValue={unidadeInicial || "UN"} />
-        <Campo label="Preço unitário" name="precoUnitario" type="number" step="0.01" />
-        <Campo label="Estoque necessário da semana" name="estoqueNecessarioSemana" type="number" step="0.01" />
-        <Campo label="Estoque mínimo" name="estoqueMinimo" type="number" step="0.01" />
+        <CampoDecimal label="Preço unitário" name="precoUnitario" />
+        <CampoDecimal label="Estoque necessário da semana" name="estoqueNecessarioSemana" />
+        <CampoDecimal label="Estoque mínimo" name="estoqueMinimo" />
         <Campo
           label="Posição (ordem física de contagem)"
           name="posicao"
@@ -207,5 +208,20 @@ function Campo({
         className="mt-1 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm focus:border-ambar focus:outline-none"
       />
     </div>
+  );
+}
+
+/** Campo decimal em pt-BR (aceita "3,50", mostra "3,50" fora de foco). O
+ * `<input type="number">` antigo exibia "3.50" e recusava vírgula no
+ * celular. O hidden manda pro servidor o mesmo formato de antes ("3.5"), então
+ * o que é gravado não muda. */
+function CampoDecimal({ label, name }: { label: string; name: string }) {
+  const [valor, setValor] = useState<number | null>(null);
+  return (
+    <label className="flex flex-col text-xs font-semibold text-cinza-medio">
+      {label}
+      <CampoNumero value={valor} onChange={setValor} className="mt-1 h-[38px] w-full text-sm font-normal text-cinza" />
+      <input type="hidden" name={name} value={valor === null ? "" : String(valor)} />
+    </label>
   );
 }
