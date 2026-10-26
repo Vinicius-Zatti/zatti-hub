@@ -301,7 +301,8 @@ $$;
 revoke all on function public.exigir_permissao_modulo() from public, anon, authenticated;
 revoke execute on function public.exigir_permissao_modulo() from vini_operador;
 
--- Chef: vínculo operacional ativo que cobre a unidade com a exceção 'chef' no Cardápio.
+-- Chef: vínculo operacional ativo que cobre a unidade com a exceção 'chef' no Cardápio. Confere a
+-- sessão vigente como todo helper que lê vínculo direto.
 create or replace function public.usuario_e_chef_cardapio(p_unidade_id text)
 returns boolean
 language sql
@@ -309,7 +310,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select exists (
+  select public.sessao_vigente() and exists (
     select 1
       from public.vinculos v
       join public.unidades u on u.id = p_unidade_id and u.organizacao_id = v.organizacao_id
