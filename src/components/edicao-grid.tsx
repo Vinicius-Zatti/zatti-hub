@@ -25,6 +25,10 @@ import { ExcluirProdutoBotao } from "@/components/excluir-produto-botao";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { criarFilaSerial, incorporarNovosPorSku } from "@/lib/fila-serial";
 import { normalizarBusca } from "@/lib/busca";
+import { useRouter } from "next/navigation";
+import { EscolhaFichaExistente } from "@/components/escolha-ficha-existente";
+import type { ParPrePreparo } from "@/lib/banco/pre-preparo-uniao";
+import { aplicarUniaoNaLinha } from "@/lib/pre-preparo";
 
 // Mensagem quando a chamada nem chega a responder (rede, servidor fora do ar).
 const ERRO_CONEXAO = "Não foi possível falar com o servidor. Confira a conexão e tente de novo.";
@@ -81,6 +85,7 @@ export function EdicaoGrid({
   mostrarRevenda = false,
   mostrarPrePreparo = false,
   skusPrecoDaFicha = [],
+  fichasParecidas = {},
 }: {
   produtos: Produto[];
   pendentes: ItemPendente[];
@@ -93,6 +98,9 @@ export function EdicaoGrid({
   mostrarPrePreparo?: boolean;
   /** Pré-preparos cujo preço vem do custo da ficha - célula só leitura. */
   skusPrecoDaFicha?: string[];
+  /** Por SKU de produto PRE sem ficha: fichas PRE de nome parecido, sem
+   * produto, que a chave oferece usar em vez de criar outra (26/10/2026). */
+  fichasParecidas?: Record<string, ParPrePreparo[]>;
 }) {
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -119,6 +127,7 @@ export function EdicaoGrid({
         mostrarRevenda={mostrarRevenda}
         mostrarPrePreparo={mostrarPrePreparo}
         skusPrecoDaFicha={skusPrecoDaFicha}
+        fichasParecidas={fichasParecidas}
       />
     </div>
   );
@@ -130,12 +139,14 @@ function CadastroSection({
   mostrarRevenda,
   mostrarPrePreparo,
   skusPrecoDaFicha,
+  fichasParecidas,
 }: {
   produtos: Produto[];
   fornecedores: Fornecedor[];
   mostrarRevenda: boolean;
   mostrarPrePreparo: boolean;
   skusPrecoDaFicha: string[];
+  fichasParecidas: Record<string, ParPrePreparo[]>;
 }) {
   const precoDaFicha = useMemo(() => new Set(skusPrecoDaFicha), [skusPrecoDaFicha]);
   const [busca, setBusca] = useState("");
@@ -172,6 +183,9 @@ function CadastroSection({
   }
   const [statusPorSku, setStatusPorSku] = useState<Record<string, StatusLinha>>({});
   const [salvandoTodos, setSalvandoTodos] = useState(false);
+  // Chave Pré-preparo ligada num produto com ficha parecida: pergunta antes.
+  const [escolhaPrePreparo, setEscolhaPrePreparo] = useState<string | null>(null);
+  const router = useRouter();
 
   // Cópia local pra poder inserir um fornecedor criado na hora (modal "+
   // Adicionar fornecedor") sem esperar o Server Component recarregar.
@@ -550,6 +564,8 @@ function CadastroSection({
                 mostrarRevenda={mostrarRevenda}
                 mostrarPrePreparo={mostrarPrePreparo}
                 precoVemDaFicha={precoDaFicha.has(p.sku)}
+                temFichaParecida={(fichasParecidas[p.sku]?.length ?? 0) > 0}
+                onPedirEscolhaPrePreparo={setEscolhaPrePreparo}
               />
             ))}
             {ordenados.length === 0 && (
@@ -574,6 +590,32 @@ function CadastroSection({
           setNovoFornecedorPara(null);
         }}
       />
+      {escolhaPrePreparo && estado[escolhaPrePreparo] && (
+        <EscolhaFichaExistente
+          produto={estado[escolhaPrePreparo]}
+          pares={fichasParecidas[escolhaPrePreparo] ?? []}
+          outrasMudancas={
+            JSON.stringify({ ...estado[escolhaPrePreparo], prePreparo: baseline[escolhaPrePreparo]?.prePreparo }) !==
+            JSON.stringify(baseline[escolhaPrePreparo])
+          }
+          onCriarNova={() => {
+            campo(escolhaPrePreparo, "prePreparo", true);
+            setEscolhaPrePreparo(null);
+          }}
+          onFechar={() => setEscolhaPrePreparo(null)}
+          onUnido={(skuFinal) => {
+            // Já gravado no banco: a chave entra ligada e sem pendência na linha.
+            const sku = escolhaPrePreparo;
+            const unido = aplicarUniaoNaLinha({ estado, baseline, gravado }, sku);
+            setEstado(unido.estado);
+            setBaseline(unido.baseline);
+            setGravado(unido.gravado);
+            setStatusPorSku((s) => ({ ...s, [sku]: { tipo: "ok", msg: `Unido à ficha existente (SKU ${skuFinal}).` } }));
+            setEscolhaPrePreparo(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -819,6 +861,8 @@ const LinhaProduto = memo(function LinhaProduto({
   mostrarRevenda,
   mostrarPrePreparo,
   precoVemDaFicha,
+  temFichaParecida,
+  onPedirEscolhaPrePreparo,
 }: {
   sku: string;
   editado: Produto;
@@ -831,6 +875,8 @@ const LinhaProduto = memo(function LinhaProduto({
   mostrarRevenda: boolean;
   mostrarPrePreparo: boolean;
   precoVemDaFicha: boolean;
+  temFichaParecida: boolean;
+  onPedirEscolhaPrePreparo: (sku: string) => void;
 }) {
   const pending = status?.tipo === "salvando";
 
@@ -1029,7 +1075,9 @@ const LinhaProduto = memo(function LinhaProduto({
           <input
             type="checkbox"
             checked={editado.prePreparo === true}
-            onChange={(e) => campo("prePreparo", e.target.checked)}
+            onChange={(e) =>
+              e.target.checked && temFichaParecida ? onPedirEscolhaPrePreparo(sku) : campo("prePreparo", e.target.checked)
+            }
             title="Produzido na cozinha (grupo PRE) - marca e a ficha técnica é criada como rascunho, com este SKU, para montar a receita"
           />
         </td>

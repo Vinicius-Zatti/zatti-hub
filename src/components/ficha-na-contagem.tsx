@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { incluirFichaNaContagemAction } from "@/app/(app)/fichas-tecnicas/actions";
+import { paresDaFichaAction, unirPrePreparoFichaExistenteAction } from "@/app/(app)/estoque/produtos/pre-preparo-actions";
 import { ModalFlutuante } from "@/components/modal-flutuante";
+import { OpcaoUniaoPrePreparo } from "@/components/escolha-ficha-existente";
+import type { ParPrePreparo } from "@/lib/banco/pre-preparo-uniao";
 import { nomeContagemSugerido } from "@/lib/pre-preparo";
 import type { VinculoContagemFicha } from "@/lib/banco/pre-preparo-leitura";
 
@@ -25,6 +29,43 @@ export function FichaNaContagem({
   const [nome, setNome] = useState(() => nomeContagemSugerido(ficha.nome));
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // "Usar o produto existente" (26/10/2026): produtos PRE de nome parecido,
+  // sem ficha, procurados ao abrir a janela. `null` = ainda procurando.
+  const [pares, setPares] = useState<ParPrePreparo[] | null>(null);
+  const [unindo, setUnindo] = useState<string | null>(null);
+  const router = useRouter();
+
+  function abrir() {
+    setAberto(true);
+    setErro(null);
+    setPares(null);
+    paresDaFichaAction(ficha.id)
+      .then(setPares)
+      .catch(() => setPares([]));
+  }
+
+  function unir(par: ParPrePreparo) {
+    setErro(null);
+    setUnindo(par.produto.sku);
+    startTransition(async () => {
+      let r: Awaited<ReturnType<typeof unirPrePreparoFichaExistenteAction>>;
+      try {
+        r = await unirPrePreparoFichaExistenteAction(par.produto.sku, ficha.id);
+      } catch {
+        r = { ok: false, mensagem: "Não foi possível falar com o servidor. Confira a conexão e tente de novo." };
+      }
+      setUnindo(null);
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      setProduto({ sku: r.sku, nome: par.produto.nome, unidadeBase: par.produto.unidadeBase });
+      setPrePreparo(true);
+      setAberto(false);
+      // A ficha pode ter passado a usar o SKU do produto.
+      router.refresh();
+    });
+  }
 
   function incluir(e: React.FormEvent) {
     e.preventDefault();
@@ -72,7 +113,7 @@ export function FichaNaContagem({
       <p className="mt-1 text-xs text-cinza-medio">Este pré-preparo ainda não é contado no estoque.</p>
       <button
         type="button"
-        onClick={() => setAberto(true)}
+        onClick={abrir}
         className="mt-2 rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco hover:bg-azul-petroleo"
       >
         Incluir na lista de contagem
@@ -80,6 +121,27 @@ export function FichaNaContagem({
 
       <ModalFlutuante aberto={aberto} onFechar={() => setAberto(false)}>
         <h2 className="font-display text-xl font-bold text-azul-noite">Incluir na lista de contagem</h2>
+        {pares === null && <p className="mt-2 text-xs text-cinza-medio">Procurando produto parecido na lista...</p>}
+        {pares !== null && pares.length > 0 && (
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="text-xs text-cinza-medio">
+              {pares.length === 1 ? "Este produto" : "Estes produtos"} de pré-preparo já {pares.length === 1 ? "está" : "estão"} na
+              lista de contagem, com nome parecido e sem ficha. Usar um deles junta produto e ficha num item só, sem
+              criar outro produto.
+            </p>
+            {pares.map((par) => (
+              <OpcaoUniaoPrePreparo
+                key={par.produto.sku}
+                par={par}
+                lado="ficha"
+                desabilitada={isPending}
+                pendente={unindo === par.produto.sku}
+                onEscolher={() => unir(par)}
+              />
+            ))}
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-cinza-medio">Ou criar produto novo</p>
+          </div>
+        )}
         <form onSubmit={incluir} className="mt-4 flex flex-col gap-3">
           <div>
             <label htmlFor="nome-contagem" className="text-xs font-semibold text-cinza-medio">
@@ -127,7 +189,11 @@ export function FichaNaContagem({
               disabled={isPending || !nome.trim()}
               className="rounded-md bg-azul-noite px-3 py-1.5 text-xs font-semibold text-branco hover:bg-azul-petroleo disabled:opacity-50"
             >
-              {isPending ? "Incluindo..." : "Incluir na contagem"}
+              {isPending && unindo === null
+                ? "Incluindo..."
+                : pares && pares.length > 0
+                  ? `Criar produto novo (${ficha.sku}) na contagem`
+                  : "Incluir na contagem"}
             </button>
           </div>
         </form>
