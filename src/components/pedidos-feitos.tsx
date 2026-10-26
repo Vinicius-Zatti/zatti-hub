@@ -16,7 +16,7 @@ import {
   type FormularioRecebimento,
 } from "@/lib/pedidos-feitos-formulario";
 import { CampoBusca } from "@/components/campo-busca";
-import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
+import { filtrarPorFornecedorOuItem } from "@/lib/busca-lista";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -84,11 +84,15 @@ export function PedidosFeitos({
   const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   // Busca (26/10/2026): só esconde linhas. As quantidades digitadas ficam em
-  // `formularios`, pelo SKU, e o Salvar manda o pedido inteiro.
+  // `formularios`, pelo SKU, e o Salvar manda o pedido inteiro. Termo que bate
+  // com o fornecedor traz o pedido inteiro dele.
   const [busca, setBusca] = useState("");
   const buscando = busca.trim() !== "";
   const itensVisiveisPorPedido = new Map(
-    pedidos.map((pedido) => [pedido.id, filtrarPorNomeOuSku(pedido.itens, busca, (item) => [item.nomeCompra])]),
+    pedidos.map((pedido) => [
+      pedido.id,
+      filtrarPorFornecedorOuItem(pedido.fornecedor, pedido.itens, busca, (item) => [item.nomeCompra]),
+    ]),
   );
   const pedidosVisiveis = buscando
     ? pedidos.filter((pedido) => (itensVisiveisPorPedido.get(pedido.id) ?? []).length > 0)
@@ -176,13 +180,18 @@ export function PedidosFeitos({
     <div className="flex flex-col gap-4 pb-10" data-tabela-larga>
       {seletorData}
       <div className="flex flex-col gap-1">
-        <CampoBusca valor={busca} onChange={setBusca} rotulo="Buscar item nos pedidos por nome ou SKU" />
+        <CampoBusca
+          valor={busca}
+          onChange={setBusca}
+          rotulo="Buscar nos pedidos por item ou fornecedor"
+          placeholder="Buscar item ou fornecedor"
+        />
         <DicaVirarCelular />
         {buscando && (
           <p className="text-xs text-cinza-medio">
             {pedidosVisiveis.length === 0
-              ? `Nenhum item com "${busca.trim()}" nos pedidos desta contagem.`
-              : "Mostrando só os itens encontrados. O que você digitou nos outros continua guardado, e o Salvar e os totais valem para o pedido inteiro."}
+              ? `Nenhum item ou fornecedor com "${busca.trim()}" nos pedidos desta contagem.`
+              : "Mostrando só o que foi encontrado. O que você digitou nos outros continua guardado, e o Salvar e os totais valem para o pedido inteiro."}
           </p>
         )}
       </div>
