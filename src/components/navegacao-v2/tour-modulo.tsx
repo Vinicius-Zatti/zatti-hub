@@ -16,8 +16,13 @@ import {
   type PosicaoBalaoTour,
 } from "@/lib/tour/passos";
 import { ROTEIROS_TOUR, type ModuloTour, type PassoTour } from "@/lib/tour/roteiros";
-import { CartaoBoasVindas } from "@/components/videos-ajuda";
-import { CHAVE_VIDEO_BOAS_VINDAS, deveOferecerBoasVindas, proximoAvisoPrimeiroAcesso } from "@/lib/videos-ajuda/regras";
+import { CartaoBoasVindas, useAbrirVideoAjuda } from "@/components/videos-ajuda";
+import {
+  CHAVE_VIDEO_BOAS_VINDAS,
+  deveOferecerBoasVindas,
+  proximoAvisoPrimeiroAcesso,
+  videoDaTela,
+} from "@/lib/videos-ajuda/regras";
 
 // Tour no primeiro acesso de cada módulo (Navegação V2, fase 4, 25/10/2026),
 // só no piloto. Aparece sozinho UMA vez por usuário e módulo (gravado em
@@ -385,17 +390,23 @@ function BalaoTour({
   );
 }
 
-/** Botão "Rever o tour" do cabeçalho do módulo (alvo do último passo). */
+/** Botão (?) do cabeçalho do módulo (alvo do último passo do tour). Em tela
+ * com vídeo próprio (`videoDaTela`) ele abre o vídeo; nas outras, reabre o
+ * tour. O tour automático do primeiro acesso não muda (26/10/2026). */
 export function BotaoReverTour() {
   const rever = useReverTour();
-  if (!rever) return null;
+  const abrirVideo = useAbrirVideoAjuda();
+  const video = videoDaTela(usePathname());
+  const acao = video && abrirVideo ? () => abrirVideo(video) : rever;
+  if (!acao) return null;
+  const rotulo = video && abrirVideo ? "Ver o vídeo desta tela" : "Rever o tour deste módulo";
   return (
     <button
       type="button"
       data-tour="rever-tour"
-      onClick={rever}
-      aria-label="Rever o tour deste módulo"
-      title="Rever o tour deste módulo"
+      onClick={acao}
+      aria-label={rotulo}
+      title={rotulo}
       className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] border border-cinza-claro bg-branco text-azul-noite transition-colors hover:border-ambar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ambar"
     >
       <IconeNavegacao nome="ajuda" className="h-[18px] w-[18px]" />

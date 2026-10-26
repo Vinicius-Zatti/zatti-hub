@@ -11,6 +11,7 @@ export function ModalFlutuante({
   onFechar,
   children,
   larga = false,
+  cheiaDeitado = false,
 }: {
   aberto: boolean;
   onFechar: () => void;
@@ -18,12 +19,19 @@ export function ModalFlutuante({
   /** Caixa larga no desktop, para ficha de detalhe aberta por cima de uma
    * lista/kanban (ex.: ficha do lead no Comercial). Formulário fica estreito. */
   larga?: boolean;
+  /** Celular deitado (pouca altura): a caixa usa quase a tela toda, com
+   * margens menores. Para o player de vídeo horizontal (`videos-ajuda.tsx`). */
+  cheiaDeitado?: boolean;
 }) {
   if (!aberto) return null;
   return (
-    <div data-modal-flutuante className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4" onClick={onFechar}>
+    <div
+      data-modal-flutuante
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4 ${cheiaDeitado ? "deitado:p-2" : ""}`}
+      onClick={onFechar}
+    >
       <div
-        className={`max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:rounded-2xl ${larga ? "sm:max-w-4xl" : "sm:max-w-lg"}`}
+        className={`max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:rounded-2xl ${larga ? "sm:max-w-4xl" : "sm:max-w-lg"} ${cheiaDeitado ? "deitado:max-h-[calc(100dvh-1rem)] deitado:max-w-none deitado:p-3" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

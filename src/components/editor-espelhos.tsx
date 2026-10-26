@@ -28,6 +28,7 @@ import { textoEdicaoQuantidade } from "@/lib/unidades";
 import { SEM_FORNECEDOR, nomeFornecedorCanonico, somarItensAvulsos } from "@/lib/pedido";
 import { CampoBusca } from "@/components/campo-busca";
 import { filtrarPorFornecedorOuItem, fornecedorCasaBusca } from "@/lib/busca-lista";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 function formatMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -721,6 +722,10 @@ export function EditorEspelhos({
           cada item (obrigatório mesmo com um só fornecedor) - só depois disso ele entra no
           Compartilhar.
         </p>
+        {/* Vídeo do Editor de espelhos (26/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="espelhos" pergunta="Como usar o Editor de espelhos?" />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-cinza-claro bg-branco p-3.5">

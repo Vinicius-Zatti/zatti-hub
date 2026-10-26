@@ -2,6 +2,7 @@ import { getAcessoAtual } from "@/lib/acesso";
 import { listPedidosFeitos } from "@/lib/pedidos";
 import { ordenarDatasContagemBase } from "@/lib/pedido";
 import { PedidosFeitos } from "@/components/pedidos-feitos";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { listaDoParametro } from "@/lib/contagem/varias-datas";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,10 @@ export default async function PedidosFeitosPage({
             ? " Marca aqui quando o pedido chegar e anota qualquer diferença na observação."
             : " Confirma a quantidade recebida quando vier diferente da pedida."}
         </p>
+        {/* Vídeo do Pedido feito (26/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="pedido-feito" pergunta="Como receber o pedido?" />
+        </div>
       </div>
       <PedidosFeitos
         pedidos={pedidos}

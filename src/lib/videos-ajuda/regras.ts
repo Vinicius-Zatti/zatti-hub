@@ -4,9 +4,26 @@
 // instalar o app (PR #56): arquivos em `public/videos/` (h264, faststart, capa
 // jpg), `preload="none"` e nunca tocam sozinhos.
 
-export type IdVideoAjuda = "boas-vindas" | "instalar-iphone" | "instalar-android" | "contagem";
+export type IdVideoAjuda =
+  | "boas-vindas"
+  | "instalar-iphone"
+  | "instalar-android"
+  | "contagem"
+  | "cotacao"
+  | "espelhos"
+  | "pedido-feito";
 
-export type VideoAjuda = { titulo: string; src: string; capa: string; duracao: string };
+export type VideoAjuda = {
+  titulo: string;
+  src: string;
+  capa: string;
+  duracao: string;
+  /** Tamanho do quadro do vídeo: o player tira daí a proporção, sem cortar nem
+   * deformar. Os verticais (768x1664) cabem na caixa estreita; os horizontais
+   * (1664x768, telas de tabela larga) abrem na caixa larga. */
+  largura: number;
+  altura: number;
+};
 
 export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
   "boas-vindas": {
@@ -14,6 +31,8 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-boas-vindas.mp4",
     capa: "/videos/zatti-hub-boas-vindas-capa.jpg",
     duracao: "2 min",
+    largura: 768,
+    altura: 1664,
   },
   // Os mesmos do convite de instalar (`convite-instalar-app.tsx`), para a
   // central de Vídeos explicativos (`/ajuda/videos`).
@@ -22,20 +41,71 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4",
     capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg",
     duracao: "45s",
+    largura: 768,
+    altura: 1664,
   },
   "instalar-android": {
     titulo: "Como instalar o app no Android",
     src: "/videos/zatti-hub-como-app-no-celular-android.mp4",
     capa: "/videos/zatti-hub-como-app-no-celular-android-capa.jpg",
     duracao: "43s",
+    largura: 768,
+    altura: 1664,
   },
   contagem: {
     titulo: "Como fazer a contagem de estoque",
     src: "/videos/zatti-hub-contagem-de-estoque.mp4",
     capa: "/videos/zatti-hub-contagem-de-estoque-capa.jpg",
     duracao: "2 min",
+    largura: 768,
+    altura: 1664,
+  },
+  cotacao: {
+    titulo: "Como fazer a cotação",
+    src: "/videos/zatti-hub-criar-cotacao.mp4",
+    capa: "/videos/zatti-hub-criar-cotacao-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  espelhos: {
+    titulo: "Como usar o Editor de espelhos",
+    src: "/videos/zatti-hub-editor-de-espelhos.mp4",
+    capa: "/videos/zatti-hub-editor-de-espelhos-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "pedido-feito": {
+    titulo: "Como receber o pedido",
+    src: "/videos/zatti-hub-pedido-feito-recebimento.mp4",
+    capa: "/videos/zatti-hub-pedido-feito-recebimento-capa.jpg",
+    duracao: "1 min",
+    largura: 1664,
+    altura: 768,
   },
 };
+
+/** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
+ * reabrir o tour (pedido de Vinícius em 26/10/2026). Rota exata, sem `?data=`. */
+const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
+  "/estoque/contagem": "contagem",
+  "/estoque/pedidos": "cotacao",
+  "/estoque/pedidos/cotacoes": "espelhos",
+  "/estoque/pedidos/feitos": "pedido-feito",
+};
+
+/** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */
+export function videoDaTela(pathname: string | null | undefined): IdVideoAjuda | null {
+  if (!pathname) return null;
+  const rota = pathname.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+  return Object.hasOwn(VIDEO_DA_TELA, rota) ? VIDEO_DA_TELA[rota] : null;
+}
+
+/** Vídeo deitado: o player abre na caixa larga e usa a altura da tela. */
+export function ehVideoHorizontal(video: Pick<VideoAjuda, "largura" | "altura">): boolean {
+  return video.largura > video.altura;
+}
 
 /** Gravado em `tours_vistos` (mesma tabela do tour, por usuário) quando o
  * cartão de boas-vindas aparece: ele é oferecido uma vez só, em qualquer aparelho. */
