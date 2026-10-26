@@ -1,6 +1,6 @@
 "use server";
 
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, exigirEdicao } from "@/lib/acesso";
 import { atualizarRecebimento } from "@/lib/pedidos";
 import { revalidatePath } from "next/cache";
 import { recebimentoSchema, validarEntrada } from "@/lib/validacao";
@@ -22,6 +22,7 @@ export async function marcarRecebidoAction(input: {
   const acesso = await getAcessoAtual();
 
   try {
+    exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("recebimento");
     const entrada = validarEntrada(recebimentoSchema, input);
     const resultado = await atualizarRecebimento({ ...entrada, unidadeId: acesso.unidadeId });

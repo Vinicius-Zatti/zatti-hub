@@ -276,12 +276,13 @@ describe("Configurações no piloto (24/10)", () => {
     expect(moduloAtivo(com, CONFIGURACOES_MODULOS)).toBe("Configurações");
   });
 
-  it("quem vê: master e dono (gestão sem unidade fixa); nunca operacional nem gestor de uma unidade", () => {
-    expect(podeVerConfiguracoes({ role: "master", unidadeFixa: null })).toBe(true);
-    expect(podeVerConfiguracoes({ role: "gestao", unidadeFixa: null })).toBe(true);
-    expect(podeVerConfiguracoes({ role: "gestao", unidadeFixa: "zatti-burger" })).toBe(false);
-    expect(podeVerConfiguracoes({ role: "operacional", unidadeFixa: null })).toBe(false);
-    expect(podeVerConfiguracoes({ role: "operacional", unidadeFixa: "zatti-burger" })).toBe(false);
+  it("quem vê: master e gestão com ver (o dono por padrão); nunca operacional", () => {
+    const ver = { configuracoes: "ver" as const };
+    const sem = { configuracoes: "sem_acesso" as const };
+    expect(podeVerConfiguracoes({ role: "master", permissoes: sem })).toBe(true);
+    expect(podeVerConfiguracoes({ role: "gestao", permissoes: ver })).toBe(true);
+    expect(podeVerConfiguracoes({ role: "gestao", permissoes: sem })).toBe(false);
+    expect(podeVerConfiguracoes({ role: "operacional", permissoes: ver })).toBe(false);
   });
 
   it("contextoMenuRestaurante leva a regra para o menu", () => {
@@ -292,12 +293,14 @@ describe("Configurações no piloto (24/10)", () => {
       equipeHabilitado: true,
       garanteHabilitado: true,
     };
-    const rotulos = (role: string, unidadeFixa: string | null) =>
-      montarMenuRestaurantePiloto(contextoMenuRestaurante({ ...base, role, unidadeFixa }, true)).map((i) => i.label);
-    expect(rotulos("master", null)).toContain("Configurações");
-    expect(rotulos("gestao", null)).toContain("Configurações");
-    expect(rotulos("gestao", "zatti-burger")).not.toContain("Configurações");
-    expect(rotulos("operacional", null)).not.toContain("Configurações");
+    const rotulos = (role: string, configuracoes: "ver" | "sem_acesso") =>
+      montarMenuRestaurantePiloto(contextoMenuRestaurante({ ...base, role, permissoes: { configuracoes } }, true)).map(
+        (i) => i.label,
+      );
+    expect(rotulos("master", "sem_acesso")).toContain("Configurações");
+    expect(rotulos("gestao", "ver")).toContain("Configurações");
+    expect(rotulos("gestao", "sem_acesso")).not.toContain("Configurações");
+    expect(rotulos("operacional", "ver")).not.toContain("Configurações");
   });
 
   it("menu atual (fora do piloto) não ganha Configurações", () => {

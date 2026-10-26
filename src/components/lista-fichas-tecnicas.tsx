@@ -42,6 +42,7 @@ function brl(n: number | null): string {
 export function ListaFichasTecnicas({
   fichas,
   podeGerir,
+  podeEditarFicha = podeGerir,
   margemNecessaria,
   margemPontoEquilibrio,
   deducoesTotal,
@@ -51,6 +52,8 @@ export function ListaFichasTecnicas({
 }: {
   fichas: FichaTecnicaResumo[];
   podeGerir: boolean;
+  /** Gestão ou chef (26/10/2026): cria ficha e vê o custo dos insumos. */
+  podeEditarFicha?: boolean;
   /** Repassados só pro card "Preços por Canal" dentro do detalhe da ficha
    * (`FichaTecnicaDetalhe`) - a listagem em si não mostra mais preço/margem
    * (ver Tabela de Precificação, `/fichas-tecnicas/precificacao`). */
@@ -152,7 +155,7 @@ export function ListaFichasTecnicas({
             </button>
           ))}
         </div>
-        {podeGerir && (
+        {podeEditarFicha && (
           <button
             type="button"
             onClick={abrirNovo}
@@ -195,10 +198,10 @@ export function ListaFichasTecnicas({
                 {camada === "PRE" ? (
                   <>
                     <Th align="right">Rende</Th>
-                    {podeGerir && <Th align="right">Valor da Unidade</Th>}
+                    {podeEditarFicha && <Th align="right">Valor da Unidade</Th>}
                   </>
                 ) : (
-                  podeGerir && (
+                  podeEditarFicha && (
                     <>
                       <Th align="right">Custo Insumos (Presencial)</Th>
                       <Th align="right">Custo Insumos Delivery</Th>
@@ -237,12 +240,12 @@ export function ListaFichasTecnicas({
                         <td className="whitespace-nowrap px-2 py-1.5 text-right text-cinza-medio">
                           {formatarQuantidade(ficha.rendimentoQuantidade)} {ficha.rendimentoUnidade}
                         </td>
-                        {podeGerir && (
+                        {podeEditarFicha && (
                           <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{brl(custoInsumos)}</td>
                         )}
                       </>
                     ) : (
-                      podeGerir && (
+                      podeEditarFicha && (
                         <>
                           <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{brl(custoInsumos)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-azul-noite">{brl(custoDelivery)}</td>
@@ -286,6 +289,7 @@ export function ListaFichasTecnicas({
                 fotoUrl={dadosAbertos.dados.fotoUrl}
                 vinculoContagem={dadosAbertos.dados.vinculoContagem}
                 podeGerir={dadosAbertos.podeGerir}
+                podeEditarFicha={dadosAbertos.podeEditarFicha}
                 categorias={dadosAbertos.dados.categorias}
                 produtos={dadosAbertos.dados.produtos}
                 fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
@@ -328,7 +332,8 @@ export function ListaFichasTecnicas({
                 categorias={dadosNovo.categorias}
                 produtos={dadosNovo.produtos}
                 fichasDisponiveis={dadosNovo.fichasDisponiveis}
-                cadastroRapidoProduto={cadastroRapidoProduto}
+                cadastroRapidoProduto={podeGerir ? cadastroRapidoProduto : null}
+                modoChef={!podeGerir}
                 onSalvo={() => {
                   fecharNovo();
                   router.refresh();

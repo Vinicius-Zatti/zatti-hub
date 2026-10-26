@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAcessoAtual, registrarAuditoria, requireGestao } from "@/lib/acesso";
+import { getAcessoAtual, registrarAuditoria, requireGestao, exigirEdicao } from "@/lib/acesso";
 import { cancelarMovimentacaoBanco, registrarPerdaBanco } from "@/lib/banco/extrato";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { ERRO_EXTRATO_DESLIGADO } from "@/lib/extrato";
@@ -24,6 +24,7 @@ export async function registrarPerdaAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await getAcessoAtual();
   try {
+    exigirEdicao(acesso, "estoque");
     if (acesso.fonteDadosEstoque !== "banco") throw new ErroPublico("Unidade sem estoque no Zatti Hub.");
     if (!acesso.extratoEstoqueHabilitado) throw new ErroPublico(ERRO_EXTRATO_DESLIGADO);
     // Mesma chave de limite do recebimento: os dois gravam no extrato do estoque.
@@ -51,6 +52,7 @@ export async function cancelarMovimentacaoAction(input: {
 }): Promise<{ ok: true } | { erro: string }> {
   const acesso = await requireGestao();
   try {
+    exigirEdicao(acesso, "estoque");
     if (!acesso.extratoEstoqueHabilitado) throw new ErroPublico(ERRO_EXTRATO_DESLIGADO);
     await exigirLimiteRequisicao("recebimento");
     const entrada = validarEntrada(cancelarMovimentacaoSchema, input);

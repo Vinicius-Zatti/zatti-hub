@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/acesso";
+import { mensagemSemEdicao, requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { modeloDaBiblioteca } from "@/lib/garante/biblioteca";
 import { mensagemErroPlano, validarMotivoDescarte, validarResolucao } from "@/lib/garante/planos";
@@ -38,7 +38,9 @@ export async function iniciarChecklistAction(
   publicacaoId: string,
   dia: DiaAgenda = "hoje",
 ): Promise<Resultado<{ ok: true; execucaoId: string }>> {
-  await requireGarante();
+  const acesso = await requireGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   if (dia !== "hoje" && dia !== "ontem" && dia !== "amanha") return { erro: "Dia inválido." };
   const supabase = await createClient();
   const dataDoChecklist = dataDoDiaAgenda(dia);
@@ -53,7 +55,9 @@ export async function responderItemAction(
   itemId: string,
   resposta: { valorBool?: boolean; valorNumero?: number; valorTexto?: string; naoSeAplica?: boolean; justificativa?: string },
 ): Promise<Resultado<{ ok: true; dentroMeta: boolean }>> {
-  await requireGarante();
+  const acesso = await requireGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   if (resposta.valorNumero !== undefined && !Number.isFinite(resposta.valorNumero)) return { erro: "Digite um número válido." };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("garante_responder", {
@@ -70,7 +74,9 @@ export async function responderItemAction(
 }
 
 export async function registrarFotoAction(execucaoId: string, itemId: string, caminho: string): Promise<Resultado> {
-  await requireGarante();
+  const acesso = await requireGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   const { error } = await supabase.rpc("garante_registrar_foto", {
     p_execucao_id: execucaoId,
@@ -82,7 +88,9 @@ export async function registrarFotoAction(execucaoId: string, itemId: string, ca
 }
 
 export async function concluirChecklistAction(execucaoId: string): Promise<Resultado<{ ok: true; faltam: number }>> {
-  await requireGarante();
+  const acesso = await requireGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("garante_concluir", { p_execucao_id: execucaoId });
   if (error) return { erro: mensagemErroGarante(error.message) };
@@ -94,6 +102,8 @@ export async function concluirChecklistAction(execucaoId: string): Promise<Resul
 
 export async function criarModeloAction(formData: FormData): Promise<void> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) redirect("/garante");
   const supabase = await createClient();
   const chave = String(formData.get("biblioteca") ?? "");
   const base = chave ? modeloDaBiblioteca(chave) : undefined;
@@ -143,6 +153,8 @@ export async function criarModeloAction(formData: FormData): Promise<void> {
  * no Quadro do dia). Regra no banco: `garante_parar_modelo`. */
 export async function pararDeUsarModeloAction(modeloId: string): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   const { error } = await supabase.rpc("garante_parar_modelo", { p_modelo_id: modeloId });
   if (error) return { erro: mensagemErroGarante(error.message) };
@@ -153,6 +165,8 @@ export async function pararDeUsarModeloAction(modeloId: string): Promise<Resulta
 
 export async function salvarItemAction(modeloId: string, itemId: string | null, formData: FormData): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarItem({
     titulo: String(formData.get("titulo") ?? ""),
     tipo: String(formData.get("tipo") ?? "check"),
@@ -196,7 +210,9 @@ export async function salvarItemAction(modeloId: string, itemId: string | null, 
 }
 
 export async function removerItemAction(modeloId: string, itemId: string): Promise<Resultado> {
-  await requireGestaoGarante();
+  const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   // Desativa, não apaga: execuções antigas guardam o item no snapshot.
   const { error } = await supabase.from("garante_itens").update({ ativo: false }).eq("id", itemId).eq("modelo_id", modeloId);
@@ -206,7 +222,9 @@ export async function removerItemAction(modeloId: string, itemId: string): Promi
 }
 
 export async function moverItemAction(modeloId: string, itemId: string, direcao: "subir" | "descer"): Promise<Resultado> {
-  await requireGestaoGarante();
+  const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   const { data } = await supabase
     .from("garante_itens")
@@ -234,6 +252,8 @@ export async function publicarAction(
   dados: { dias: string[]; horario: string; setorId: string; responsavelId: string },
 ): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarPublicacao({ dias: dados.dias, horario: dados.horario });
   if (!r.ok) return { erro: r.erro };
   const setorId = dados.setorId || null;
@@ -257,6 +277,8 @@ export async function publicarAction(
  * histórico de atrasos não ser reescrito. Regra no banco. */
 export async function encerrarPublicacaoAction(publicacaoId: string): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const supabase = await createClient();
   const { error } = await supabase.rpc("garante_encerrar_publicacao", { p_publicacao_id: publicacaoId });
   if (error) return { erro: mensagemErroGarante(error.message) };
@@ -277,6 +299,8 @@ export async function definirRegraAction(dados: {
   prazoPlanoHoras: number | null;
 }): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarRegra(dados);
   if (!r.ok) return { erro: r.erro };
   const supabase = await createClient();
@@ -296,6 +320,8 @@ export async function definirRegraAction(dados: {
  * e da nota. Recusado em data passada, hoje e data com checklist começado. */
 export async function marcarDiaSemOperacaoAction(dados: { data: string; motivo: string }): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarDiaSemOperacao({ ...dados, hoje: hojeOperacao() });
   if (!r.ok) return { erro: r.erro };
   const supabase = await createClient();
@@ -309,6 +335,8 @@ export async function marcarDiaSemOperacaoAction(dados: { data: string; motivo: 
 /** Desfaz um dia sem operação futuro: os checklists daquele dia voltam. */
 export async function desmarcarDiaSemOperacaoAction(data: string): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { erro: "Data inválida." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("garante_desmarcar_dia_sem_operacao", { p_unidade_id: acesso.unidadeId, p_data: data });
@@ -324,6 +352,8 @@ export async function desmarcarDiaSemOperacaoAction(data: string): Promise<Resul
  * gestão da unidade; origem, responsável e prazo não mudam (`garante_resolver_plano`). */
 export async function resolverPlanoAction(planoId: string, texto: string): Promise<Resultado> {
   const acesso = await requireGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarResolucao(texto);
   if (!r.ok) return { erro: r.erro };
   const supabase = await createClient();
@@ -337,6 +367,8 @@ export async function resolverPlanoAction(planoId: string, texto: string): Promi
 /** Descarta o plano (não precisa de ação), com motivo. Só gestão (`garante_descartar_plano`). */
 export async function descartarPlanoAction(planoId: string, motivo: string): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   const r = validarMotivoDescarte(motivo);
   if (!r.ok) return { erro: r.erro };
   const supabase = await createClient();
@@ -357,6 +389,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * (`garante_definir_responsavel_avisos`), por isso não há `registrarAuditoria` aqui. */
 export async function definirResponsavelAvisosAction(vinculoId: string | null): Promise<Resultado> {
   const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
   if (vinculoId !== null && !UUID.test(vinculoId)) return { erro: "Pessoa inválida." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("garante_definir_responsavel_avisos", { p_unidade_id: acesso.unidadeId, p_vinculo_id: vinculoId });

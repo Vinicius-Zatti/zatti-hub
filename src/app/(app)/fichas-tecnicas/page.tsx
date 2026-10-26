@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function FichasTecnicasPage() {
   const acesso = await getAcessoAtual();
   const podeGerir = acesso.role !== "operacional" && temPermissao(acesso, "cardapio", "editar");
+  // Chef (26/10/2026): cria e edita ficha e vê o custo; margem e precificação seguem da gestão.
+  const podeEditarFicha = temPermissao(acesso, "cardapio", "chef");
 
   const [fichas, configuracao] = await Promise.all([
     listarFichasTecnicas(acesso.unidadeId),
@@ -34,6 +36,7 @@ export default async function FichasTecnicasPage() {
       <ListaFichasTecnicas
         fichas={fichas}
         podeGerir={podeGerir}
+        podeEditarFicha={podeEditarFicha}
         margemNecessaria={margemNecessaria}
         margemPontoEquilibrio={margemPontoEquilibrio}
         deducoesTotal={deducoesTotal}

@@ -1,5 +1,5 @@
 import { requireEquipe, temPermissao } from "@/lib/acesso";
-import { podeAdministrarPermissoes, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
+import { podeAdministrarPermissoes, podeMexerNaContaDe, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { CadastrarMembroForm } from "@/components/equipe/cadastrar-membro-form";
 import { CartaoMembro } from "@/components/equipe/cartao-membro";
 import { carregarEquipe } from "./dados";
@@ -13,15 +13,15 @@ export default async function EquipePage() {
 
   const ativos = membros.filter((m) => m.situacao !== "revogado");
   const semAcesso = membros.filter((m) => m.situacao === "revogado");
-  // Permissões por módulo (fase 6): "ver" a Equipe abre a lista sem botões; master e dono
-  // (no piloto) mudam as permissões de cada pessoa.
+  // Permissões por módulo (fase 6): "ver" a Equipe abre a lista sem botões; master e o titular
+  // (sem titular marcado, a gestão de todas as unidades) mudam as permissões de cada pessoa.
   const podeEditar = temPermissao(acesso, "equipe", "editar");
   const equipePermissoes = podeEditar && podeAdministrarPermissoes(acesso)
     ? ativos.map((m) => ({
         vinculoId: m.vinculoId,
         nome: m.nome ?? m.email,
         role: m.role,
-        orgInteira: m.unidadeId === null,
+        ehDono: m.ehDono,
         excecoes: m.excecoes,
       }))
     : null;
@@ -65,9 +65,8 @@ export default async function EquipePage() {
               podeTodas={!acesso.unidadeFixa}
               organizacaoNome={acesso.organizacaoNome}
               podeEditar={podeEditar}
-              equipePermissoes={
-                podeMudarPermissoesDe(acesso, { role: m.role, unidadeId: m.unidadeId }) ? equipePermissoes : null
-              }
+              podeMexerNaConta={podeMexerNaContaDe(acesso, { ehTitular: m.contaTitular })}
+              equipePermissoes={podeMudarPermissoesDe(acesso, { ehDono: m.ehDono }) ? equipePermissoes : null}
             />
           ))}
         </div>
@@ -87,6 +86,7 @@ export default async function EquipePage() {
               podeTodas={!acesso.unidadeFixa}
               organizacaoNome={acesso.organizacaoNome}
               podeEditar={podeEditar}
+              podeMexerNaConta={podeMexerNaContaDe(acesso, { ehTitular: m.contaTitular })}
             />
             ))}
           </div>

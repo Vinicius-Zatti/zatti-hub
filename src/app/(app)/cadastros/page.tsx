@@ -13,6 +13,7 @@ import { aplicarPermissoesMenu } from "@/lib/permissoes/menu";
 export default async function CadastrosPage() {
   if (!usaNavegacaoV2(await getAcessoAtual())) redirect("/estoque/produtos");
   const acesso = await requireGestao();
+  if (acesso.permissoes.cadastros === "sem_acesso") redirect("/painel");
   const menu = aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenuRestaurante(acesso, false)), acesso.permissoes);
   const cadastros = filtrarCatalogo(CATALOGO_CADASTROS, menu);
 

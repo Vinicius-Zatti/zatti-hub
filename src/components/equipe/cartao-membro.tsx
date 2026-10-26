@@ -34,6 +34,7 @@ export function CartaoMembro({
   podeTodas,
   organizacaoNome,
   podeEditar = true,
+  podeMexerNaConta = true,
   equipePermissoes = null,
 }: {
   membro: MembroEquipe;
@@ -44,7 +45,9 @@ export function CartaoMembro({
   organizacaoNome: string;
   /** Equipe em "editar" (fase 6). Só "ver": o cartão fica sem nenhum botão. */
   podeEditar?: boolean;
-  /** Quem administra permissões (master ou dono, no piloto) recebe a equipe para o botão
+  /** Conta do titular (26/10/2026): senha provisória, WhatsApp, editar e tirar acesso só a Zatti. */
+  podeMexerNaConta?: boolean;
+  /** Quem administra permissões (master ou o titular) recebe a equipe para o botão
    * "Permissões" e o "Copiar de...". `null` = sem o botão. */
   equipePermissoes?: PessoaPermissoes[] | null;
 }) {
@@ -82,6 +85,14 @@ export function CartaoMembro({
           <p className="truncate font-semibold text-azul-noite">
             {membro.nome ?? membro.email}
             {membro.ehVoce && <span className="ml-1 text-xs font-normal text-cinza-medio">(você)</span>}
+            {membro.ehTitular && (
+              <span
+                className="ml-2 rounded-full bg-ambar/15 px-2 py-0.5 text-[10px] font-semibold text-ambar"
+                title="Responsável pelo cliente no Zatti Hub. Só a Zatti troca."
+              >
+                Titular
+              </span>
+            )}
           </p>
           <p className="truncate text-xs text-cinza-medio">{membro.email}</p>
         </div>
@@ -96,6 +107,10 @@ export function CartaoMembro({
         </p>
       )}
 
+      {!membro.ehVoce && podeEditar && !podeMexerNaConta && (
+        <p className="text-xs text-cinza-medio">Acesso do titular: só a Zatti muda senha, WhatsApp e acesso.</p>
+      )}
+
       {!membro.ehVoce && podeEditar && (
         <div className="flex flex-wrap gap-2">
           {membro.situacao !== "revogado" && (
@@ -108,7 +123,7 @@ export function CartaoMembro({
               {membro.situacao === "aguardando" ? "Reenviar senha" : "Reenviar acesso"}
             </button>
           )}
-          {membro.situacao === "ativo" && (
+          {membro.situacao === "ativo" && podeMexerNaConta && (
             <GerarSenhaProvisoria
               modo="equipe"
               vinculoId={membro.vinculoId}
@@ -117,15 +132,17 @@ export function CartaoMembro({
               className={`${BOTAO} border-ambar text-ambar hover:bg-ambar/10`}
             />
           )}
-          <button
-            type="button"
-            disabled={pendente}
-            onClick={() => setEditando((v) => !v)}
-            className={`${BOTAO} border-cinza-claro text-cinza hover:bg-off-white`}
-          >
-            Trocar WhatsApp
-          </button>
-          {membro.situacao !== "revogado" && (
+          {podeMexerNaConta && (
+            <button
+              type="button"
+              disabled={pendente}
+              onClick={() => setEditando((v) => !v)}
+              className={`${BOTAO} border-cinza-claro text-cinza hover:bg-off-white`}
+            >
+              Trocar WhatsApp
+            </button>
+          )}
+          {membro.situacao !== "revogado" && podeMexerNaConta && (
             <EditarAcesso
               modo="equipe"
               vinculoId={membro.vinculoId}
@@ -144,7 +161,7 @@ export function CartaoMembro({
                 vinculoId: membro.vinculoId,
                 nome: membro.nome ?? membro.email,
                 role: membro.role,
-                orgInteira: membro.unidadeId === null,
+                ehDono: membro.ehDono,
                 excecoes: membro.excecoes,
               }}
               outras={equipePermissoes}
@@ -160,7 +177,7 @@ export function CartaoMembro({
             >
               Devolver acesso
             </button>
-          ) : (
+          ) : !podeMexerNaConta ? null : (
             <button
               type="button"
               disabled={pendente}

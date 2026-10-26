@@ -154,7 +154,11 @@ export type CodigoGerarProvisoria =
   | "outra_unidade"
   | "limite"
   | "limite_ator"
-  | "whatsapp_recente";
+  | "whatsapp_recente"
+  | "alvo_titular";
+
+/** Conta do titular (26/10/2026): senha, WhatsApp e acesso só o master muda. */
+export const MENSAGEM_CONTA_TITULAR = "Essa pessoa é a titular do cliente. Senha, WhatsApp e acesso dela só a Zatti muda.";
 
 /** Texto para a tela a partir da resposta do banco. `null` = deu certo.
  * Resposta desconhecida vira erro genérico (falha fechada). */
@@ -178,6 +182,8 @@ export function mensagemGerarProvisoria(codigo: unknown): string | null {
       return "Você gerou várias senhas provisórias em pouco tempo. Por segurança, espere 10 minutos.";
     case "whatsapp_recente":
       return "O WhatsApp desta pessoa mudou agora há pouco. Por segurança, espere 30 minutos ou peça à Zatti.";
+    case "alvo_titular":
+      return MENSAGEM_CONTA_TITULAR;
     default:
       return "Não foi possível gerar a senha provisória.";
   }
@@ -228,7 +234,8 @@ export type CodigoEditarVinculo =
   | "unidade_invalida"
   | "fora_da_unidade"
   | "duplicado"
-  | "ultima_gestao";
+  | "ultima_gestao"
+  | "alvo_titular";
 
 /** Texto para a tela a partir da resposta do banco. `null` = deu certo.
  * Resposta desconhecida vira erro genérico (falha fechada). */
@@ -260,6 +267,8 @@ export function mensagemEditarVinculo(codigo: unknown): string | null {
       return "Essa pessoa já tem esse acesso. Tire o outro antes, se quiser trocar.";
     case "ultima_gestao":
       return "Essa é a última pessoa de gestão que cobre esse acesso. Cadastre outra antes.";
+    case "alvo_titular":
+      return MENSAGEM_CONTA_TITULAR;
     default:
       return "Não foi possível editar o acesso.";
   }

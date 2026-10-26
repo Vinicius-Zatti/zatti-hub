@@ -3,7 +3,7 @@ import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { PedidoCompras } from "@/components/pedido-compras";
-import { requireGestao } from "@/lib/acesso";
+import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
 import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
@@ -19,6 +19,7 @@ export default async function PedidosPage({
   searchParams: Promise<{ data?: string | string[]; grupos?: string | string[] }>;
 }) {
   const acesso = await requireGestao();
+  redirecionarSemEdicao(acesso, "/estoque/pedidos");
   const params = await searchParams;
   const grupos = listaDoParametro(params.grupos);
 

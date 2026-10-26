@@ -3,13 +3,14 @@ import { listItensPendentes } from "@/lib/sheets/inventario";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { EdicaoGrid } from "@/components/edicao-grid";
 import { AreaRestrita } from "@/components/area-restrita";
-import { getAcessoAtual } from "@/lib/acesso";
+import { getAcessoAtual, redirecionarSemEdicao } from "@/lib/acesso";
 import { dadosPrePreparoDaGrade } from "@/lib/banco/pre-preparo";
 
 export const dynamic = "force-dynamic";
 
 export default async function EdicaoDadosPage() {
   const acesso = await getAcessoAtual();
+  redirecionarSemEdicao(acesso, "/estoque/produtos/edicao");
   if (acesso.role === "operacional") return <AreaRestrita />;
   // Leitura que falha sobe para o `error.tsx` do segmento: tela de erro padrão
   // (unidade, tela, data e identificador para o suporte), com o erro no log do

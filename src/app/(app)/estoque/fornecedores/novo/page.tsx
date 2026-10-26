@@ -1,10 +1,12 @@
 import { NovoFornecedorForm } from "@/components/novo-fornecedor-form";
+import { getAcessoAtual, redirecionarSemEdicao } from "@/lib/acesso";
 
 export default async function NovoFornecedorPage({
   searchParams,
 }: {
   searchParams: Promise<{ erro?: string }>;
 }) {
+  redirecionarSemEdicao(await getAcessoAtual(), "/estoque/fornecedores/novo");
   const { erro } = await searchParams;
   return (
     <div className="mx-auto max-w-lg">

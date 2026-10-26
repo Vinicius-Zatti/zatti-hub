@@ -286,6 +286,9 @@ export type FichaTecnicaResumo = {
   precoVendaIfood: number | null;
   precoVenda99Food: number | null;
   atualizadoEm: string;
+  /** Preço de venda (Salão) sugerido pelo chef, ainda não aprovado pela gestão (26/10/2026).
+   * Ausente onde não foi carregado. */
+  precoVendaRascunho?: number | null;
 };
 
 export type FichaTecnica = FichaTecnicaResumo & {

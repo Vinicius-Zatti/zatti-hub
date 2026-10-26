@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireGestao, registrarAuditoria } from "@/lib/acesso";
+import { requireGestao, registrarAuditoria, exigirEdicao } from "@/lib/acesso";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { mensagemErroPublica } from "@/lib/erros";
 import { designacaoSetoresSchema, setorSchema, validarEntrada } from "@/lib/validacao";
@@ -24,6 +24,7 @@ export async function salvarSetorAction(entrada: {
 }): Promise<ResultadoSetor> {
   try {
     const acesso = await requireGestao();
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("setor_salvar");
     const setor = validarEntrada(setorSchema, entrada);
 
@@ -56,6 +57,7 @@ export async function designarSetoresAction(
 ): Promise<ResultadoSetor> {
   try {
     const acesso = await requireGestao();
+    exigirEdicao(acesso, "cadastros");
     await exigirLimiteRequisicao("setor_designar");
     const entrada = validarEntrada(designacaoSetoresSchema, { designacoes });
 

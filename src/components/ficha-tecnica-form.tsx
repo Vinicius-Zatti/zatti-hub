@@ -72,6 +72,7 @@ export function FichaTecnicaForm({
   produtos: produtosIniciais,
   fichasDisponiveis,
   cadastroRapidoProduto = null,
+  modoChef = false,
   onSalvo,
   onCancelar,
 }: {
@@ -84,6 +85,9 @@ export function FichaTecnicaForm({
    * escolhido na linha. Só quem pode cadastrar produto (Gestão/master) recebe
    * a config - `criarProdutoAction` confere de novo no servidor. */
   cadastroRapidoProduto?: ConfigCadastroRapido | null;
+  /** Chef (26/10/2026): sem o preço oficial nem as observações gerenciais (o servidor guarda o
+   * que já estava; o preço do chef vai como rascunho na tela da ficha). */
+  modoChef?: boolean;
   /** Quando informado, o form vira "in-place" (usado dentro da própria tela
    * de detalhe) - em vez de navegar pra `/fichas-tecnicas/[id]`, avisa o
    * componente pai que salvou, pra ele voltar sozinho pro modo de leitura. */
@@ -506,7 +510,7 @@ export function FichaTecnicaForm({
                 decimais={0}
               />
             </label>
-            {camada === "VEN" && (
+            {camada === "VEN" && !modoChef && (
               <label className="col-span-2 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
                 Preço de venda - Salão (opcional - pode preencher depois)
                 <CampoNumero value={precoVenda} onChange={(v) => editar(setPrecoVenda, v)} />
@@ -677,15 +681,17 @@ export function FichaTecnicaForm({
               className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
             />
           </label>
-          <label className="mt-3 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
-            Gerenciais (fornecedor alternativo, observação de custo etc.)
-            <textarea
-              value={obsGerenciais}
-              onChange={(e) => editar(setObsGerenciais, e.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
-            />
-          </label>
+          {!modoChef && (
+            <label className="mt-3 flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+              Gerenciais (fornecedor alternativo, observação de custo etc.)
+              <textarea
+                value={obsGerenciais}
+                onChange={(e) => editar(setObsGerenciais, e.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza"
+              />
+            </label>
+          )}
         </div>
 
         {erro && <p className="text-sm text-vermelho">{erro}</p>}
