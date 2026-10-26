@@ -75,25 +75,29 @@ select throws_ok(
 do $$
 declare
   t0 timestamptz;
+  v_rodada int;
 begin
-  t0 := clock_timestamp();
-  insert into public.produtos (unidade_id, sku, grupo, nome, preco_unitario, fornecedor_1, fornecedor_2,
-                               fornecedor_3, fornecedor_4, observacoes, ativo, atualizado_em)
-  select 'uni-campos', 'MERVEL' || lpad(g::text, 3, '0'), 'MER', 'item a ' || g, g + 1, '', '', '', '', '', true, now()
-  from generate_series(1, 300) g
-  on conflict (unidade_id, sku) do update
-  set grupo = excluded.grupo, nome = excluded.nome, preco_unitario = excluded.preco_unitario,
-      fornecedor_1 = excluded.fornecedor_1, fornecedor_2 = excluded.fornecedor_2,
-      fornecedor_3 = excluded.fornecedor_3, fornecedor_4 = excluded.fornecedor_4,
-      observacoes = excluded.observacoes, ativo = excluded.ativo, atualizado_em = excluded.atualizado_em;
-  perform set_config('teste.ms_upsert', (extract(epoch from clock_timestamp() - t0) * 1000)::text, true);
+  -- Duas rodadas de cada; vale a segunda (a primeira paga cache frio).
+  for v_rodada in 1..2 loop
+    t0 := clock_timestamp();
+    insert into public.produtos (unidade_id, sku, grupo, nome, preco_unitario, fornecedor_1, fornecedor_2,
+                                 fornecedor_3, fornecedor_4, observacoes, ativo, atualizado_em)
+    select 'uni-campos', 'MERVEL' || lpad(g::text, 3, '0'), 'MER', 'item a ' || g, g + 1, '', '', '', '', '', true, now()
+    from generate_series(1, 300) g
+    on conflict (unidade_id, sku) do update
+    set grupo = excluded.grupo, nome = excluded.nome, preco_unitario = excluded.preco_unitario,
+        fornecedor_1 = excluded.fornecedor_1, fornecedor_2 = excluded.fornecedor_2,
+        fornecedor_3 = excluded.fornecedor_3, fornecedor_4 = excluded.fornecedor_4,
+        observacoes = excluded.observacoes, ativo = excluded.ativo, atualizado_em = excluded.atualizado_em;
+    perform set_config('teste.ms_upsert', (extract(epoch from clock_timestamp() - t0) * 1000)::text, true);
 
-  t0 := clock_timestamp();
-  perform public.salvar_produtos_campos('uni-campos', (
-    select jsonb_agg(jsonb_build_object('sku', 'MERVEL' || lpad(g::text, 3, '0'),
-                                        'campos', jsonb_build_object('nome', 'item b ' || g, 'preco_unitario', g + 2)))
-    from generate_series(1, 300) g));
-  perform set_config('teste.ms_funcao', (extract(epoch from clock_timestamp() - t0) * 1000)::text, true);
+    t0 := clock_timestamp();
+    perform public.salvar_produtos_campos('uni-campos', (
+      select jsonb_agg(jsonb_build_object('sku', 'MERVEL' || lpad(g::text, 3, '0'),
+                                          'campos', jsonb_build_object('nome', 'item b ' || g, 'preco_unitario', g + 2)))
+      from generate_series(1, 300) g));
+    perform set_config('teste.ms_funcao', (extract(epoch from clock_timestamp() - t0) * 1000)::text, true);
+  end loop;
 end;
 $$;
 
@@ -101,7 +105,7 @@ select diag('300 produtos: upsert da linha inteira ' || round(current_setting('t
   || ' ms; salvar_produtos_campos ' || round(current_setting('teste.ms_funcao')::numeric, 1) || ' ms');
 select is((select count(*)::int from produtos where unidade_id = 'uni-campos' and nome like 'item b %'), 300,
   'os 300 produtos são gravados numa chamada');
-select ok(current_setting('teste.ms_funcao')::numeric < 3 * current_setting('teste.ms_upsert')::numeric + 100,
+select ok(current_setting('teste.ms_funcao')::numeric <= 1.5 * current_setting('teste.ms_upsert')::numeric + 20,
   'a função não fica mais lenta que o upsert de antes (margem de ruído)');
 
 select * from finish();
