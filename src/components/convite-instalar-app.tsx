@@ -39,7 +39,7 @@ declare global {
 }
 
 const VIDEOS = {
-  ios: { src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4", capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg", duracao: "45s" },
+  ios: { src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4", capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg", duracao: "42s" },
   android: {
     src: "/videos/zatti-hub-como-app-no-celular-android.mp4",
     capa: "/videos/zatti-hub-como-app-no-celular-android-capa.jpg",

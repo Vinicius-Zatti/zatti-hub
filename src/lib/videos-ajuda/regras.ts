@@ -40,7 +40,7 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     titulo: "Como instalar o app no iPhone",
     src: "/videos/zatti-hub-como-app-no-celular-iphone.mp4",
     capa: "/videos/zatti-hub-como-app-no-celular-iphone-capa.jpg",
-    duracao: "45s",
+    duracao: "42s",
     largura: 768,
     altura: 1664,
   },
