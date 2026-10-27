@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { CampoNumero } from "@/components/campo-numero";
@@ -132,7 +133,8 @@ export function PerdasEstoque({
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-4 pb-10" data-tabela-larga>
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -149,6 +151,8 @@ export function PerdasEstoque({
           Nenhuma perda registrada ainda.
         </div>
       ) : (
+        <>
+        <DicaVirarCelular />
         <TabelaRolavel ariaLabel="Perdas registradas">
           <table className="w-full text-sm">
             <thead>
@@ -212,6 +216,7 @@ export function PerdasEstoque({
             </tbody>
           </table>
         </TabelaRolavel>
+        </>
       )}
 
       {paginas > 1 && (

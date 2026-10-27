@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ItemInventario } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { CampoBusca } from "@/components/campo-busca";
 import { filtrarPorNomeOuSku } from "@/lib/busca-lista";
 import {
@@ -238,7 +239,8 @@ export function VisualizacaoContagens({
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-4 pb-10" data-tabela-larga>
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Conferência de Contagem</h1>
         <p className="text-sm text-cinza-medio">Histórico dos inventários já registrados.</p>
@@ -355,6 +357,8 @@ export function VisualizacaoContagens({
           sozinho a partir do preço já registrado.
         </p>
       )}
+
+      <DicaVirarCelular />
 
       {visao === "setor" && (
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Conferência de contagens">

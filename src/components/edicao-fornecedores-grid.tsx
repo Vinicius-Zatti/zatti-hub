@@ -11,6 +11,7 @@ import { GRUPO_OPCOES } from "@/lib/grupos";
 import { useTabelaExpansivel } from "@/components/use-tabela-expansivel";
 import { useArrastarParaRolar } from "@/components/use-arrastar-para-rolar";
 import { ControlesTabela } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { useGuardaEdicao } from "@/components/guarda-edicao";
 import { NovoFornecedorModal } from "@/components/novo-fornecedor-modal";
 import { normalizarBusca } from "@/lib/busca";
@@ -148,7 +149,8 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
   useEffect(() => () => desativarGuarda(), [desativarGuarda]);
 
   return (
-    <div>
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div data-tabela-larga>
       <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard label="Fornecedores cadastrados" value={String(fornecedoresLocais.length)} />
         <button
@@ -168,9 +170,11 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
         </button>
       </div>
 
-      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3" : ""}>
+      {/* Tela cheia com o celular deitado: borda e espaço menores, como em `TabelaRolavel`,
+          e sem o título e a explicação, que comiam um terço da altura. */}
+      <div className={expandido ? "fixed inset-0 z-40 flex flex-col gap-2 bg-branco p-3 deitado:gap-1 deitado:p-2" : ""}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-xl font-bold text-azul-noite">
+          <h2 className={`font-display text-xl font-bold text-azul-noite ${expandido ? "deitado:hidden" : ""}`}>
             Cadastro completo ({filtrados.length}
             {filtrados.length !== fornecedoresLocais.length ? ` de ${fornecedoresLocais.length}` : ""})
           </h2>
@@ -200,7 +204,7 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
             <ControlesTabela scrollRef={scrollRef} expandido={expandido} onAlternarExpandir={alternar} />
           </div>
         </div>
-        <p className="text-xs text-cinza-medio">
+        <p className={`text-xs text-cinza-medio ${expandido ? "deitado:hidden" : ""}`}>
           Células em destaque estão vazias e são obrigatórias (Nome Fantasia, Vendedor, WhatsApp).
         </p>
 
@@ -232,10 +236,11 @@ export function EdicaoFornecedoresGrid({ fornecedores }: { fornecedores: Fornece
           ))}
         </div>
 
+        {!expandido && <DicaVirarCelular />}
         <div
           ref={scrollRef}
           {...handlers}
-          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-lg border border-cinza-claro bg-branco ${arrastando ? "cursor-grabbing select-none" : "cursor-grab"}`}
+          className={`${expandido ? "min-h-0 flex-1" : "max-h-[70vh] group-has-[[data-tabela-larga]]/app:deitado:max-h-[calc(100dvh-4rem)]"} overflow-auto rounded-lg border border-cinza-claro bg-branco ${arrastando ? "cursor-grabbing select-none" : "cursor-grab"}`}
         >
         <table className="w-full min-w-[1600px] text-xs">
           <thead>

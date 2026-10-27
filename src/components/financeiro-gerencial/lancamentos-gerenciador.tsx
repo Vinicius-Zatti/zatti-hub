@@ -17,6 +17,7 @@ import {
 import { CampoNumero } from "@/components/campo-numero";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { DocumentoModal } from "@/components/financeiro-gerencial/documento-modal";
@@ -255,7 +256,8 @@ export function LancamentosGerenciador({
   const totalValor = useMemo(() => somarValores(linhasOrdenadas.map((l) => l.parcela.valor)), [linhasOrdenadas]);
 
   return (
-    <div className="flex flex-col gap-5 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-5 pb-10" data-tabela-larga>
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold text-azul-noite">{titulo}</h1>
         <div className="flex flex-wrap justify-end gap-2">
@@ -367,6 +369,7 @@ export function LancamentosGerenciador({
         </div>
       </div>
 
+      <DicaVirarCelular />
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel={`Tabela de ${titulo.toLowerCase()}`}>
         <table className="w-full min-w-[980px] text-sm">
           <thead>
