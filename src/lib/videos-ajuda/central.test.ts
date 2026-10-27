@@ -6,7 +6,7 @@ describe("central de vídeos explicativos", () => {
   it("agrupa os vídeos atuais em Começo, Estoque e Garante, na ordem de VIDEOS_AJUDA", () => {
     const grupos = agruparVideosPorSecao(VIDEOS_AJUDA);
     expect(grupos.map((g) => g.secao)).toEqual(["Começo", "Estoque", "Garante"]);
-    expect(grupos[0].videos.map((v) => v.id)).toEqual(["boas-vindas", "instalar-iphone", "instalar-android"]);
+    expect(grupos[0].videos.map((v) => v.id)).toEqual(["boas-vindas", "instalar-iphone", "instalar-android", "inicio", "dashboard"]);
     expect(grupos[1].videos.map((v) => v.id)).toContain("contagem");
     // Os 10 vídeos das telas do Estoque (27/10/2026) também entram em Estoque.
     expect(grupos[1].videos).toHaveLength(14);
