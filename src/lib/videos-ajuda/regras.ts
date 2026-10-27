@@ -11,7 +11,17 @@ export type IdVideoAjuda =
   | "contagem"
   | "cotacao"
   | "espelhos"
-  | "pedido-feito";
+  | "pedido-feito"
+  | "estoque-visao-geral"
+  | "estoque-produtos"
+  | "estoque-editar-produtos"
+  | "estoque-setores"
+  | "estoque-conferir-contagens"
+  | "estoque-fornecedores"
+  | "estoque-editar-fornecedores"
+  | "estoque-cmv-real"
+  | "estoque-perdas"
+  | "estoque-movimentacoes";
 
 export type VideoAjuda = {
   titulo: string;
@@ -84,6 +94,87 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     largura: 1664,
     altura: 768,
   },
+  // Telas do Estoque (27/10/2026): uma por tela, mesmo padrão dos de cima.
+  "estoque-visao-geral": {
+    titulo: "Como usar a Visão geral do Estoque",
+    src: "/videos/zatti-hub-estoque-visao-geral.mp4",
+    capa: "/videos/zatti-hub-estoque-visao-geral-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "estoque-produtos": {
+    titulo: "Como usar o cadastro de Produtos",
+    src: "/videos/zatti-hub-estoque-produtos.mp4",
+    capa: "/videos/zatti-hub-estoque-produtos-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "estoque-editar-produtos": {
+    titulo: "Como editar os Produtos",
+    src: "/videos/zatti-hub-estoque-editar-produtos.mp4",
+    capa: "/videos/zatti-hub-estoque-editar-produtos-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "estoque-setores": {
+    titulo: "Como montar os Setores",
+    src: "/videos/zatti-hub-estoque-setores.mp4",
+    capa: "/videos/zatti-hub-estoque-setores-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "estoque-conferir-contagens": {
+    titulo: "Como conferir as contagens",
+    src: "/videos/zatti-hub-estoque-conferir-contagens.mp4",
+    capa: "/videos/zatti-hub-estoque-conferir-contagens-capa.jpg",
+    duracao: "1 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "estoque-fornecedores": {
+    titulo: "Como usar o cadastro de Fornecedores",
+    src: "/videos/zatti-hub-estoque-fornecedores.mp4",
+    capa: "/videos/zatti-hub-estoque-fornecedores-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "estoque-editar-fornecedores": {
+    titulo: "Como editar os Fornecedores",
+    src: "/videos/zatti-hub-estoque-editar-fornecedores.mp4",
+    capa: "/videos/zatti-hub-estoque-editar-fornecedores-capa.jpg",
+    duracao: "2 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "estoque-cmv-real": {
+    titulo: "Como calcular o CMV Real",
+    src: "/videos/zatti-hub-estoque-cmv-real.mp4",
+    capa: "/videos/zatti-hub-estoque-cmv-real-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "estoque-perdas": {
+    titulo: "Como registrar as perdas",
+    src: "/videos/zatti-hub-estoque-perdas.mp4",
+    capa: "/videos/zatti-hub-estoque-perdas-capa.jpg",
+    duracao: "1 min",
+    largura: 1664,
+    altura: 768,
+  },
+  "estoque-movimentacoes": {
+    titulo: "Como ler as Movimentações",
+    src: "/videos/zatti-hub-estoque-movimentacoes.mp4",
+    capa: "/videos/zatti-hub-estoque-movimentacoes-capa.jpg",
+    duracao: "1 min",
+    largura: 1664,
+    altura: 768,
+  },
 };
 
 /** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
@@ -93,6 +184,16 @@ const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
   "/estoque/pedidos": "cotacao",
   "/estoque/pedidos/cotacoes": "espelhos",
   "/estoque/pedidos/feitos": "pedido-feito",
+  "/estoque/visao-geral": "estoque-visao-geral",
+  "/estoque/produtos": "estoque-produtos",
+  "/estoque/produtos/edicao": "estoque-editar-produtos",
+  "/estoque/setores": "estoque-setores",
+  "/estoque/contagem/visualizacao": "estoque-conferir-contagens",
+  "/estoque/fornecedores": "estoque-fornecedores",
+  "/estoque/fornecedores/edicao": "estoque-editar-fornecedores",
+  "/estoque/cmv": "estoque-cmv-real",
+  "/estoque/contagem/perdas": "estoque-perdas",
+  "/estoque/contagem/movimentacoes": "estoque-movimentacoes",
 };
 
 /** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */

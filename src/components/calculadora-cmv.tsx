@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ItemInventario, Pedido } from "@/lib/types";
 import { StatCard } from "@/components/stat-card";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { calcularCmv, datasDeContagem, datasParciais, itensSemValor } from "@/lib/cmv";
@@ -81,7 +82,13 @@ export function CalculadoraCmv({
   if (datas.length < 2) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="font-display text-3xl font-bold text-azul-noite">CMV Real</h1>
+        <div>
+          <h1 className="font-display text-3xl font-bold text-azul-noite">CMV Real</h1>
+          {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="estoque-cmv-real" pergunta="Como calcular o CMV Real?" />
+          </div>
+        </div>
         <div className="rounded-lg border border-cinza-claro bg-branco p-6 text-sm text-cinza-medio">
           Precisa de pelo menos 2 contagens registradas (uma no início do período, outra no fim) pra
           calcular o CMV. Registre a contagem em Estoque {">"} Contagem primeiro.
@@ -97,6 +104,10 @@ export function CalculadoraCmv({
         <p className="text-sm text-cinza-medio">
           Calculado a partir do estoque contado, das compras recebidas e do faturamento do período.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-cmv-real" pergunta="Como calcular o CMV Real?" />
+        </div>
       </div>
 
       {parciais.length > 0 && (

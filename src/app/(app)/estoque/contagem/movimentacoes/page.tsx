@@ -1,6 +1,7 @@
 import { getAcessoAtual } from "@/lib/acesso";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { ExtratoDesligado } from "@/components/extrato/extrato-desligado";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { ExtratoMovimentacoes } from "@/components/extrato/extrato-movimentacoes";
 import { listarExtratoPagina, listarSaldos } from "@/lib/banco/extrato";
 import { lerFiltroExtrato } from "@/lib/extrato";
@@ -42,6 +43,10 @@ export default async function MovimentacoesPage({
         <p className="text-sm text-cinza-medio">
           Extrato do estoque: compras recebidas, perdas e a posição de cada contagem completa.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-movimentacoes" pergunta="Como ler as movimentações?" />
+        </div>
       </div>
       <ExtratoMovimentacoes filtro={filtro} linhas={pagina.linhas} total={pagina.total} saldos={saldos} />
     </div>

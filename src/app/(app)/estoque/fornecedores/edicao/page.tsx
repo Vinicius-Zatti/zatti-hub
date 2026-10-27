@@ -1,4 +1,5 @@
 import { garantirCodigos } from "@/lib/sheets/fornecedores";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { EdicaoFornecedoresGrid } from "@/components/edicao-fornecedores-grid";
 import { getAcessoAtual, redirecionarSemEdicao } from "@/lib/acesso";
 
@@ -20,6 +21,10 @@ export default async function EdicaoFornecedoresPage() {
           O cadastro inteiro de fornecedores, como na planilha. Células destacadas estão vazias -
           edita direto aqui e salva linha por linha ou tudo de uma vez.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-editar-fornecedores" pergunta="Como editar os fornecedores?" />
+        </div>
       </div>
       <EdicaoFornecedoresGrid fornecedores={fornecedores} />
     </div>

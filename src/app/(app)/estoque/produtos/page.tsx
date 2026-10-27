@@ -5,6 +5,7 @@ import { TabelaProdutos } from "@/components/tabela-produtos";
 import { NovoProdutoModal } from "@/components/novo-produto-modal";
 import { getAcessoAtual } from "@/lib/acesso";
 import Link from "next/link";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,10 @@ export default async function ProdutosPage() {
           <p className="text-sm text-cinza-medio">
             Todos os insumos do restaurante — o que você compra, contagem e regra.
           </p>
+          {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="estoque-produtos" pergunta="Como usar o cadastro de produtos?" />
+          </div>
         </div>
         {acesso.role !== "operacional" && <NovoProdutoModal />}
       </div>

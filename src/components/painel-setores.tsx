@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { Produto, Setor } from "@/lib/types";
 import { nomeGrupo } from "@/lib/grupos";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { designarSetoresAction, salvarSetorAction } from "@/app/(app)/estoque/setores/actions";
 import { normalizarBusca } from "@/lib/busca";
 
@@ -147,6 +148,10 @@ export function PainelSetores({
           Cada setor conta a própria lista. Um produto pode estar em mais de um setor - o limão
           fica no Bar e na Cozinha, e as duas quantidades somam no total da unidade.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-setores" pergunta="Como montar os setores?" />
+        </div>
       </div>
 
       {erro && <p className="rounded-md bg-vermelho/10 p-3 text-sm text-vermelho">{erro}</p>}
