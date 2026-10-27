@@ -4,6 +4,7 @@ import { DICA_GARANTE, hojeOperacao, percentual, situacaoNaTela } from "@/lib/ga
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ESTILO_SITUACAO } from "@/components/garante/estilos";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { carregarAgenda } from "../dados";
 
 /** Quadro do dia (gestão): o que está pendente, atrasado e feito, com link para
@@ -33,6 +34,10 @@ export default async function QuadroPage({ searchParams }: { searchParams: Promi
           <p className="text-sm text-cinza-medio">
             {acesso.unidadeNome} · {formatarDataBr(data)}
           </p>
+          {/* Vídeo desta tela (27/10/2026), mesmo link discreto do Estoque. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="garante-quadro" pergunta="Como ler o Quadro do dia?" />
+          </div>
         </div>
         <form className="flex items-end gap-2">
           <label className="text-xs font-semibold text-cinza-medio">

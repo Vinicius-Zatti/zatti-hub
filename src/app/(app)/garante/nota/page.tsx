@@ -3,6 +3,7 @@ import { requireGestaoGarante } from "@/lib/acesso";
 import { DICA_NOTA, PERIODOS_NOTA, intervaloNota, lerPeriodoNota, ordenarPorNota, textoNota } from "@/lib/garante/nota";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { carregarNota, type LinhaNotaTela } from "../dados";
@@ -34,6 +35,10 @@ export default async function NotaPage({ searchParams }: { searchParams: Promise
           <p className="text-sm text-cinza-medio">
             {acesso.unidadeNome} · {formatarDataBr(de)} a {formatarDataBr(ate)}
           </p>
+          {/* Vídeo desta tela (27/10/2026), mesmo link discreto do Estoque. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="garante-nota" pergunta="Como ler a Nota?" />
+          </div>
         </div>
         <nav className="flex gap-2" aria-label="Período">
           {PERIODOS_NOTA.map((p) => (

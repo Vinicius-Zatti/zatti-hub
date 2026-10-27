@@ -2,6 +2,7 @@ import { requireGarante } from "@/lib/acesso";
 import { DICA_GARANTE, dataDoDiaAgenda, mostrarNaAgenda } from "@/lib/garante/regras";
 import { CartaoAgenda } from "@/components/garante/cartao-agenda";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { carregarAgenda } from "./dados";
 import { AvisoSomenteVer } from "@/components/aviso-somente-ver";
 
@@ -32,6 +33,10 @@ export default async function GaranteHojePage() {
           <DicaCalculo rotulo="checklists concluídos hoje" texto={DICA_GARANTE.diaConcluido} />
           {agenda.length > 0 && feitos === agenda.length && " · Dia 100%"}
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="garante-hoje" pergunta="Como usar o Checklist Garante?" />
+        </div>
       </div>
       <AvisoSomenteVer acesso={acesso} modulo="garante" />
       {agenda.length === 0 ? (

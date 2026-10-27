@@ -26,6 +26,13 @@ describe("passosDaTela: último passo do tour conforme o (?) da tela", () => {
     }
   });
 
+  it("telas do Checklist Garante (Hoje, Planos, Quadro, Nota, Modelos) também falam do vídeo", () => {
+    for (const rota of ["/garante", "/garante/planos", "/garante/quadro", "/garante/nota", "/garante/modelos"]) {
+      expect(ultimo(passosDaTela(ROTEIROS_TOUR.garante, rota))).toBe(TEXTO_VIDEO);
+    }
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.garante, "/garante/execucao/abc"))).toBe(TEXTO_TOUR);
+  });
+
   it("só o passo do (?) muda: os outros e a ordem ficam iguais", () => {
     const original = ROTEIROS_TOUR.estoque;
     const tela = passosDaTela(original, "/estoque/pedidos");

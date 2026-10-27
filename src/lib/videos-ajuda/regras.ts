@@ -21,7 +21,12 @@ export type IdVideoAjuda =
   | "estoque-editar-fornecedores"
   | "estoque-cmv-real"
   | "estoque-perdas"
-  | "estoque-movimentacoes";
+  | "estoque-movimentacoes"
+  | "garante-hoje"
+  | "garante-planos"
+  | "garante-quadro"
+  | "garante-nota"
+  | "garante-modelos";
 
 export type VideoAjuda = {
   titulo: string;
@@ -175,6 +180,47 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     largura: 1664,
     altura: 768,
   },
+  // Checklist Garante (27/10/2026): uma por tela, mesmo padrão do Estoque.
+  "garante-hoje": {
+    titulo: "Como usar o Checklist Garante no dia a dia",
+    src: "/videos/zatti-hub-garante-hoje.mp4",
+    capa: "/videos/zatti-hub-garante-hoje-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "garante-planos": {
+    titulo: "Como usar os Planos de ação",
+    src: "/videos/zatti-hub-garante-planos.mp4",
+    capa: "/videos/zatti-hub-garante-planos-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "garante-quadro": {
+    titulo: "Como ler o Quadro do dia",
+    src: "/videos/zatti-hub-garante-quadro.mp4",
+    capa: "/videos/zatti-hub-garante-quadro-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "garante-nota": {
+    titulo: "Como ler a Nota do Checklist Garante",
+    src: "/videos/zatti-hub-garante-nota.mp4",
+    capa: "/videos/zatti-hub-garante-nota-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "garante-modelos": {
+    titulo: "Como montar e publicar os checklists",
+    src: "/videos/zatti-hub-garante-modelos.mp4",
+    capa: "/videos/zatti-hub-garante-modelos-capa.jpg",
+    duracao: "2 min",
+    largura: 768,
+    altura: 1664,
+  },
 };
 
 /** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
@@ -194,6 +240,11 @@ const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
   "/estoque/cmv": "estoque-cmv-real",
   "/estoque/contagem/perdas": "estoque-perdas",
   "/estoque/contagem/movimentacoes": "estoque-movimentacoes",
+  "/garante": "garante-hoje",
+  "/garante/planos": "garante-planos",
+  "/garante/quadro": "garante-quadro",
+  "/garante/nota": "garante-nota",
+  "/garante/modelos": "garante-modelos",
 };
 
 /** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */
