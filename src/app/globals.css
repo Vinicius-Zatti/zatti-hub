@@ -2,7 +2,9 @@
 
 /* Celular deitado (26/10/2026): pouca altura na tela. Telas com tabela larga
    (`data-tabela-larga`: Criar cotação, Editor de espelhos,
-   Pedidos feitos e Edição de Dados) soltam o cabeçalho
+   Pedidos feitos, Edição de Dados de produtos e de fornecedores, Consultar
+   produtos, Conferir contagens, Movimentações, Perdas, Lançamentos e DRE)
+   soltam o cabeçalho
    do módulo e a barra inferior nesse caso, para a tabela ganhar a altura. */
 @custom-variant deitado (@media (orientation: landscape) and (max-height: 500px));
 

@@ -12,6 +12,7 @@ import {
   LinhaTabelaAnual as LinhaTabela,
 } from "@/components/financeiro-gerencial/tabela-anual";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { BotaoColunasDre, useColunasVisiveis, type ColunaDre } from "@/components/financeiro-gerencial/dre-colunas-menu";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { DadosComplementaresDre } from "@/components/financeiro-gerencial/dados-complementares-dre";
@@ -168,7 +169,8 @@ export function DreVisualizacao({
   const anos = Array.from({ length: 7 }, (_, i) => anoAtual + 1 - i);
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10" data-tabela-larga>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-azul-noite">
@@ -232,6 +234,7 @@ export function DreVisualizacao({
             <BotaoColunasDre colunas={COLUNAS_NUMERICAS} visiveis={visiveis} onAlternar={alternarColuna} onMostrarTodas={mostrarTodas} onDesmarcarTodas={desmarcarTodas} />
           </div>
         </div>
+        <DicaVirarCelular />
         <TabelaRolavel ariaLabel="Tabela de resultado da DRE">
           <table className="w-full min-w-[1180px] text-sm">
             <thead>

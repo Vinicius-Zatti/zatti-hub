@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { exportarExtratoCsvAction } from "@/app/(app)/estoque/contagem/movimentacoes/actions";
@@ -137,7 +138,8 @@ export function ExtratoMovimentacoes({
     "rounded-md border border-cinza-claro bg-branco px-3 py-1.5 text-sm text-cinza focus:border-ambar focus:outline-none";
 
   return (
-    <div className="flex flex-col gap-5 pb-10">
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-5 pb-10" data-tabela-larga>
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-cinza-claro bg-branco p-3.5">
         <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
           De
@@ -183,6 +185,7 @@ export function ExtratoMovimentacoes({
         </button>
       </div>
       {aviso && <p className="text-xs text-vermelho">{aviso}</p>}
+      <DicaVirarCelular />
 
       <section className="flex flex-col gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-azul-noite">

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Produto } from "@/lib/types";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { DicaVirarCelular } from "@/components/dica-virar-celular";
 import { formatarQuantidade } from "@/lib/unidades";
 
 function formatMoeda(v: number | null): string {
@@ -44,6 +45,9 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
   }, [produtos, coluna, direcao]);
 
   return (
+    // `data-tabela-larga`: com o celular deitado o shell solta cabeçalho e barra inferior.
+    <div className="flex flex-col gap-2" data-tabela-larga>
+    <DicaVirarCelular />
     <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel="Lista de produtos">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
@@ -112,5 +116,6 @@ export function TabelaProdutos({ produtos }: { produtos: Produto[] }) {
           </tbody>
         </table>
     </TabelaRolavel>
+    </div>
   );
 }
