@@ -148,3 +148,10 @@ describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
     }
   });
 });
+
+describe("videoDaTela: Início e Dashboard (27/10/2026)", () => {
+  it("o (?) do Início e do Dashboard abre o vídeo da tela", () => {
+    expect(videoDaTela("/painel")).toBe("inicio");
+    expect(videoDaTela("/painel/dashboard")).toBe("dashboard");
+  });
+});

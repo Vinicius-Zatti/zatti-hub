@@ -26,7 +26,9 @@ export type IdVideoAjuda =
   | "garante-planos"
   | "garante-quadro"
   | "garante-nota"
-  | "garante-modelos";
+  | "garante-modelos"
+  | "inicio"
+  | "dashboard";
 
 export type VideoAjuda = {
   titulo: string;
@@ -221,6 +223,22 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     largura: 768,
     altura: 1664,
   },
+  inicio: {
+    titulo: "Como usar o Início",
+    src: "/videos/zatti-hub-inicio.mp4",
+    capa: "/videos/zatti-hub-inicio-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  dashboard: {
+    titulo: "Como ler o Dashboard",
+    src: "/videos/zatti-hub-dashboard.mp4",
+    capa: "/videos/zatti-hub-dashboard-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
 };
 
 /** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
@@ -245,6 +263,8 @@ const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
   "/garante/quadro": "garante-quadro",
   "/garante/nota": "garante-nota",
   "/garante/modelos": "garante-modelos",
+  "/painel": "inicio",
+  "/painel/dashboard": "dashboard",
 };
 
 /** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */

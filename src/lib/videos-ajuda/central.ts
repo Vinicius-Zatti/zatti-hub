@@ -10,6 +10,8 @@ const SECAO_DO_VIDEO: Readonly<Record<string, SecaoVideos>> = {
   "boas-vindas": "Começo",
   "instalar-iphone": "Começo",
   "instalar-android": "Começo",
+  inicio: "Começo",
+  dashboard: "Começo",
   contagem: "Estoque",
   cotacao: "Estoque",
   espelhos: "Estoque",
