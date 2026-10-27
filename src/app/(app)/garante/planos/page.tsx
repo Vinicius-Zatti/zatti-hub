@@ -1,6 +1,7 @@
 import { requireGarante } from "@/lib/acesso";
 import { DICA_PLANOS, lerPagina } from "@/lib/garante/planos";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { ListaPlanos } from "@/components/garante/lista-planos";
 import { carregarPlanos } from "../dados";
 
@@ -31,6 +32,10 @@ export default async function PlanosPage({ searchParams }: { searchParams: Promi
           {gestao ? "Todos os planos da unidade." : "Os planos em que você é o responsável."} De onde vem cada plano
           <DicaCalculo rotulo="origem do plano" texto={DICA_PLANOS.origem} />
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="garante-planos" pergunta="Como usar os Planos de ação?" />
+        </div>
       </div>
       <ListaPlanos
         planos={dados.planos}

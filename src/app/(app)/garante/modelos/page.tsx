@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireGestaoGarante, redirecionarSemEdicao } from "@/lib/acesso";
 import { BIBLIOTECA_POPS } from "@/lib/garante/biblioteca";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-branco";
 import { RegrasUnidade } from "@/components/garante/regras-unidade";
 import { hojeOperacao, somarDias } from "@/lib/garante/regras";
@@ -31,6 +32,10 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
         <p className="text-sm text-cinza-medio">
           Escolha um POP da Zatti, ajuste os itens e publique para quem faz e até que horas. Usar um POP cria uma cópia só desta unidade; o POP original não muda.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="garante-modelos" pergunta="Como montar e publicar os checklists?" />
+        </div>
       </div>
       {erro && ERROS[erro] && <p className="text-sm text-vermelho">{ERROS[erro]}</p>}
 
