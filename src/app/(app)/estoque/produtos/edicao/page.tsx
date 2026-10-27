@@ -2,6 +2,7 @@ import { listProdutos } from "@/lib/sheets/produtos";
 import { listItensPendentes } from "@/lib/sheets/inventario";
 import { listFornecedores } from "@/lib/sheets/fornecedores";
 import { EdicaoGrid } from "@/components/edicao-grid";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { AreaRestrita } from "@/components/area-restrita";
 import { getAcessoAtual, redirecionarSemEdicao, temPermissao } from "@/lib/acesso";
 import { dadosPrePreparoDaGrade } from "@/lib/banco/pre-preparo";
@@ -43,6 +44,10 @@ export default async function EdicaoDadosPage() {
           O cadastro inteiro, como na planilha. Células destacadas estão vazias ou incompletas —
           edita direto aqui e salva linha por linha ou tudo de uma vez.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-editar-produtos" pergunta="Como editar os produtos?" />
+        </div>
       </div>
       <EdicaoGrid
         produtos={produtos}

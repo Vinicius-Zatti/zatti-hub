@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ItemInventario } from "@/lib/types";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { DicaVirarCelular } from "@/components/dica-virar-celular";
@@ -244,6 +245,10 @@ export function VisualizacaoContagens({
       <div>
         <h1 className="font-display text-3xl font-bold text-azul-noite">Conferência de Contagem</h1>
         <p className="text-sm text-cinza-medio">Histórico dos inventários já registrados.</p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-conferir-contagens" pergunta="Como conferir as contagens?" />
+        </div>
       </div>
 
       {temSetor && (andamentoUltima.length > 0 || modalidadeUltima === "setor") && (

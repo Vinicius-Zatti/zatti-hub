@@ -4,6 +4,7 @@ import { StatCard } from "@/components/stat-card";
 import { TabelaFornecedores } from "@/components/tabela-fornecedores";
 import { getAcessoAtual } from "@/lib/acesso";
 import Link from "next/link";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,10 @@ export default async function FornecedoresPage() {
           <p className="text-sm text-cinza-medio">
             Contato, condição de pagamento e prazo de entrega de cada fornecedor.
           </p>
+          {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+          <div className="-ml-2">
+            <LinkVideoAjuda id="estoque-fornecedores" pergunta="Como usar o cadastro de fornecedores?" />
+          </div>
         </div>
         <Link
           href="/estoque/fornecedores/novo"

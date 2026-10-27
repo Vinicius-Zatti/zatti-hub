@@ -14,6 +14,16 @@ const SECAO_DO_VIDEO: Readonly<Record<string, SecaoVideos>> = {
   cotacao: "Estoque",
   espelhos: "Estoque",
   "pedido-feito": "Estoque",
+  "estoque-visao-geral": "Estoque",
+  "estoque-produtos": "Estoque",
+  "estoque-editar-produtos": "Estoque",
+  "estoque-setores": "Estoque",
+  "estoque-conferir-contagens": "Estoque",
+  "estoque-fornecedores": "Estoque",
+  "estoque-editar-fornecedores": "Estoque",
+  "estoque-cmv-real": "Estoque",
+  "estoque-perdas": "Estoque",
+  "estoque-movimentacoes": "Estoque",
 };
 
 export function secaoDoVideo(id: string): SecaoVideos {

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { BlocoContagem } from "@/components/navegacao-v2/bloco-contagem";
 import { BlocosModulo, type BlocoModulo } from "@/components/navegacao-v2/blocos-modulo";
 import { getAcessoAtual } from "@/lib/acesso";
@@ -74,6 +75,10 @@ export default async function VisaoGeralEstoquePage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="sr-only">Visão geral do Estoque</h1>
+      {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+      <div className="-ml-2">
+        <LinkVideoAjuda id="estoque-visao-geral" pergunta="Como ler a Visão geral?" />
+      </div>
       <BlocoContagem
         href="/estoque/contagem/visualizacao"
         dados={{

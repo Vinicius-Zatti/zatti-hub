@@ -1,6 +1,7 @@
 import { getAcessoAtual } from "@/lib/acesso";
 import { ErroCarregamento } from "@/components/erro-carregamento";
 import { ExtratoDesligado } from "@/components/extrato/extrato-desligado";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { PerdasEstoque } from "@/components/extrato/perdas-estoque";
 import { listarExtratoPagina, listarProdutosParaPerda } from "@/lib/banco/extrato";
 import { lerFiltroExtrato } from "@/lib/extrato";
@@ -44,6 +45,10 @@ export default async function PerdasPage({
         <p className="text-sm text-cinza-medio">
           Registre o que foi jogado fora, com o motivo. Cada perda entra no extrato do estoque.
         </p>
+        {/* Vídeo desta tela (27/10/2026), mesmo link discreto da Contagem. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="estoque-perdas" pergunta="Como registrar uma perda?" />
+        </div>
       </div>
       <PerdasEstoque
         linhas={pagina.linhas}

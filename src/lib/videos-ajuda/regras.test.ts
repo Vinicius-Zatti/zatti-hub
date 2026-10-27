@@ -79,6 +79,15 @@ describe("VIDEOS_AJUDA", () => {
     expect(ehVideoHorizontal(VIDEOS_AJUDA["boas-vindas"])).toBe(false);
     expect(ehVideoHorizontal(VIDEOS_AJUDA.contagem)).toBe(false);
   });
+
+  it("telas do Estoque: tabelas largas deitadas, o resto em pé", () => {
+    for (const id of ["estoque-produtos", "estoque-editar-produtos", "estoque-conferir-contagens", "estoque-editar-fornecedores", "estoque-perdas", "estoque-movimentacoes"] as const) {
+      expect(ehVideoHorizontal(VIDEOS_AJUDA[id])).toBe(true);
+    }
+    for (const id of ["estoque-visao-geral", "estoque-setores", "estoque-fornecedores", "estoque-cmv-real"] as const) {
+      expect(ehVideoHorizontal(VIDEOS_AJUDA[id])).toBe(false);
+    }
+  });
 });
 
 describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
@@ -89,22 +98,36 @@ describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
     expect(videoDaTela("/estoque/pedidos/feitos")).toBe("pedido-feito");
   });
 
+  it("as 10 telas do Estoque com vídeo próprio (27/10/2026)", () => {
+    expect(videoDaTela("/estoque/visao-geral")).toBe("estoque-visao-geral");
+    expect(videoDaTela("/estoque/produtos")).toBe("estoque-produtos");
+    expect(videoDaTela("/estoque/produtos/edicao")).toBe("estoque-editar-produtos");
+    expect(videoDaTela("/estoque/setores")).toBe("estoque-setores");
+    expect(videoDaTela("/estoque/contagem/visualizacao")).toBe("estoque-conferir-contagens");
+    expect(videoDaTela("/estoque/fornecedores")).toBe("estoque-fornecedores");
+    expect(videoDaTela("/estoque/fornecedores/edicao")).toBe("estoque-editar-fornecedores");
+    expect(videoDaTela("/estoque/cmv")).toBe("estoque-cmv-real");
+    expect(videoDaTela("/estoque/contagem/perdas")).toBe("estoque-perdas");
+    expect(videoDaTela("/estoque/contagem/movimentacoes")).toBe("estoque-movimentacoes");
+  });
+
   it("ignora barra no fim e parâmetros", () => {
     expect(videoDaTela("/estoque/pedidos/")).toBe("cotacao");
     expect(videoDaTela("/estoque/pedidos?data=2026-10-20")).toBe("cotacao");
   });
 
   it("tela sem vídeo (inclusive irmãs e o Início): null, o (?) segue no tour", () => {
-    expect(videoDaTela("/estoque/contagem/visualizacao")).toBeNull();
-    expect(videoDaTela("/estoque/contagem/perdas")).toBeNull();
-    expect(videoDaTela("/estoque/visao-geral")).toBeNull();
+    expect(videoDaTela("/estoque/fornecedores/novo")).toBeNull();
+    expect(videoDaTela("/financeiro-gerencial/visao-geral")).toBeNull();
+    expect(videoDaTela("/estoque")).toBeNull();
     expect(videoDaTela("/inicio")).toBeNull();
     expect(videoDaTela("/constructor")).toBeNull();
     expect(videoDaTela(null)).toBeNull();
   });
 
   it("todo vídeo do mapa existe em VIDEOS_AJUDA", () => {
-    for (const rota of ["/estoque/contagem", "/estoque/pedidos", "/estoque/pedidos/cotacoes", "/estoque/pedidos/feitos"]) {
+    const rotas = ["/estoque/contagem", "/estoque/pedidos", "/estoque/pedidos/cotacoes", "/estoque/pedidos/feitos", "/estoque/visao-geral", "/estoque/produtos", "/estoque/produtos/edicao", "/estoque/setores", "/estoque/contagem/visualizacao", "/estoque/fornecedores", "/estoque/fornecedores/edicao", "/estoque/cmv", "/estoque/contagem/perdas", "/estoque/contagem/movimentacoes"];
+    for (const rota of rotas) {
       expect(VIDEOS_AJUDA[videoDaTela(rota)!]).toBeDefined();
     }
   });
