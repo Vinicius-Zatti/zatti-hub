@@ -16,19 +16,20 @@ export type AvisoPendente = {
   dias: number;
   marco: Marco;
   link: string;
+  /** Conta em período de teste grátis (27/10/2026): quem envia troca "assinatura" por "período de teste". */
+  periodo_teste: boolean;
 };
 
-type OrgVigencia = { id: string; nome: string; vigencia_fim: string; renovacao_token: string | null };
+type OrgVigencia = { id: string; nome: string; vigencia_fim: string; renovacao_token: string | null; periodo_teste?: boolean | null };
 
-/** Organizações com vigência, ativas e com contato da compra. */
+/** Organizações com vigência, ativas e com contato da compra (inclusive as em período de teste). */
 async function organizacoesComVigencia(admin: Admin) {
-  const { data: orgs, error } = await admin
-    .from("organizacoes")
-    .select("id, nome, vigencia_fim, renovacao_token")
-    .not("vigencia_fim", "is", null)
-    .eq("ativo", true);
+  const ler = (colunas: string) => admin.from("organizacoes").select(colunas).not("vigencia_fim", "is", null).eq("ativo", true);
+  let { data: orgs, error } = await ler("id, nome, vigencia_fim, renovacao_token, periodo_teste");
+  // Coluna do período de teste ainda não criada: segue lendo a vigência como antes.
+  if (error?.code === "42703") ({ data: orgs, error } = await ler("id, nome, vigencia_fim, renovacao_token"));
   if (error) throw new Error("não leu as organizações");
-  const lista = (orgs ?? []) as OrgVigencia[];
+  const lista = (orgs ?? []) as unknown as OrgVigencia[];
   if (!lista.length) return { lista, contatos: new Map<string, { nome: string; whatsapp: string }>() };
   const { data: compras, error: erroCompras } = await admin
     .from("zh_provisionamentos")
@@ -70,6 +71,7 @@ export async function avisosPendentes(admin: Admin, hoje: string): Promise<Aviso
         dias: diasAteFim(o.vigencia_fim, hoje),
         marco,
         link: linkRenovacao(o.renovacao_token!),
+        periodo_teste: o.periodo_teste === true,
       };
     });
 }

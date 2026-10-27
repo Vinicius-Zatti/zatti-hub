@@ -5,7 +5,8 @@ import { hojeSP, type Marco } from "@/lib/assinatura/regras";
 import { avisosPendentes, marcarAviso } from "@/lib/assinatura/servidor";
 
 // Vigência anual (15/10/2026). Só o Vini chama, com o token do escopo 'provisionamento'.
-//   GET  avisos de renovação que valem hoje e ainda não saíram (30, 7, 1 dia antes e no dia)
+//   GET  avisos de renovação que valem hoje e ainda não saíram (30, 7, 1 dia antes e no dia);
+//        cada aviso leva `periodo_teste` (27/10/2026) para o texto falar em período de teste
 //   POST {organizacao_id, marco, vigencia_fim}: marca como enviado (repetir não faz nada)
 
 export const dynamic = "force-dynamic";

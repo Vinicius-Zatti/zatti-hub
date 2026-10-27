@@ -50,7 +50,7 @@ export default async function AppLayout({
     navegacaoV2 ? lerToursVistos(acesso.userId) : null,
   ]);
   if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
-  const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir) : null;
+  const faixa = assinatura ? faixaAssinatura(assinatura.situacao, podeGerir, assinatura.teste) : null;
   const nomeUnidadeSuporte =
     acesso.organizacaoNome && acesso.organizacaoNome !== acesso.unidadeNome
       ? `${acesso.organizacaoNome} - ${acesso.unidadeNome}`

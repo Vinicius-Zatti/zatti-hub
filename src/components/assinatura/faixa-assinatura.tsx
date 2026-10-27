@@ -17,7 +17,7 @@ export function FaixaAssinatura({ faixa, link }: { faixa: Faixa; link: string | 
           rel="noopener noreferrer"
           className="rounded-md bg-azul-noite px-3 py-1.5 text-sm font-semibold text-branco hover:bg-azul-petroleo"
         >
-          Renovar assinatura
+          {faixa.rotulo}
         </a>
       ) : null}
     </div>
