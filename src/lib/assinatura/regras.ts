@@ -65,21 +65,45 @@ export function dataBR(iso: string): string {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 }
 
-export type Faixa = { tom: "aviso" | "alerta"; texto: string; botao: boolean };
+export type Faixa = { tom: "aviso" | "alerta"; texto: string; botao: boolean; rotulo: string };
+
+const ROTULO_RENOVAR = "Renovar assinatura";
+/** Período de teste (27/10/2026): o botão diz o efeito, que é assinar, não renovar. */
+export const ROTULO_ASSINAR = "Assinar agora";
 
 /** Faixa no topo do app. Antes de vencer, só a gestão vê (discreta); na carência, todos veem, e
- * quem não é gestão é orientado a falar com a gestão (só ela tem o botão de renovar). */
-export function faixaAssinatura(s: SituacaoAssinatura, podeGerir: boolean): Faixa | null {
+ * quem não é gestão é orientado a falar com a gestão (só ela tem o botão de renovar).
+ * Conta em período de teste (27/10/2026): a gestão vê a faixa durante todo o teste, não só nos
+ * últimos dias, com o botão para assinar; o resto segue igual, com o texto de teste. */
+export function faixaAssinatura(s: SituacaoAssinatura, podeGerir: boolean, teste = false): Faixa | null {
+  if (teste) return faixaPeriodoTeste(s, podeGerir);
   if (s.tipo === "vencendo") {
     if (!podeGerir) return null;
     const quando = s.dias === 0 ? "vence hoje" : s.dias === 1 ? "vence amanhã" : `vence em ${s.dias} dias`;
-    return { tom: "aviso", texto: `Sua assinatura do Zatti Hub ${quando}.`, botao: true };
+    return { tom: "aviso", texto: `Sua assinatura do Zatti Hub ${quando}.`, botao: true, rotulo: ROTULO_RENOVAR };
   }
   if (s.tipo === "carencia") {
     const prazo = s.diasParaTravar === 1 ? "até amanhã" : `em até ${s.diasParaTravar} dias`;
     return podeGerir
-      ? { tom: "alerta", texto: `Sua assinatura venceu. Renove ${prazo} para continuar usando.`, botao: true }
-      : { tom: "alerta", texto: `A assinatura do Zatti Hub venceu. Avise a gestão: o app trava ${prazo === "até amanhã" ? "amanhã" : prazo.replace("em até", "em")}.`, botao: false };
+      ? { tom: "alerta", texto: `Sua assinatura venceu. Renove ${prazo} para continuar usando.`, botao: true, rotulo: ROTULO_RENOVAR }
+      : { tom: "alerta", texto: `A assinatura do Zatti Hub venceu. Avise a gestão: o app trava ${prazoTrava(s.diasParaTravar)}.`, botao: false, rotulo: ROTULO_RENOVAR };
+  }
+  return null;
+}
+
+const prazoTrava = (dias: number) => (dias === 1 ? "amanhã" : `em ${dias} dias`);
+
+function faixaPeriodoTeste(s: SituacaoAssinatura, podeGerir: boolean): Faixa | null {
+  if (s.tipo === "em_dia" || s.tipo === "vencendo") {
+    if (!podeGerir) return null;
+    const quando = s.dias === 0 ? "acaba hoje" : s.dias === 1 ? "acaba amanhã" : `acaba em ${s.dias} dias`;
+    return { tom: "aviso", texto: `Seu período de teste do Zatti Hub ${quando}.`, botao: true, rotulo: ROTULO_ASSINAR };
+  }
+  if (s.tipo === "carencia") {
+    const prazo = s.diasParaTravar === 1 ? "até amanhã" : `em até ${s.diasParaTravar} dias`;
+    return podeGerir
+      ? { tom: "alerta", texto: `Seu período de teste do Zatti Hub terminou. Assine ${prazo} para continuar usando.`, botao: true, rotulo: ROTULO_ASSINAR }
+      : { tom: "alerta", texto: `O período de teste do Zatti Hub terminou. Avise a gestão: o app trava ${prazoTrava(s.diasParaTravar)}.`, botao: false, rotulo: ROTULO_ASSINAR };
   }
   return null;
 }

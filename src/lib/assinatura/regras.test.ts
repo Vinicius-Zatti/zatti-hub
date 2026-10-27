@@ -57,17 +57,49 @@ it("link de renovação leva só o token", () => {
 
 describe("faixa no app", () => {
   it("antes de vencer, só a gestão vê", () => {
-    expect(faixaAssinatura({ tipo: "vencendo", dias: 5 }, true)).toEqual({ tom: "aviso", texto: "Sua assinatura do Zatti Hub vence em 5 dias.", botao: true });
+    expect(faixaAssinatura({ tipo: "vencendo", dias: 5 }, true)).toEqual({ tom: "aviso", texto: "Sua assinatura do Zatti Hub vence em 5 dias.", botao: true, rotulo: "Renovar assinatura" });
     expect(faixaAssinatura({ tipo: "vencendo", dias: 0 }, true)?.texto).toBe("Sua assinatura do Zatti Hub vence hoje.");
     expect(faixaAssinatura({ tipo: "vencendo", dias: 5 }, false)).toBeNull();
   });
   it("na carência, todos veem; só a gestão tem o botão", () => {
-    expect(faixaAssinatura({ tipo: "carencia", diasParaTravar: 8 }, true)).toEqual({ tom: "alerta", texto: "Sua assinatura venceu. Renove em até 8 dias para continuar usando.", botao: true });
+    expect(faixaAssinatura({ tipo: "carencia", diasParaTravar: 8 }, true)).toEqual({ tom: "alerta", texto: "Sua assinatura venceu. Renove em até 8 dias para continuar usando.", botao: true, rotulo: "Renovar assinatura" });
     expect(faixaAssinatura({ tipo: "carencia", diasParaTravar: 1 }, true)?.texto).toBe("Sua assinatura venceu. Renove até amanhã para continuar usando.");
-    expect(faixaAssinatura({ tipo: "carencia", diasParaTravar: 8 }, false)).toEqual({ tom: "alerta", texto: "A assinatura do Zatti Hub venceu. Avise a gestão: o app trava em 8 dias.", botao: false });
+    expect(faixaAssinatura({ tipo: "carencia", diasParaTravar: 8 }, false)).toEqual({ tom: "alerta", texto: "A assinatura do Zatti Hub venceu. Avise a gestão: o app trava em 8 dias.", botao: false, rotulo: "Renovar assinatura" });
   });
   it("em dia ou sem vigência, nada", () => {
     expect(faixaAssinatura({ tipo: "em_dia", dias: 40 }, true)).toBeNull();
     expect(faixaAssinatura({ tipo: "sem_vigencia" }, true)).toBeNull();
+  });
+});
+
+describe("período de teste grátis", () => {
+  const hoje = "2026-10-27";
+  const faixaTeste = (fim: string, podeGerir = true) => faixaAssinatura(situacaoAssinatura(fim, hoje), podeGerir, true);
+
+  it("durante o teste, a gestão vê quantos dias faltam e o botão para assinar", () => {
+    expect(faixaTeste("2026-11-03")).toEqual({ tom: "aviso", texto: "Seu período de teste do Zatti Hub acaba em 7 dias.", botao: true, rotulo: "Assinar agora" });
+    expect(faixaTeste("2026-11-10")?.texto).toBe("Seu período de teste do Zatti Hub acaba em 14 dias.");
+    expect(faixaTeste("2026-10-28")?.texto).toBe("Seu período de teste do Zatti Hub acaba amanhã.");
+    expect(faixaTeste("2026-10-27")?.texto).toBe("Seu período de teste do Zatti Hub acaba hoje.");
+    expect(faixaTeste("2026-10-27")?.botao).toBe(true);
+    expect(faixaTeste("2026-11-03", false)).toBeNull();
+  });
+
+  it("depois do fim, carência de 10 dias com o link para a gestão e aviso para o resto", () => {
+    expect(situacaoAssinatura("2026-10-26", hoje)).toEqual({ tipo: "carencia", diasParaTravar: 9 });
+    expect(faixaTeste("2026-10-26")).toEqual({ tom: "alerta", texto: "Seu período de teste do Zatti Hub terminou. Assine em até 9 dias para continuar usando.", botao: true, rotulo: "Assinar agora" });
+    expect(faixaTeste("2026-10-18")?.texto).toBe("Seu período de teste do Zatti Hub terminou. Assine até amanhã para continuar usando.");
+    expect(faixaTeste("2026-10-26", false)).toEqual({ tom: "alerta", texto: "O período de teste do Zatti Hub terminou. Avise a gestão: o app trava em 9 dias.", botao: false, rotulo: "Assinar agora" });
+    expect(faixaTeste("2026-10-18", false)?.texto).toBe("O período de teste do Zatti Hub terminou. Avise a gestão: o app trava amanhã.");
+  });
+
+  it("passada a carência, trava como a assinatura vencida", () => {
+    expect(situacaoAssinatura("2026-10-17", hoje)).toEqual({ tipo: "bloqueada" });
+    expect(faixaTeste("2026-10-17")).toBeNull();
+  });
+
+  it("pago o ano, o teste acaba e a faixa some", () => {
+    // O banco zera periodo_teste e grava 12 meses a partir do dia do pagamento.
+    expect(faixaAssinatura(situacaoAssinatura("2027-10-27", hoje), true, false)).toBeNull();
   });
 });
