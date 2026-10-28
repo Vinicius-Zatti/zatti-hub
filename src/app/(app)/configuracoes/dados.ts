@@ -1,5 +1,5 @@
 import type { AcessoAtual } from "@/lib/acesso";
-import type { FlagsModulos } from "@/lib/configuracoes/modulos";
+import type { FlagsModulos, SituacaoContagemSetor } from "@/lib/configuracoes/modulos";
 import { createClient } from "@/lib/supabase/server";
 
 type LinhaUnidade = {
@@ -10,6 +10,7 @@ type LinhaUnidade = {
   fichas_tecnicas_habilitado: boolean;
   garante_habilitado: boolean;
   extrato_estoque_habilitado: boolean;
+  contagem_por_setor_habilitada: boolean;
   fonte_dados_estoque: string;
 };
 
@@ -22,7 +23,8 @@ export async function carregarFlagsModulos(acesso: AcessoAtual): Promise<FlagsMo
     .from("unidades")
     .select(
       "consolidado_vendas_habilitado, financeiro_gerencial_habilitado, financeiro_liberado_equipe, " +
-        "conciliacao_habilitada, fichas_tecnicas_habilitado, garante_habilitado, extrato_estoque_habilitado, fonte_dados_estoque",
+        "conciliacao_habilitada, fichas_tecnicas_habilitado, garante_habilitado, extrato_estoque_habilitado, " +
+        "contagem_por_setor_habilitada, fonte_dados_estoque",
     )
     .eq("id", acesso.unidadeId)
     .maybeSingle();
@@ -35,6 +37,7 @@ export async function carregarFlagsModulos(acesso: AcessoAtual): Promise<FlagsMo
   }
   if (!data) throw new Error("Unidade não encontrada ao ler os módulos.");
   const u = data as unknown as LinhaUnidade;
+  const fonteEstoqueNoBanco = u.fonte_dados_estoque === "banco";
   return {
     consolidado_vendas_habilitado: u.consolidado_vendas_habilitado === true,
     financeiro_gerencial_habilitado: u.financeiro_gerencial_habilitado === true,
@@ -43,7 +46,29 @@ export async function carregarFlagsModulos(acesso: AcessoAtual): Promise<FlagsMo
     fichas_tecnicas_habilitado: u.fichas_tecnicas_habilitado === true,
     garante_habilitado: u.garante_habilitado === true,
     extrato_estoque_habilitado: u.extrato_estoque_habilitado === true,
+    contagem_por_setor_habilitada: u.contagem_por_setor_habilitada === true,
     equipe_habilitado: acesso.equipeHabilitado,
-    fonteEstoqueNoBanco: u.fonte_dados_estoque === "banco",
+    fonteEstoqueNoBanco,
+    situacaoSetor: fonteEstoqueNoBanco ? await carregarSituacaoContagemSetor(supabase, acesso.unidadeId) : null,
+  };
+}
+
+/** Produtos sem setor, setores ativos e datas por setor em andamento, pela
+ * mesma função que o banco usa para travar a troca. Falha aqui não derruba a
+ * tela: o cartão fica sem o aviso e o banco ainda recusa a troca indevida. */
+async function carregarSituacaoContagemSetor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  unidadeId: string,
+): Promise<SituacaoContagemSetor | null> {
+  const { data, error } = await supabase.rpc("situacao_contagem_por_setor", { p_unidade_id: unidadeId });
+  if (error || !data) {
+    if (error) console.error("Falha ao ler a situação da contagem por setor", error.code ?? "", error.message);
+    return null;
+  }
+  const s = data as { produtosSemSetor?: number; setoresAtivos?: number; emAndamento?: string[] };
+  return {
+    produtosSemSetor: Number(s.produtosSemSetor ?? 0),
+    setoresAtivos: Number(s.setoresAtivos ?? 0),
+    emAndamento: Array.isArray(s.emAndamento) ? s.emAndamento : [],
   };
 }

@@ -1,8 +1,9 @@
 /** Acesso aos setores da unidade e à designação produto x setor.
  *
  * Setor só existe na fonte banco. Unidade ainda na planilha continua contando
- * por grupo, como sempre - a tela decide pelo que esta camada devolve: sem
- * setor cadastrado, o fluxo antigo segue valendo. */
+ * por grupo, como sempre. Quem decide o modo é a chave "Contagem por setor" da
+ * unidade (`contagemPorSetorVale`, 28/10/2026): desligada, o fluxo antigo vale
+ * mesmo com setor cadastrado. */
 
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";

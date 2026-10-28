@@ -21,7 +21,7 @@ import {
 } from "@/lib/banco/estoque";
 import { listarAndamentoBanco, listarEscopoBanco } from "@/lib/banco/setores";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { contagemPorSetorVale, MENSAGEM_CONTAGEM_SETOR_DESLIGADA } from "@/lib/contagem/ativacao";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { revalidatePath } from "next/cache";
 
@@ -153,6 +153,18 @@ function dataDaEntrada(dataISO: string) {
   };
 }
 
+/** Mesma regra das telas (`contagemPorSetorVale`): com a chave da unidade
+ * desligada, a contagem segue sem setor, mesmo com setores cadastrados. O
+ * banco recusa de novo ao abrir (`exigir_contagem_por_setor_ligada`). */
+function exigirContagemPorSetor(acesso: { fonteDadosEstoque: string; contagemPorSetorHabilitada: boolean }) {
+  if (acesso.fonteDadosEstoque !== "banco") {
+    throw new ErroPublico("Contagem por setor só existe com o estoque no banco.");
+  }
+  if (!contagemPorSetorVale(acesso)) {
+    throw new ErroPublico(MENSAGEM_CONTAGEM_SETOR_DESLIGADA);
+  }
+}
+
 /** Abre a contagem da data e devolve a lista congelada daquele setor.
  * Chamada no "Iniciar contagem", antes de a pessoa ver qualquer item: é o
  * snapshot, e não a designação nem o cadastro de agora, que manda na
@@ -162,17 +174,11 @@ export async function abrirContagemAction(
   setorId: string,
 ): Promise<ContagemAberta | { erro: string }> {
   try {
-    if (!CONTAGEM_POR_SETOR_ATIVA) {
-      throw new ErroPublico("A contagem por setor ainda não está ativa nesta versão.");
-    }
     const acesso = await getAcessoAtual();
     exigirEdicao(acesso, "estoque");
+    exigirContagemPorSetor(acesso);
     await exigirLimiteRequisicao("contagem_abrir");
     const entrada = validarEntrada(abrirContagemSchema, { dataISO, setorId });
-
-    if (acesso.fonteDadosEstoque !== "banco") {
-      throw new ErroPublico("Contagem por setor só existe com o estoque no banco.");
-    }
 
     const { dataBr, mesFmt } = dataDaEntrada(entrada.dataISO);
     await abrirContagemBanco(acesso.unidadeId, dataBr, mesFmt);
@@ -214,11 +220,9 @@ export async function registrarContagemSetorAction(
   motivo?: string,
 ): Promise<{ ok: true; gravados: number; versao: number } | { erro: string }> {
   try {
-    if (!CONTAGEM_POR_SETOR_ATIVA) {
-      throw new ErroPublico("A contagem por setor ainda não está ativa nesta versão.");
-    }
     const acesso = await getAcessoAtual();
     exigirEdicao(acesso, "estoque");
+    exigirContagemPorSetor(acesso);
     await exigirLimiteRequisicao("registrar_contagem");
     const entrada = validarEntrada(registrarContagemSetorSchema, {
       dataISO,
@@ -227,10 +231,6 @@ export async function registrarContagemSetorAction(
       versaoEsperada,
       ...(motivo ? { motivo } : {}),
     });
-
-    if (acesso.fonteDadosEstoque !== "banco") {
-      throw new ErroPublico("Contagem por setor só existe com o estoque no banco.");
-    }
 
     const { dataBr, mesFmt } = dataDaEntrada(entrada.dataISO);
 

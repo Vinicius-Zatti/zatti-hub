@@ -1,5 +1,5 @@
 import { ListaModulos } from "@/components/configuracoes/lista-modulos";
-import { FRASE_DONO_MODULOS, type EstadoModulo } from "@/lib/configuracoes/modulos";
+import { FRASE_DONO_CONTAGEM_SETOR, FRASE_DONO_MODULOS, type EstadoModulo } from "@/lib/configuracoes/modulos";
 
 /** Configurações > Módulos: master liga e desliga; o dono vê o estado e a
  * frase para falar com a Zatti (módulo pode ser pago). */
@@ -22,6 +22,7 @@ export function PainelModulos({
       ) : (
         <p className="rounded-xl border border-ambar/40 bg-ambar/10 px-3 py-2 text-sm font-semibold text-azul-noite">
           {FRASE_DONO_MODULOS}.
+          {modulos.some((m) => m.alteravel) && <> {FRASE_DONO_CONTAGEM_SETOR}.</>}
         </p>
       )}
       <ListaModulos modulos={modulos} />

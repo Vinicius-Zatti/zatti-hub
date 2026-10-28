@@ -40,6 +40,10 @@ values
   ('uni-ancora-setor-a', 'org-ancora-setor', 'Unidade A', 'banco', true),
   ('uni-ancora-setor-b', 'org-ancora-setor', 'Unidade B', 'banco', true);
 
+-- Chave "Contagem por setor" ligada nas duas (28/10/2026): sem ela o banco não abre data por setor.
+update unidades set contagem_por_setor_habilitada = true
+where id in ('uni-ancora-setor-a', 'uni-ancora-setor-b');
+
 insert into vinculos (user_id, organizacao_id, unidade_id, role, status)
 values ('00000000-0000-0000-0000-0000000c9001', 'org-ancora-setor', null, 'master', 'ativo');
 

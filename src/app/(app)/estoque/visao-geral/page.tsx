@@ -4,7 +4,7 @@ import { BlocoContagem } from "@/components/navegacao-v2/bloco-contagem";
 import { BlocosModulo, type BlocoModulo } from "@/components/navegacao-v2/blocos-modulo";
 import { getAcessoAtual } from "@/lib/acesso";
 import { listarAndamentoBanco, listarModalidadesBanco } from "@/lib/banco/setores";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 import { DICA_PEDIDOS_PENDENTES, resumirEstoque, tipoDaContagem } from "@/lib/estoque/resumo";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { listPedidosFeitos } from "@/lib/pedidos";
@@ -27,7 +27,7 @@ export default async function VisaoGeralEstoquePage() {
 
   // Mesma condição e mesmas leituras da Conferência de Contagem para saber se
   // a data é por setor (e se está completa).
-  const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const comSetor = contagemPorSetorVale(acesso);
   const [produtos, inventario, pedidos, dadosSetor] = await Promise.all([
     listProdutos(acesso.spreadsheetId),
     listInventario(acesso.spreadsheetId),

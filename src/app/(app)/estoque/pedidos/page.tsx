@@ -5,7 +5,7 @@ import { listPedidosPorContagemBase } from "@/lib/pedidos";
 import { PedidoCompras } from "@/components/pedido-compras";
 import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem } from "@/lib/contagem/varias-datas";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
@@ -33,7 +33,7 @@ export default async function PedidosPage({
   // só entra o que existe na unidade, e a mais recente vira a contagem base.
   // Datas extras da URL só ficam se complementam a base (setor pendente que
   // elas fecharam); unidade sem contagem por setor fica com uma data só.
-  const porSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const porSetor = contagemPorSetorVale(acesso);
   // Datas, andamento, fornecedores e produtos não dependem um do outro: saem
   // juntos. Inventário e produtos lidos aqui são reaproveitados por
   // `gerarPedido` (cache do request), sem segunda leitura.
@@ -103,7 +103,7 @@ export default async function PedidosPage({
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
       setoresPendentes={resultado.setoresPendentes}
-      cadastroRapidoProduto={configCadastroRapido(cadastroRapido, CONTAGEM_POR_SETOR_ATIVA, acesso.fonteDadosEstoque)}
+      cadastroRapidoProduto={configCadastroRapido(cadastroRapido, contagemPorSetorVale(acesso), acesso.fonteDadosEstoque)}
     />
   );
 }

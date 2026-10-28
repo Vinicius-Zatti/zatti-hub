@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   avisoDesligar,
+  avisoLigarContagemPorSetor,
+  bloqueioContagemPorSetor,
   definicaoModulo,
   ehChaveModulo,
   estadoDosModulos,
@@ -16,6 +18,7 @@ const tudoLigado: FlagsModulos = {
   fichas_tecnicas_habilitado: true,
   garante_habilitado: true,
   extrato_estoque_habilitado: true,
+  contagem_por_setor_habilitada: true,
   equipe_habilitado: true,
   fonteEstoqueNoBanco: true,
 };
@@ -33,6 +36,7 @@ describe("Configurações > Módulos", () => {
       "cardapio",
       "garante",
       "extrato",
+      "contagem_setor",
       "equipe",
     ]);
     for (const m of MODULOS) expect(m.descricao.length).toBeGreaterThan(20);
@@ -52,9 +56,52 @@ describe("Configurações > Módulos", () => {
     expect(dono.every((m) => !m.alteravel)).toBe(true);
     const master = porChave({}, true);
     expect(master.estoque.alteravel).toBe(false);
-    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "extrato", "equipe"]) {
+    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "extrato", "contagem_setor", "equipe"]) {
       expect(master[chave].alteravel, chave).toBe(true);
     }
+  });
+
+  it("Contagem por setor: dono e gestão também trocam; os outros módulos seguem só master", () => {
+    const gestao = Object.fromEntries(estadoDosModulos(tudoLigado, false, true).map((m) => [m.chave, m]));
+    expect(gestao.contagem_setor.alteravel).toBe(true);
+    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "extrato", "equipe"]) {
+      expect(gestao[chave].alteravel, chave).toBe(false);
+    }
+    // Sem o papel de gestão (operacional nem chega à tela), nada.
+    expect(estadoDosModulos(tudoLigado, false, false).find((m) => m.chave === "contagem_setor")?.alteravel).toBe(false);
+  });
+
+  it("Contagem por setor na planilha: não liga, só desliga", () => {
+    const m = porChave({ fonteEstoqueNoBanco: false, contagem_por_setor_habilitada: false }, true).contagem_setor;
+    expect(m.alteravel).toBe(false);
+    expect(m.observacao).toMatch(/planilha/);
+  });
+
+  it("Contagem por setor: desligar com contagem em andamento fica travado, com o motivo", () => {
+    const situacaoSetor = { produtosSemSetor: 3, setoresAtivos: 2, emAndamento: ["27/10/2026"] };
+    const ligada = porChave({ situacaoSetor }, false).contagem_setor;
+    expect(ligada.bloqueio).toBe(
+      "Há contagem por setor em andamento (27/10/2026). Envie todos os setores dessa data antes de desligar.",
+    );
+    // Desligada, a data aberta de antes da chave não prende a unidade: ligar segue livre.
+    const desligada = porChave({ situacaoSetor, contagem_por_setor_habilitada: false }, false).contagem_setor;
+    expect(desligada.bloqueio).toBeUndefined();
+    expect(bloqueioContagemPorSetor(true, [])).toBeUndefined();
+    expect(bloqueioContagemPorSetor(true, ["20/10/2026", "27/10/2026"])).toContain("dessas datas");
+  });
+
+  it("Contagem por setor: ao ligar, avisa quantos produtos ficam fora e leva para Setores", () => {
+    const situacaoSetor = { produtosSemSetor: 12, setoresAtivos: 2, emAndamento: [] };
+    const m = porChave({ situacaoSetor, contagem_por_setor_habilitada: false }, false).contagem_setor;
+    expect(m.avisoLigar).toEqual({
+      texto: "12 produtos sem setor ficam fora da contagem até você designar.",
+      link: { href: "/estoque/setores", rotulo: "Ir para Setores" },
+    });
+    expect(avisoLigarContagemPorSetor({ produtosSemSetor: 1, setoresAtivos: 1 }).texto).toBe(
+      "1 produto sem setor fica fora da contagem até você designar.",
+    );
+    expect(avisoLigarContagemPorSetor({ produtosSemSetor: 5, setoresAtivos: 0 }).texto).toMatch(/não há setor ativo/);
+    expect(avisoDesligar(definicaoModulo("contagem_setor"))).toMatch(/volta a ser sem setor/);
   });
 
   it("extrato na planilha: master não liga (só desliga, se estiver ligado) e vê o motivo", () => {

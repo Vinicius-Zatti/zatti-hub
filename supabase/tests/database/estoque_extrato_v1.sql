@@ -54,6 +54,10 @@ values ('uni-extrato-a1', 'org-extrato-a', 'A1', 'banco', true),
        ('uni-extrato-a2', 'org-extrato-a', 'A2', 'banco', true),
        ('uni-extrato-b1', 'org-extrato-b', 'B1', 'banco', true);
 
+-- Chave "Contagem por setor" (28/10/2026): as datas por setor do fixture exigem a chave ligada.
+update unidades set contagem_por_setor_habilitada = true
+where id in ('uni-extrato-a1', 'uni-extrato-a2', 'uni-extrato-b1');
+
 insert into vinculos (user_id, organizacao_id, unidade_id, role, status)
 values
   ('00000000-0000-0000-0000-0000000e9101', 'org-extrato-a', null, 'gestao', 'ativo'),
