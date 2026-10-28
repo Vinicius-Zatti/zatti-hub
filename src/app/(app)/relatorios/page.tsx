@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { CatalogoRelatorios } from "@/components/navegacao-v2/catalogo-relatorios";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { getAcessoAtual } from "@/lib/acesso";
 import { CATALOGO_RELATORIOS, filtrarCatalogo } from "@/lib/navegacao/catalogos";
 import { contextoMenuRestaurante, montarMenuRestaurantePiloto } from "@/lib/navegacao/menu-restaurante";
@@ -24,6 +25,10 @@ export default async function RelatoriosPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="sr-only">Relatórios</h1>
+      {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+      <div className="-ml-2">
+        <LinkVideoAjuda id="relatorios" pergunta="Como achar os relatórios?" />
+      </div>
       <CatalogoRelatorios relatorios={relatorios} />
     </div>
   );

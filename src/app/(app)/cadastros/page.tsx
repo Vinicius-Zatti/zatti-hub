@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { BlocosModulo } from "@/components/navegacao-v2/blocos-modulo";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { getAcessoAtual, requireGestao } from "@/lib/acesso";
 import { CATALOGO_CADASTROS, filtrarCatalogo } from "@/lib/navegacao/catalogos";
 import { contextoMenuRestaurante, montarMenuRestaurantePiloto } from "@/lib/navegacao/menu-restaurante";
@@ -20,6 +21,10 @@ export default async function CadastrosPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="sr-only">Cadastros</h1>
+      {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+      <div className="-ml-2">
+        <LinkVideoAjuda id="cadastros" pergunta="Como usar os Cadastros?" />
+      </div>
       <BlocosModulo blocos={cadastros} rotulo="Cadastros disponíveis" />
     </div>
   );

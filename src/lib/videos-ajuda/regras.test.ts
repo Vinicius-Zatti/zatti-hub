@@ -95,6 +95,12 @@ describe("VIDEOS_AJUDA", () => {
     }
   });
 
+  it("Vendas e outras telas: todas em pé (28/10/2026)", () => {
+    for (const id of ["vendas-novo", "equipe", "cadastros", "relatorios", "configuracoes"] as const) {
+      expect(ehVideoHorizontal(VIDEOS_AJUDA[id])).toBe(false);
+    }
+  });
+
   it("telas do Checklist Garante: todas em pé", () => {
     for (const id of ["garante-hoje", "garante-planos", "garante-quadro", "garante-nota", "garante-modelos"] as const) {
       expect(ehVideoHorizontal(VIDEOS_AJUDA[id])).toBe(false);
@@ -139,6 +145,14 @@ describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
     expect(videoDaTela("/fichas-tecnicas/precificacao")).toBe("fichas-precificacao");
   });
 
+  it("Novo lançamento de Vendas e as outras telas com vídeo próprio (28/10/2026)", () => {
+    expect(videoDaTela("/financeiro/consolidado/novo")).toBe("vendas-novo");
+    expect(videoDaTela("/equipe")).toBe("equipe");
+    expect(videoDaTela("/cadastros")).toBe("cadastros");
+    expect(videoDaTela("/relatorios")).toBe("relatorios");
+    expect(videoDaTela("/configuracoes")).toBe("configuracoes");
+  });
+
   it("ignora barra no fim e parâmetros", () => {
     expect(videoDaTela("/estoque/pedidos/")).toBe("cotacao");
     expect(videoDaTela("/estoque/pedidos?data=2026-10-20")).toBe("cotacao");
@@ -151,13 +165,15 @@ describe("videoDaTela: o (?) abre o vídeo da tela quando ela tem um", () => {
     expect(videoDaTela("/garante/execucao/abc")).toBeNull();
     expect(videoDaTela("/garante/modelos/abc")).toBeNull();
     expect(videoDaTela("/fichas-tecnicas/abc")).toBeNull();
+    expect(videoDaTela("/financeiro/consolidado")).toBeNull();
+    expect(videoDaTela("/configuracoes/modulos")).toBeNull();
     expect(videoDaTela("/inicio")).toBeNull();
     expect(videoDaTela("/constructor")).toBeNull();
     expect(videoDaTela(null)).toBeNull();
   });
 
   it("todo vídeo do mapa existe em VIDEOS_AJUDA", () => {
-    const rotas = ["/estoque/contagem", "/estoque/pedidos", "/estoque/pedidos/cotacoes", "/estoque/pedidos/feitos", "/estoque/visao-geral", "/estoque/produtos", "/estoque/produtos/edicao", "/estoque/setores", "/estoque/contagem/visualizacao", "/estoque/fornecedores", "/estoque/fornecedores/edicao", "/estoque/cmv", "/estoque/contagem/perdas", "/estoque/contagem/movimentacoes", "/garante", "/garante/planos", "/garante/quadro", "/garante/nota", "/garante/modelos", "/fichas-tecnicas", "/fichas-tecnicas/categorias", "/fichas-tecnicas/conversoes", "/fichas-tecnicas/calculadora", "/fichas-tecnicas/precificacao"];
+    const rotas = ["/estoque/contagem", "/estoque/pedidos", "/estoque/pedidos/cotacoes", "/estoque/pedidos/feitos", "/estoque/visao-geral", "/estoque/produtos", "/estoque/produtos/edicao", "/estoque/setores", "/estoque/contagem/visualizacao", "/estoque/fornecedores", "/estoque/fornecedores/edicao", "/estoque/cmv", "/estoque/contagem/perdas", "/estoque/contagem/movimentacoes", "/garante", "/garante/planos", "/garante/quadro", "/garante/nota", "/garante/modelos", "/fichas-tecnicas", "/fichas-tecnicas/categorias", "/fichas-tecnicas/conversoes", "/fichas-tecnicas/calculadora", "/fichas-tecnicas/precificacao", "/financeiro/consolidado/novo", "/equipe", "/cadastros", "/relatorios", "/configuracoes"];
     for (const rota of rotas) {
       expect(VIDEOS_AJUDA[videoDaTela(rota)!]).toBeDefined();
     }

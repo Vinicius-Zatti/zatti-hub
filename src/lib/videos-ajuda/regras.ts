@@ -33,7 +33,12 @@ export type IdVideoAjuda =
   | "fichas-categorias"
   | "fichas-conversoes"
   | "fichas-margem"
-  | "fichas-precificacao";
+  | "fichas-precificacao"
+  | "vendas-novo"
+  | "equipe"
+  | "cadastros"
+  | "relatorios"
+  | "configuracoes";
 
 export type VideoAjuda = {
   titulo: string;
@@ -285,6 +290,47 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     largura: 768,
     altura: 1664,
   },
+  // Vendas e outras telas (28/10/2026): uma por tela, em pé.
+  "vendas-novo": {
+    titulo: "Como lançar as vendas do dia",
+    src: "/videos/zatti-hub-vendas-novo.mp4",
+    capa: "/videos/zatti-hub-vendas-novo-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  equipe: {
+    titulo: "Como cadastrar a equipe",
+    src: "/videos/zatti-hub-equipe.mp4",
+    capa: "/videos/zatti-hub-equipe-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  cadastros: {
+    titulo: "Como usar os Cadastros",
+    src: "/videos/zatti-hub-cadastros.mp4",
+    capa: "/videos/zatti-hub-cadastros-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  relatorios: {
+    titulo: "Como achar os relatórios",
+    src: "/videos/zatti-hub-relatorios.mp4",
+    capa: "/videos/zatti-hub-relatorios-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  configuracoes: {
+    titulo: "Como ler as Configurações",
+    src: "/videos/zatti-hub-configuracoes.mp4",
+    capa: "/videos/zatti-hub-configuracoes-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
 };
 
 /** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
@@ -316,6 +362,11 @@ const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
   "/fichas-tecnicas/conversoes": "fichas-conversoes",
   "/fichas-tecnicas/calculadora": "fichas-margem",
   "/fichas-tecnicas/precificacao": "fichas-precificacao",
+  "/financeiro/consolidado/novo": "vendas-novo",
+  "/equipe": "equipe",
+  "/cadastros": "cadastros",
+  "/relatorios": "relatorios",
+  "/configuracoes": "configuracoes",
 };
 
 /** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */

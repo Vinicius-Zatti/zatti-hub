@@ -2,9 +2,9 @@
 // estiver em `VIDEOS_AJUDA` por seção do app: vídeo novo entra sozinho na
 // central; se o id não estiver no mapa abaixo, cai em "Outros vídeos".
 
-export type SecaoVideos = "Começo" | "Estoque" | "Garante" | "Fichas técnicas" | "Outros vídeos";
+export type SecaoVideos = "Começo" | "Estoque" | "Garante" | "Fichas técnicas" | "Vendas" | "Outras telas" | "Outros vídeos";
 
-const ORDEM_SECOES: readonly SecaoVideos[] = ["Começo", "Estoque", "Garante", "Fichas técnicas", "Outros vídeos"];
+const ORDEM_SECOES: readonly SecaoVideos[] = ["Começo", "Estoque", "Garante", "Fichas técnicas", "Vendas", "Outras telas", "Outros vídeos"];
 
 const SECAO_DO_VIDEO: Readonly<Record<string, SecaoVideos>> = {
   "boas-vindas": "Começo",
@@ -36,6 +36,11 @@ const SECAO_DO_VIDEO: Readonly<Record<string, SecaoVideos>> = {
   "fichas-conversoes": "Fichas técnicas",
   "fichas-margem": "Fichas técnicas",
   "fichas-precificacao": "Fichas técnicas",
+  "vendas-novo": "Vendas",
+  equipe: "Outras telas",
+  cadastros: "Outras telas",
+  relatorios: "Outras telas",
+  configuracoes: "Outras telas",
 };
 
 export function secaoDoVideo(id: string): SecaoVideos {

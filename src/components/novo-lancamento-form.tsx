@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CampoNumero } from "@/components/campo-numero";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { AvisoDivergenciaModal } from "@/components/aviso-divergencia-modal";
 import {
   criarConsolidadoAction,
@@ -256,6 +257,12 @@ export function NovoLancamentoForm({
         <p className="text-sm text-cinza-medio">
           Fechamento diário: formas de pagamento contra canais próprios, com marketplaces separados.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        {!existente && (
+          <div className="-ml-2">
+            <LinkVideoAjuda id="vendas-novo" pergunta="Como lançar as vendas do dia?" />
+          </div>
+        )}
       </div>
 
       {camposRascunho && rascunho && (

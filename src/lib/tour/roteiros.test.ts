@@ -43,6 +43,15 @@ describe("passosDaTela: último passo do tour conforme o (?) da tela", () => {
     expect(ultimo(passosDaTela(ROTEIROS_TOUR.cardapio, "/fichas-tecnicas/abc"))).toBe(TEXTO_TOUR);
   });
 
+  it("Novo lançamento de Vendas e as outras telas também falam do vídeo (28/10/2026)", () => {
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.vendas, "/financeiro/consolidado/novo"))).toBe(TEXTO_VIDEO);
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.equipe, "/equipe"))).toBe(TEXTO_VIDEO);
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.cadastros, "/cadastros"))).toBe(TEXTO_VIDEO);
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.relatorios, "/relatorios"))).toBe(TEXTO_VIDEO);
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.configuracoes, "/configuracoes"))).toBe(TEXTO_VIDEO);
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.vendas, "/financeiro/consolidado"))).toBe(TEXTO_TOUR);
+  });
+
   it("só o passo do (?) muda: os outros e a ordem ficam iguais", () => {
     const original = ROTEIROS_TOUR.estoque;
     const tela = passosDaTela(original, "/estoque/pedidos");
