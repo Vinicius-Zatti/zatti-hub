@@ -12,7 +12,7 @@ import {
 import { EditorEspelhos } from "@/components/editor-espelhos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
 import { carregarEscopoEAndamentoBanco, listarAndamentoBanco } from "@/lib/banco/setores";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 import type { AndamentoSetor } from "@/lib/contagem/setor";
 import { datasComplementares, escolherDatasContagem } from "@/lib/contagem/varias-datas";
 
@@ -57,7 +57,7 @@ export default async function EditorEspelhosPage({
   // por vírgula, a mais recente como base (ver `lib/contagem/varias-datas.ts`).
   // Datas extras da URL só ficam se complementam a base (setor pendente que
   // elas fecharam); unidade sem contagem por setor fica com uma data só.
-  const porSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  const porSetor = contagemPorSetorVale(acesso);
   // Datas, andamento, fornecedores e produtos não dependem um do outro: saem
   // juntos. O inventário lido aqui é reaproveitado por `gerarPedido` (cache do request).
   const [datas, andamentoPorData, fornecedoresCadastro, produtos] = await Promise.all([

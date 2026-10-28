@@ -6,6 +6,7 @@ import { nomeGrupo } from "@/lib/grupos";
 import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { designarSetoresAction, salvarSetorAction } from "@/app/(app)/estoque/setores/actions";
 import { normalizarBusca } from "@/lib/busca";
+import Link from "next/link";
 
 type Designacoes = Record<string, string[]>;
 
@@ -13,10 +14,14 @@ export function PainelSetores({
   setores,
   produtos,
   designacoes,
+  contagemPorSetorLigada,
 }: {
   setores: Setor[];
   produtos: Produto[];
   designacoes: Designacoes;
+  /** Chave "Contagem por setor" da unidade (28/10/2026). Desligada, a
+   * contagem segue sem setor e o aviso de "sem setor" não vale. */
+  contagemPorSetorLigada: boolean;
 }) {
   const [novoNome, setNovoNome] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -159,7 +164,18 @@ export function PainelSetores({
         <p className="rounded-md bg-verde/10 p-3 text-sm text-cinza">{aviso}</p>
       )}
 
-      {semSetor.length > 0 && (
+      {!contagemPorSetorLigada && (
+        <div className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza">
+          <strong>A contagem por setor está desligada nesta unidade.</strong> A contagem segue sem
+          setor, e os setores e a designação abaixo ficam guardados para quando ela for ligada em{" "}
+          <Link href="/configuracoes/modulos" className="font-semibold text-azul-petroleo underline">
+            Configurações &gt; Módulos
+          </Link>
+          .
+        </div>
+      )}
+
+      {contagemPorSetorLigada && semSetor.length > 0 && (
         <div className="rounded-lg border border-ambar bg-ambar/10 p-4 text-sm text-cinza">
           <strong>
             {semSetor.length} produto{semSetor.length > 1 ? "s" : ""} sem setor designado.

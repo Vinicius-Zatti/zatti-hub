@@ -6,7 +6,7 @@ import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { resumoParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { configCadastroRapido } from "@/lib/cadastro-rapido";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +50,7 @@ export default async function FichasTecnicasPage() {
         deducoes99Food={deducoes99Food}
         cadastroRapidoProduto={configCadastroRapido(
           podeGerir && usaNavegacaoV2(acesso),
-          CONTAGEM_POR_SETOR_ATIVA,
+          contagemPorSetorVale(acesso),
           acesso.fonteDadosEstoque,
         )}
       />

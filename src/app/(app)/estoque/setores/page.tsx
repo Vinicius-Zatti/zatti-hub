@@ -2,6 +2,7 @@ import { requireGestao, redirecionarSemEdicao } from "@/lib/acesso";
 import { listProdutos } from "@/lib/sheets/produtos";
 import { listarDesignacoesBanco, listarSetoresBanco } from "@/lib/banco/setores";
 import { PainelSetores } from "@/components/painel-setores";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function SetoresPage() {
       setores={setores}
       produtos={produtos.filter((produto) => produto.ativo)}
       designacoes={Object.fromEntries(designacoes)}
+      contagemPorSetorLigada={contagemPorSetorVale(acesso)}
     />
   );
 }

@@ -11,6 +11,7 @@ import { sugerirSku } from "@/lib/skus/sugerir";
 import { listInventario } from "@/lib/sheets/inventario";
 import { salvarDesignacoesBanco } from "@/lib/banco/setores";
 import { setoresDaPendencia } from "@/lib/contagem/pendencia";
+import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 import { sincronizarFichasRevenda } from "@/lib/banco/fichas-tecnicas";
 import {
   lerVinculosPrePreparo,
@@ -159,7 +160,10 @@ export async function criarProdutoAction(
 /** Produto criado de uma pendência entra nos setores que contaram o item -
  * sem isso ficava sem setor e sumia da contagem seguinte e da Criar Cotação.
  * O produto já foi gravado: falha aqui volta como aviso pra pessoa fazer a
- * designação à mão em Setores. Planilha não tem setor. */
+ * designação à mão em Setores. Planilha não tem setor. Com a chave
+ * "Contagem por setor" desligada a designação ainda é tentada (fica guardada
+ * para quando ligar), mas a falha não vira aviso: a unidade conta sem setor
+ * (28/10/2026). */
 async function designarSetoresDaPendencia(acesso: AcessoAtual, produto: Produto): Promise<string | undefined> {
   if (acesso.fonteDadosEstoque !== "banco") return undefined;
   try {
@@ -177,6 +181,7 @@ async function designarSetoresDaPendencia(acesso: AcessoAtual, produto: Produto)
     return undefined;
   } catch (err) {
     console.error("[produtos] designar setor da pendência:", err);
+    if (!contagemPorSetorVale(acesso)) return undefined;
     return "Produto criado, mas sem setor. Defina o setor em Estoque > Setores para ele entrar na próxima contagem.";
   }
 }

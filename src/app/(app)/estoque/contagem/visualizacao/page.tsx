@@ -6,7 +6,7 @@ import {
   listarEscopoBanco,
   listarModalidadesBanco,
 } from "@/lib/banco/setores";
-import { CONTAGEM_POR_SETOR_ATIVA } from "@/lib/contagem/ativacao";
+import { historicoPorSetorLegivel } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +17,9 @@ export default async function VisualizacaoContagensPage() {
   // servidor. Nunca o antigo aviso de planilha/.env para o cliente.
   // Inventário, andamento de todas as datas (barato) e modalidades saem
   // juntos; o snapshot só da última data (a que a conferência corrige)
-  // depende do inventário e vem depois.
-  const comSetor = CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco";
+  // depende do inventário e vem depois. Lê o histórico por setor mesmo com a
+  // chave da unidade desligada: data contada por setor segue corrigível.
+  const comSetor = historicoPorSetorLegivel(acesso);
   const [itens, dadosSetor] = await Promise.all([
     listInventario(acesso.spreadsheetId),
     comSetor
@@ -36,7 +37,7 @@ export default async function VisualizacaoContagensPage() {
   }, "");
 
   const escopoUltimaData =
-    CONTAGEM_POR_SETOR_ATIVA && acesso.fonteDadosEstoque === "banco" && ultimaData
+    historicoPorSetorLegivel(acesso) && ultimaData
       ? await listarEscopoBanco(acesso.unidadeId, ultimaData)
       : [];
 

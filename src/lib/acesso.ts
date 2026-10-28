@@ -69,6 +69,10 @@ export type AcessoAtual = {
    * aviso, sem número; o recebimento continua gravando as compras em segundo
    * plano. Só master liga (Acessos > Unidades ou SQL). */
   extratoEstoqueHabilitado: boolean;
+  /** Chave "Contagem por setor" da unidade (`unidades.contagem_por_setor_habilitada`,
+   * 28/10/2026). Quem decide o modo da contagem é `contagemPorSetorVale`
+   * (`src/lib/contagem/ativacao.ts`), nunca esta flag sozinha. */
+  contagemPorSetorHabilitada: boolean;
   /** Unidade a que o vínculo efetivo está preso (`null` = organização
    * inteira, ou master). Limita o que o gestor administra em Equipe. */
   unidadeFixa: string | null;
@@ -121,11 +125,13 @@ type UnidadeRow = {
   financeiro_liberado_equipe: boolean;
   garante_habilitado: boolean;
   extrato_estoque_habilitado: boolean;
+  contagem_por_setor_habilitada: boolean;
 };
 
 const COLUNAS_UNIDADE =
   "id, nome, spreadsheet_id, fonte_dados_estoque, consolidado_vendas_habilitado, fichas_tecnicas_habilitado, " +
-  "financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado, extrato_estoque_habilitado";
+  "financeiro_gerencial_habilitado, financeiro_liberado_equipe, garante_habilitado, extrato_estoque_habilitado, " +
+  "contagem_por_setor_habilitada";
 
 /** Organizações com alguma unidade pronta (estoque no banco ou planilha
  * configurada). Sem preferência salva, o master não pode cair num cliente
@@ -353,6 +359,7 @@ export const getAcessoAtual = cache(async (): Promise<AcessoAtual> => {
     titularFinanceiro,
     garanteHabilitado: unidade.garante_habilitado && permissoes.garante !== "sem_acesso",
     extratoEstoqueHabilitado: unidade.extrato_estoque_habilitado,
+    contagemPorSetorHabilitada: unidade.contagem_por_setor_habilitada === true,
     role,
     unidadeFixa,
     equipeHabilitado: equipeHabilitado && permissoes.equipe !== "sem_acesso",

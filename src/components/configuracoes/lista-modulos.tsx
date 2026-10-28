@@ -1,15 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { definirModuloAction } from "@/app/(app)/configuracoes/actions";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { avisoDesligar, type EstadoModulo } from "@/lib/configuracoes/modulos";
 
-/** Lista de Configurações > Módulos. O botão só aparece para master
- * (`alteravel`); a barreira real é `requireMaster()` na action. Desligar pede
- * confirmação antes; o rótulo do botão diz o efeito. */
+/** Lista de Configurações > Módulos. O botão só aparece para quem pode trocar
+ * (`alteravel`: master; dono e gestão só na Contagem por setor); a barreira
+ * real é a action. Desligar pede confirmação antes, e ligar também quando há
+ * aviso (`avisoLigar`); o rótulo do botão diz o efeito. Com `bloqueio`, o
+ * botão fica desabilitado e o motivo aparece no cartão. */
 export function ListaModulos({ modulos }: { modulos: EstadoModulo[] }) {
-  const [confirmando, setConfirmando] = useState<EstadoModulo | null>(null);
+  const [confirmando, setConfirmando] = useState<{ modulo: EstadoModulo; ligar: boolean } | null>(null);
   const [pendente, startTransition] = useTransition();
   const [emAndamento, setEmAndamento] = useState<string | null>(null);
   const [erro, setErro] = useState<{ chave: string; texto: string } | null>(null);
@@ -51,12 +54,15 @@ export function ListaModulos({ modulos }: { modulos: EstadoModulo[] }) {
               </div>
               <p className="text-[13px] text-cinza-medio">{m.descricao}</p>
               {m.observacao && <p className="text-xs font-semibold text-ambar">{m.observacao}</p>}
+              {m.alteravel && m.bloqueio && <p className="text-xs font-semibold text-ambar">{m.bloqueio}</p>}
               {m.alteravel && (
                 <div>
                   <button
                     type="button"
-                    disabled={pendente}
-                    onClick={() => (m.ligado ? setConfirmando(m) : aplicar(m, true))}
+                    disabled={pendente || Boolean(m.bloqueio)}
+                    onClick={() =>
+                      m.ligado || m.avisoLigar ? setConfirmando({ modulo: m, ligar: !m.ligado }) : aplicar(m, true)
+                    }
                     className={`min-h-10 rounded-md border px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
                       m.ligado
                         ? "border-vermelho text-vermelho hover:bg-vermelho/10"
@@ -76,9 +82,30 @@ export function ListaModulos({ modulos }: { modulos: EstadoModulo[] }) {
       <ModalFlutuante aberto={confirmando !== null} onFechar={() => !pendente && setConfirmando(null)}>
         {confirmando && (
           <div className="flex flex-col gap-4">
-            <h2 className="font-display text-lg font-bold text-azul-noite">Desligar {confirmando.nome}?</h2>
-            <p className="text-sm text-azul-noite">{avisoDesligar(confirmando)}</p>
-            <p className="text-xs text-cinza-medio">Dá para ligar de novo depois, aqui mesmo.</p>
+            <h2 className="font-display text-lg font-bold text-azul-noite">
+              {confirmando.ligar ? "Ligar" : "Desligar"} {confirmando.modulo.nome}?
+            </h2>
+            {confirmando.ligar ? (
+              <p className="text-sm text-azul-noite">
+                {confirmando.modulo.avisoLigar?.texto}
+                {confirmando.modulo.avisoLigar?.link && (
+                  <>
+                    {" "}
+                    <Link
+                      href={confirmando.modulo.avisoLigar.link.href}
+                      className="font-semibold text-azul-petroleo underline"
+                    >
+                      {confirmando.modulo.avisoLigar.link.rotulo}
+                    </Link>
+                  </>
+                )}
+              </p>
+            ) : (
+              <p className="text-sm text-azul-noite">{avisoDesligar(confirmando.modulo)}</p>
+            )}
+            <p className="text-xs text-cinza-medio">
+              {confirmando.ligar ? "Dá para desligar depois, aqui mesmo." : "Dá para ligar de novo depois, aqui mesmo."}
+            </p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -86,15 +113,21 @@ export function ListaModulos({ modulos }: { modulos: EstadoModulo[] }) {
                 onClick={() => setConfirmando(null)}
                 className="min-h-11 rounded-md border border-cinza-claro bg-branco px-4 py-2 text-sm font-semibold text-azul-noite disabled:opacity-40"
               >
-                Manter ligado
+                {confirmando.ligar ? "Manter desligado" : "Manter ligado"}
               </button>
               <button
                 type="button"
                 disabled={pendente}
-                onClick={() => aplicar(confirmando, false)}
-                className="min-h-11 rounded-md bg-vermelho px-4 py-2 text-sm font-semibold text-branco disabled:opacity-40"
+                onClick={() => aplicar(confirmando.modulo, confirmando.ligar)}
+                className={`min-h-11 rounded-md px-4 py-2 text-sm font-semibold text-branco disabled:opacity-40 ${
+                  confirmando.ligar ? "bg-azul-petroleo" : "bg-vermelho"
+                }`}
               >
-                {pendente ? "Desligando..." : `Desligar ${confirmando.nome}`}
+                {pendente
+                  ? confirmando.ligar
+                    ? "Ligando..."
+                    : "Desligando..."
+                  : `${confirmando.ligar ? "Ligar" : "Desligar"} ${confirmando.modulo.nome}`}
               </button>
             </div>
           </div>
