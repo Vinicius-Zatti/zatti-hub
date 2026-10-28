@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CampoNumero } from "@/components/campo-numero";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { salvarConfiguracaoFinanceiraAction } from "@/app/(app)/fichas-tecnicas/actions";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import type { ConfiguracaoFinanceira } from "@/lib/types";
@@ -113,6 +114,10 @@ export function CalculadoraMargemContribuicao({ configuracaoInicial }: { configu
           bater o lucro mensal desejado. Essa margem alimenta o &ldquo;Preço de Venda Sugerido&rdquo;
           nas fichas técnicas de venda.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="fichas-margem" pergunta="Como usar a Margem Ideal?" />
+        </div>
       </div>
 
       <div className="rounded-lg border border-cinza-claro bg-branco p-4">

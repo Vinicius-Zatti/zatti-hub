@@ -28,7 +28,12 @@ export type IdVideoAjuda =
   | "garante-nota"
   | "garante-modelos"
   | "inicio"
-  | "dashboard";
+  | "dashboard"
+  | "fichas-consultar"
+  | "fichas-categorias"
+  | "fichas-conversoes"
+  | "fichas-margem"
+  | "fichas-precificacao";
 
 export type VideoAjuda = {
   titulo: string;
@@ -239,6 +244,47 @@ export const VIDEOS_AJUDA: Readonly<Record<IdVideoAjuda, VideoAjuda>> = {
     largura: 768,
     altura: 1664,
   },
+  // Fichas técnicas (28/10/2026): uma por tela, em pé (nenhuma tem o modo deitado).
+  "fichas-consultar": {
+    titulo: "Como consultar as fichas técnicas",
+    src: "/videos/zatti-hub-fichas-consultar.mp4",
+    capa: "/videos/zatti-hub-fichas-consultar-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "fichas-categorias": {
+    titulo: "Como montar as categorias das fichas",
+    src: "/videos/zatti-hub-fichas-categorias.mp4",
+    capa: "/videos/zatti-hub-fichas-categorias-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "fichas-conversoes": {
+    titulo: "Como cadastrar as conversões de unidade",
+    src: "/videos/zatti-hub-fichas-conversoes.mp4",
+    capa: "/videos/zatti-hub-fichas-conversoes-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "fichas-margem": {
+    titulo: "Como usar a Margem Ideal",
+    src: "/videos/zatti-hub-fichas-margem.mp4",
+    capa: "/videos/zatti-hub-fichas-margem-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
+  "fichas-precificacao": {
+    titulo: "Como usar a Precificação",
+    src: "/videos/zatti-hub-fichas-precificacao.mp4",
+    capa: "/videos/zatti-hub-fichas-precificacao-capa.jpg",
+    duracao: "1 min",
+    largura: 768,
+    altura: 1664,
+  },
 };
 
 /** Telas com vídeo próprio: nelas o (?) do cabeçalho abre o vídeo em vez de
@@ -265,6 +311,11 @@ const VIDEO_DA_TELA: Readonly<Record<string, IdVideoAjuda>> = {
   "/garante/modelos": "garante-modelos",
   "/painel": "inicio",
   "/painel/dashboard": "dashboard",
+  "/fichas-tecnicas": "fichas-consultar",
+  "/fichas-tecnicas/categorias": "fichas-categorias",
+  "/fichas-tecnicas/conversoes": "fichas-conversoes",
+  "/fichas-tecnicas/calculadora": "fichas-margem",
+  "/fichas-tecnicas/precificacao": "fichas-precificacao",
 };
 
 /** Vídeo da tela, ou null (aí o (?) continua abrindo o passo a passo). */

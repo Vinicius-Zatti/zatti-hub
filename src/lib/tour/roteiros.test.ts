@@ -33,6 +33,16 @@ describe("passosDaTela: último passo do tour conforme o (?) da tela", () => {
     expect(ultimo(passosDaTela(ROTEIROS_TOUR.garante, "/garante/execucao/abc"))).toBe(TEXTO_TOUR);
   });
 
+  it("telas de Fichas técnicas (Cardápio e Cadastros) também falam do vídeo", () => {
+    for (const rota of ["/fichas-tecnicas", "/fichas-tecnicas/calculadora", "/fichas-tecnicas/precificacao"]) {
+      expect(ultimo(passosDaTela(ROTEIROS_TOUR.cardapio, rota))).toBe(TEXTO_VIDEO);
+    }
+    for (const rota of ["/fichas-tecnicas/categorias", "/fichas-tecnicas/conversoes"]) {
+      expect(ultimo(passosDaTela(ROTEIROS_TOUR.cadastros, rota))).toBe(TEXTO_VIDEO);
+    }
+    expect(ultimo(passosDaTela(ROTEIROS_TOUR.cardapio, "/fichas-tecnicas/abc"))).toBe(TEXTO_TOUR);
+  });
+
   it("só o passo do (?) muda: os outros e a ordem ficam iguais", () => {
     const original = ROTEIROS_TOUR.estoque;
     const tela = passosDaTela(original, "/estoque/pedidos");

@@ -8,6 +8,7 @@ import {
   excluirCategoriaFichaAction,
 } from "@/app/(app)/fichas-tecnicas/actions";
 import { CAMADA_LABEL } from "@/lib/fichas-tecnicas";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import type { CamadaFicha, CategoriaFicha } from "@/lib/types";
 
 export function CategoriasFichaGerenciador({
@@ -47,6 +48,10 @@ export function CategoriasFichaGerenciador({
           Agrupamento visual, mas o código também vira parte do SKU (chars 4-6) - trocar o código de
           uma categoria atualiza o SKU de toda ficha já cadastrada nela.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="fichas-categorias" pergunta="Como montar as categorias das fichas?" />
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
