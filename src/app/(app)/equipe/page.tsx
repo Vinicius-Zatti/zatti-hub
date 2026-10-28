@@ -3,6 +3,7 @@ import { podeAdministrarPermissoes, podeMexerNaContaDe, podeMudarPermissoesDe } 
 import { CadastrarMembroForm } from "@/components/equipe/cadastrar-membro-form";
 import { CartaoMembro } from "@/components/equipe/cartao-membro";
 import { carregarEquipe } from "./dados";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 /** Equipe do cliente: a gestão cadastra quem usa o Zatti Hub. A barreira é
  * `requireEquipe()` aqui e em cada Server Action de `actions.ts`; o item do
@@ -34,6 +35,10 @@ export default async function EquipePage() {
           Cadastre quem trabalha com você. O login e a senha provisória chegam no WhatsApp da pessoa, e ela
           cria a própria senha no primeiro acesso.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="equipe" pergunta="Como cadastrar a equipe?" />
+        </div>
       </div>
 
       {podeEditar ? (
