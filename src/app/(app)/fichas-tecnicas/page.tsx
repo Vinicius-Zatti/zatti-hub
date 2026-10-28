@@ -2,6 +2,7 @@ import { getAcessoAtual, temPermissao } from "@/lib/acesso";
 import { getConfiguracaoFinanceira, listarFichasTecnicas } from "@/lib/banco/fichas-tecnicas";
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { ListaFichasTecnicas } from "@/components/lista-fichas-tecnicas";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { resumoParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
 import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
 import { configCadastroRapido } from "@/lib/cadastro-rapido";
@@ -33,6 +34,10 @@ export default async function FichasTecnicasPage() {
         <p className="text-sm text-cinza-medio">
           Piloto exclusivo - receitas de pré-preparo (uso interno) e itens vendáveis.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="fichas-consultar" pergunta="Como consultar as fichas técnicas?" />
+        </div>
       </div>
       <ListaFichasTecnicas
         fichas={fichas.map((f) => resumoParaVisao(f, visaoDaFicha(podeGerir, podeEditarFicha)))}

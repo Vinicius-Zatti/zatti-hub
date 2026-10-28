@@ -3,6 +3,7 @@ import { getConfiguracaoFinanceira, listarFichasTecnicas, listarRascunhosPrecoFi
 import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { TabelaPrecificacao } from "@/components/tabela-precificacao";
 import { RascunhosPrecoChef } from "@/components/rascunhos-preco-chef";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,10 @@ export default async function PrecificacaoPage() {
           Preço praticado e preço sugerido de cada prato, Salão e nos 3 canais de delivery lado a
           lado - edita e salva sem precisar abrir a ficha.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="fichas-precificacao" pergunta="Como usar a Precificação?" />
+        </div>
       </div>
       <RascunhosPrecoChef rascunhos={rascunhos} />
       <TabelaPrecificacao

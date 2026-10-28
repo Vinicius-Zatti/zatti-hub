@@ -3,6 +3,7 @@ import { listarConversoesProduto } from "@/lib/banco/fichas-tecnicas";
 import { listarProdutosBanco } from "@/lib/banco/estoque";
 import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
 import { ConversoesProdutoTabela } from "@/components/conversoes-produto-tabela";
+import { LinkVideoAjuda } from "@/components/videos-ajuda";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,10 @@ export default async function ConversoesProdutoPage() {
           de correção). Sem conversão cadastrada, a ficha usa a mesma unidade e o mesmo preço do Estoque
           direto.
         </p>
+        {/* Vídeo desta tela (28/10/2026), mesmo link discreto do Estoque. */}
+        <div className="-ml-2">
+          <LinkVideoAjuda id="fichas-conversoes" pergunta="Como cadastrar as conversões de unidade?" />
+        </div>
       </div>
       <ConversoesProdutoTabela linhas={linhas} />
     </div>
