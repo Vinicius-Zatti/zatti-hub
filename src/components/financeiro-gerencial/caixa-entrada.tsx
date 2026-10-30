@@ -36,7 +36,7 @@ function formatarMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const CANAL: Record<EntradaCaixa["canal"], string> = { upload: "Upload", whatsapp: "WhatsApp", drive: "Drive" };
+const CANAL: Record<EntradaCaixa["canal"], string> = { upload: "Upload", whatsapp: "WhatsApp", drive: "Drive", sefaz: "SEFAZ" };
 
 const SITUACAO: Record<SituacaoEntrada, { rotulo: string; classe: string }> = {
   recebido: { rotulo: "Lendo...", classe: "bg-azul-petroleo/15 text-azul-petroleo" },

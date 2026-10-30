@@ -15,7 +15,7 @@ import {
   SISTEMA_ITENS,
   type ExtracaoDocumento,
 } from "./extracao";
-import { lerNfeXml, pareceNfeXml } from "./nfe-xml";
+import { chaveDaNfe, lerNfeXml, pareceNfeXml } from "./nfe-xml";
 
 // Caixa de Entrada (Financeiro V2, 11/10/2026): guardar o arquivo e ler. Usa o service role SÓ para
 // isso (o bucket é privado e a entrada pode vir do Vini, sem sessão). Nunca lança nem baixa nada:
@@ -43,7 +43,7 @@ export type Recebimento = { id: string; novo: boolean; situacao: string; unidade
 /** Guarda o arquivo e registra a entrada (mesmo arquivo na mesma unidade reaproveita a entrada). */
 export async function receberArquivo(params: {
   unidadeId: string;
-  canal: "upload" | "whatsapp" | "drive";
+  canal: "upload" | "whatsapp" | "drive" | "sefaz";
   remetente: string | null;
   nomeArquivo: string;
   bytes: Uint8Array;
@@ -57,6 +57,8 @@ export async function receberArquivo(params: {
   // XML de NF-e real tem poucas centenas de KB; acima de 1 MB a leitura por texto fica cara demais.
   if (mime === "application/xml" && params.bytes.length > 1024 * 1024) throw new ErroPublico("XML maior que 1 MB não parece uma NF-e.");
   const sha256 = createHash("sha256").update(params.bytes).digest("hex");
+  // Captura pela SEFAZ (30/10/2026): a chave de acesso trava a mesma nota vinda por dois caminhos.
+  const chave = mime === "application/xml" ? chaveDaNfe(new TextDecoder("utf-8", { fatal: false }).decode(params.bytes)) : null;
   const admin = createAdminClient();
   const nome = params.nomeArquivo.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 160) || "documento";
   const { data, error } = await admin.rpc("fin_caixa_entrada_registrar", {
@@ -68,9 +70,13 @@ export async function receberArquivo(params: {
     p_tamanho: params.bytes.length,
     p_sha256: sha256,
     p_criado_por: params.criadoPor,
+    p_chave: chave,
   });
   if (error?.message?.includes("Limite diario")) {
     throw new ErroPublico("Esta unidade já recebeu 80 documentos nas últimas 24 horas. Tente de novo amanhã ou fale com a Zatti.");
+  }
+  if (error?.message?.includes("Nota ja esta na Caixa de Entrada")) {
+    throw new ErroPublico("Esta nota já está na Caixa de Entrada (mesma chave de acesso).");
   }
   if (error || !data) {
     console.error("caixa_entrada_registro_falhou", { codigo: error?.code ?? null });
