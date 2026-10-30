@@ -4,6 +4,10 @@ import {
   avisoInsumoFicha,
   avisoProdutoCotacao,
   configCadastroRapido,
+  podeCadastrarProdutoPelaFicha,
+  insumoPelaFichaRestrito,
+  grupoEntraEmFicha,
+  configCadastroRapidoFicha,
   mesclarItensNovos,
   ALERTA_CADASTRADO_AGORA,
   ALERTA_FORA_DA_CONTAGEM,
@@ -158,5 +162,52 @@ describe("avisos do cadastro rápido", () => {
     expect(configCadastroRapido(true, true, "banco")).toEqual({ avisarSetor: true });
     expect(configCadastroRapido(true, true, "planilha")).toEqual({ avisarSetor: false });
     expect(configCadastroRapido(true, false, "banco")).toEqual({ avisarSetor: false });
+  });
+});
+
+describe("podeCadastrarProdutoPelaFicha (29/10/2026)", () => {
+  const base = { unidadeId: "u", areaInterna: false, fichasTecnicasHabilitado: true };
+  it("quem edita ficha (chef ou editar no Cardápio) cadastra insumo pela ficha", () => {
+    expect(podeCadastrarProdutoPelaFicha({ ...base, permissoes: { cardapio: "chef" } })).toBe(true);
+    expect(podeCadastrarProdutoPelaFicha({ ...base, permissoes: { cardapio: "editar" } })).toBe(true);
+  });
+  it("quem só vê o Cardápio não cadastra", () => {
+    expect(podeCadastrarProdutoPelaFicha({ ...base, permissoes: { cardapio: "ver" } })).toBe(false);
+    expect(podeCadastrarProdutoPelaFicha({ ...base, permissoes: { cardapio: "sem_acesso" } })).toBe(false);
+  });
+  it("sem Fichas Técnicas ou fora da Navegação V2, sem atalho", () => {
+    expect(podeCadastrarProdutoPelaFicha({ ...base, fichasTecnicasHabilitado: false, permissoes: { cardapio: "chef" } })).toBe(false);
+    expect(podeCadastrarProdutoPelaFicha({ ...base, areaInterna: true, permissoes: { cardapio: "editar" } })).toBe(false);
+  });
+});
+
+describe("insumo pela ficha sem editar em Cadastros (30/10/2026)", () => {
+  it("só gestão/master com editar em Cadastros ficam sem a restrição", () => {
+    expect(insumoPelaFichaRestrito({ role: "gestao", permissoes: { cadastros: "editar" } })).toBe(false);
+    expect(insumoPelaFichaRestrito({ role: "master", permissoes: { cadastros: "editar" } })).toBe(false);
+    expect(insumoPelaFichaRestrito({ role: "gestao", permissoes: { cadastros: "ver" } })).toBe(true);
+    expect(insumoPelaFichaRestrito({ role: "gestao", permissoes: { cadastros: "sem_acesso" } })).toBe(true);
+    expect(insumoPelaFichaRestrito({ role: "operacional", permissoes: { cadastros: "editar" } })).toBe(true);
+  });
+  it("Limpeza, Operacional e grupo vazio não entram pela ficha", () => {
+    expect(grupoEntraEmFicha("MER")).toBe(true);
+    expect(grupoEntraEmFicha("PRE")).toBe(true);
+    expect(grupoEntraEmFicha("LIM")).toBe(false);
+    expect(grupoEntraEmFicha(" ope ")).toBe(false);
+    expect(grupoEntraEmFicha("")).toBe(false);
+    expect(grupoEntraEmFicha("XYZ")).toBe(false);
+    expect(grupoEntraEmFicha("LIM	")).toBe(false);
+  });
+  it("a config da ficha leva a restrição junto", () => {
+    const base = { unidadeId: "u", areaInterna: false, fichasTecnicasHabilitado: true, fonteDadosEstoque: "banco" };
+    expect(
+      configCadastroRapidoFicha({ ...base, role: "operacional", permissoes: { cardapio: "chef", cadastros: "ver" } }, true),
+    ).toEqual({ avisarSetor: true, insumoRestrito: true });
+    expect(
+      configCadastroRapidoFicha({ ...base, role: "gestao", permissoes: { cardapio: "editar", cadastros: "editar" } }, false),
+    ).toEqual({ avisarSetor: false, insumoRestrito: false });
+    expect(
+      configCadastroRapidoFicha({ ...base, role: "operacional", permissoes: { cardapio: "ver", cadastros: "ver" } }, true),
+    ).toBeNull();
   });
 });

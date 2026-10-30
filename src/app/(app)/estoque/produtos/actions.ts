@@ -20,7 +20,21 @@ import {
   sincronizarPrePreparos,
 } from "@/lib/banco/pre-preparo";
 import type { Produto } from "@/lib/types";
-import { requireGestao, registrarAuditoria, registrarAuditoriaBatch, temPermissao, type AcessoAtual, exigirEdicao } from "@/lib/acesso";
+import {
+  exigirEdicao,
+  getAcessoAtual,
+  registrarAuditoria,
+  registrarAuditoriaBatch,
+  requireGestao,
+  temPermissao,
+  type AcessoAtual,
+} from "@/lib/acesso";
+import {
+  grupoEntraEmFicha,
+  insumoPelaFichaRestrito,
+  MENSAGEM_GRUPO_FORA_DA_FICHA,
+  podeCadastrarProdutoPelaFicha,
+} from "@/lib/cadastro-rapido";
 import { revalidatePath } from "next/cache";
 import {
   fornecedor1Schema,
@@ -100,6 +114,13 @@ export async function sugerirSkuAction(
   nome: string
 ): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
   const acesso = await requireGestao();
+  return sugerirSkuPara(acesso, nome);
+}
+
+async function sugerirSkuPara(
+  acesso: AcessoAtual,
+  nome: string,
+): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
   try {
     await exigirLimiteRequisicao("sugerir_sku");
     const nomeValidado = validarEntrada(nomeProdutoSchema, nome);
@@ -115,46 +136,96 @@ export async function criarProdutoAction(
   const acesso = await requireGestao();
   try {
     exigirEdicao(acesso, "cadastros");
-    await exigirLimiteRequisicao("salvar_produtos");
-
-    const produto = validarEntrada(produtoSchema, {
-      sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
-      posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
-      grupo: String(formData.get("grupo") ?? ""),
-      nome: String(formData.get("nome") ?? ""),
-      unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
-      precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
-      estoqueNecessarioSemana: formData.get("estoqueNecessarioSemana")
-        ? Number(formData.get("estoqueNecessarioSemana"))
-        : null,
-      estoqueMinimo: formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
-      nomeCompra: String(formData.get("nomeCompra") ?? ""),
-      unidadeEmbalagemFornecedor: "",
-      qtdUnidadeBasePorEmbalagem: null,
-      precoFornecedor: null,
-      fornecedor1: "",
-      fornecedor2: "",
-      fornecedor3: "",
-      fornecedor4: "",
-      observacoes: String(formData.get("observacoes") ?? ""),
-      ativo: true,
-      revenda: false,
-    });
-
-    // Criação nunca sobrescreve SKU existente (o upsert apagaria o cadastro).
-    await inserirProduto(produto, acesso.spreadsheetId);
-    await registrarAuditoria({
-      acesso,
-      acao: "criar",
-      entidade: "produto",
-      entidadeId: produto.sku,
-      dadosNovos: produto,
-    });
-    revalidarTudo();
-    return { ok: true, produto };
+    return await criarProdutoDoFormulario(acesso, formData, "criar", false);
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar o produto.") };
   }
+}
+
+const MENSAGEM_SEM_INSUMO_PELA_FICHA =
+  "Cadastrar insumo pela ficha técnica é de quem edita a ficha. Peça a quem administra a equipe.";
+
+/** "+ Novo insumo" dentro da ficha técnica (decisão de Vinícius, 29/10/2026): quem edita ficha
+ * (Cardápio "chef" ou mais) cria o produto mesmo sem "editar" em Cadastros. Só cria, com os
+ * campos do cadastro rápido (fornecedor, embalagem, revenda e pré-preparo ficam de fora). Editar
+ * e excluir produto seguem de Cadastros. Com estoque no banco, o banco repete a regra
+ * (`usuario_pode_criar_produto_pela_ficha` e o gatilho `exigir_permissao_criar_produto`); na
+ * planilha legada a barreira é só esta action, como já era para a gestão. */
+export async function criarProdutoPelaFichaAction(
+  formData: FormData,
+): Promise<{ ok: true; produto: Produto } | { ok: false; mensagem: string }> {
+  const acesso = await getAcessoAtual();
+  try {
+    if (!podeCadastrarProdutoPelaFicha(acesso)) throw new ErroPublico(MENSAGEM_SEM_INSUMO_PELA_FICHA);
+    return await criarProdutoDoFormulario(acesso, formData, "criar_pela_ficha", insumoPelaFichaRestrito(acesso));
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível criar o produto.") };
+  }
+}
+
+/** "Sugerir grupo + SKU" do cadastro rápido dentro da ficha: mesma regra de
+ * `criarProdutoPelaFichaAction`. */
+export async function sugerirSkuPelaFichaAction(
+  nome: string,
+): Promise<{ sku: string; grupo: string; motivo: string } | { erro: string }> {
+  const acesso = await getAcessoAtual();
+  if (!podeCadastrarProdutoPelaFicha(acesso)) return { erro: MENSAGEM_SEM_INSUMO_PELA_FICHA };
+  const r = await sugerirSkuPara(acesso, nome);
+  // Sem "editar" em Cadastros o form só lista grupos de ficha: sugestão fora deles vira aviso.
+  if (!("erro" in r) && insumoPelaFichaRestrito(acesso) && !grupoEntraEmFicha(r.grupo)) {
+    return { erro: MENSAGEM_GRUPO_FORA_DA_FICHA };
+  }
+  return r;
+}
+
+async function criarProdutoDoFormulario(
+  acesso: AcessoAtual,
+  formData: FormData,
+  acao: "criar" | "criar_pela_ficha",
+  /** `insumoPelaFichaRestrito` (30/10/2026): só grupo de ficha e sem estoque mínimo nem
+   * estoque necessário da semana (o banco recusa o que vier preenchido). */
+  restrito: boolean,
+): Promise<{ ok: true; produto: Produto }> {
+  await exigirLimiteRequisicao("salvar_produtos");
+
+  const produto = validarEntrada(produtoSchema, {
+    sku: String(formData.get("sku") ?? "").toUpperCase().trim(),
+    posicao: formData.get("posicao") ? Number(formData.get("posicao")) : null,
+    grupo: String(formData.get("grupo") ?? ""),
+    nome: String(formData.get("nome") ?? ""),
+    unidadeBase: String(formData.get("unidadeBase") ?? "UN"),
+    precoUnitario: formData.get("precoUnitario") ? Number(formData.get("precoUnitario")) : null,
+    estoqueNecessarioSemana:
+      !restrito && formData.get("estoqueNecessarioSemana")
+        ? Number(formData.get("estoqueNecessarioSemana"))
+        : null,
+    estoqueMinimo: !restrito && formData.get("estoqueMinimo") ? Number(formData.get("estoqueMinimo")) : null,
+    nomeCompra: String(formData.get("nomeCompra") ?? ""),
+    unidadeEmbalagemFornecedor: "",
+    qtdUnidadeBasePorEmbalagem: null,
+    precoFornecedor: null,
+    fornecedor1: "",
+    fornecedor2: "",
+    fornecedor3: "",
+    fornecedor4: "",
+    observacoes: String(formData.get("observacoes") ?? ""),
+    ativo: true,
+    revenda: false,
+  });
+
+  if (restrito && !grupoEntraEmFicha(produto.grupo)) throw new ErroPublico(MENSAGEM_GRUPO_FORA_DA_FICHA);
+
+  // Criação nunca sobrescreve SKU existente (o upsert apagaria o cadastro).
+  await inserirProduto(produto, acesso.spreadsheetId);
+  await registrarAuditoria({
+    acesso,
+    acao,
+    entidade: "produto",
+    entidadeId: produto.sku,
+    dadosNovos: produto,
+  });
+  revalidarTudo();
+  return { ok: true, produto };
 }
 
 /** Produto criado de uma pendência entra nos setores que contaram o item -

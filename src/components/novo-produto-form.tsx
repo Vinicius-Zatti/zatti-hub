@@ -2,9 +2,15 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { criarProdutoAction, sugerirSkuAction } from "@/app/(app)/estoque/produtos/actions";
+import {
+  criarProdutoAction,
+  criarProdutoPelaFichaAction,
+  sugerirSkuAction,
+  sugerirSkuPelaFichaAction,
+} from "@/app/(app)/estoque/produtos/actions";
 import { CampoNumero } from "@/components/campo-numero";
 import { GRUPO_OPCOES } from "@/lib/grupos";
+import { grupoEntraEmFicha } from "@/lib/cadastro-rapido";
 import type { Produto } from "@/lib/types";
 
 // Chamada que nem chega a responder (rede, servidor fora do ar). Sem o catch,
@@ -15,6 +21,8 @@ export function NovoProdutoForm({
   nomeInicial,
   unidadeInicial,
   avisoNomeInicial = "Preenchido a partir de um item contado como avulso.",
+  pelaFicha = false,
+  restrito = false,
   onSalvo,
   onCancelar,
 }: {
@@ -23,12 +31,20 @@ export function NovoProdutoForm({
   /** Frase abaixo do título quando o nome já vem preenchido - cada tela que
    * abre o cadastro rápido diz de onde veio o nome. */
   avisoNomeInicial?: string;
+  /** "+ Novo insumo" dentro da ficha técnica (29/10/2026): grava pela action da ficha, que aceita
+   * quem edita a ficha (inclusive o chef) mesmo sem "editar" em Cadastros. */
+  pelaFicha?: boolean;
+  /** Com `pelaFicha`, quem não tem "editar" em Cadastros (30/10/2026): só grupos que entram em
+   * ficha e sem estoque mínimo nem estoque necessário da semana. O servidor e o banco repetem. */
+  restrito?: boolean;
   /** Quando informado, o form vira "in-place" (usado dentro de uma janela sobreposta) -
    * em vez de navegar pra `/estoque/produtos`, avisa o componente pai que salvou. */
   onSalvo?: (produto: Produto) => void;
   onCancelar?: () => void;
 }) {
   const router = useRouter();
+  const soFicha = pelaFicha && restrito;
+  const gruposDoForm = soFicha ? GRUPO_OPCOES.filter(({ codigo }) => grupoEntraEmFicha(codigo)) : GRUPO_OPCOES;
   const [grupo, setGrupo] = useState("");
   const [nome, setNome] = useState(nomeInicial ?? "");
   const [sku, setSku] = useState("");
@@ -44,7 +60,7 @@ export function NovoProdutoForm({
     startTransitionSugestao(async () => {
       let r: Awaited<ReturnType<typeof sugerirSkuAction>>;
       try {
-        r = await sugerirSkuAction(nome);
+        r = await (pelaFicha ? sugerirSkuPelaFichaAction : sugerirSkuAction)(nome);
       } catch {
         r = { erro: ERRO_CONEXAO };
       }
@@ -65,7 +81,7 @@ export function NovoProdutoForm({
     startTransitionSalvar(async () => {
       let resultado: Awaited<ReturnType<typeof criarProdutoAction>>;
       try {
-        resultado = await criarProdutoAction(dados);
+        resultado = await (pelaFicha ? criarProdutoPelaFichaAction : criarProdutoAction)(dados);
       } catch {
         resultado = { ok: false, mensagem: ERRO_CONEXAO };
       }
@@ -127,7 +143,7 @@ export function NovoProdutoForm({
             {/* Lê de GRUPO_OPCOES em vez de repetir a lista aqui: essa cópia
                 existia e ficou pra trás quando PRE entrou no padrão, então o
                 grupo existia no cadastro mas não dava pra escolher na tela. */}
-            {GRUPO_OPCOES.map(({ codigo, descricao }) => (
+            {gruposDoForm.map(({ codigo, descricao }) => (
               <option key={codigo} value={codigo}>
                 {codigo} — {descricao}
               </option>
@@ -150,8 +166,16 @@ export function NovoProdutoForm({
         <Campo label="Nome de compra" name="nomeCompra" />
         <Campo label="Unidade base (KG / LT / UN)" name="unidadeBase" defaultValue={unidadeInicial || "UN"} />
         <CampoDecimal label="Preço unitário" name="precoUnitario" />
-        <CampoDecimal label="Estoque necessário da semana" name="estoqueNecessarioSemana" />
-        <CampoDecimal label="Estoque mínimo" name="estoqueMinimo" />
+        {soFicha ? (
+          <p className="text-xs text-cinza-medio">
+            Estoque mínimo e estoque necessário da semana ficam em Cadastros, com a gestão.
+          </p>
+        ) : (
+          <>
+            <CampoDecimal label="Estoque necessário da semana" name="estoqueNecessarioSemana" />
+            <CampoDecimal label="Estoque mínimo" name="estoqueMinimo" />
+          </>
+        )}
         <Campo
           label="Posição (ordem física de contagem)"
           name="posicao"
