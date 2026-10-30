@@ -4,8 +4,7 @@ import { calcularMargemContribuicao } from "@/lib/fichas-tecnicas";
 import { ListaFichasTecnicas } from "@/components/lista-fichas-tecnicas";
 import { LinkVideoAjuda } from "@/components/videos-ajuda";
 import { resumoParaVisao, visaoDaFicha } from "@/lib/fichas-tecnicas-visibilidade";
-import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
-import { configCadastroRapido } from "@/lib/cadastro-rapido";
+import { configCadastroRapidoFicha } from "@/lib/cadastro-rapido";
 import { contagemPorSetorVale } from "@/lib/contagem/ativacao";
 
 export const dynamic = "force-dynamic";
@@ -48,11 +47,7 @@ export default async function FichasTecnicasPage() {
         deducoesTotal={deducoesTotal}
         deducoesIfood={deducoesIfood}
         deducoes99Food={deducoes99Food}
-        cadastroRapidoProduto={configCadastroRapido(
-          podeGerir && usaNavegacaoV2(acesso),
-          contagemPorSetorVale(acesso),
-          acesso.fonteDadosEstoque,
-        )}
+        cadastroRapidoProduto={configCadastroRapidoFicha(acesso, contagemPorSetorVale(acesso))}
       />
     </div>
   );

@@ -82,8 +82,8 @@ export function FichaTecnicaForm({
   fichasDisponiveis: OpcaoFicha[];
   /** Cadastro rápido no lugar onde se usa (Navegação V2, piloto): "+ Novo
    * insumo" abre o cadastro de produto em modal e, ao salvar, o item já fica
-   * escolhido na linha. Só quem pode cadastrar produto (Gestão/master) recebe
-   * a config - `criarProdutoAction` confere de novo no servidor. */
+   * escolhido na linha. Quem edita a ficha recebe a config, inclusive o chef
+   * (29/10/2026) - `criarProdutoPelaFichaAction` confere de novo no servidor. */
   cadastroRapidoProduto?: ConfigCadastroRapido | null;
   /** Chef (26/10/2026): sem o preço oficial nem as observações gerenciais (o servidor guarda o
    * que já estava; o preço do chef vai como rascunho na tela da ficha). */
@@ -724,6 +724,8 @@ export function FichaTecnicaForm({
           <NovoProdutoForm
             nomeInicial={novoInsumo.nome || undefined}
             avisoNomeInicial="Preenchido com o que você buscou na ficha técnica."
+            pelaFicha
+            restrito={cadastroRapidoProduto?.insumoRestrito ?? true}
             onSalvo={insumoCadastrado}
             onCancelar={fecharNovoInsumo}
           />

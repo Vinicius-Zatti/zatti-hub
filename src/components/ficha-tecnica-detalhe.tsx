@@ -82,7 +82,7 @@ export function FichaTecnicaDetalhe({
         categorias={categorias}
         produtos={produtos}
         fichasDisponiveis={fichasDisponiveis}
-        cadastroRapidoProduto={podeGerir ? cadastroRapidoProduto : null}
+        cadastroRapidoProduto={cadastroRapidoProduto}
         modoChef={!podeGerir}
         onSalvo={(id) => {
           setEditando(false);

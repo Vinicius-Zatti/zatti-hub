@@ -1,4 +1,7 @@
 import { GRUPOS_FORA_DE_FICHA } from "@/lib/fichas-tecnicas";
+import { GRUPO_NOMES } from "@/lib/grupos";
+import { usaNavegacaoV2 } from "@/lib/navegacao/piloto";
+import { rank, type NiveisCompletos } from "@/lib/permissoes/modulos";
 import type { Produto, SugestaoCompra } from "@/lib/types";
 
 /** Cadastro rápido no lugar onde se usa (Navegação V2, 24/10/2026): o produto
@@ -136,8 +139,9 @@ export function avisoInsumoFicha(opcoes: {
 }
 
 /** O que a tela recebe para mostrar os atalhos. `null` = sem atalho (fora do
- * piloto ou papel que não cadastra produto). */
-export type ConfigCadastroRapido = { avisarSetor: boolean };
+ * piloto ou papel que não cadastra produto). `insumoRestrito` só vale no "+ Novo insumo" da
+ * ficha: ver `insumoPelaFichaRestrito`. */
+export type ConfigCadastroRapido = { avisarSetor: boolean; insumoRestrito?: boolean };
 
 export function configCadastroRapido(
   liberado: boolean,
@@ -145,4 +149,59 @@ export function configCadastroRapido(
   fonteDadosEstoque: string,
 ): ConfigCadastroRapido | null {
   return liberado ? { avisarSetor: precisaAvisoSetor(contagemPorSetorAtiva, fonteDadosEstoque) } : null;
+}
+
+/** Insumo novo pela ficha técnica (decisão de Vinícius, 29/10/2026): quem edita ficha (Cardápio
+ * "chef" ou mais, inclusive a operação com a exceção de chef) cadastra produto novo pelo "+ Novo
+ * insumo", mesmo sem "editar" em Cadastros. Só criar: editar e excluir produto e a tela de
+ * Produtos seguem de Cadastros. Fora da Navegação V2 não há atalho. O banco repete a regra
+ * (`usuario_pode_criar_produto_pela_ficha`). */
+export function podeCadastrarProdutoPelaFicha(acesso: {
+  unidadeId: string;
+  areaInterna: boolean;
+  fichasTecnicasHabilitado: boolean;
+  permissoes: Pick<NiveisCompletos, "cardapio">;
+}): boolean {
+  return (
+    acesso.fichasTecnicasHabilitado &&
+    usaNavegacaoV2(acesso) &&
+    rank(acesso.permissoes.cardapio) >= rank("chef")
+  );
+}
+
+/** Decisão de Vinícius (30/10/2026): quem cria SÓ pelo caminho da ficha, sem "editar" em
+ * Cadastros (o chef, o gerente chef, a gestão que só vê Cadastros), cria apenas insumo de grupo
+ * que entra em ficha e sem estoque mínimo nem estoque necessário da semana (nascem vazios).
+ * Gestão/master com "editar" em Cadastros seguem com todos os campos. O banco repete a regra
+ * no gatilho `exigir_permissao_criar_produto`. */
+export function insumoPelaFichaRestrito(acesso: {
+  role: string;
+  permissoes: Pick<NiveisCompletos, "cadastros">;
+}): boolean {
+  const gestao = acesso.role === "gestao" || acesso.role === "master";
+  return !(gestao && rank(acesso.permissoes.cadastros) >= rank("editar"));
+}
+
+/** Grupo que pode nascer pelo "+ Novo insumo" no modo restrito (fora LIM e OPE). */
+export function grupoEntraEmFicha(grupo: string): boolean {
+  // Lista de grupos conhecidos, não lista negra: grupo inventado ou com caractere invisível não passa.
+  const codigo = grupo.trim().toUpperCase();
+  return codigo in GRUPO_NOMES && !GRUPOS_FORA_DE_FICHA.has(codigo);
+}
+
+export const MENSAGEM_GRUPO_FORA_DA_FICHA =
+  "Pela ficha técnica só se cadastra insumo de grupo que entra em ficha. Limpeza e Operacional ficam em Cadastros.";
+
+/** Atalho "+ Novo insumo" das telas de ficha técnica. */
+export function configCadastroRapidoFicha(
+  acesso: Parameters<typeof podeCadastrarProdutoPelaFicha>[0] &
+    Parameters<typeof insumoPelaFichaRestrito>[0] & { fonteDadosEstoque: string },
+  contagemPorSetorAtiva: boolean,
+): ConfigCadastroRapido | null {
+  const base = configCadastroRapido(
+    podeCadastrarProdutoPelaFicha(acesso),
+    contagemPorSetorAtiva,
+    acesso.fonteDadosEstoque,
+  );
+  return base && { ...base, insumoRestrito: insumoPelaFichaRestrito(acesso) };
 }

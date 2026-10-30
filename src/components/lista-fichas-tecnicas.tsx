@@ -332,7 +332,7 @@ export function ListaFichasTecnicas({
                 categorias={dadosNovo.categorias}
                 produtos={dadosNovo.produtos}
                 fichasDisponiveis={dadosNovo.fichasDisponiveis}
-                cadastroRapidoProduto={podeGerir ? cadastroRapidoProduto : null}
+                cadastroRapidoProduto={cadastroRapidoProduto}
                 modoChef={!podeGerir}
                 onSalvo={() => {
                   fecharNovo();
