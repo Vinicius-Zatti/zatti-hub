@@ -15,7 +15,7 @@ export type CertificadoPainel = {
   validoAte: string;
   diasParaVencer: number;
   ultimaRodada: RodadaResumo | null;
-  notas: { xmlSalvo: number; aguardando: number; semCiencia: number; erro: number };
+  notas: { xmlSalvo: number; aguardando: number; semCiencia: number; cancelada: number; erro: number };
 };
 export type PainelSefaz = { ligada: boolean; certificados: CertificadoPainel[] };
 
@@ -45,10 +45,11 @@ export async function carregarPainelSefaz(unidadeId: string, agora = new Date())
   for (const r of (rodadas.data as Rodada[] | null) ?? []) if (!ultima.has(r.certificado_id)) ultima.set(r.certificado_id, r);
   const contagem = new Map<string, CertificadoPainel["notas"]>();
   for (const n of (notas.data as { certificado_id: string; situacao: string }[] | null) ?? []) {
-    const c = contagem.get(n.certificado_id) ?? { xmlSalvo: 0, aguardando: 0, semCiencia: 0, erro: 0 };
+    const c = contagem.get(n.certificado_id) ?? { xmlSalvo: 0, aguardando: 0, semCiencia: 0, cancelada: 0, erro: 0 };
     if (n.situacao === "xml_salvo") c.xmlSalvo++;
     else if (n.situacao === "resumo" || n.situacao === "ciencia") c.aguardando++;
     else if (n.situacao === "sem_ciencia") c.semCiencia++;
+    else if (n.situacao === "cancelada") c.cancelada++;
     else c.erro++;
     contagem.set(n.certificado_id, c);
   }
@@ -66,7 +67,7 @@ export async function carregarPainelSefaz(unidadeId: string, agora = new Date())
         ultimaRodada: r
           ? { dia: hojeIsoBrasil(new Date(r.iniciado_em)), situacao: r.situacao, erroCodigo: r.erro_codigo, notasNovas: r.notas_novas, ciencias: r.ciencias, filaZerou: r.fila_zerou }
           : null,
-        notas: contagem.get(c.id) ?? { xmlSalvo: 0, aguardando: 0, semCiencia: 0, erro: 0 },
+        notas: contagem.get(c.id) ?? { xmlSalvo: 0, aguardando: 0, semCiencia: 0, cancelada: 0, erro: 0 },
       };
     }),
   };

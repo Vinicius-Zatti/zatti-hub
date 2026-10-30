@@ -260,6 +260,11 @@ export function CaixaEntrada({
                   </td>
                   <td className="max-w-[220px] truncate px-3 py-2" title={ex?.contraparteNome ?? ""}>
                     {ex?.contraparteNome ?? <span className="text-cinza-medio">-</span>}
+                    {ex?.observacao && /^(Possível nota repetida|Nota cancelada)/.test(ex.observacao) && (
+                      <span className="block truncate text-xs font-semibold text-vermelho" title={ex.observacao}>
+                        {ex.observacao.startsWith("Nota cancelada") ? "Nota cancelada na SEFAZ" : "Possível nota repetida"}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">{ex ? `R$ ${formatarMoeda(totalLido(ex))}` : "-"}</td>
                   <td className="px-3 py-2">

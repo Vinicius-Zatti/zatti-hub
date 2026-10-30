@@ -24,6 +24,8 @@ const progresso = z.object({
     situacaoNfe: z.string().max(1).nullable().optional(),
   }).strict()).max(60).optional(),
   xmlSalvos: z.array(chave).max(60).optional(),
+  xmlRecusados: z.array(chave).max(60).optional(),
+  canceladas: z.array(chave).max(60).optional(),
   ciencias: z.array(z.object({ chave, ok: z.boolean(), cStat: z.string().max(3).nullable().optional() }).strict()).max(20).optional(),
   tentativas: z.array(z.object({ chave, cStat: z.string().max(3).nullable().optional() }).strict()).max(20).optional(),
   fim: z.object({

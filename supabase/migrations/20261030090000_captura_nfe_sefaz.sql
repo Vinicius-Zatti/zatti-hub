@@ -40,7 +40,7 @@ create table if not exists public.fin_sefaz_notas (
   id uuid primary key default gen_random_uuid(),
   certificado_id uuid not null references public.fin_sefaz_certificados(id),
   chave text not null check (chave ~ '^[0-9]{44}$'),
-  situacao text not null check (situacao in ('resumo', 'ciencia', 'xml_salvo', 'sem_ciencia', 'erro')),
+  situacao text not null check (situacao in ('resumo', 'ciencia', 'xml_salvo', 'sem_ciencia', 'cancelada', 'erro')),
   situacao_nfe text check (situacao_nfe is null or situacao_nfe ~ '^[0-9]$'),
   emitente_cnpj text check (emitente_cnpj is null or emitente_cnpj ~ '^[0-9]{11,14}$'),
   emitente_nome text check (emitente_nome is null or char_length(emitente_nome) <= 160),
@@ -190,38 +190,57 @@ as $$
 $$;
 
 -- ── O que o robô deve rodar hoje ──────────────────────────────────────────
--- Certificado ativo, fora do bloqueio da SEFAZ, sem rodada boa hoje (Brasília) e com menos de 3
--- tentativas hoje. Vai junto a lista de notas esperando Ciência ou XML.
+-- Certificado ativo, fora do bloqueio, sem rodada boa hoje (Brasília) e com menos de 3 tentativas
+-- hoje. Quem recebe o certificado o reserva na hora por 61 min (bloqueado_ate): uma segunda chamada,
+-- de outro contêiner ou da repetição de 30 min, não o recebe, e a SEFAZ nunca vê duas consultas do
+-- mesmo NSU em menos de 1 hora (regra do 137; achado da revisão de 30/10). Vão junto as notas
+-- esperando Ciência ou XML, até 1.000 por certificado.
 create or replace function public.fin_sefaz_pendencias()
 returns jsonb
-language sql
-stable
+language plpgsql
+volatile
 security definer
 set search_path = ''
 as $$
-  with hoje as (select (now() at time zone 'America/Sao_Paulo')::date as d),
-  certs as (
-    select c.*, u.nome as unidade_nome,
-      (select count(*) from public.fin_sefaz_rodadas r, hoje
-        where r.certificado_id = c.id and (r.iniciado_em at time zone 'America/Sao_Paulo')::date = hoje.d) as tentativas_hoje
+declare
+  v_hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_ids uuid[];
+begin
+  with livres as (
+    select c.id
       from public.fin_sefaz_certificados c
-      join public.unidades u on u.id = c.unidade_id
      where c.ativo and c.envelope is not null
        and (c.bloqueado_ate is null or c.bloqueado_ate < now())
-       and not exists (select 1 from public.fin_sefaz_rodadas r, hoje
+       and not exists (select 1 from public.fin_sefaz_rodadas r
                         where r.certificado_id = c.id and r.situacao = 'ok'
-                          and (r.iniciado_em at time zone 'America/Sao_Paulo')::date = hoje.d)
+                          and (r.iniciado_em at time zone 'America/Sao_Paulo')::date = v_hoje)
+       and (select count(*) from public.fin_sefaz_rodadas r
+             where r.certificado_id = c.id and (r.iniciado_em at time zone 'America/Sao_Paulo')::date = v_hoje) < 3
+     for update of c skip locked
+  ), reservados as (
+    update public.fin_sefaz_certificados c
+       set bloqueado_ate = now() + interval '61 minutes', atualizado_em = now()
+      from livres where c.id = livres.id
+    returning c.id
   )
-  select jsonb_build_object(
+  select coalesce(array_agg(id), '{}') into v_ids from reservados;
+
+  return jsonb_build_object(
     'certificados', coalesce((select jsonb_agg(jsonb_build_object(
-        'id', c.id, 'unidadeId', c.unidade_id, 'unidadeNome', c.unidade_nome, 'cnpj', c.cnpj, 'uf', c.uf,
-        'ultNsu', c.ult_nsu, 'validoAte', c.valido_ate, 'tentativasHoje', c.tentativas_hoje, 'envelope', c.envelope))
-      from certs c where c.tentativas_hoje < 3), '[]'::jsonb),
+        'id', c.id, 'unidadeId', c.unidade_id, 'unidadeNome', u.nome, 'cnpj', c.cnpj, 'uf', c.uf,
+        'ultNsu', c.ult_nsu, 'validoAte', c.valido_ate, 'envelope', c.envelope,
+        'tentativasHoje', (select count(*) from public.fin_sefaz_rodadas r
+                            where r.certificado_id = c.id and (r.iniciado_em at time zone 'America/Sao_Paulo')::date = v_hoje)))
+      from public.fin_sefaz_certificados c join public.unidades u on u.id = c.unidade_id
+     where c.id = any(v_ids)), '[]'::jsonb),
     'pendentes', coalesce((select jsonb_agg(jsonb_build_object(
         'certificadoId', n.certificado_id, 'chave', n.chave, 'situacao', n.situacao, 'cienciaEm', n.ciencia_em))
-      from (select n.* from public.fin_sefaz_notas n join certs c on c.id = n.certificado_id
-             where c.tentativas_hoje < 3 and n.situacao in ('resumo', 'ciencia') order by n.criado_em limit 2000) n), '[]'::jsonb)
+      from (select n.*, row_number() over (partition by n.certificado_id order by n.criado_em) as ordem
+              from public.fin_sefaz_notas n
+             where n.certificado_id = any(v_ids) and n.situacao in ('resumo', 'ciencia')) n
+     where n.ordem <= 1000), '[]'::jsonb)
   );
+end;
 $$;
 revoke all on function public.fin_sefaz_pendencias() from public, anon, authenticated;
 grant execute on function public.fin_sefaz_pendencias() to service_role;
@@ -266,6 +285,27 @@ begin
     insert into public.fin_sefaz_notas (certificado_id, chave, situacao)
     values (p_certificado, v_item #>> '{}', 'xml_salvo')
     on conflict (certificado_id, chave) do update set situacao = 'xml_salvo', atualizado_em = now();
+  end loop;
+
+  -- XML que o Hub recusou de vez (4xx): a nota vira erro e a fila segue.
+  for v_item in select * from jsonb_array_elements(coalesce(p_dados -> 'xmlRecusados', '[]'::jsonb)) loop
+    insert into public.fin_sefaz_notas (certificado_id, chave, situacao)
+    values (p_certificado, v_item #>> '{}', 'erro')
+    on conflict (certificado_id, chave) do update set situacao = 'erro', atualizado_em = now()
+      where public.fin_sefaz_notas.situacao <> 'xml_salvo';
+  end loop;
+
+  -- Cancelamento (110111) visto na fila: registra e anota a entrada ainda não lançada (só o aviso;
+  -- a situação da entrada não muda, quem descarta é a pessoa).
+  for v_item in select * from jsonb_array_elements(coalesce(p_dados -> 'canceladas', '[]'::jsonb)) loop
+    insert into public.fin_sefaz_notas (certificado_id, chave, situacao)
+    values (p_certificado, v_item #>> '{}', 'cancelada')
+    on conflict (certificado_id, chave) do update set situacao = 'cancelada', atualizado_em = now();
+    update public.fin_caixa_entrada
+       set extracao = jsonb_set(extracao, '{observacao}', to_jsonb('Nota cancelada pelo fornecedor na SEFAZ. Não lançar.'::text)),
+           atualizado_em = now()
+     where unidade_id = v_cert.unidade_id and chave_acesso = v_item #>> '{}'
+       and situacao in ('recebido', 'lido', 'falhou') and extracao is not null;
   end loop;
 
   -- Ciências: registrada vira 'ciencia'; recusada conta tentativa e para em 5.

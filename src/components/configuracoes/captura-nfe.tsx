@@ -81,9 +81,11 @@ export function CapturaNfe({ painel }: { painel: PainelSefaz }) {
                       : "Ainda não buscou."}
                     {" · "}
                     {c.notas.xmlSalvo} XML(s) na Caixa de Entrada, {c.notas.aguardando} aguardando a SEFAZ liberar
+                    {c.notas.cancelada > 0 && `, ${c.notas.cancelada} cancelada(s) pelo fornecedor`}
+                    {c.notas.erro > 0 && `, ${c.notas.erro} com erro`}
                     <DicaCalculo
                       rotulo="Contagem das notas"
-                      texto="XMLs na Caixa de Entrada = notas deste CNPJ que o robô já entregou. Aguardando = notas que a SEFAZ só mostrou em resumo; depois da Ciência o XML completo chega numa das próximas buscas. Notas canceladas ou denegadas não entram na conta."
+                      texto="XMLs na Caixa de Entrada = notas deste CNPJ que o robô já entregou. Aguardando = notas que a SEFAZ só mostrou em resumo; depois da Ciência o XML completo chega numa das próximas buscas. Canceladas = notas que o fornecedor cancelou na SEFAZ (a entrada na Caixa ganha o aviso). Com erro = XML que a Caixa recusou ou que a SEFAZ não liberou depois de várias tentativas. Notas denegadas não entram na conta."
                     />
                   </p>
                 </div>

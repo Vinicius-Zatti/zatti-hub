@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(28);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000f5001', 'gestao.sefaz@teste.local', 'x', now(), 'authenticated', 'authenticated');
@@ -81,15 +81,36 @@ select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_
   jsonb_build_array(jsonb_build_object('chave', repeat('6', 44), 'situacaoNfe', '1'))));
 select is((select situacao from fin_sefaz_notas where chave = repeat('6', 44)), 'ciencia', 'resumo repetido não desfaz a Ciência');
 
-select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 1, 'sem rodada hoje, o certificado aparece');
-select is((public.fin_sefaz_pendencias() -> 'pendentes' -> 0 ->> 'situacao'), 'ciencia', 'pendente esperando o XML vai junto');
+create temp table p1 as select public.fin_sefaz_pendencias() as r;
+select is(jsonb_array_length((select r from p1) -> 'certificados'), 1, 'sem rodada hoje, o certificado aparece');
+select is(((select r from p1) -> 'pendentes' -> 0 ->> 'situacao'), 'ciencia', 'pendente esperando o XML vai junto');
+select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0,
+  'quem recebe reserva: segunda chamada (outro contêiner ou repetição) não recebe');
+select ok((select bloqueado_ate > now() + interval '60 minutes' from fin_sefaz_certificados where cnpj = '12345678000199'),
+  'reserva dura mais de 1 hora (regra do 137)');
 
+update fin_sefaz_certificados set bloqueado_ate = null;
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', '{"fim": {"situacao": "ok", "notasNovas": 1}}');
 select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'rodada boa hoje tira o certificado do dia');
 
 delete from fin_sefaz_rodadas;
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('bloqueadoAte', (now() + interval '1 hour')::text));
 select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'bloqueio do 656 é respeitado');
+
+update fin_sefaz_certificados set bloqueado_ate = null;
+insert into fin_sefaz_rodadas (certificado_id, iniciado_em, situacao)
+  select '00000000-0000-0000-0000-0000000f5c01', now(), 'erro' from generate_series(1, 3);
+select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'três tentativas com erro encerram o dia');
+
+select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('xmlRecusados', jsonb_build_array(repeat('8', 44))));
+select is((select situacao from fin_sefaz_notas where chave = repeat('8', 44)), 'erro', 'XML recusado pelo Hub vira erro');
+
+update fin_caixa_entrada set extracao = '{"observacao": null}'::jsonb, situacao = 'lido', arquivo_gravado = true
+  where chave_acesso = repeat('3', 44);
+select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('canceladas', jsonb_build_array(repeat('3', 44))));
+select is((select situacao from fin_sefaz_notas where chave = repeat('3', 44)), 'cancelada', 'cancelamento registrado');
+select ok((select extracao ->> 'observacao' like 'Nota cancelada%' from fin_caixa_entrada where chave_acesso = repeat('3', 44)),
+  'entrada não lançada ganha o aviso de cancelada');
 
 select * from finish();
 rollback;

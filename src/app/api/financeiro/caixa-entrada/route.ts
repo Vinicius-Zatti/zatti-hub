@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (erro) {
+    // Teto diário da SEFAZ é passageiro (429): o robô para e tenta amanhã sem perder a nota.
+    if (erro instanceof ErroPublico && corpo.canal === "sefaz" && erro.message.includes("teto diário")) {
+      return NextResponse.json({ erro: "limite_diario", mensagem: erro.message }, { status: 429 });
+    }
     if (erro instanceof ErroPublico) return NextResponse.json({ erro: "arquivo_recusado", mensagem: erro.message }, { status: 422 });
     return NextResponse.json({ erro: "indisponivel" }, { status: 503 });
   }

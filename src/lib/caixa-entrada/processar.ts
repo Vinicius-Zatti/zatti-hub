@@ -73,7 +73,11 @@ export async function receberArquivo(params: {
     p_chave: chave,
   });
   if (error?.message?.includes("Limite diario")) {
-    throw new ErroPublico("Esta unidade já recebeu 80 documentos nas últimas 24 horas. Tente de novo amanhã ou fale com a Zatti.");
+    throw new ErroPublico(
+      params.canal === "sefaz"
+        ? "A captura da SEFAZ chegou ao teto diário desta unidade; o resto entra amanhã."
+        : "Esta unidade já recebeu 80 documentos nas últimas 24 horas. Tente de novo amanhã ou fale com a Zatti.",
+    );
   }
   if (error?.message?.includes("Nota ja esta na Caixa de Entrada")) {
     throw new ErroPublico("Esta nota já está na Caixa de Entrada (mesma chave de acesso).");
@@ -152,6 +156,29 @@ async function contasDeDespesa(unidadeId: string): Promise<ContaPlano[]> {
   return linhas
     .filter((c) => c.nivel === "conta" && !c.arquivado && c.papel_dre && !provisao.has(c.papel_dre))
     .map((c) => ({ id: c.id, nome: c.nome, caminho: caminho(c), papelDre: c.papel_dre as string }));
+}
+
+/** Mesma nota por dois caminhos (ex.: DANFE em PDF pelo WhatsApp e XML pela SEFAZ, 30/10/2026): a
+ * chave de acesso só trava XML com XML. Aqui só avisa; quem descarta é a pessoa. */
+async function avisoRepetida(unidadeId: string, entradaId: string, ex: ExtracaoDocumento): Promise<string | null> {
+  if (!ex.contraparteDocumento || (!ex.numero && !ex.dataEmissao)) return null;
+  const { data } = await createAdminClient()
+    .from("fin_caixa_entrada")
+    .select("nome_arquivo, extracao")
+    .eq("unidade_id", unidadeId)
+    .neq("id", entradaId)
+    .neq("situacao", "descartado")
+    .eq("extracao->>contraparteDocumento", ex.contraparteDocumento)
+    .limit(50);
+  type Linha = { nome_arquivo: string; extracao: { numero: string | null; dataEmissao: string | null; valorTotalCentavos: number } | null };
+  const igual = ((data as Linha[] | null) ?? []).find((l) => {
+    const o = l.extracao;
+    if (!o) return false;
+    const numero = (v: string | null) => (v ?? "").replace(/^0+/, "");
+    if (ex.numero && o.numero) return numero(ex.numero) === numero(o.numero);
+    return o.dataEmissao === ex.dataEmissao && o.valorTotalCentavos === ex.valorTotalCentavos;
+  });
+  return igual ? `Possível nota repetida: ${igual.nome_arquivo.slice(0, 60)} já está na Caixa de Entrada com o mesmo emitente e número.` : null;
 }
 
 /** Lê a entrada (XML sem IA; PDF/foto com IA) e grava extração e sugestão. Nunca lança. */
@@ -258,6 +285,7 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
       .maybeSingle();
     contraparteId = (cp as { id: string } | null)?.id ?? null;
   }
+  extracao.observacao = (await avisoRepetida(entrada.unidade_id, entradaId, extracao)) ?? extracao.observacao;
   const { data: gravado, error: erroGravar } = await admin
     .from("fin_caixa_entrada")
     .update({
