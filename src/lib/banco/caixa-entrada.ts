@@ -14,7 +14,7 @@ export type SituacaoEntrada = "recebido" | "lendo" | "lido" | "falhou" | "lancad
 
 export type EntradaCaixa = {
   id: string;
-  canal: "upload" | "whatsapp" | "drive";
+  canal: "upload" | "whatsapp" | "drive" | "sefaz";
   remetente: string | null;
   nomeArquivo: string;
   mime: string;
