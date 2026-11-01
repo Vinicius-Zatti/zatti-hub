@@ -308,11 +308,12 @@ begin
        and situacao in ('recebido', 'lido', 'falhou') and extracao is not null;
   end loop;
 
-  -- Ciências: registrada vira 'ciencia'; recusada conta tentativa e para em 5.
+  -- Ciências: registrada vira 'ciencia'; recusada conta tentativa e para em 5. O 596 (nota com mais
+  -- de 10 dias, teste Betones e Dom Quixote 30/10 e 01/11) não adianta repetir: vira erro na hora.
   for v_item in select * from jsonb_array_elements(coalesce(p_dados -> 'ciencias', '[]'::jsonb)) loop
     update public.fin_sefaz_notas
        set situacao = case when (v_item ->> 'ok')::boolean then 'ciencia'
-                           when tentativas + 1 >= 5 then 'erro' else situacao end,
+                           when v_item ->> 'cStat' = '596' or tentativas + 1 >= 5 then 'erro' else situacao end,
            ciencia_em = case when (v_item ->> 'ok')::boolean then now() else ciencia_em end,
            tentativas = case when (v_item ->> 'ok')::boolean then tentativas else tentativas + 1 end,
            ultimo_cstat = case when v_item ->> 'cStat' ~ '^[0-9]{3}$' then v_item ->> 'cStat' else ultimo_cstat end,

@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(29);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000f5001', 'gestao.sefaz@teste.local', 'x', now(), 'authenticated', 'authenticated');
@@ -104,6 +104,12 @@ select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0
 
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('xmlRecusados', jsonb_build_array(repeat('8', 44))));
 select is((select situacao from fin_sefaz_notas where chave = repeat('8', 44)), 'erro', 'XML recusado pelo Hub vira erro');
+
+select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('resumos',
+  jsonb_build_array(jsonb_build_object('chave', repeat('9', 44), 'situacaoNfe', '1'))));
+select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object(
+  'ciencias', jsonb_build_array(jsonb_build_object('chave', repeat('9', 44), 'ok', false, 'cStat', '596'))));
+select is((select situacao from fin_sefaz_notas where chave = repeat('9', 44)), 'erro', 'Ciência fora do prazo (596) não é repetida');
 
 update fin_caixa_entrada set extracao = '{"observacao": null}'::jsonb, situacao = 'lido', arquivo_gravado = true
   where chave_acesso = repeat('3', 44);
