@@ -36,7 +36,7 @@ function formatarMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const CANAL: Record<EntradaCaixa["canal"], string> = { upload: "Upload", whatsapp: "WhatsApp", drive: "Drive" };
+const CANAL: Record<EntradaCaixa["canal"], string> = { upload: "Upload", whatsapp: "WhatsApp", drive: "Drive", sefaz: "SEFAZ" };
 
 const SITUACAO: Record<SituacaoEntrada, { rotulo: string; classe: string }> = {
   recebido: { rotulo: "Lendo...", classe: "bg-azul-petroleo/15 text-azul-petroleo" },
@@ -260,6 +260,11 @@ export function CaixaEntrada({
                   </td>
                   <td className="max-w-[220px] truncate px-3 py-2" title={ex?.contraparteNome ?? ""}>
                     {ex?.contraparteNome ?? <span className="text-cinza-medio">-</span>}
+                    {ex?.observacao && /^(Possível nota repetida|Nota cancelada)/.test(ex.observacao) && (
+                      <span className="block truncate text-xs font-semibold text-vermelho" title={ex.observacao}>
+                        {ex.observacao.startsWith("Nota cancelada") ? "Nota cancelada na SEFAZ" : "Possível nota repetida"}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">{ex ? `R$ ${formatarMoeda(totalLido(ex))}` : "-"}</td>
                   <td className="px-3 py-2">

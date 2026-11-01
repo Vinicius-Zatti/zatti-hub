@@ -38,6 +38,14 @@ export function pareceNfeXml(texto: string): boolean {
   return /<(?:[a-zA-Z0-9]+:)?infNFe[\s>]/.test(texto);
 }
 
+/** Chave de acesso (44 dígitos): do Id do infNFe ou, na falta, do protocolo. Trava contra nota em dobro. */
+export function chaveDaNfe(xml: string): string | null {
+  const doId = /<(?:[a-zA-Z0-9]+:)?infNFe\s[^>]*Id="NFe(\d{44})"/.exec(xml);
+  if (doId) return doId[1];
+  const doProt = tag(xml, "chNFe");
+  return doProt && /^\d{44}$/.test(doProt) ? doProt : null;
+}
+
 export function lerNfeXml(xml: string): ExtracaoDocumento | null {
   if (!pareceNfeXml(xml)) return null;
   const emit = tag(xml, "emit") ?? "";
