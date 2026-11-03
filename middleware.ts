@@ -4,16 +4,20 @@ import { CABECALHO_CAMINHO } from "@/lib/area-interna/caminhos";
 
 // As rotas do relatório semanal de IA, dos eventos de leads e do Conteúdo se autenticam por token próprio (conferido
 // no banco), não por sessão: são chamadas pelo Vini, fora do navegador.
-const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas"];
+export const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas"];
 // Financeiro V2 (11/10/2026): Caixa de Entrada e alerta diário, token com escopo próprio. Comparação
 // exata (não por prefixo): rota nova embaixo delas não fica sem sessão por acidente.
-const ROTAS_PUBLICAS_EXATAS = new Set([
+export const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/financeiro/caixa-entrada", "/api/financeiro/caixa-entrada/config", "/api/financeiro/caixa-entrada/pastas",
   "/api/financeiro/alertas/diario", "/api/financeiro/alertas/enviados",
   // Compra do app com cadastro automático (15/10/2026): token do escopo 'provisionamento'.
   "/api/provisionamento/compra",
   // Vigência anual (15/10/2026): avisos de renovação e renovação paga, mesmo token.
   "/api/provisionamento/avisos", "/api/provisionamento/renovacao", "/api/provisionamento/renovacao/consulta",
+  // Captura de NF-e (03/11/2026): robô do Vini, token do escopo 'sefaz'. Sem isso ele caía no /login.
+  "/api/financeiro/sefaz/pendencias", "/api/financeiro/sefaz/progresso",
+  // Avisos do Garante: mesmo defeito, token do escopo 'garante'.
+  "/api/garante/avisos", "/api/garante/avisos/enviados",
 ]);
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
