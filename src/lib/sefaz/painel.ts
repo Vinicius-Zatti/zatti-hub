@@ -6,7 +6,7 @@ import { chavePublicaRobo } from "./certificado";
 // Painel da captura de NF-e em Configurações > Unidade (30/10/2026), só para master. Lê pelo
 // servidor (as tabelas não têm grant para o app) e nunca seleciona o envelope.
 
-export type RodadaResumo = { dia: string; situacao: "ok" | "erro"; erroCodigo: string | null; notasNovas: number; ciencias: number; filaZerou: boolean };
+export type RodadaResumo = { dia: string; hora: string; situacao: "ok" | "erro"; erroCodigo: string | null; notasNovas: number; ciencias: number; filaZerou: boolean };
 export type CertificadoPainel = {
   id: string;
   cnpj: string;
@@ -36,7 +36,7 @@ export async function carregarPainelSefaz(unidadeId: string, agora = new Date())
   const [rodadas, notas] = ids.length
     ? await Promise.all([
         admin.from("fin_sefaz_rodadas").select("certificado_id, iniciado_em, situacao, erro_codigo, notas_novas, ciencias, fila_zerou")
-          .in("certificado_id", ids).order("iniciado_em", { ascending: false }).limit(ids.length * 5),
+          .in("certificado_id", ids).order("iniciado_em", { ascending: false }).limit(ids.length * 15),
         admin.from("fin_sefaz_notas").select("certificado_id, situacao").in("certificado_id", ids).limit(20000),
       ])
     : [{ data: [] }, { data: [] }];
@@ -65,7 +65,7 @@ export async function carregarPainelSefaz(unidadeId: string, agora = new Date())
         validoAte: hojeIsoBrasil(new Date(c.valido_ate)),
         diasParaVencer: Math.floor((Date.parse(c.valido_ate) - agora.getTime()) / DIA_MS),
         ultimaRodada: r
-          ? { dia: hojeIsoBrasil(new Date(r.iniciado_em)), situacao: r.situacao, erroCodigo: r.erro_codigo, notasNovas: r.notas_novas, ciencias: r.ciencias, filaZerou: r.fila_zerou }
+          ? { dia: hojeIsoBrasil(new Date(r.iniciado_em)), hora: new Date(r.iniciado_em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }), situacao: r.situacao, erroCodigo: r.erro_codigo, notasNovas: r.notas_novas, ciencias: r.ciencias, filaZerou: r.fila_zerou }
           : null,
         notas: contagem.get(c.id) ?? { xmlSalvo: 0, aguardando: 0, semCiencia: 0, cancelada: 0, erro: 0 },
       };

@@ -49,7 +49,7 @@ export async function salvarCertificadoAction(formData: FormData): Promise<Respo
       dadosNovos: { cnpj: dados.cnpj, uf: uf.data, valido_ate: dados.validoAte },
     });
     revalidatePath("/configuracoes");
-    return { ok: true, mensagem: `Certificado de ${dados.titular} guardado. A captura roda amanhã cedo (entre 6h e 9h).` };
+    return { ok: true, mensagem: `Certificado de ${dados.titular} guardado. A captura roda na próxima busca (8h, 12h ou 16h).` };
   } catch (erro) {
     if (!(erro instanceof ErroPublico)) console.error("sefaz_certificado_falhou", { tipo: erro instanceof Error ? erro.message.slice(0, 40) : "desconhecido" });
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não consegui guardar o certificado. Tente de novo.") };
