@@ -8,7 +8,7 @@ import { removerCertificadoAction, salvarCertificadoAction } from "@/app/(app)/c
 import type { PainelSefaz } from "@/lib/sefaz/painel";
 
 // Configurações > Unidade, só master (30/10/2026): certificado A1 de cada CNPJ da unidade para o
-// Zatti Hub buscar sozinho as NF-e na SEFAZ uma vez por dia e pôr o XML na Caixa de Entrada.
+// Zatti Hub buscar sozinho as NF-e na SEFAZ às 8h, 12h e 16h e pôr o XML na Caixa de Entrada.
 
 const UFS = ["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"];
 const cnpjFormatado = (c: string) => c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
@@ -39,7 +39,7 @@ export function CapturaNfe({ painel }: { painel: PainelSefaz }) {
         <div>
           <h2 className="font-bold text-azul-noite">Captura de NF-e (SEFAZ)</h2>
           <p className="text-sm text-cinza-medio">
-            Com o certificado A1 de cada CNPJ, o Zatti Hub busca sozinho, uma vez por dia, as NF-e emitidas contra a empresa e
+            Com o certificado A1 de cada CNPJ, o Zatti Hub busca sozinho, às 8h, às 12h e às 16h, as NF-e emitidas contra a empresa e
             põe o XML na Caixa de Entrada. Ele só avisa a SEFAZ que viu a nota (Ciência da Operação); conferir e lançar continua
             com a equipe. Cupom fiscal (NFC-e) de mercado e atacarejo não vem por aqui. Só a equipe Zatti vê esta parte.
           </p>
@@ -77,7 +77,7 @@ export function CapturaNfe({ painel }: { painel: PainelSefaz }) {
                   </p>
                   <p className="flex items-center gap-1 text-xs text-cinza-medio">
                     {r
-                      ? `Última busca ${formatarDataBr(r.dia)}: ${r.situacao === "ok" ? `${r.notasNovas} nota(s) nova(s)${r.filaZerou ? "" : ", fila continua amanhã"}` : `falhou (${r.erroCodigo ?? "erro"})`}`
+                      ? `Última busca ${formatarDataBr(r.dia)} às ${r.hora}: ${r.situacao === "ok" ? `${r.notasNovas} nota(s) nova(s)${r.filaZerou ? "" : ", fila continua na próxima busca"}` : `falhou (${r.erroCodigo ?? "erro"})`}`
                       : "Ainda não buscou."}
                     {" · "}
                     {c.notas.xmlSalvo} XML(s) na Caixa de Entrada, {c.notas.aguardando} aguardando a SEFAZ liberar

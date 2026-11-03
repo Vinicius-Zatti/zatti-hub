@@ -1,11 +1,11 @@
 -- Captura de NF-e pela SEFAZ (30/10/2026). Fixtures isoladas, sem dado nem certificado real.
 -- Prova: certificado e notas invisíveis para anon e usuário logado (até gestão da unidade);
--- trava de chave de acesso na Caixa de Entrada; NSU só anda para frente; uma rodada boa por dia
--- e no máximo 3 tentativas; bloqueio do 656 respeitado.
+-- trava de chave de acesso na Caixa de Entrada; NSU só anda para frente; três buscas por dia (8h,
+-- 12h e 16h), cada uma com no máximo 3 tentativas; bloqueio do 656 respeitado.
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(35);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000f5001', 'gestao.sefaz@teste.local', 'x', now(), 'authenticated', 'authenticated');
@@ -82,7 +82,7 @@ select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_
 select is((select situacao from fin_sefaz_notas where chave = repeat('6', 44)), 'ciencia', 'resumo repetido não desfaz a Ciência');
 
 create temp table p1 as select public.fin_sefaz_pendencias() as r;
-select is(jsonb_array_length((select r from p1) -> 'certificados'), 1, 'sem rodada hoje, o certificado aparece');
+select is(jsonb_array_length((select r from p1) -> 'certificados'), 1, 'sem rodada nesta busca, o certificado aparece');
 select is(((select r from p1) -> 'pendentes' -> 0 ->> 'situacao'), 'ciencia', 'pendente esperando o XML vai junto');
 select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0,
   'quem recebe reserva: segunda chamada (outro contêiner ou repetição) não recebe');
@@ -91,7 +91,20 @@ select ok((select bloqueado_ate > now() + interval '60 minutes' from fin_sefaz_c
 
 update fin_sefaz_certificados set bloqueado_ate = null;
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', '{"fim": {"situacao": "ok", "notasNovas": 1}}');
-select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'rodada boa hoje tira o certificado do dia');
+select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'rodada boa tira o certificado desta busca');
+
+-- Três buscas por dia, horário de Brasília (-03).
+select is(public.fin_sefaz_inicio_da_busca('2026-11-04 07:59:00-03'), '2026-11-03 16:00:00-03'::timestamptz, 'antes das 8h vale a busca das 16h de ontem');
+select is(public.fin_sefaz_inicio_da_busca('2026-11-04 08:00:00-03'), '2026-11-04 08:00:00-03'::timestamptz, 'às 8h começa a primeira busca');
+select is(public.fin_sefaz_inicio_da_busca('2026-11-04 11:59:00-03'), '2026-11-04 08:00:00-03'::timestamptz, 'até 11h59 segue a busca das 8h');
+select is(public.fin_sefaz_inicio_da_busca('2026-11-04 12:00:00-03'), '2026-11-04 12:00:00-03'::timestamptz, 'às 12h começa a segunda busca');
+select is(public.fin_sefaz_inicio_da_busca('2026-11-04 16:00:00-03'), '2026-11-04 16:00:00-03'::timestamptz, 'às 16h começa a terceira busca');
+
+delete from fin_sefaz_rodadas;
+update fin_sefaz_certificados set bloqueado_ate = null;
+insert into fin_sefaz_rodadas (certificado_id, iniciado_em, situacao)
+  values ('00000000-0000-0000-0000-0000000f5c01', public.fin_sefaz_inicio_da_busca(now()) - interval '1 minute', 'ok');
+select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 1, 'rodada boa da busca anterior não impede a próxima');
 
 delete from fin_sefaz_rodadas;
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('bloqueadoAte', (now() + interval '1 hour')::text));
@@ -100,7 +113,7 @@ select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0
 update fin_sefaz_certificados set bloqueado_ate = null;
 insert into fin_sefaz_rodadas (certificado_id, iniciado_em, situacao)
   select '00000000-0000-0000-0000-0000000f5c01', now(), 'erro' from generate_series(1, 3);
-select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'três tentativas com erro encerram o dia');
+select is(jsonb_array_length(public.fin_sefaz_pendencias() -> 'certificados'), 0, 'três tentativas com erro encerram a busca');
 
 select public.fin_sefaz_progresso('00000000-0000-0000-0000-0000000f5c01', jsonb_build_object('xmlRecusados', jsonb_build_array(repeat('8', 44))));
 select is((select situacao from fin_sefaz_notas where chave = repeat('8', 44)), 'erro', 'XML recusado pelo Hub vira erro');
