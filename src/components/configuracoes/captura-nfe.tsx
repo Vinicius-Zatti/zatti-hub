@@ -5,6 +5,7 @@ import { ModalFlutuante } from "@/components/modal-flutuante";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { removerCertificadoAction, salvarCertificadoAction } from "@/app/(app)/configuracoes/sefaz-actions";
+import { textoUltimaBusca } from "@/lib/sefaz/aviso-rodada";
 import type { PainelSefaz } from "@/lib/sefaz/painel";
 
 // Configurações > Unidade, só master (30/10/2026): certificado A1 de cada CNPJ da unidade para o
@@ -77,7 +78,7 @@ export function CapturaNfe({ painel }: { painel: PainelSefaz }) {
                   </p>
                   <p className="flex items-center gap-1 text-xs text-cinza-medio">
                     {r
-                      ? `Última busca ${formatarDataBr(r.dia)} às ${r.hora}: ${r.situacao === "ok" ? `${r.notasNovas} nota(s) nova(s)${r.filaZerou ? "" : ", fila continua na próxima busca"}` : `falhou (${r.erroCodigo ?? "erro"})`}`
+                      ? `Última busca ${formatarDataBr(r.dia)} às ${r.hora}: ${textoUltimaBusca(r)}`
                       : "Ainda não buscou."}
                     {" · "}
                     {c.notas.xmlSalvo} XML(s) na Caixa de Entrada, {c.notas.aguardando} aguardando a SEFAZ liberar
