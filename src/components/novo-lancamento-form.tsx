@@ -80,21 +80,26 @@ function semAssinatura(): () => void {
 }
 
 /** Formulário de fechamento diário - usado tanto em "Novo Lançamento" quanto
- * em "Editar" (passando `existente`). Data não é editável depois de salvo,
- * é a chave natural do registro (unique unidade+data). */
+ * em "Editar" (passando `existente`). A data é a chave natural do registro
+ * (unique unidade+data): fica travada no dia de hoje (novo) ou no dia salvo
+ * (edição), exceto para o master, que escolhe e troca a data (06/11/2026). */
 export function NovoLancamentoForm({
   existente,
   userId,
   unidadeId,
+  podeEscolherData = false,
 }: {
   existente?: ConsolidadoVenda;
+  /** Master (consultor da Zatti): escolhe qualquer data ao lançar e troca a
+   * data de um dia já lançado. A action e o banco conferem de novo. */
+  podeEscolherData?: boolean;
   /** Só no lançamento novo: usuário e unidade separam o rascunho guardado
    * no navegador (outro usuário no mesmo aparelho não herda os valores). */
   userId?: string;
   unidadeId?: string;
 }) {
   const router = useRouter();
-  const [dataISO] = useState(existente?.data ?? hojeISO());
+  const [dataISO, setDataISO] = useState(existente?.data ?? hojeISO());
   const [campos, setCampos] = useState<Campos>(
     existente
       ? {
@@ -172,6 +177,15 @@ export function NovoLancamentoForm({
       return false;
     }
     return salvarRascunho(chave, { campos: valores });
+  }
+
+  function trocarData(nova: string) {
+    setDataISO(nova);
+    setJaExiste(null);
+    setErro(null);
+    if (existente && nova !== existente.data) {
+      ativar("Você trocou a data deste lançamento e ainda não salvou. Se sair agora, a troca se perde.");
+    }
   }
 
   function montarInput(confirmarDivergencia: boolean): EntradaForm {
@@ -294,12 +308,29 @@ export function NovoLancamentoForm({
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
           Data da venda
-          <input
-            type="date"
-            value={dataISO}
-            disabled
-            className="w-full rounded-md border border-cinza-claro bg-off-white px-3 py-2 text-base font-bold text-cinza opacity-80"
-          />
+          {podeEscolherData ? (
+            <input
+              type="date"
+              value={dataISO}
+              required
+              onChange={(e) => trocarData(e.target.value)}
+              className="w-full rounded-md border border-cinza-claro bg-branco px-3 py-2 text-base font-bold text-cinza"
+            />
+          ) : (
+            <input
+              type="date"
+              value={dataISO}
+              disabled
+              className="w-full rounded-md border border-cinza-claro bg-off-white px-3 py-2 text-base font-bold text-cinza opacity-80"
+            />
+          )}
+          {podeEscolherData && (
+            <span className="text-xs font-normal text-cinza-medio">
+              {existente
+                ? "Seu acesso pode trocar a data deste lançamento. Se a nova data já tiver lançamento, nada é sobrescrito."
+                : "Seu acesso pode lançar qualquer data. Se a data já tiver lançamento, nada é sobrescrito."}
+            </span>
+          )}
         </label>
 
         <div className="rounded-lg border border-cinza-claro bg-branco p-4">

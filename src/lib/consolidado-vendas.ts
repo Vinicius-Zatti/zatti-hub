@@ -209,29 +209,39 @@ export async function criarConsolidado(params: {
 }
 
 /** Só chamado atrás de `requireGestao()` na Server Action - recalcula tudo de
- * novo a partir dos valores brutos recebidos. */
+ * novo a partir dos valores brutos recebidos. `novaData` só vem quando o
+ * master troca a data (a action confere o papel; o gatilho do banco confere
+ * de novo). A constraint `unique(unidade_id, data)` devolve "ja_existe" em
+ * vez de sobrescrever o dia de destino. */
 export async function editarConsolidado(params: {
   unidadeId: string;
   id: string;
   valores: EntradaConsolidado;
   atualizadoPor: string;
-}): Promise<ConsolidadoVenda> {
+  novaData?: string;
+}): Promise<{ ok: true; consolidado: ConsolidadoVenda } | { ok: false; erro: "ja_existe" }> {
   const supabase = await createClient();
   const totais = calcularTotais(params.valores);
 
-  await supabase
+  const { error } = await supabase
     .from("consolidados_vendas")
     .update({
       ...valoresToRow(params.valores, totais),
+      ...(params.novaData ? { data: params.novaData } : {}),
       atualizado_por: params.atualizadoPor,
       atualizado_em: new Date().toISOString(),
     })
     .eq("id", params.id)
     .eq("unidade_id", params.unidadeId);
 
+  if (error) {
+    if (error.code === "23505") return { ok: false, erro: "ja_existe" };
+    throw new Error(error.message);
+  }
+
   const salvo = await getConsolidadoPorId(params.unidadeId, params.id);
   if (!salvo) throw new Error("Lançamento editado mas não encontrado na releitura");
-  return salvo;
+  return { ok: true, consolidado: salvo };
 }
 
 /** Base do Histórico (com filtro) e do Dashboard (sem filtro de status,
