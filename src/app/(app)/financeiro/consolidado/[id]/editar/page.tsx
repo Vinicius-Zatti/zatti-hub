@@ -1,5 +1,6 @@
 import { requireGestaoConsolidado } from "@/lib/acesso";
 import { getConsolidadoPorId } from "@/lib/consolidado-vendas";
+import { podeEscolherDataConsolidado } from "@/lib/consolidado-data";
 import { NovoLancamentoForm } from "@/components/novo-lancamento-form";
 
 export const dynamic = "force-dynamic";
@@ -17,5 +18,5 @@ export default async function EditarConsolidadoPage({ params }: { params: Promis
     );
   }
 
-  return <NovoLancamentoForm existente={consolidado} />;
+  return <NovoLancamentoForm existente={consolidado} podeEscolherData={podeEscolherDataConsolidado(acesso.role)} />;
 }
