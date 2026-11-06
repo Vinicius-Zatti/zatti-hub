@@ -99,7 +99,7 @@ function Cartoes({ metricas, periodo }: { metricas: Metricas; periodo: Periodo }
         rotulo="Novos seguidores"
         valor={numeroBr(d?.seguidoresNovos ?? null)}
         variacao={variacao(d?.seguidoresNovos ?? null, ant?.seguidoresNovos)}
-        dica={`Contas que começaram a seguir você nos últimos ${periodo} dias, segundo a Meta. A variação compara com os ${periodo} dias anteriores.`}
+        dica={`Contas que começaram a seguir você nos últimos ${periodo} dias, segundo a Meta. A Meta entrega esse número com até 2 dias de atraso, então os 2 dias mais recentes podem ainda não estar somados. A Meta só guarda 30 dias para trás: o de 90 dias aparece quando o Vini tiver juntado 90 dias de registro. A variação compara com os ${periodo} dias anteriores.`}
       />
     </div>
   );

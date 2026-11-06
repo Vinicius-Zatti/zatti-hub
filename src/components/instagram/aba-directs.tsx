@@ -96,9 +96,15 @@ function LinhaPalavra({ palavra: p }: { palavra: PalavraDirect }) {
     <li className="flex items-center gap-3 py-2.5">
       <span className="shrink-0 rounded-md bg-ambar/20 px-2 py-1 text-xs font-bold uppercase text-azul-noite">{p.palavra ?? "qualquer comentário"}</span>
       <div className="min-w-0 flex-1">
-        <a href={p.link} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-semibold text-azul-noite hover:underline" title={p.post || p.link}>
-          {p.post || `Post ${p.codigo}`}
-        </a>
+        {p.link ? (
+          <a href={p.link} target="_blank" rel="noopener noreferrer" className="block truncate text-sm font-semibold text-azul-noite hover:underline" title={p.post || p.link}>
+            {p.post || `Post ${p.codigo}`}
+          </a>
+        ) : (
+          <p className="truncate text-sm font-semibold text-azul-noite" title={p.post}>
+            {p.post || p.codigo} <span className="font-normal text-cinza-medio">(agendado, link quando publicar)</span>
+          </p>
+        )}
         <p className="truncate text-xs text-cinza-medio">
           {p.envios == null ? "envios: sem dado" : `${numeroBr(p.envios)} envio${p.envios === 1 ? "" : "s"}`}
           {p.linkEntrega && (

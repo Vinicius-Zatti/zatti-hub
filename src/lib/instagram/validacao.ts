@@ -99,7 +99,7 @@ function lerPalavra(b: unknown): PalavraDirect | null {
   if (!CODIGO.test(codigo) || typeof b.ativa !== "boolean") return null;
   return {
     codigo,
-    link: linkHttps(b.link) ?? `https://www.instagram.com/p/${codigo}/`,
+    link: linkHttps(b.link),
     post: str(b.post, 300),
     palavra: strOuNull(b.palavra, 60),
     direct: str(b.direct, 2000),

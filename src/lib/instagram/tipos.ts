@@ -8,7 +8,8 @@ export type Periodo = (typeof PERIODOS)[number];
 
 export type PalavraDirect = {
   codigo: string;
-  link: string;
+  /** null = post agendado pelo publicador, ainda sem link. */
+  link: string | null;
   post: string;
   /** null = qualquer comentário no post dispara o Direct. */
   palavra: string | null;
