@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { normalizarPeca, type CamposPeca, type Peca } from "@/lib/conteudo/pecas";
+import type { PecaSemana } from "@/lib/instagram/tipos";
 
 /** Acesso ao banco do Conteúdo (calendário editorial). O RLS (`usuario_e_master()`) é a barreira
  * da leitura; toda escrita passa pela RPC `conteudo_hub_salvar`, que confere master, valida os
@@ -10,6 +11,24 @@ import { normalizarPeca, type CamposPeca, type Peca } from "@/lib/conteudo/pecas
 function falhou(error: unknown, contexto: string): never {
   console.error(`conteudo: ${contexto}`, error);
   throw new Error(contexto);
+}
+
+/** Peças com data entre `inicio` e `fim` (inclusive), só os campos do resumo da semana
+ * (Escritório > Instagram, "O que postar essa semana"). Mesmo RLS da leitura completa. */
+export async function carregarPecasEntre(inicio: string, fim: string): Promise<PecaSemana[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("conteudo_pecas")
+    .select("id, titulo, data, hora, formato, status")
+    .gte("data", inicio)
+    .lte("data", fim)
+    .order("data", { ascending: true })
+    .limit(100);
+  if (error) falhou(error, "carregar peças da semana");
+  return (data ?? []).map((l) => {
+    const p = normalizarPeca(l as Record<string, unknown>);
+    return { id: p.id, data: p.data ?? inicio, hora: p.hora, formato: p.formato, titulo: p.titulo, status: p.status };
+  });
 }
 
 /** Todas as peças (o calendário tem poucas centenas); a tela filtra semana e status. */
