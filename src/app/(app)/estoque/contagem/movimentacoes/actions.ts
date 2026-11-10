@@ -12,6 +12,8 @@ export async function exportarExtratoCsvAction(
   const acesso = await getAcessoAtual();
   if (acesso.fonteDadosEstoque !== "banco") return { erro: "Unidade sem estoque no Zatti Hub." };
   if (!acesso.extratoEstoqueHabilitado) return { erro: ERRO_EXTRATO_DESLIGADO };
+  // Mesma regra da tela (layout do Estoque): sem acesso ao módulo, nada sai. O banco também barra.
+  if (acesso.permissoes.estoque === "sem_acesso") return { erro: "Você não tem acesso ao Estoque." };
   try {
     const filtro = lerFiltroExtrato(params ?? {});
     const linhas = await listarExtratoCompleto(acesso.unidadeId, filtro);
