@@ -58,6 +58,14 @@ describe("validarPedidoPorta", () => {
     expect(validarPedidoPorta({ acao: "renomear", organizacao_id: "x", vinculo_id: VINCULO, nome: "  " })).toEqual({ ok: false, erro: "nome_invalido" });
   });
 
+  it("whatsapp pede vínculo e número", () => {
+    expect(validarPedidoPorta({ acao: "whatsapp", organizacao_id: "x", vinculo_id: VINCULO, whatsapp: "31 98589-1038" })).toEqual({
+      ok: true,
+      pedido: { acao: "whatsapp", organizacaoId: "x", vinculoId: VINCULO, whatsapp: "31 98589-1038" },
+    });
+    expect(validarPedidoPorta({ acao: "whatsapp", organizacao_id: "x", vinculo_id: VINCULO })).toEqual({ ok: false, erro: "whatsapp_invalido" });
+  });
+
   it("recusa ação desconhecida e corpo que não é objeto", () => {
     expect(validarPedidoPorta({ acao: "apagar", organizacao_id: "x" })).toEqual({ ok: false, erro: "acao_invalida" });
     expect(validarPedidoPorta([1])).toEqual({ ok: false, erro: "corpo_invalido" });

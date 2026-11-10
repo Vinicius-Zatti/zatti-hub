@@ -6,7 +6,7 @@ import { validarPedidoPorta } from "@/lib/equipe/porta";
 import { cadastrarMembro } from "@/lib/equipe/cadastrar-membro";
 import { contaPendente, editarVinculoNoBanco } from "@/lib/equipe/servidor";
 import { carregarTitularOrganizacao } from "@/lib/equipe/titular-servidor";
-import { MENSAGEM_CONTA_TITULAR, mensagemEditarVinculo } from "@/lib/equipe/regras";
+import { MENSAGEM_CONTA_TITULAR, mensagemEditarVinculo, normalizarWhatsapp } from "@/lib/equipe/regras";
 
 // Porta de acesso de equipe do Vini (09/11/2026). Desde a trava do vini_operador, o Vini não escreve
 // mais em vínculos direto no banco: lista, cadastra, edita, revoga e reativa acesso de gestão e
@@ -208,6 +208,26 @@ export async function POST(request: NextRequest) {
     if (error) return responder({ erro: "indisponivel" }, 503);
     await auditar(admin, ator, unidadePadrao, "equipe_editar_nome", alvo.id, alvo.unidade_id,
       { nome: (perfilAtual?.nome as string | null) ?? null }, { nome: pedido.nome });
+    revalidarTelas();
+    revalidatePath("/garante", "layout");
+    return responder({ status: "ok" });
+  }
+
+  if (pedido.acao === "whatsapp") {
+    const whatsapp = normalizarWhatsapp(pedido.whatsapp);
+    if (!whatsapp) return responder({ erro: "recusado", mensagem: "WhatsApp inválido. Use DDD + número." }, 422);
+    // Mesma função da tela Equipe: o banco confere o ator master e recusa a conta do titular.
+    const { data: codigo, error } = await admin.rpc("atualizar_whatsapp_vinculo", {
+      p_ator: ator,
+      p_vinculo_id: alvo.id,
+      p_escopo: "equipe",
+      p_whatsapp: whatsapp,
+    });
+    if (error) return responder({ erro: "indisponivel" }, 503);
+    if (codigo === "sem_mudanca") return responder({ status: "ok", sem_mudanca: true });
+    if (codigo !== "ok") return responder({ erro: "recusado", codigo }, 422);
+    await auditar(admin, ator, unidadePadrao, "equipe_editar_whatsapp", alvo.id, alvo.unidade_id,
+      { whatsappFinal: alvo.whatsapp ? alvo.whatsapp.slice(-4) : null }, { whatsappFinal: whatsapp.slice(-4) });
     revalidarTelas();
     revalidatePath("/garante", "layout");
     return responder({ status: "ok" });
