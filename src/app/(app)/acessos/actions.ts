@@ -200,6 +200,8 @@ export async function convidarEVincularAction(formData: FormData): Promise<
   const unidadeId = unidadeIdBruto ? unidadeIdBruto : null;
 
   if (!email || !email.includes("@")) return { erro: "Email inválido." };
+  // Nome obrigatório (10/11/2026): conta sem nome aparecia como "Sem nome" no Garante e na Equipe.
+  if (!nome || nome.length > 160) return { erro: "Informe o nome da pessoa (até 160 caracteres)." };
   if (!organizacaoId) return { erro: "Selecione a organização." };
 
   const papel = validarPapelVinculo({ role: roleBruto, unidadeId });
@@ -547,6 +549,7 @@ export async function atualizarNomeUsuarioAction(userId: string, nome: string): 
   const admin = createAdminClient();
 
   const nomeLimpo = nome.trim();
+  if (!nomeLimpo) return { erro: "Informe o nome." };
   if (nomeLimpo.length > 160) return { erro: "Nome muito longo (máximo 160 caracteres)." };
 
   const { data: perfilAtual } = await admin.from("perfis").select("nome").eq("id", userId).maybeSingle();

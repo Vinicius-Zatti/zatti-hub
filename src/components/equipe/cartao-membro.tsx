@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  atualizarNomeMembroAction,
   atualizarWhatsappMembroAction,
   reativarMembroAction,
   reenviarAcessoMembroAction,
@@ -55,6 +56,8 @@ export function CartaoMembro({
   const [pendente, startTransition] = useTransition();
   const [editando, setEditando] = useState(false);
   const [numero, setNumero] = useState("");
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [nomeNovo, setNomeNovo] = useState(membro.nome ?? "");
   const [mensagem, setMensagem] = useState<{ tom: "ok" | "aviso" | "erro"; texto: string } | null>(null);
   const situacao = SITUACAO[membro.situacao];
 
@@ -68,6 +71,7 @@ export function CartaoMembro({
       }
       if ("envio" in r) setMensagem(textoEnvio(r.envio, membro.situacao === "ativo"));
       setEditando(false);
+      setEditandoNome(false);
       router.refresh();
     });
   }
@@ -136,6 +140,16 @@ export function CartaoMembro({
             <button
               type="button"
               disabled={pendente}
+              onClick={() => setEditandoNome((v) => !v)}
+              className={`${BOTAO} ${membro.nome ? "border-cinza-claro text-cinza" : "border-ambar text-ambar"} hover:bg-off-white`}
+            >
+              {membro.nome ? "Editar nome" : "Colocar nome"}
+            </button>
+          )}
+          {podeMexerNaConta && (
+            <button
+              type="button"
+              disabled={pendente}
               onClick={() => setEditando((v) => !v)}
               className={`${BOTAO} border-cinza-claro text-cinza hover:bg-off-white`}
             >
@@ -188,6 +202,32 @@ export function CartaoMembro({
             </button>
           )}
         </div>
+      )}
+
+      {editandoNome && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            rodar(() => atualizarNomeMembroAction(membro.vinculoId, nomeNovo));
+          }}
+          className="flex gap-2"
+        >
+          <input
+            value={nomeNovo}
+            onChange={(e) => setNomeNovo(e.target.value)}
+            required
+            maxLength={160}
+            placeholder="Nome e sobrenome"
+            className="w-full rounded-md border border-cinza-claro px-2 py-1 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={pendente}
+            className="rounded-md bg-azul-noite px-3 py-1 text-xs font-semibold text-branco disabled:opacity-60"
+          >
+            Salvar
+          </button>
+        </form>
       )}
 
       {editando && (

@@ -17,7 +17,8 @@ export type PedidoPorta =
       unidadeId: string | null;
     }
   | { acao: "editar"; organizacaoId: string; vinculoId: string; role: "gestao" | "operacional"; unidadeId: string | null }
-  | { acao: "revogar" | "reativar"; organizacaoId: string; vinculoId: string };
+  | { acao: "revogar" | "reativar"; organizacaoId: string; vinculoId: string }
+  | { acao: "renomear"; organizacaoId: string; vinculoId: string; nome: string };
 
 type Validado = { ok: true; pedido: PedidoPorta } | { ok: false; erro: string };
 
@@ -58,9 +59,15 @@ export function validarPedidoPorta(corpo: unknown): Validado {
 
     case "editar":
     case "revogar":
-    case "reativar": {
+    case "reativar":
+    case "renomear": {
       const vinculoId = typeof c.vinculo_id === "string" && UUID.test(c.vinculo_id) ? c.vinculo_id : null;
       if (!vinculoId) return { ok: false, erro: "vinculo_invalido" };
+      if (c.acao === "renomear") {
+        const nome = texto(c.nome, 160);
+        if (!nome) return { ok: false, erro: "nome_invalido" };
+        return { ok: true, pedido: { acao: "renomear", organizacaoId, vinculoId, nome } };
+      }
       if (c.acao !== "editar") return { ok: true, pedido: { acao: c.acao, organizacaoId, vinculoId } };
       const unidadeId = unidade(c.unidade_id);
       if (typeof c.role !== "string" || !PAPEIS.has(c.role)) return { ok: false, erro: "papel_invalido" };

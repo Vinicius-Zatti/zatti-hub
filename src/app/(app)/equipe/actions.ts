@@ -369,6 +369,33 @@ export async function atualizarWhatsappMembroAction(vinculoId: string, bruto: st
   return { ok: true };
 }
 
+/** Corrige o nome de alguém da equipe (10/11/2026): conta sem nome aparecia como "Sem nome" no
+ * Garante. Mesmas travas do WhatsApp: só gestão/master, mesma organização, titular só a Zatti. */
+export async function atualizarNomeMembroAction(vinculoId: string, bruto: string): Promise<Resultado> {
+  const acesso = await requireEquipeEditar();
+  const nome = bruto.trim();
+  if (!nome || nome.length > 160) return { erro: "Informe o nome (até 160 caracteres)." };
+  const admin = createAdminClient();
+  const carregado = await carregarAlvo(admin, acesso, vinculoId);
+  if ("erro" in carregado) return carregado;
+  const recusaTitular = await recusaContaTitular(admin, acesso, carregado.alvo);
+  if (recusaTitular) return recusaTitular;
+  const { data: perfilAtual } = await admin.from("perfis").select("nome").eq("id", carregado.alvo.user_id).maybeSingle();
+  const { error } = await admin.from("perfis").upsert({ id: carregado.alvo.user_id, nome }, { onConflict: "id" });
+  if (error) return { erro: "Não foi possível salvar o nome." };
+  await registrarAuditoria({
+    acesso,
+    acao: "equipe_editar_nome",
+    entidade: "vinculo",
+    entidadeId: carregado.alvo.id,
+    dadosAntigos: { nome: (perfilAtual?.nome as string | null) ?? null },
+    dadosNovos: { nome },
+  });
+  revalidarEquipe();
+  revalidatePath("/garante", "layout");
+  return { ok: true };
+}
+
 /** Tira o acesso. Nunca o próprio, nunca master, nunca a última gestão
  * que cobre o cliente ou a loja. Vale na hora: toda policy confere o status
  * do vínculo a cada consulta, não o que está no token. */

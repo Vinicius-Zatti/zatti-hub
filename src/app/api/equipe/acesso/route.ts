@@ -202,6 +202,17 @@ export async function POST(request: NextRequest) {
     return responder({ status: "ok" });
   }
 
+  if (pedido.acao === "renomear") {
+    const { data: perfilAtual } = await admin.from("perfis").select("nome").eq("id", alvo.user_id).maybeSingle();
+    const { error } = await admin.from("perfis").upsert({ id: alvo.user_id, nome: pedido.nome }, { onConflict: "id" });
+    if (error) return responder({ erro: "indisponivel" }, 503);
+    await auditar(admin, ator, unidadePadrao, "equipe_editar_nome", alvo.id, alvo.unidade_id,
+      { nome: (perfilAtual?.nome as string | null) ?? null }, { nome: pedido.nome });
+    revalidarTelas();
+    revalidatePath("/garante", "layout");
+    return responder({ status: "ok" });
+  }
+
   if (pedido.acao === "revogar") {
     if (alvo.status === "revogado") return responder({ status: "ok", sem_mudanca: true });
     const { data: codigo, error } = await admin.rpc("revogar_vinculo_equipe", {

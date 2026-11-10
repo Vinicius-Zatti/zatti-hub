@@ -89,6 +89,8 @@ export async function cadastrarMembro(
   };
 
   if (existente) {
+    // Conta antiga sem nome ganha o nome informado agora; nome já existente não é trocado.
+    await admin.from("perfis").update({ nome }).eq("id", existente.id).is("nome", null);
     let pendente: boolean;
     try {
       pendente = await contaPendente(admin, existente);
