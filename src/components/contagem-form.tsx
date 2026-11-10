@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { linhaCsv } from "@/lib/csv";
 import type { Produto } from "@/lib/types";
 import {
   abrirContagemAction,
@@ -608,7 +609,7 @@ export function ContagemForm({
         ? (qty * item.precoUnitario).toFixed(2).replace(".", ",")
         : "";
       linhas.push(
-        [dataFmt, mesDisplay, item.sku, nomeGrupo(item.grupo), item.nome, item.unidadeBase, String(qty ?? "").replace(".", ","), preco, total].join(";")
+        linhaCsv([dataFmt, mesDisplay, item.sku, nomeGrupo(item.grupo), item.nome, item.unidadeBase, String(qty ?? "").replace(".", ","), preco, total])
       );
     });
     const csv = "﻿" + linhas.join("\n");

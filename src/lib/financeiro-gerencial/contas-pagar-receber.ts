@@ -7,6 +7,7 @@
  * vencimento), que é como a pessoa enxerga a nota do fornecedor. */
 
 import type { Titulo } from "@/lib/banco/financeiro-documentos";
+import { campoCsv } from "@/lib/csv";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import type { TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
 import { normalizarBusca } from "@/lib/busca";
@@ -200,10 +201,6 @@ export function formatarValorCsv(valor: number): string {
   const sinal = c < 0 ? "-" : "";
   const abs = Math.abs(c);
   return `${sinal}${Math.floor(abs / 100)},${String(abs % 100).padStart(2, "0")}`;
-}
-
-function campoCsv(texto: string): string {
-  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
 /** CSV com BOM UTF-8 e separador ";" (o Excel em português abre direto). */
