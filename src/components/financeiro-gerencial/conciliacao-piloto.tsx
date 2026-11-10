@@ -381,7 +381,7 @@ export function ConciliacaoPiloto(props: {
       <ModalFlutuante aberto={errosDe !== null} onFechar={() => setErrosDe(null)}>
         {errosDe && <ErrosImportacao importacao={errosDe} onFechar={() => setErrosDe(null)} />}
       </ModalFlutuante>
-      <ModalFlutuante aberto={conciliarDe !== null} onFechar={() => setConciliarDe(null)} larga>
+      <ModalFlutuante aberto={conciliarDe !== null} onFechar={() => setConciliarDe(null)} larga semBotaoFechar>
         {conciliarDe && (
           <ConciliarMovimento key={conciliarDe.id} movimento={conciliarDe} contexto={contexto} aoConcluir={concluir} onFechar={() => setConciliarDe(null)} />
         )}

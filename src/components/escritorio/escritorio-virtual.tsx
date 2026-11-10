@@ -141,7 +141,7 @@ export function EscritorioVirtual({ salas, atualizadoEm }: { salas: SalaMontada[
         </ul>
       </details>
 
-      <ModalFlutuante aberto={aberta !== null} onFechar={() => setAberta(null)}>
+      <ModalFlutuante aberto={aberta !== null} onFechar={() => setAberta(null)} semBotaoFechar>
         {aberta && <DetalhePosicao posicao={aberta} salaNome={nomeSala.get(aberta.salaId) ?? ""} aoFechar={() => setAberta(null)} />}
       </ModalFlutuante>
     </div>
