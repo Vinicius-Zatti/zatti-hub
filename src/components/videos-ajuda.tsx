@@ -30,7 +30,7 @@ export function VideosAjudaProvider({ children }: { children: React.ReactNode })
       {/* Vídeo deitado (Criar cotação, Editor de espelhos): caixa larga no desktop e
           no celular deitado; com o celular em pé ele ocupa a largura e fica pequeno,
           por isso a abertura do vídeo pede para virar o celular. */}
-      <ModalFlutuante aberto={video !== null} onFechar={() => setAberto(null)} larga={horizontal} cheiaDeitado={horizontal}>
+      <ModalFlutuante aberto={video !== null} onFechar={() => setAberto(null)} larga={horizontal} cheiaDeitado={horizontal} semBotaoFechar>
         {video && (
           <>
             <div className="flex items-center justify-between gap-3">

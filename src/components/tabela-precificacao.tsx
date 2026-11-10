@@ -16,6 +16,7 @@ import {
 import { CLASSIFICACAO_TAG, calcularCmv, montarPrecosPorCanal } from "@/lib/fichas-tecnicas";
 import type { CanalVenda, FichaTecnicaResumo } from "@/lib/types";
 import { normalizarBusca } from "@/lib/busca";
+import { ModalFlutuante } from "@/components/modal-flutuante";
 
 type Precos = {
   precoVenda: number | null;
@@ -342,45 +343,37 @@ export function TabelaPrecificacao({
       </div>
 
       {fichaAbertaId && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
-          onClick={fecharFicha}
-        >
-          <div
-            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {carregando && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
-            {erroAbertura && (
-              <div className="flex flex-col items-start gap-3 p-2">
-                <p className="text-sm text-vermelho">{erroAbertura}</p>
-                <button type="button" onClick={fecharFicha} className="text-sm font-semibold text-azul-petroleo">
-                  ← Fechar
-                </button>
-              </div>
-            )}
-            {dadosAbertos && (
-              <FichaTecnicaDetalhe
-                ficha={dadosAbertos.dados.ficha}
-                fotoUrl={dadosAbertos.dados.fotoUrl}
-                vinculoContagem={dadosAbertos.dados.vinculoContagem}
-                podeGerir={dadosAbertos.podeGerir}
-                categorias={dadosAbertos.dados.categorias}
-                produtos={dadosAbertos.dados.produtos}
-                fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
-                margemNecessaria={margemNecessaria}
-                margemPontoEquilibrio={margemPontoEquilibrio}
-                deducoesSalao={deducoesSalao}
-                deducoesIfood={deducoesIfood}
-                deducoes99Food={deducoes99Food}
-                aoFechar={fecharFicha}
-                aoSalvar={() => {
-                  if (fichaAbertaId) void carregarFicha(fichaAbertaId);
-                }}
-              />
-            )}
-          </div>
-        </div>
+        <ModalFlutuante aberto onFechar={fecharFicha}>
+          {carregando && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
+          {erroAbertura && (
+            <div className="flex flex-col items-start gap-3 p-2">
+              <p className="text-sm text-vermelho">{erroAbertura}</p>
+              <button type="button" onClick={fecharFicha} className="text-sm font-semibold text-azul-petroleo">
+                ← Fechar
+              </button>
+            </div>
+          )}
+          {dadosAbertos && (
+            <FichaTecnicaDetalhe
+              ficha={dadosAbertos.dados.ficha}
+              fotoUrl={dadosAbertos.dados.fotoUrl}
+              vinculoContagem={dadosAbertos.dados.vinculoContagem}
+              podeGerir={dadosAbertos.podeGerir}
+              categorias={dadosAbertos.dados.categorias}
+              produtos={dadosAbertos.dados.produtos}
+              fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
+              margemNecessaria={margemNecessaria}
+              margemPontoEquilibrio={margemPontoEquilibrio}
+              deducoesSalao={deducoesSalao}
+              deducoesIfood={deducoesIfood}
+              deducoes99Food={deducoes99Food}
+              aoFechar={fecharFicha}
+              aoSalvar={() => {
+                if (fichaAbertaId) void carregarFicha(fichaAbertaId);
+              }}
+            />
+          )}
+        </ModalFlutuante>
       )}
     </div>
   );

@@ -18,6 +18,7 @@ import {
 } from "@/app/(app)/fichas-tecnicas/actions";
 import type { DadosNovaFichaTecnica } from "@/lib/banco/fichas-tecnicas";
 import { normalizarBusca } from "@/lib/busca";
+import { ModalFlutuante } from "@/components/modal-flutuante";
 
 const STATUS_TONE: Record<StatusFicha, string> = {
   ativa: "bg-verde/10 text-verde",
@@ -266,83 +267,67 @@ export function ListaFichasTecnicas({
       </div>
 
       {fichaAbertaId && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
-          onClick={fechar}
-        >
-          <div
-            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {carregando && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
-            {erroAbertura && (
-              <div className="flex flex-col items-start gap-3 p-2">
-                <p className="text-sm text-vermelho">{erroAbertura}</p>
-                <button type="button" onClick={fechar} className="text-sm font-semibold text-azul-petroleo">
-                  ← Fechar
-                </button>
-              </div>
-            )}
-            {dadosAbertos && (
-              <FichaTecnicaDetalhe
-                ficha={dadosAbertos.dados.ficha}
-                fotoUrl={dadosAbertos.dados.fotoUrl}
-                vinculoContagem={dadosAbertos.dados.vinculoContagem}
-                podeGerir={dadosAbertos.podeGerir}
-                podeEditarFicha={dadosAbertos.podeEditarFicha}
-                categorias={dadosAbertos.dados.categorias}
-                produtos={dadosAbertos.dados.produtos}
-                fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
-                margemNecessaria={margemNecessaria}
-                margemPontoEquilibrio={margemPontoEquilibrio}
-                deducoesSalao={deducoesTotal}
-                deducoesIfood={deducoesIfood}
-                deducoes99Food={deducoes99Food}
-                aoFechar={fechar}
-                cadastroRapidoProduto={cadastroRapidoProduto}
-                aoSalvar={() => {
-                  if (fichaAbertaId) void carregar(fichaAbertaId);
-                }}
-              />
-            )}
-          </div>
-        </div>
+        <ModalFlutuante aberto onFechar={fechar}>
+          {carregando && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
+          {erroAbertura && (
+            <div className="flex flex-col items-start gap-3 p-2">
+              <p className="text-sm text-vermelho">{erroAbertura}</p>
+              <button type="button" onClick={fechar} className="text-sm font-semibold text-azul-petroleo">
+                ← Fechar
+              </button>
+            </div>
+          )}
+          {dadosAbertos && (
+            <FichaTecnicaDetalhe
+              ficha={dadosAbertos.dados.ficha}
+              fotoUrl={dadosAbertos.dados.fotoUrl}
+              vinculoContagem={dadosAbertos.dados.vinculoContagem}
+              podeGerir={dadosAbertos.podeGerir}
+              podeEditarFicha={dadosAbertos.podeEditarFicha}
+              categorias={dadosAbertos.dados.categorias}
+              produtos={dadosAbertos.dados.produtos}
+              fichasDisponiveis={dadosAbertos.dados.fichasDisponiveis}
+              margemNecessaria={margemNecessaria}
+              margemPontoEquilibrio={margemPontoEquilibrio}
+              deducoesSalao={deducoesTotal}
+              deducoesIfood={deducoesIfood}
+              deducoes99Food={deducoes99Food}
+              aoFechar={fechar}
+              cadastroRapidoProduto={cadastroRapidoProduto}
+              aoSalvar={() => {
+                if (fichaAbertaId) void carregar(fichaAbertaId);
+              }}
+            />
+          )}
+        </ModalFlutuante>
       )}
 
       {criando && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
-          onClick={fecharNovo}
-        >
-          <div
-            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {carregandoNovo && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
-            {erroNovo && (
-              <div className="flex flex-col items-start gap-3 p-2">
-                <p className="text-sm text-vermelho">{erroNovo}</p>
-                <button type="button" onClick={fecharNovo} className="text-sm font-semibold text-azul-petroleo">
-                  ← Fechar
-                </button>
-              </div>
-            )}
-            {dadosNovo && (
-              <FichaTecnicaForm
-                categorias={dadosNovo.categorias}
-                produtos={dadosNovo.produtos}
-                fichasDisponiveis={dadosNovo.fichasDisponiveis}
-                cadastroRapidoProduto={cadastroRapidoProduto}
-                modoChef={!podeGerir}
-                onSalvo={() => {
-                  fecharNovo();
-                  router.refresh();
-                }}
-                onCancelar={fecharNovo}
-              />
-            )}
-          </div>
-        </div>
+        <ModalFlutuante aberto onFechar={fecharNovo}>
+          {carregandoNovo && <p className="p-6 text-center text-sm text-cinza-medio">Carregando...</p>}
+          {erroNovo && (
+            <div className="flex flex-col items-start gap-3 p-2">
+              <p className="text-sm text-vermelho">{erroNovo}</p>
+              <button type="button" onClick={fecharNovo} className="text-sm font-semibold text-azul-petroleo">
+                ← Fechar
+              </button>
+            </div>
+          )}
+          {dadosNovo && (
+            <FichaTecnicaForm
+              categorias={dadosNovo.categorias}
+              produtos={dadosNovo.produtos}
+              fichasDisponiveis={dadosNovo.fichasDisponiveis}
+              cadastroRapidoProduto={cadastroRapidoProduto}
+              modoChef={!podeGerir}
+              onSalvo={() => {
+                fecharNovo();
+                router.refresh();
+              }}
+              onCancelar={fecharNovo}
+            />
+          )}
+        </ModalFlutuante>
       )}
     </div>
   );

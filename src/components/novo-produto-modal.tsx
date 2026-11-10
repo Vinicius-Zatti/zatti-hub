@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { NovoProdutoForm } from "@/components/novo-produto-form";
 import type { Produto } from "@/lib/types";
+import { ModalFlutuante } from "@/components/modal-flutuante";
 
 export function NovoProdutoModal({
   label = "+ Novo produto",
@@ -29,27 +30,19 @@ export function NovoProdutoModal({
         {label}
       </button>
       {aberto && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-azul-noite/60 sm:items-center sm:p-4"
-          onClick={fechar}
-        >
-          <div
-            className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-off-white p-4 sm:max-w-lg sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <NovoProdutoForm
-              onSalvo={(produto) => {
-                fechar();
-                if (onCriado) {
-                  onCriado(produto);
-                } else {
-                  router.refresh();
-                }
-              }}
-              onCancelar={fechar}
-            />
-          </div>
-        </div>
+        <ModalFlutuante aberto onFechar={fechar}>
+          <NovoProdutoForm
+            onSalvo={(produto) => {
+              fechar();
+              if (onCriado) {
+                onCriado(produto);
+              } else {
+                router.refresh();
+              }
+            }}
+            onCancelar={fechar}
+          />
+        </ModalFlutuante>
       )}
     </>
   );

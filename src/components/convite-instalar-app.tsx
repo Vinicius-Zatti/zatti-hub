@@ -239,7 +239,7 @@ export function ConviteInstalarApp({ comBarraInferior }: { comBarraInferior: boo
         </div>
       </section>
 
-      <ModalFlutuante aberto={videoAberto} onFechar={() => setVideoAberto(false)}>
+      <ModalFlutuante aberto={videoAberto} onFechar={() => setVideoAberto(false)} semBotaoFechar>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-bold text-azul-noite">Como deixar o Zatti Hub como app</h2>
           <button
