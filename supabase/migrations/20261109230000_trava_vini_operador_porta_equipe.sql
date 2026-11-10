@@ -8,6 +8,8 @@
 -- por essa porta.
 
 -- ── 1. Token do escopo 'equipe', com o dono do pedido ──────────────────────
+-- Só a lista de escopos é recriada. A trava do ator (fin_integracao_tokens_equipe_ator_check) também
+-- cita "escopo": migração futura que copiar este laço precisa manter a exclusão abaixo.
 do $$
 declare
   v record;
@@ -18,6 +20,7 @@ begin
      where c.conrelid = 'public.fin_integracao_tokens'::regclass
        and c.contype = 'c'
        and pg_get_constraintdef(c.oid) ilike '%escopo%'
+       and c.conname <> 'fin_integracao_tokens_equipe_ator_check'
   loop
     execute format('alter table public.fin_integracao_tokens drop constraint %I', v.conname);
   end loop;

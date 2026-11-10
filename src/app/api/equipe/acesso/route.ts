@@ -17,6 +17,7 @@ import { MENSAGEM_CONTA_TITULAR, mensagemEditarVinculo } from "@/lib/equipe/regr
 //   { acao: 'cadastrar', organizacao_id, nome, email, whatsapp, role, unidade_id? }
 //   { acao: 'editar', organizacao_id, vinculo_id, role, unidade_id? }
 //   { acao: 'revogar' | 'reativar', organizacao_id, vinculo_id }
+// Vale só para cliente com a Equipe ligada (mesma condição da tela e do banco).
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,24 +46,15 @@ function responder(corpo: Record<string, unknown>, status = 200) {
 async function auditar(
   admin: Admin,
   ator: string,
-  organizacaoId: string,
+  unidadePadrao: string,
   acao: string,
   vinculoId: string,
   unidadeId: string | null,
   dadosAntigos: unknown,
   dadosNovos: unknown,
 ) {
-  let unidade = unidadeId;
-  if (!unidade) {
-    const { data } = await admin.from("unidades").select("id").eq("organizacao_id", organizacaoId).order("id").limit(1).maybeSingle();
-    unidade = (data?.id as string | undefined) ?? null;
-  }
-  if (!unidade) {
-    console.error("[porta-equipe] auditoria sem unidade", { acao });
-    return;
-  }
   const { error } = await admin.from("logs_auditoria").insert({
-    unidade_id: unidade,
+    unidade_id: unidadeId ?? unidadePadrao,
     user_id: ator,
     acao,
     entidade: "vinculo",
@@ -134,15 +126,29 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data: organizacao, error: erroOrganizacao } = await admin
     .from("organizacoes")
-    .select("id, nome, ativo, area_interna")
+    .select("id, nome, ativo, area_interna, equipe_habilitado")
     .eq("id", pedido.organizacaoId)
     .maybeSingle();
   if (erroOrganizacao) return responder({ erro: "indisponivel" }, 503);
   if (!organizacao || !organizacao.ativo) return responder({ erro: "organizacao_nao_encontrada" }, 404);
   // A área de trabalho da Zatti fica de fora: acesso a ela só pela tela, com o master logado.
   if (organizacao.area_interna) return responder({ erro: "area_interna" }, 403);
+  if (!organizacao.equipe_habilitado) return responder({ erro: "equipe_desligada" }, 403);
 
   if (pedido.acao === "listar") return listar(admin, pedido.organizacaoId);
+
+  // A auditoria exige uma unidade (a do vínculo ou, para a organização inteira, a primeira dela).
+  // Sem unidade nenhuma, nada é feito: ação sem registro não passa.
+  const { data: primeiraUnidade, error: erroUnidade } = await admin
+    .from("unidades")
+    .select("id")
+    .eq("organizacao_id", pedido.organizacaoId)
+    .order("id")
+    .limit(1)
+    .maybeSingle();
+  if (erroUnidade) return responder({ erro: "indisponivel" }, 503);
+  if (!primeiraUnidade) return responder({ erro: "sem_unidade" }, 422);
+  const unidadePadrao = primeiraUnidade.id as string;
 
   if (pedido.acao === "cadastrar") {
     const resultado = await cadastrarMembro(
@@ -150,7 +156,7 @@ export async function POST(request: NextRequest) {
       { role: "master", unidadeFixa: null, userId: ator, organizacaoId: pedido.organizacaoId, organizacaoNome: organizacao.nome as string },
       { nome: pedido.nome, email: pedido.email, whatsapp: pedido.whatsapp, role: pedido.role, unidadeId: pedido.unidadeId },
       (acao, vinculoId, unidadeId, dadosNovos) =>
-        auditar(admin, ator, pedido.organizacaoId, acao, vinculoId, unidadeId, null, dadosNovos),
+        auditar(admin, ator, unidadePadrao, acao, vinculoId, unidadeId, null, dadosNovos),
     );
     if ("erro" in resultado) return responder({ erro: "recusado", mensagem: resultado.erro }, 422);
     revalidarTelas();
@@ -189,6 +195,9 @@ export async function POST(request: NextRequest) {
     });
     const mensagem = mensagemEditarVinculo(codigo);
     if (mensagem) return responder({ erro: "recusado", codigo, mensagem }, 422);
+    // O banco já auditou a troca; esta linha marca que veio do Vini, não da tela.
+    await auditar(admin, ator, unidadePadrao, "equipe_editar_pela_porta", alvo.id, pedido.unidadeId ?? alvo.unidade_id,
+      { role: alvo.role, unidadeId: alvo.unidade_id }, { role: pedido.role, unidadeId: pedido.unidadeId });
     revalidarTelas();
     return responder({ status: "ok" });
   }
@@ -205,7 +214,7 @@ export async function POST(request: NextRequest) {
       return responder({ erro: "recusado", codigo, mensagem: "Essa é a última pessoa de gestão que cobre esse acesso. Cadastre outra antes." }, 422);
     }
     if (codigo !== "ok") return responder({ erro: "recusado", codigo }, 422);
-    await auditar(admin, ator, pedido.organizacaoId, "equipe_revogar", alvo.id, alvo.unidade_id, { status: alvo.status }, { status: "revogado" });
+    await auditar(admin, ator, unidadePadrao, "equipe_revogar", alvo.id, alvo.unidade_id, { status: alvo.status }, { status: "revogado" });
     revalidarTelas();
     return responder({ status: "ok" });
   }
@@ -226,7 +235,7 @@ export async function POST(request: NextRequest) {
     if (erroReativar.code === "23505") return responder({ erro: "recusado", mensagem: "Essa pessoa já tem esse acesso ativo." }, 422);
     return responder({ erro: "indisponivel" }, 503);
   }
-  await auditar(admin, ator, pedido.organizacaoId, "equipe_reativar", alvo.id, alvo.unidade_id, { status: alvo.status }, { status: novoStatus });
+  await auditar(admin, ator, unidadePadrao, "equipe_reativar", alvo.id, alvo.unidade_id, { status: alvo.status }, { status: novoStatus });
   revalidarTelas();
   return responder({ status: "ok", novo_status: novoStatus });
 }
