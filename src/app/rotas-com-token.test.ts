@@ -11,7 +11,7 @@ function rotasComToken(pasta: string): string[] {
   return readdirSync(pasta, { withFileTypes: true }).flatMap((item) => {
     const caminho = join(pasta, item.name);
     if (item.isDirectory()) return rotasComToken(caminho);
-    if (item.name !== "route.ts" || !readFileSync(caminho, "utf8").includes("tokenValido(")) return [];
+    if (item.name !== "route.ts" || !/tokenValido\(|tokenAtor\(/.test(readFileSync(caminho, "utf8"))) return [];
     return ["/api/" + relative(API, pasta).split(sep).join("/")];
   });
 }
@@ -22,6 +22,7 @@ describe("rotas com token próprio", () => {
   it("acha as rotas do robô da SEFAZ", () => {
     expect(rotas).toContain("/api/financeiro/sefaz/pendencias");
     expect(rotas).toContain("/api/financeiro/sefaz/progresso");
+    expect(rotas).toContain("/api/equipe/acesso");
   });
 
   it.each(rotas)("%s passa pelo middleware sem sessão", (rota) => {

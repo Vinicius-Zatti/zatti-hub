@@ -18,6 +18,8 @@ export const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/financeiro/sefaz/pendencias", "/api/financeiro/sefaz/progresso",
   // Avisos do Garante: mesmo defeito, token do escopo 'garante'.
   "/api/garante/avisos", "/api/garante/avisos/enviados",
+  // Acesso de equipe pelo Vini (09/11/2026): token do escopo 'equipe', que age em nome de um master.
+  "/api/equipe/acesso",
 ]);
 
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
