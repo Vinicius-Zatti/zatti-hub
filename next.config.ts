@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 // desenvolvimento local; em produção a origem é sempre https://*.supabase.co.
 const supabaseLocal = /^http:\/\/(127\.0\.0\.1|localhost):\d+/.exec(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")?.[0] ?? "";
 const extraLocal = supabaseLocal ? ` ${supabaseLocal}` : "";
+// Só o nosso projeto (revisão de segurança 09/11): https://<ref>.supabase.co. Sem a variável no build,
+// cai no curinga antigo para não quebrar a tela.
+const refSupabase = /^https:\/\/([a-z0-9]+)\.supabase\.co\/?$/.exec(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "")?.[1];
+const hostSupabase = refSupabase ? `${refSupabase}.supabase.co` : "*.supabase.co";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -12,9 +16,9 @@ const contentSecurityPolicy = [
   "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
   // Fotos privadas (ficha técnica e Checklist Garante) chegam por URL assinada do Storage.
-  `img-src 'self' blob: data: https://*.supabase.co${extraLocal}`,
+  `img-src 'self' blob: data: https://${hostSupabase}${extraLocal}`,
   "font-src 'self'",
-  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com${extraLocal}`,
+  `connect-src 'self' https://${hostSupabase} wss://${hostSupabase} https://challenges.cloudflare.com${extraLocal}`,
   "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",

@@ -22,6 +22,12 @@ export const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/equipe/acesso",
 ]);
 
+/** A rota em si ou algo embaixo dela ("/login" e "/login/x"), nunca um nome que só começa igual
+ * ("/login-admin"): tela nova com nome parecido não nasce sem login (revisão 09/11). */
+export function ehRotaPublica(caminho: string): boolean {
+  return ROTAS_PUBLICAS.some((rota) => caminho === rota || caminho.startsWith(`${rota}/`)) || ROTAS_PUBLICAS_EXATAS.has(caminho);
+}
+
 /** Renova a sessão do Supabase a cada request e barra quem não está logado
  * antes de qualquer página renderizar - primeira camada, não a única (cada
  * Server Action que grava dado confere de novo, ver src/lib/acesso.ts). */
@@ -57,8 +63,7 @@ export async function middleware(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const logado = Boolean(data?.claims);
-  const rotaPublica =
-    ROTAS_PUBLICAS.some((rota) => request.nextUrl.pathname.startsWith(rota)) || ROTAS_PUBLICAS_EXATAS.has(request.nextUrl.pathname);
+  const rotaPublica = ehRotaPublica(request.nextUrl.pathname);
 
   if (!logado && !rotaPublica) {
     const url = request.nextUrl.clone();
