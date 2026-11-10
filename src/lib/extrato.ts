@@ -1,6 +1,7 @@
 // Extrato do estoque v1 - funções puras (servidor e tela). Sem acesso a banco.
 // Regras no desenho `_execucao/zatti-hub/extrato-estoque-v1.md` (Cérebro do Gestor).
 
+import { campoCsv } from "@/lib/csv";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 
 export type TipoMovimento = "compra" | "perda" | "saida" | "entrada";
@@ -165,10 +166,6 @@ export function textoInicioExtrato(inicio: string | null): string {
 export const DICA_CUSTO_PERDA =
   "Custo da perda = quantidade × último preço pago do item até a data da perda (compra recebida " +
   "mais recente). Sem compra com preço, o custo fica desconhecido.";
-
-function campoCsv(texto: string): string {
-  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
-}
 
 /** 1234.5 -> "1234,5" (sem ponto de milhar, para a planilha abrir como número). */
 export function numeroCsv(valor: number | null): string {
