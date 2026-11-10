@@ -50,6 +50,14 @@ describe("validarPedidoPorta", () => {
     });
   });
 
+  it("renomear pede vínculo e nome", () => {
+    expect(validarPedidoPorta({ acao: "renomear", organizacao_id: "x", vinculo_id: VINCULO, nome: " Ana " })).toEqual({
+      ok: true,
+      pedido: { acao: "renomear", organizacaoId: "x", vinculoId: VINCULO, nome: "Ana" },
+    });
+    expect(validarPedidoPorta({ acao: "renomear", organizacao_id: "x", vinculo_id: VINCULO, nome: "  " })).toEqual({ ok: false, erro: "nome_invalido" });
+  });
+
   it("recusa ação desconhecida e corpo que não é objeto", () => {
     expect(validarPedidoPorta({ acao: "apagar", organizacao_id: "x" })).toEqual({ ok: false, erro: "acao_invalida" });
     expect(validarPedidoPorta([1])).toEqual({ ok: false, erro: "corpo_invalido" });

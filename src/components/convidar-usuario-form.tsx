@@ -71,9 +71,12 @@ export function ConvidarUsuarioForm({
       </div>
 
       <div>
-        <label className="text-xs font-semibold text-cinza-medio">Nome (opcional)</label>
+        <label className="text-xs font-semibold text-cinza-medio">Nome</label>
         <input
           name="nome"
+          required
+          maxLength={160}
+          placeholder="Nome e sobrenome"
           className="mt-1 w-full rounded-md border border-cinza-claro px-3 py-2 text-sm focus:border-ambar focus:outline-none"
         />
       </div>
