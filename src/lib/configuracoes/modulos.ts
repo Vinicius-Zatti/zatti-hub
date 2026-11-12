@@ -13,6 +13,7 @@ export type ColunaUnidade =
   | "conciliacao_habilitada"
   | "fichas_tecnicas_habilitado"
   | "garante_habilitado"
+  | "avaliacoes_habilitado"
   | "extrato_estoque_habilitado"
   | "contagem_por_setor_habilitada";
 
@@ -23,6 +24,7 @@ export type ChaveModulo =
   | "conciliacao"
   | "cardapio"
   | "garante"
+  | "avaliacoes"
   | "extrato"
   | "contagem_setor"
   | "equipe";
@@ -78,6 +80,12 @@ export const MODULOS: readonly DefinicaoModulo[] = [
     nome: "Garante",
     descricao: "Checklists da rotina com responsável, prazo e foto, planos de ação e a nota da equipe.",
     ligadoPor: { tabela: "unidades", coluna: "garante_habilitado" },
+  },
+  {
+    chave: "avaliacoes",
+    nome: "Avaliações",
+    descricao: "Pesquisa de satisfação pelo QR Code com a marca do restaurante, arte do QR para imprimir, painel e alerta de nota baixa no WhatsApp.",
+    ligadoPor: { tabela: "unidades", coluna: "avaliacoes_habilitado" },
   },
   {
     chave: "extrato",

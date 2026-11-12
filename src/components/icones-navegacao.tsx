@@ -11,6 +11,7 @@ export type NomeIconeNavegacao =
   | "escritorio"
   | "fichas"
   | "tarefas"
+  | "avaliacoes"
   | "contagem"
   | "pedidos"
   | "marketing"
@@ -116,6 +117,8 @@ export function IconeNavegacao({
         <path d="m8 12 2.5 2.5L16 9" />
       </>
     ),
+    // Avaliações (12/11/2026): estrela.
+    avaliacoes: <path d="m12 3.5 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z" />,
     // Barra inferior do celular (Navegação V2): prancheta da contagem e carrinho dos pedidos.
     contagem: (
       <>

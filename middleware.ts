@@ -4,7 +4,8 @@ import { CABECALHO_CAMINHO } from "@/lib/area-interna/caminhos";
 
 // As rotas do relatório semanal de IA, dos eventos de leads e do Conteúdo se autenticam por token próprio (conferido
 // no banco), não por sessão: são chamadas pelo Vini, fora do navegador.
-export const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas"];
+// "/avaliar" (12/11/2026): pesquisa de avaliação que o cliente final responde pelo QR Code, sem login.
+export const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas", "/avaliar"];
 // Financeiro V2 (11/10/2026): Caixa de Entrada e alerta diário, token com escopo próprio. Comparação
 // exata (não por prefixo): rota nova embaixo delas não fica sem sessão por acidente.
 export const ROTAS_PUBLICAS_EXATAS = new Set([
@@ -20,6 +21,8 @@ export const ROTAS_PUBLICAS_EXATAS = new Set([
   "/api/garante/avisos", "/api/garante/avisos/enviados",
   // Acesso de equipe pelo Vini (09/11/2026): token do escopo 'equipe', que age em nome de um master.
   "/api/equipe/acesso",
+  // Alerta de nota baixa das Avaliações (12/11/2026): mesmo token do escopo 'garante'.
+  "/api/avaliacoes/alertas", "/api/avaliacoes/alertas/enviados",
 ]);
 
 /** A rota em si ou algo embaixo dela ("/login" e "/login/x"), nunca um nome que só começa igual

@@ -16,6 +16,9 @@ export type ContextoMenuRestaurante = {
   equipeHabilitado: boolean;
   garanteHabilitado: boolean;
   conciliacaoHabilitada: boolean;
+  /** Avaliações (12/11/2026): módulo ligado na unidade e sem "sem acesso" para a pessoa. Lido à
+   * parte no layout (`lerAvaliacoesHabilitado`); ausente = não aparece. Só gestão/master. */
+  avaliacoesHabilitado?: boolean;
   /** Configurações do piloto: master, o dono (titular; sem titular, a gestão da
    * organização inteira) ou a gestão que recebeu "ver" em Configurações. Ausente = não vê. */
   podeConfigurar?: boolean;
@@ -180,9 +183,35 @@ function modulosComuns(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
           : []),
       ],
     },
+    ...itemAvaliacoes(ctx),
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
     // Escritório e Acessos saíram daqui em 15/10/2026: ficam só na Zatti HUB
     // (`itensAreaInterna`), escolhida no seletor de organização.
+  ];
+}
+
+/** Avaliações: pesquisa por QR com a marca do restaurante (12/11/2026). Só aparece ligada e para
+ * a gestão; a barreira é `requireAvaliacoes()` em cada página e Server Action. */
+function itemAvaliacoes(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
+  if (!ctx.podeGerir || !ctx.avaliacoesHabilitado) return [];
+  return [
+    {
+      label: "Avaliações",
+      href: "/avaliacoes",
+      icone: "avaliacoes",
+      activePrefix: "/avaliacoes",
+      disabled: false,
+      sections: [
+        {
+          label: "Avaliações",
+          items: [
+            { label: "Painel", href: "/avaliacoes" },
+            { label: "Configurar", href: "/avaliacoes/configurar" },
+            { label: "Arte do QR", href: "/avaliacoes/qr" },
+          ],
+        },
+      ],
+    },
   ];
 }
 
@@ -525,6 +554,7 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
       disabled: !ctx.garanteHabilitado,
       sections: secoesGarantePiloto(ctx),
     },
+    ...itemAvaliacoes(ctx),
     // Equipe: mesma regra de hoje (gestão + flag); a barreira é `requireEquipe()`.
     ...(ctx.podeGerir && ctx.equipeHabilitado
       ? [{ label: "Equipe", href: "/equipe", icone: "acessos" as const, activePrefix: "/equipe", disabled: false }]

@@ -233,7 +233,7 @@ describe("menu do piloto", () => {
   });
 
   it("todo módulo do catálogo tem nome", () => {
-    expect(MODULOS).toHaveLength(9);
+    expect(MODULOS).toHaveLength(10);
   });
 });
 
