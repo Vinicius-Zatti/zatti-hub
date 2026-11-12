@@ -18,7 +18,8 @@ export function CameraFoto({
 }: {
   /** `<unidade>/<execucao>/<item>`; o nome do arquivo ganha um sufixo aleatório. */
   caminhoBase: string;
-  aoEnviar: (caminho: string) => Promise<string | null>;
+  /** Recebe também a foto tirada, para quem tirou já ver a imagem sem recarregar. */
+  aoEnviar: (caminho: string, foto: Blob) => Promise<string | null>;
   aoFechar: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -80,7 +81,7 @@ export function CameraFoto({
       setEnviando(false);
       return;
     }
-    const falha = await aoEnviar(caminho);
+    const falha = await aoEnviar(caminho, blob);
     if (falha) {
       setErro(falha);
       setEnviando(false);
