@@ -98,42 +98,19 @@ export function validarMarca(e: EntradaMarca): { ok: true; marca: MarcaValidada 
 // ── Logo ─────────────────────────────────────────────────────────────────
 
 export const LIMITE_LOGO_BYTES = 300 * 1024;
-export const TIPOS_LOGO = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg" } as const;
+// Só PNG e JPEG (revisão de 12/11/2026): SVG é código e a logo fica pública no Storage; filtro de
+// texto não segura script com prefixo de namespace nem entidade. PNG/JPEG são conferidos pela assinatura.
+export const TIPOS_LOGO = { "image/png": "png", "image/jpeg": "jpg" } as const;
 export type TipoLogo = keyof typeof TIPOS_LOGO;
 
-/** Confere o arquivo pelo conteúdo (assinatura do PNG/JPEG; SVG sem script nem link externo),
- * não pelo nome nem pelo tipo que o navegador diz. Devolve o tipo certo ou o erro. */
-export function validarLogo(bytes: Uint8Array, tipoInformado: string): { ok: true; tipo: TipoLogo } | { ok: false; erro: string } {
+/** Confere o arquivo pelo conteúdo (assinatura do PNG/JPEG), não pelo nome nem pelo tipo que o
+ * navegador diz. Devolve o tipo certo ou o erro. */
+export function validarLogo(bytes: Uint8Array): { ok: true; tipo: TipoLogo } | { ok: false; erro: string } {
   if (bytes.length === 0) return { ok: false, erro: "Escolha o arquivo da logo." };
   if (bytes.length > LIMITE_LOGO_BYTES) return { ok: false, erro: "A logo pode ter até 300 KB. Exporte numa resolução menor (500 px de largura basta)." };
   const png = bytes.length > 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => bytes[i] === b);
   const jpeg = bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   if (png) return { ok: true, tipo: "image/png" };
   if (jpeg) return { ok: true, tipo: "image/jpeg" };
-  if (tipoInformado === "image/svg+xml" || /\.svg$/i.test(tipoInformado)) {
-    const texto = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    if (!/<svg[\s>]/i.test(texto)) return { ok: false, erro: "O arquivo SVG não parece uma imagem." };
-    if (svgInseguro(texto)) {
-      return { ok: false, erro: "Esse SVG tem código ou link externo dentro. Exporte de novo como PNG ou SVG simples." };
-    }
-    return { ok: true, tipo: "image/svg+xml" };
-  }
-  return { ok: false, erro: "Use uma logo em PNG, JPEG ou SVG." };
-}
-
-/** SVG com script, evento, link externo, entidade ou HTML embutido não entra (a logo é pública). */
-export function svgInseguro(texto: string): boolean {
-  return (
-    /<script/i.test(texto) ||
-    /<foreignObject/i.test(texto) ||
-    /<!ENTITY/i.test(texto) ||
-    /<!DOCTYPE/i.test(texto) ||
-    /<(iframe|embed|object|audio|video|use)\b/i.test(texto) ||
-    /\son[a-z]+\s*=/i.test(texto) ||
-    /javascript:/i.test(texto) ||
-    // Só âncora interna (#id) ou imagem PNG/JPEG embutida (logo exportada com bitmap dentro).
-    /(?:xlink:)?href\s*=\s*["']\s*(?!#|data:image\/(?:png|jpe?g);)/i.test(texto) ||
-    /url\(\s*["']?\s*(?!#)/i.test(texto) ||
-    /@import/i.test(texto)
-  );
+  return { ok: false, erro: "Use uma logo em PNG ou JPEG. Se ela estiver em SVG, exporte como PNG." };
 }

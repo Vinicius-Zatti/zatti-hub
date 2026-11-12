@@ -63,8 +63,8 @@ export function LogoUpload({ temLogo }: { temLogo: boolean }) {
         {aberto === "trocar" && (
           <div className="flex flex-col gap-3">
             <h2 className="font-display text-lg font-bold text-azul-noite">Logo do restaurante</h2>
-            <p className="text-sm text-cinza">PNG, JPEG ou SVG de até 300 KB. Fundo transparente fica melhor. Ela aparece no topo da pesquisa e na arte do QR.</p>
-            <input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(e) => escolher(e.target.files?.[0] ?? null)} className="text-sm" />
+            <p className="text-sm text-cinza">PNG ou JPEG de até 300 KB. Fundo transparente fica melhor. Ela aparece no topo da pesquisa e na arte do QR.</p>
+            <input type="file" accept="image/png,image/jpeg" onChange={(e) => escolher(e.target.files?.[0] ?? null)} className="text-sm" />
             {previa && (
               // Prévia local do arquivo escolhido (blob:).
               // eslint-disable-next-line @next/next/no-img-element

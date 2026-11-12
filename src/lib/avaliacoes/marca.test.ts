@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contraste, corTextoSobre, normalizarCor, normalizarLinkGoogle, svgInseguro, validarLogo, validarMarca } from "./marca";
+import { contraste, corTextoSobre, normalizarCor, normalizarLinkGoogle, validarLogo, validarMarca } from "./marca";
 
 describe("cores e contraste", () => {
   it("normaliza a cor para #RRGGBB maiúsculo", () => {
@@ -33,31 +33,22 @@ describe("cores e contraste", () => {
 describe("logo", () => {
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
   const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0]);
-  const svg = (s: string) => new TextEncoder().encode(s);
+  const texto = (s: string) => new TextEncoder().encode(s);
 
-  it("tipo vem do conteúdo, não do que o navegador diz", () => {
-    expect(validarLogo(png, "image/jpeg")).toEqual({ ok: true, tipo: "image/png" });
-    expect(validarLogo(jpeg, "image/png")).toEqual({ ok: true, tipo: "image/jpeg" });
-    expect(validarLogo(svg('<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>'), "image/svg+xml")).toEqual({
-      ok: true,
-      tipo: "image/svg+xml",
-    });
-    expect(validarLogo(new Uint8Array([1, 2, 3]), "image/gif")).toMatchObject({ ok: false });
+  it("tipo vem do conteúdo (assinatura), só PNG e JPEG", () => {
+    expect(validarLogo(png)).toEqual({ ok: true, tipo: "image/png" });
+    expect(validarLogo(jpeg)).toEqual({ ok: true, tipo: "image/jpeg" });
+    expect(validarLogo(new Uint8Array([1, 2, 3]))).toMatchObject({ ok: false });
+  });
+
+  it("SVG nunca entra, nem o simples (a logo é pública no Storage)", () => {
+    expect(validarLogo(texto('<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>'))).toMatchObject({ ok: false });
+    expect(validarLogo(texto('<svg><h:script xmlns:h="http://www.w3.org/1999/xhtml">alert(1)</h:script></svg>'))).toMatchObject({ ok: false });
   });
 
   it("acima de 300 KB não entra", () => {
     const grande = new Uint8Array(300 * 1024 + 1);
     grande.set(png);
-    expect(validarLogo(grande, "image/png")).toMatchObject({ ok: false });
-  });
-
-  it("SVG com script, evento ou link externo é recusado", () => {
-    expect(svgInseguro("<svg><script>alert(1)</script></svg>")).toBe(true);
-    expect(svgInseguro('<svg onload="x()"></svg>')).toBe(true);
-    expect(svgInseguro('<svg><image href="https://mal.com/x.png"/></svg>')).toBe(true);
-    expect(svgInseguro('<svg><a xlink:href="javascript:x"/></svg>')).toBe(true);
-    expect(svgInseguro('<svg><use href="#a"/></svg>')).toBe(true);
-    expect(svgInseguro('<svg><path fill="url(#g)" d="M0 0"/></svg>')).toBe(false);
-    expect(svgInseguro('<svg><image href="data:image/png;base64,AAAA"/></svg>')).toBe(false);
+    expect(validarLogo(grande)).toMatchObject({ ok: false });
   });
 });

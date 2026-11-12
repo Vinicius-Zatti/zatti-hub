@@ -262,7 +262,7 @@ create table if not exists public.avaliacoes_pesquisas (
   nome_exibido text not null check (char_length(btrim(nome_exibido)) between 2 and 60),
   cor_principal text not null default '#1F4E79' check (cor_principal ~ '^#[0-9A-F]{6}$'),
   cor_fundo text not null default '#FFFFFF' check (cor_fundo ~ '^#[0-9A-F]{6}$'),
-  logo_path text check (logo_path is null or logo_path ~ '^[A-Za-z0-9_-]+/[0-9a-f-]{36}\.(png|jpg|svg)$'),
+  logo_path text check (logo_path is null or logo_path ~ '^[A-Za-z0-9_-]+/[0-9a-f-]{36}\.(png|jpg)$'),
   texto_agradecimento text not null default 'Obrigado! Sua opinião ajuda a gente a melhorar a cada dia.'
     check (char_length(btrim(texto_agradecimento)) between 3 and 200),
   -- "Avaliar no Google" aparece para TODOS na tela de obrigado (mostrar só para nota alta é
@@ -670,7 +670,7 @@ begin
     raise exception 'sem_permissao' using errcode = '42501';
   end if;
   if p_logo_path is not null and (left(p_logo_path, char_length(p_unidade_id) + 1) <> p_unidade_id || '/'
-     or p_logo_path !~ '^[A-Za-z0-9_-]+/[0-9a-f-]{36}\.(png|jpg|svg)$') then
+     or p_logo_path !~ '^[A-Za-z0-9_-]+/[0-9a-f-]{36}\.(png|jpg)$') then
     raise exception 'logo_invalida' using errcode = '22023';
   end if;
   select id, logo_path into v_id, v_antes from public.avaliacoes_pesquisas where unidade_id = p_unidade_id for update;
@@ -872,7 +872,16 @@ begin
             and r.criado_em > p_agora - interval '24 hours') >= 5
      or (select count(*) from public.avaliacoes_respostas r
           where r.pesquisa_id = v_p.id and r.hash_ip = p_hash_ip
-            and r.criado_em > p_agora - interval '1 hour') >= 40 then
+            and r.criado_em > p_agora - interval '1 hour') >= 40
+     -- Revisão de 12/11: o aparelho é informado pelo navegador e dá para trocar a cada envio. O
+     -- hash do IP (IPv6 já reduzido ao /64 no servidor) também tem teto por dia, e a pesquisa
+     -- inteira tem teto de 300 por 24 h, para um script não encher o painel nem os alertas.
+     or (select count(*) from public.avaliacoes_respostas r
+          where r.pesquisa_id = v_p.id and r.hash_ip = p_hash_ip
+            and r.criado_em > p_agora - interval '24 hours') >= 100
+     or (select count(*) from public.avaliacoes_respostas r
+          where r.pesquisa_id = v_p.id
+            and r.criado_em > p_agora - interval '24 hours') >= 300 then
     return jsonb_build_object('ok', false, 'codigo', 'limite');
   end if;
 
@@ -1083,10 +1092,10 @@ revoke all on function public.avaliacoes_alertas_confirmar(uuid, text, timestamp
 grant execute on function public.avaliacoes_alertas_confirmar(uuid, text, timestamptz) to service_role;
 
 -- ══ 12. Logo: bucket público só para leitura ═════════════════════════════
--- Até 300 KB, PNG, JPEG ou SVG. Sem policy em storage.objects para authenticated/anon: quem grava
+-- Até 300 KB, só PNG ou JPEG (SVG é código; fora desde a revisão de 12/11). Sem policy em storage.objects para authenticated/anon: quem grava
 -- e apaga é o servidor (service role) depois de conferir a permissão; a leitura é pela URL pública.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('avaliacoes-logos', 'avaliacoes-logos', true, 307200, array['image/png', 'image/jpeg', 'image/svg+xml'])
+values ('avaliacoes-logos', 'avaliacoes-logos', true, 307200, array['image/png', 'image/jpeg'])
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,

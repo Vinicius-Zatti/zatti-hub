@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LIMITE_ALERTAS_MENSAGEM, linhaDoAlerta, montarMensagemAlertas, notasDoAlerta, telefoneParaEnvio, type AlertaParaEnvio } from "./alertas";
+import { LIMITE_ALERTAS_MENSAGEM, linhaDoAlerta, montarMensagemAlertas, notasDoAlerta, telefoneParaEnvio, type AlertaParaEnvio, comentarioSeguro } from "./alertas";
 
 function alerta(p: Partial<AlertaParaEnvio>): AlertaParaEnvio {
   return {
@@ -25,8 +25,16 @@ describe("mensagem do alerta de nota baixa", () => {
   it("comentário entre aspas e contato só quando a pessoa autorizou", () => {
     const l = linhaDoAlerta(alerta({ origem: "delivery", comentario: "Chegou\nfrio", whatsappCliente: "5516999990001" }));
     expect(l).toContain('Comentário: "Chegou frio"');
-    expect(l).toContain("O cliente autorizou contato: (16) 99999-0001.");
-    expect(linhaDoAlerta(alerta({}))).not.toContain("autorizou");
+    // Revisão de 12/11: o número não vai no alerta; só o aviso de que há contato no painel.
+    expect(l).toContain("O cliente deixou contato para retorno: a gestão vê em Avaliações.");
+    expect(l).not.toContain("99999");
+    expect(linhaDoAlerta(alerta({}))).not.toContain("contato");
+  });
+
+  it("link no comentário vira [link removido]; número e preço continuam", () => {
+    expect(comentarioSeguro("veja https://golpe.com/pix e www.x.net")).toBe("veja [link removido] e [link removido]");
+    expect(comentarioSeguro("acesse pague-aqui.com.br/ja agora")).toBe("acesse [link removido] agora");
+    expect(comentarioSeguro("paguei R$ 45.90 e esperei 1.5 h")).toBe("paguei R$ 45.90 e esperei 1.5 h");
   });
 
   it("cabeçalho com o primeiro nome, lista numerada e resumo acima do limite", () => {

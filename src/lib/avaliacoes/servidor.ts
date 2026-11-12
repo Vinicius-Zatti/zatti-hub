@@ -262,7 +262,7 @@ export async function logoComoDataUrl(logoPath: string | null): Promise<string |
     const { data, error } = await createAdminClient().storage.from(BUCKET_LOGOS).download(logoPath);
     if (error || !data) return null;
     const bytes = Buffer.from(await data.arrayBuffer());
-    const tipo = logoPath.endsWith(".svg") ? "image/svg+xml" : logoPath.endsWith(".png") ? "image/png" : "image/jpeg";
+    const tipo = logoPath.endsWith(".png") ? "image/png" : "image/jpeg";
     return `data:${tipo};base64,${bytes.toString("base64")}`;
   } catch {
     return null;

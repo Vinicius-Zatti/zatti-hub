@@ -131,7 +131,7 @@ export async function salvarLogoAction(formData: FormData): Promise<Resultado> {
   if (!(arquivo instanceof File)) return { erro: "Escolha o arquivo da logo." };
   if (arquivo.size > 400 * 1024) return { erro: "A logo pode ter até 300 KB." };
   const bytes = new Uint8Array(await arquivo.arrayBuffer());
-  const v = validarLogo(bytes, arquivo.type || arquivo.name);
+  const v = validarLogo(bytes);
   if (!v.ok) return { erro: v.erro };
   if (!/^[A-Za-z0-9_-]+$/.test(acesso.unidadeId)) return { erro: "Unidade com código fora do padrão. Fale com a Zatti." };
 

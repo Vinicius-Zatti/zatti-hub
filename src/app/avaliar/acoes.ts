@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { carregarPesquisaPublica, type PesquisaPublica } from "@/lib/avaliacoes/servidor";
-import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao } from "@/lib/avaliacoes/anonimizacao";
+import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao, ipParaLimite } from "@/lib/avaliacoes/anonimizacao";
 import { ehOrigem, normalizarWhatsapp, perguntasAtivas, validarRespostas } from "@/lib/avaliacoes/perguntas";
 
 export type EstadoAvaliacao = { ok?: boolean; erro?: string; campo?: string };
@@ -51,10 +51,12 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
     return { erro: MENSAGEM_GENERICA };
   }
   const cabecalhos = await headers();
-  const ip = ipDaRequisicao(cabecalhos);
+  const ip = ipParaLimite(ipDaRequisicao(cabecalhos));
   const dispositivoBruto = dispositivoValido(formData.get("dispositivo"));
   // Sem identificador do aparelho (navegador sem armazenamento), o limite vale por IP.
-  const dispositivo = dispositivoBruto === "sem-dispositivo" ? `sem-dispositivo:${ip}` : dispositivoBruto;
+  const semAparelho = dispositivoBruto === "sem-dispositivo";
+  const dispositivo = semAparelho ? `sem-dispositivo:${ip}` : dispositivoBruto;
+  const hoje = hojeIsoBrasil();
   const decorrido = Number(formData.get("decorrido") ?? 0);
   // Versão do texto de consentimento que a pessoa leu na tela (a RPC guarda a cópia dessa versão).
   const termo = Number(formData.get("termo"));
@@ -68,8 +70,8 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
     p_termo_versao: Number.isInteger(termo) && termo > 0 ? termo : pesquisa.termoVersao,
     p_armadilha: String(formData.get("site") ?? ""),
     p_decorrido_ms: Number.isFinite(decorrido) ? Math.max(0, Math.min(Math.trunc(decorrido), 2_000_000_000)) : 0,
-    p_hash_ip: hashAnonimo(chave, "ip", ip, hojeIsoBrasil()),
-    p_hash_dispositivo: hashAnonimo(chave, "dispositivo", dispositivo, ""),
+    p_hash_ip: hashAnonimo(chave, "ip", ip, hoje),
+    p_hash_dispositivo: hashAnonimo(chave, "dispositivo", dispositivo, semAparelho ? hoje : ""),
   });
   if (error) {
     console.error("avaliacoes_registrar_falhou", { codigo: error.code ?? null });

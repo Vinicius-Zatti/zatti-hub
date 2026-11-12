@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao } from "./anonimizacao";
+import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao, ipParaLimite } from "./anonimizacao";
 
 const cabecalhos = (h: Record<string, string>) => ({ get: (n: string) => h[n] ?? null });
 
@@ -21,7 +21,20 @@ describe("hash do IP e do aparelho (nunca o IP puro)", () => {
   it("o hash do IP muda de um dia para o outro; o do aparelho não", () => {
     const k = "chave-0123456789abcdef";
     expect(hashAnonimo(k, "ip", "200.1.2.3", "2026-11-12")).not.toBe(hashAnonimo(k, "ip", "200.1.2.3", "2026-11-13"));
-    expect(hashAnonimo(k, "dispositivo", "abc-1234567890abcdef", "2026-11-12")).toBe(hashAnonimo(k, "dispositivo", "abc-1234567890abcdef", "2026-11-13"));
+    expect(hashAnonimo(k, "dispositivo", "abc-1234567890abcdef", "")).toBe(hashAnonimo(k, "dispositivo", "abc-1234567890abcdef", ""));
+    // "Sem aparelho" carrega o IP: leva o dia, como o hash do IP (revisão de 12/11).
+    expect(hashAnonimo(k, "dispositivo", "sem-dispositivo:200.1.2.3", "2026-11-12")).not.toBe(
+      hashAnonimo(k, "dispositivo", "sem-dispositivo:200.1.2.3", "2026-11-13"),
+    );
+  });
+
+  it("IPv6 vira o prefixo /64; IPv4 e IPv4 mapeado ficam como o IPv4", () => {
+    expect(ipParaLimite("2804:14c:5b:8001:a1b2:c3d4:e5f6:1")).toBe("2804:14c:5b:8001::/64");
+    expect(ipParaLimite("2804:14c:5b:8001:ffff::9")).toBe("2804:14c:5b:8001::/64");
+    expect(ipParaLimite("2804:14c::1")).toBe("2804:14c:0:0::/64");
+    expect(ipParaLimite("::ffff:200.1.2.3")).toBe("200.1.2.3");
+    expect(ipParaLimite("200.1.2.3")).toBe("200.1.2.3");
+    expect(ipParaLimite("desconhecido")).toBe("desconhecido");
   });
 
   it("IP do primeiro x-forwarded-for; aparelho fora do formato vira 'sem-dispositivo'", () => {

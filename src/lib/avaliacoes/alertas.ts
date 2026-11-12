@@ -1,10 +1,12 @@
-import { formatarWhatsapp, dataHoraBr } from "./painel";
+import { dataHoraBr } from "./painel";
 import { ROTULO_ORIGEM, rotuloOpcao, ehOrigem } from "./perguntas";
 
 // Alerta de nota baixa pelo WhatsApp do Vini (12/11/2026). Mesmo contrato dos avisos do Garante:
 // o banco reserva (`avaliacoes_alertas_reservar`), o Hub monta o texto aqui, o Vini envia e
-// confirma. Sem emoji e sem travessão. O WhatsApp de quem avaliou só aparece se a pessoa
-// autorizou (sem autorização o número nem é guardado).
+// confirma. Sem emoji e sem travessão. Revisão de 12/11: o WhatsApp de quem avaliou não vai no
+// alerta (o destinatário pode ser da operação, que não vê o painel); a mensagem só avisa que há
+// contato autorizado no painel. Link no comentário vira "[link removido]": a mensagem sai de um
+// número em que o gerente confia, e o comentário é texto livre de qualquer pessoa.
 
 export const RESULTADOS_ENVIO = ["enviado", "falhou", "incerto"] as const;
 export type ResultadoEnvio = (typeof RESULTADOS_ENVIO)[number];
@@ -39,13 +41,21 @@ export function notasDoAlerta(a: Pick<AlertaParaEnvio, "atendimento" | "comida" 
   return partes.join(", ");
 }
 
+const LINK = /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|br|net|org|io|me|ly|co|app|link|xyz|site|online|info|club|shop|top)\b(?:\/\S*)?/gi;
+
+/** Comentário numa linha, sem link clicável e com no máximo 280 letras. */
+export function comentarioSeguro(texto: string | null): string {
+  const limpo = (texto ?? "").replace(/\s+/g, " ").trim().replace(LINK, "[link removido]");
+  return limpo.length > 280 ? `${limpo.slice(0, 277)}...` : limpo;
+}
+
 export function linhaDoAlerta(a: AlertaParaEnvio): string {
   const origem = ehOrigem(a.origem) ? ROTULO_ORIGEM[a.origem] : a.origem;
   const partes = [`${origem}, ${dataHoraBr(a.criadoEm)}: ${notasDoAlerta(a)}.`];
   if (a.espera) partes.push(`Espera: ${rotuloOpcao("espera", a.espera)}.`);
-  const comentario = (a.comentario ?? "").replace(/\s+/g, " ").trim();
-  if (comentario) partes.push(`Comentário: "${comentario.length > 280 ? `${comentario.slice(0, 277)}...` : comentario}"`);
-  if (a.whatsappCliente) partes.push(`O cliente autorizou contato: ${formatarWhatsapp(a.whatsappCliente)}.`);
+  const comentario = comentarioSeguro(a.comentario);
+  if (comentario) partes.push(`Comentário: "${comentario}"`);
+  if (a.whatsappCliente) partes.push("O cliente deixou contato para retorno: a gestão vê em Avaliações.");
   return partes.join(" ");
 }
 
