@@ -361,7 +361,8 @@ grant select (
 ) on public.avaliacoes_respostas to authenticated;
 
 drop policy if exists avaliacoes_termos_select on public.avaliacoes_termos;
-create policy avaliacoes_termos_select on public.avaliacoes_termos for select to authenticated using (true);
+-- Texto público do consentimento: qualquer pessoa logada lê (a tela de configurar mostra).
+create policy avaliacoes_termos_select on public.avaliacoes_termos for select to authenticated using (auth.uid() is not null);
 
 drop policy if exists avaliacoes_pesquisas_select on public.avaliacoes_pesquisas;
 create policy avaliacoes_pesquisas_select on public.avaliacoes_pesquisas for select to authenticated
