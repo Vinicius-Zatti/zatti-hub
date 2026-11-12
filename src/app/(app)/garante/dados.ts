@@ -8,6 +8,7 @@ import { intervaloNota, normalizarLinhaNota, type LinhaNota, type LinhaNotaBruta
 import { calcularPaginacao, contarAtrasados, PLANOS_POR_PAGINA, textoRespostaOrigem, type SituacaoPlano } from "@/lib/garante/planos";
 import { carregarResponsavelAvisos } from "@/lib/garante/avisos-servidor";
 import type { CandidatoAvisos, ResponsavelAvisosAtual, SituacaoAvisos } from "@/lib/garante/avisos";
+import type { VereditoIa } from "@/lib/garante/ia-fotos";
 
 export type LinhaAgenda = {
   publicacaoId: string;
@@ -109,6 +110,9 @@ export type RespostaExecucao = {
   fotoUrl: string | null;
   fotoRecebidaEm: string | null;
   respondidoPorNome: string | null;
+  /** Resultado da IA para a foto atual do item (null = não conferida). */
+  iaVeredito: VereditoIa | null;
+  iaMotivo: string | null;
 };
 
 export type ExecucaoCompleta = {
@@ -126,6 +130,8 @@ export type ExecucaoCompleta = {
   respostas: Record<string, RespostaExecucao>;
   concluidaEm: string | null;
   concluidaPorNome: string | null;
+  /** A unidade usa a IA para conferir as fotos (regra da unidade, 12/11/2026). */
+  iaFotosLigada: boolean;
 };
 
 /** Execução com respostas e fotos (URL assinada de 10 min; a policy do
@@ -145,8 +151,9 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
     .maybeSingle();
   const { data: respostasData } = await supabase
     .from("garante_respostas")
-    .select("item_id, valor_bool, valor_numero, valor_texto, nao_se_aplica, justificativa, dentro_meta, foto_path, foto_recebida_em, respondido_por")
+    .select("item_id, valor_bool, valor_numero, valor_texto, nao_se_aplica, justificativa, dentro_meta, foto_path, foto_recebida_em, respondido_por, ia_veredito, ia_motivo")
     .eq("execucao_id", id);
+  const { data: unidade } = await supabase.from("unidades").select("garante_ia_fotos").eq("id", exec.unidade_id as string).maybeSingle();
   const respostas = (respostasData ?? []) as {
     item_id: string;
     valor_bool: boolean | null;
@@ -158,6 +165,8 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
     foto_path: string | null;
     foto_recebida_em: string | null;
     respondido_por: string | null;
+    ia_veredito: VereditoIa | null;
+    ia_motivo: string | null;
   }[];
 
   const caminhos = respostas.map((r) => r.foto_path).filter(Boolean) as string[];
@@ -196,11 +205,14 @@ export async function carregarExecucao(id: string): Promise<ExecucaoCompleta | n
           fotoUrl: r.foto_path ? urls.get(r.foto_path) ?? null : null,
           fotoRecebidaEm: r.foto_recebida_em,
           respondidoPorNome: r.respondido_por ? nome.get(r.respondido_por) ?? null : null,
+          iaVeredito: r.ia_veredito,
+          iaMotivo: r.ia_motivo,
         },
       ]),
     ),
     concluidaEm: exec.concluida_em as string | null,
     concluidaPorNome: exec.concluida_por ? nome.get(exec.concluida_por as string) ?? null : null,
+    iaFotosLigada: Boolean((unidade as { garante_ia_fotos?: boolean } | null)?.garante_ia_fotos),
   };
 }
 
@@ -369,6 +381,13 @@ export async function carregarNota(
 }
 
 /** `atrasoMaxMin` nulo = concluir até o fim do dia (23h59), o padrão desde 13/10/2026. */
+/** IA confere as fotos nesta unidade (leitura pelo RLS de unidades). */
+export async function carregarIaFotos(acesso: AcessoAtual): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("unidades").select("garante_ia_fotos").eq("id", acesso.unidadeId).maybeSingle();
+  return Boolean((data as { garante_ia_fotos?: boolean } | null)?.garante_ia_fotos);
+}
+
 export type RegraUnidade = { vigenteDesde: string | null; antecedenciaMin: number; atrasoMaxMin: number | null; prazoPlanoHoras: number };
 
 /** Regra que vale hoje, a próxima já agendada e os dias sem operação de hoje

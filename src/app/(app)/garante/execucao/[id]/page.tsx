@@ -4,6 +4,9 @@ import { requireGarante } from "@/lib/acesso";
 import { ExecucaoChecklist } from "@/components/garante/execucao-checklist";
 import { carregarExecucao } from "../../dados";
 
+// A conferência da foto pela IA (server action desta página) espera a resposta da IA.
+export const maxDuration = 60;
+
 /** Um checklist do dia: cumprir (quem pode) ou ver o que foi feito, com fotos. */
 export default async function ExecucaoPage({ params }: { params: Promise<{ id: string }> }) {
   const acesso = await requireGarante();

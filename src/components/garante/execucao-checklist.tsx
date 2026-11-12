@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { concluirChecklistAction, registrarFotoAction, responderItemAction } from "@/app/(app)/garante/actions";
+import { concluirChecklistAction, conferirFotoAction, registrarFotoAction, responderItemAction } from "@/app/(app)/garante/actions";
 import type { ExecucaoCompleta, ItemSnapshot, RespostaExecucao } from "@/app/(app)/garante/dados";
 import { DICA_GARANTE, itemCompleto, percentual, situacaoNaTela, textoMeta } from "@/lib/garante/regras";
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
+import { DICA_REPROVADAS_IA, TEXTO_IA, type ResultadoConferencia } from "@/lib/garante/ia-fotos";
 import { CameraFoto } from "./camera-foto";
+import { SeloIa } from "./selo-ia";
 import { ESTILO_SITUACAO } from "./estilos";
 
 function respondido(item: ItemSnapshot, r: RespostaExecucao | undefined): boolean {
@@ -22,6 +24,7 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
   const editavel = podeEditar && execucao.situacao === "em_andamento";
   const total = execucao.itens.length;
   const feitos = execucao.itens.filter((i) => respondido(i, respostas[i.id])).length;
+  const reprovadasIa = execucao.itens.filter((i) => respostas[i.id]?.iaVeredito === "reprovado").length;
   const situacao = situacaoNaTela(execucao.situacao === "concluida" ? "concluida" : "em_andamento", execucao.prazo, new Date());
   const prazoTexto = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(execucao.prazo));
 
@@ -37,6 +40,8 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
       fotoUrl: null,
       fotoRecebidaEm: null,
       respondidoPorNome: null,
+      iaVeredito: null,
+      iaMotivo: null,
     };
     setRespostas((atual) => ({ ...atual, [itemId]: { ...vazia, ...atual[itemId], ...parcial } }));
   }
@@ -72,6 +77,14 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
         <p className="flex flex-wrap items-center gap-1 text-sm text-cinza-medio">
           Prazo {prazoTexto} · {feitos} de {total} itens feitos ({percentual(feitos, total)}%)
           <DicaCalculo rotulo="itens feitos" texto={DICA_GARANTE.progresso} />
+          {(execucao.iaFotosLigada || reprovadasIa > 0) && (
+            <>
+              <span className={reprovadasIa > 0 ? "font-semibold text-vermelho" : undefined}>
+                · {reprovadasIa} {reprovadasIa === 1 ? "foto reprovada" : "fotos reprovadas"} pela IA
+              </span>
+              <DicaCalculo rotulo="fotos reprovadas pela IA" texto={DICA_REPROVADAS_IA} />
+            </>
+          )}
           {execucao.concluidaEm &&
             ` · concluído ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(execucao.concluidaEm))}${execucao.concluidaPorNome ? ` por ${execucao.concluidaPorNome}` : ""}`}
         </p>
@@ -94,6 +107,7 @@ export function ExecucaoChecklist({ execucao, podeEditar }: { execucao: Execucao
               item={item}
               resposta={respostas[item.id]}
               editavel={editavel}
+              iaLigada={execucao.iaFotosLigada}
               aoMudar={(parcial) => atualizar(item.id, parcial)}
             />
           </div>
@@ -125,6 +139,7 @@ function ItemResposta({
   item,
   resposta,
   editavel,
+  iaLigada,
   aoMudar,
 }: {
   execucaoId: string;
@@ -132,6 +147,7 @@ function ItemResposta({
   item: ItemSnapshot;
   resposta: RespostaExecucao | undefined;
   editavel: boolean;
+  iaLigada: boolean;
   aoMudar: (parcial: Partial<RespostaExecucao>) => void;
 }) {
   const [salvando, startSalvar] = useTransition();
@@ -144,6 +160,26 @@ function ItemResposta({
   const meta = textoMeta(item.tipo, item.meta_min, item.meta_max);
   const fora = resposta?.dentroMeta === false;
   const temFoto = Boolean(resposta?.fotoUrl || resposta?.fotoRecebidaEm);
+  // Conferência da IA em andamento ou que não deu resultado (o resultado fica na resposta).
+  const [ia, setIa] = useState<"conferindo" | "falhou" | "limite" | null>(null);
+  const conferencia = useRef(0);
+
+  function conferirComIa(caminho: string) {
+    const vez = ++conferencia.current;
+    setIa("conferindo");
+    conferirFotoAction(execucaoId, item.id, caminho)
+      .catch((): ResultadoConferencia => ({ estado: "falhou" }))
+      .then((r) => {
+        // Outra foto foi tirada enquanto esta era conferida: vale a mais nova.
+        if (vez !== conferencia.current) return;
+        if (r.estado === "resultado") {
+          setIa(null);
+          aoMudar({ iaVeredito: r.veredito, iaMotivo: r.motivo });
+          return;
+        }
+        setIa(r.estado === "desligada" ? null : r.estado);
+      });
+  }
 
   function salvar(r: Parameters<typeof responderItemAction>[2], otimista: Partial<RespostaExecucao>) {
     setErro(null);
@@ -153,7 +189,11 @@ function ItemResposta({
         setErro(res.erro);
         return;
       }
-      aoMudar({ ...otimista, dentroMeta: r.naoSeAplica ? null : res.dentroMeta });
+      if (r.naoSeAplica) {
+        conferencia.current++;
+        setIa(null);
+      }
+      aoMudar({ ...otimista, dentroMeta: r.naoSeAplica ? null : res.dentroMeta, ...(r.naoSeAplica ? { iaVeredito: null, iaMotivo: null } : {}) });
     });
   }
 
@@ -284,6 +324,14 @@ function ItemResposta({
         </div>
       )}
 
+      {temFoto && !resposta?.naoSeAplica && ia === "conferindo" && <p className="text-xs font-semibold text-azul-petroleo">{TEXTO_IA.conferindo}</p>}
+      {temFoto && !resposta?.naoSeAplica && ia === null && resposta?.iaVeredito && resposta.iaMotivo && (
+        <SeloIa veredito={resposta.iaVeredito} motivo={resposta.iaMotivo} />
+      )}
+      {temFoto && !resposta?.naoSeAplica && (ia === "falhou" || ia === "limite") && (
+        <p className="text-xs text-ambar">{ia === "limite" ? TEXTO_IA.limite : TEXTO_IA.falhou}</p>
+      )}
+
       {item.foto_obrigatoria && !temFoto && !resposta?.naoSeAplica && (
         <p className="text-xs font-semibold text-vermelho">Falta a foto: sem ela este item não conta como feito.</p>
       )}
@@ -329,7 +377,9 @@ function ItemResposta({
           aoEnviar={async (caminho) => {
             const r = await registrarFotoAction(execucaoId, item.id, caminho);
             if ("erro" in r) return r.erro;
-            aoMudar({ fotoRecebidaEm: new Date().toISOString(), naoSeAplica: false, justificativa: null });
+            aoMudar({ fotoRecebidaEm: new Date().toISOString(), naoSeAplica: false, justificativa: null, iaVeredito: null, iaMotivo: null });
+            // Foto já salva; a IA confere em seguida, sem segurar o envio.
+            if (iaLigada) conferirComIa(caminho);
             return null;
           }}
         />
