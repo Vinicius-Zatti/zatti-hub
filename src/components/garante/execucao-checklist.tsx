@@ -6,6 +6,7 @@ import { concluirChecklistAction, conferirFotoAction, registrarFotoAction, respo
 import type { ExecucaoCompleta, ItemSnapshot, RespostaExecucao } from "@/app/(app)/garante/dados";
 import { DICA_GARANTE, itemCompleto, percentual, situacaoNaTela, textoMeta } from "@/lib/garante/regras";
 import { CampoNumero } from "@/components/campo-numero";
+import { ModalFlutuante } from "@/components/modal-flutuante";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { DICA_REPROVADAS_IA, TEXTO_IA, type ResultadoConferencia } from "@/lib/garante/ia-fotos";
 import { CameraFoto } from "./camera-foto";
@@ -153,6 +154,7 @@ function ItemResposta({
   const [salvando, startSalvar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
+  const [fotoAmpliada, setFotoAmpliada] = useState(false);
   const [numero, setNumero] = useState<number | null>(resposta?.valorNumero ?? null);
   const [texto, setTexto] = useState(resposta?.valorTexto ?? "");
   const [naAberto, setNaAberto] = useState(false);
@@ -300,8 +302,10 @@ function ItemResposta({
       {(item.foto_obrigatoria || temFoto) && (
         <div className="flex items-center gap-3">
           {resposta?.fotoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={resposta.fotoUrl} alt="Foto do item" className="h-20 w-20 rounded-md object-cover" />
+            <button type="button" onClick={() => setFotoAmpliada(true)} aria-label="Ver a foto maior" className="shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resposta.fotoUrl} alt="Foto do item" className="h-20 w-20 rounded-md object-cover" />
+            </button>
           )}
           {temFoto && !resposta?.fotoUrl && <span className="text-xs text-verde">Foto enviada</span>}
           {editavel && (
@@ -370,14 +374,30 @@ function ItemResposta({
       {resposta?.respondidoPorNome && !editavel && <p className="text-[11px] text-cinza-medio">por {resposta.respondidoPorNome}</p>}
       {erro && <p className="text-xs text-vermelho">{erro}</p>}
 
+      {fotoAmpliada && resposta?.fotoUrl && (
+        <ModalFlutuante aberto onFechar={() => setFotoAmpliada(false)}>
+          <p className="mb-2 pr-8 text-sm font-medium text-azul-noite">{item.titulo}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={resposta.fotoUrl} alt="Foto do item" className="max-h-[75vh] w-full rounded-md object-contain" />
+        </ModalFlutuante>
+      )}
+
       {camera && (
         <CameraFoto
           caminhoBase={caminhoBase}
           aoFechar={() => setCamera(false)}
-          aoEnviar={async (caminho) => {
+          aoEnviar={async (caminho, foto) => {
             const r = await registrarFotoAction(execucaoId, item.id, caminho);
             if ("erro" in r) return r.erro;
-            aoMudar({ fotoRecebidaEm: new Date().toISOString(), naoSeAplica: false, justificativa: null, iaVeredito: null, iaMotivo: null });
+            // Quem tirou vê a foto na hora (12/11/2026); ao recarregar, vem a do armazenamento.
+            aoMudar({
+              fotoUrl: URL.createObjectURL(foto),
+              fotoRecebidaEm: new Date().toISOString(),
+              naoSeAplica: false,
+              justificativa: null,
+              iaVeredito: null,
+              iaMotivo: null,
+            });
             // Foto já salva; a IA confere em seguida, sem segurar o envio.
             if (iaLigada) conferirComIa(caminho);
             return null;
