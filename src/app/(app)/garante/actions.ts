@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { mensagemSemEdicao, requireGarante, requireGestaoGarante, registrarAuditoria } from "@/lib/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { modeloDaBiblioteca } from "@/lib/garante/biblioteca";
+import { conferirFotoComIa } from "@/lib/garante/ia-fotos-servidor";
+import type { ResultadoConferencia } from "@/lib/garante/ia-fotos";
 import { mensagemErroPlano, validarMotivoDescarte, validarResolucao } from "@/lib/garante/planos";
 import {
   dataDoDiaAgenda,
@@ -85,6 +87,24 @@ export async function registrarFotoAction(execucaoId: string, itemId: string, ca
   });
   if (error) return { erro: mensagemErroGarante(error.message) };
   return { ok: true };
+}
+
+const CAMINHO_FOTO = /^[A-Za-z0-9_-]{1,80}\/[0-9a-f-]{36}\/[0-9a-f-]{36}-[a-z0-9-]{8,64}\.jpg$/;
+
+/** IA confere a foto que acabou de ser registrada (fase de teste, 12/11/2026). Separada do
+ * registro da foto: se a IA demorar ou falhar, a foto já está salva e o checklist segue. O
+ * banco confere acesso, responsável, janela, se a unidade usa a IA, uma conferência por
+ * foto e o teto do mês (`garante_ia_reservar`). */
+export async function conferirFotoAction(execucaoId: string, itemId: string, caminho: string): Promise<ResultadoConferencia> {
+  const acesso = await requireGarante();
+  if (mensagemSemEdicao(acesso, "garante")) return { estado: "falhou" };
+  if (!UUID.test(execucaoId) || !UUID.test(itemId) || !CAMINHO_FOTO.test(caminho)) return { estado: "falhou" };
+  try {
+    return await conferirFotoComIa(execucaoId, itemId, caminho);
+  } catch {
+    console.error("garante_ia_conferir_falhou");
+    return { estado: "falhou" };
+  }
 }
 
 export async function concluirChecklistAction(execucaoId: string): Promise<Resultado<{ ok: true; faltam: number }>> {
@@ -312,6 +332,20 @@ export async function definirRegraAction(dados: {
   });
   if (error) return { erro: mensagemErroGarante(error.message) };
   await registrarAuditoria({ acesso, acao: "garante_definir_regra", entidade: "garante_regra_unidade", entidadeId: acesso.unidadeId, dadosNovos: { ...r, vigenteDesde: data } });
+  revalidarGarante();
+  return { ok: true };
+}
+
+/** Liga ou desliga a conferência das fotos pela IA na unidade (vale na hora). O banco confere
+ * gestão/master e grava a auditoria (`garante_definir_ia_fotos`). */
+export async function definirIaFotosAction(ligada: boolean): Promise<Resultado> {
+  const acesso = await requireGestaoGarante();
+  const bloqueio = mensagemSemEdicao(acesso, "garante");
+  if (bloqueio) return { erro: bloqueio };
+  if (typeof ligada !== "boolean") return { erro: "Valor inválido." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("garante_definir_ia_fotos", { p_unidade_id: acesso.unidadeId, p_ligada: ligada });
+  if (error) return { erro: error.message.includes("sem_permissao") ? "Só a gestão da unidade liga ou desliga a IA." : mensagemErroGarante(error.message) };
   revalidarGarante();
   return { ok: true };
 }

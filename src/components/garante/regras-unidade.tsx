@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { definirRegraAction, desmarcarDiaSemOperacaoAction, marcarDiaSemOperacaoAction } from "@/app/(app)/garante/actions";
+import { definirIaFotosAction, definirRegraAction, desmarcarDiaSemOperacaoAction, marcarDiaSemOperacaoAction } from "@/app/(app)/garante/actions";
 import type { AvisosDaUnidade, RegraUnidade } from "@/app/(app)/garante/dados";
 import { CardAvisosGarante } from "@/components/garante/responsavel-avisos";
 import { textoAtraso, textoMinutos } from "@/lib/garante/regras";
+import { LIMITE_CONFERENCIAS_MES } from "@/lib/garante/ia-fotos";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { CampoNumero } from "@/components/campo-numero";
@@ -19,13 +20,14 @@ const DICA_JANELA =
   "Começar: a partir do horário limite menos a antecedência. Responder, tirar foto e concluir: até o fim do dia do checklist (23h59) ou, se a gestão definiu uma tolerância de atraso, até o horário limite mais a tolerância, nunca depois das 23h59 (checklist que termina de madrugada é programado com o horário do dia seguinte). Concluir depois do horário limite conta como atraso na Pontualidade (P) da nota. Cada checklist guarda a janela do dia em que começou.";
 
 type Resultado = { ok: true } | { erro: string };
-type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
+type Janela = { tipo: "regra" } | { tipo: "marcar" } | { tipo: "ia" } | { tipo: "desmarcar"; data: string; motivo: string } | null;
 
 /** Regras da unidade (gestão, em Modelos): antecedência, até quando concluir
  * (fim do dia, o padrão, ou uma tolerância de atraso em minutos) e prazo do plano de
  * ação (valem a partir de amanhã), dias sem operação (só datas futuras) e quem recebe
- * os avisos pelo WhatsApp. O banco confere tudo de novo (`garante_definir_regra`,
- * `garante_marcar_dia_sem_operacao`, `garante_definir_responsavel_avisos`). */
+ * os avisos pelo WhatsApp e se a IA confere as fotos (vale na hora). O banco confere tudo de
+ * novo (`garante_definir_regra`, `garante_marcar_dia_sem_operacao`,
+ * `garante_definir_responsavel_avisos`, `garante_definir_ia_fotos`). */
 export function RegrasUnidade({
   vigente,
   agendadas,
@@ -33,6 +35,7 @@ export function RegrasUnidade({
   amanha,
   unidadeNome,
   avisos,
+  iaFotos,
 }: {
   vigente: RegraUnidade;
   agendadas: RegraUnidade[];
@@ -40,6 +43,7 @@ export function RegrasUnidade({
   amanha: string;
   unidadeNome: string;
   avisos: AvisosDaUnidade;
+  iaFotos: boolean;
 }) {
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
@@ -126,6 +130,21 @@ export function RegrasUnidade({
         </div>
 
         <CardAvisosGarante unidadeNome={unidadeNome} avisos={avisos} />
+
+        <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro bg-branco p-4 text-sm">
+          <p className="font-semibold text-azul-noite">IA confere as fotos</p>
+          <p className="text-cinza">{iaFotos ? "Ligada" : "Desligada"} nesta unidade.</p>
+          <p className="text-xs text-cinza-medio">
+            Depois de cada foto, a IA diz se o item parece feito no padrão e por quê. Em teste: só informa, não impede concluir o checklist.
+          </p>
+          <button
+            type="button"
+            onClick={() => abrir({ tipo: "ia" })}
+            className="self-start rounded-md border border-azul-petroleo px-3 py-1.5 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+          >
+            {iaFotos ? "Desligar a IA" : "Ligar a IA"}
+          </button>
+        </div>
       </div>
 
       <ModalFlutuante aberto={janela !== null} onFechar={() => !pendente && setJanela(null)}>
@@ -147,6 +166,35 @@ export function RegrasUnidade({
             aoSalvar={(dados) => rodar(() => marcarDiaSemOperacaoAction(dados))}
             aoCancelar={() => setJanela(null)}
           />
+        )}
+        {janela?.tipo === "ia" && (
+          <div className="flex flex-col gap-3">
+            <h2 className="font-display text-lg font-bold text-azul-noite">{iaFotos ? "Desligar a IA nas fotos?" : "Ligar a IA nas fotos?"}</h2>
+            {iaFotos ? (
+              <p className="text-sm text-cinza">As próximas fotos deixam de ser conferidas. O resultado das fotos já conferidas continua aparecendo.</p>
+            ) : (
+              <ul className="list-disc pl-5 text-xs text-cinza">
+                <li>Vale na hora, para as próximas fotos de {unidadeNome}.</li>
+                <li>Cada foto recebe um selo: aprovado, reprovado ou não deu para conferir, com o motivo.</li>
+                <li>Fase de teste: a reprovação só informa, não impede concluir o checklist.</li>
+                <li>Até {LIMITE_CONFERENCIAS_MES.toLocaleString("pt-BR")} conferências por mês na empresa. Passou disso, a foto fica sem conferência até o mês virar.</li>
+              </ul>
+            )}
+            {erro && <p className="text-sm text-vermelho">{erro}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={pendente}
+                onClick={() => rodar(() => definirIaFotosAction(!iaFotos))}
+                className="rounded-md bg-azul-noite px-3 py-2 text-xs font-semibold text-branco disabled:opacity-60"
+              >
+                {pendente ? "Salvando..." : iaFotos ? "Desligar a IA" : "Ligar a IA"}
+              </button>
+              <button type="button" onClick={() => setJanela(null)} className="rounded-md border border-cinza-claro px-3 py-2 text-xs">
+                Cancelar
+              </button>
+            </div>
+          </div>
         )}
         {janela?.tipo === "desmarcar" && (
           <div className="flex flex-col gap-3">

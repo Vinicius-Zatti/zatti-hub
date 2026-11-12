@@ -38,7 +38,12 @@ export async function chamarIa(params: {
   /** Teto desta chamada; o efetivo é o menor entre ele e o que sobra do prazo. */
   tempoMaximoMs: number;
   prazo: Prazo;
+  /** Modelo da chamada (12/11/2026, Garante): padrão é o da Conciliação; precisa ter preço em ia-custo. */
+  modelo?: string;
+  /** Rótulo do log técnico de falha (só código, nunca conteúdo). */
+  rotuloLog?: string;
 }): Promise<RespostaIa> {
+  const modelo = params.modelo ?? MODELO_IA_CONCILIACAO;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, codigo: "ia_sem_chave" };
   const limite = Math.min(params.tempoMaximoMs, params.prazo.restante());
@@ -53,7 +58,7 @@ export async function chamarIa(params: {
   try {
     mensagem = await cliente.messages
       .stream({
-        model: MODELO_IA_CONCILIACAO,
+        model: modelo,
         max_tokens: params.maxTokens,
         system: params.sistema,
         output_config: { format: { type: "json_schema", schema: params.esquema } },
@@ -74,7 +79,7 @@ export async function chamarIa(params: {
       custoUsd: null,
     });
     // Log técnico só com código: nada do documento.
-    console.error("conciliacao_ia_falhou", { status: status ?? null });
+    console.error(params.rotuloLog ?? "conciliacao_ia_falhou", { status: status ?? null });
     return { ok: false, codigo: semCusto ? "ia_erro_requisicao" : "ia_sem_resposta" };
   }
 
@@ -101,7 +106,7 @@ export async function chamarIa(params: {
     tokensSaida: tokens.saida,
     tokensCacheLeitura: tokens.cacheLeitura,
     tokensCacheEscrita: tokens.cacheEscrita,
-    custoUsd: custoEstimadoUsd(MODELO_IA_CONCILIACAO, tokens),
+    custoUsd: custoEstimadoUsd(modelo, tokens),
   });
   if (codigo !== "ok" || !texto || texto.type !== "text") return { ok: false, codigo };
   return { ok: true, texto: texto.text, stopReason: mensagem.stop_reason };

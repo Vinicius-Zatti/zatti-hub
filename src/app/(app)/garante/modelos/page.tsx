@@ -7,7 +7,7 @@ import { NovoChecklistEmBranco } from "@/components/garante/novo-checklist-em-br
 import { RegrasUnidade } from "@/components/garante/regras-unidade";
 import { hojeOperacao, somarDias } from "@/lib/garante/regras";
 import { criarModeloAction } from "../actions";
-import { carregarAvisosGarante, carregarModelos, carregarRegras } from "../dados";
+import { carregarAvisosGarante, carregarIaFotos, carregarModelos, carregarRegras } from "../dados";
 
 const ERROS: Record<string, string> = {
   nome: "Dê um nome ao checklist.",
@@ -22,7 +22,12 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
   redirecionarSemEdicao(acesso, "/garante/modelos");
   const { erro } = await searchParams;
   const hoje = hojeOperacao();
-  const [modelos, regras, avisos] = await Promise.all([carregarModelos(acesso), carregarRegras(acesso, hoje), carregarAvisosGarante(acesso)]);
+  const [modelos, regras, avisos, iaFotos] = await Promise.all([
+    carregarModelos(acesso),
+    carregarRegras(acesso, hoje),
+    carregarAvisosGarante(acesso),
+    carregarIaFotos(acesso),
+  ]);
   const usados = new Set(modelos.map((m) => m.origemPop).filter(Boolean));
 
   return (
@@ -67,6 +72,7 @@ export default async function ModelosPage({ searchParams }: { searchParams: Prom
         amanha={somarDias(hoje, 1)}
         unidadeNome={acesso.unidadeNome}
         avisos={avisos}
+        iaFotos={iaFotos}
       />
 
       <section className="flex flex-col gap-3">
