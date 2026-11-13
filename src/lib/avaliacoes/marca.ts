@@ -114,3 +114,20 @@ export function validarLogo(bytes: Uint8Array): { ok: true; tipo: TipoLogo } | {
   if (jpeg) return { ok: true, tipo: "image/jpeg" };
   return { ok: false, erro: "Use uma logo em PNG ou JPEG. Se ela estiver em SVG, exporte como PNG." };
 }
+
+// ── Qualidade da logo para impressão ─────────────────────────────────────
+
+/** Espaço da logo na arte 10 x 15 cm a 300 dpi (o mesmo de `arte-qr.tsx`). */
+export const ESPACO_LOGO_ARTE = { largura: 640, altura: 260 } as const;
+/** Acima disso a logo é esticada demais na impressão e sai borrada (13/11/2026). */
+export const AMPLIACAO_MAXIMA_IMPRESSAO = 1.25;
+
+/** Quanto a logo precisa ser ampliada para ocupar o espaço da arte; acima do limite, avisar. */
+export function qualidadeLogoImpressao(largura: number, altura: number): { ampliacao: number; baixa: boolean } {
+  if (!(largura > 0) || !(altura > 0)) return { ampliacao: 0, baixa: false };
+  const ampliacao = Math.min(ESPACO_LOGO_ARTE.largura / largura, ESPACO_LOGO_ARTE.altura / altura);
+  return { ampliacao, baixa: ampliacao > AMPLIACAO_MAXIMA_IMPRESSAO };
+}
+
+export const AVISO_LOGO_BAIXA =
+  "Esta logo é pequena para impressão e pode sair borrada na arte do QR. Para imprimir, troque por uma de pelo menos 700 px de largura (peça o arquivo original a quem fez a marca).";

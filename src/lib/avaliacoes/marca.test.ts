@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contraste, corTextoSobre, normalizarCor, normalizarLinkGoogle, validarLogo, validarMarca } from "./marca";
+import { contraste, corTextoSobre, normalizarCor, normalizarLinkGoogle, qualidadeLogoImpressao, validarLogo, validarMarca } from "./marca";
 
 describe("cores e contraste", () => {
   it("normaliza a cor para #RRGGBB maiúsculo", () => {
@@ -50,5 +50,14 @@ describe("logo", () => {
     const grande = new Uint8Array(300 * 1024 + 1);
     grande.set(png);
     expect(validarLogo(grande)).toMatchObject({ ok: false });
+  });
+});
+
+describe("qualidade da logo para impressão", () => {
+  it("logo pequena (180 x 180, como a da Dom Quixote) pede troca; logo grande não", () => {
+    expect(qualidadeLogoImpressao(180, 180).baixa).toBe(true);
+    expect(qualidadeLogoImpressao(800, 800).baixa).toBe(false);
+    expect(qualidadeLogoImpressao(1200, 300).baixa).toBe(false);
+    expect(qualidadeLogoImpressao(0, 0).baixa).toBe(false);
   });
 });

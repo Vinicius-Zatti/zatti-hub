@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { baixarArquivo } from "@/lib/baixar-arquivo";
-import { corTextoSobre } from "@/lib/avaliacoes/marca";
 import { ARTE, CHAMADA_ARTE, matrizQr, nomeArquivoArte, rotuloArte, subtituloArte } from "@/lib/avaliacoes/qr";
 import { pdfComImagemJpeg } from "@/lib/avaliacoes/pdf";
 import type { Origem } from "@/lib/avaliacoes/perguntas";
+import { AVISO_LOGO_BAIXA, corTextoSobre, ESPACO_LOGO_ARTE, qualidadeLogoImpressao } from "@/lib/avaliacoes/marca";
 
 type Props = {
   origem: Origem;
@@ -71,8 +71,8 @@ async function desenharArte(canvas: HTMLCanvasElement, p: Props): Promise<void> 
       const img = new Image();
       img.src = p.logoDataUrl;
       await img.decode();
-      const maxW = 640;
-      const maxH = 260;
+      const maxW = ESPACO_LOGO_ARTE.largura;
+      const maxH = ESPACO_LOGO_ARTE.altura;
       const escala = Math.min(maxW / (img.naturalWidth || maxW), maxH / (img.naturalHeight || maxH));
       const w = (img.naturalWidth || maxW) * escala;
       const h = (img.naturalHeight || maxH) * escala;
@@ -143,6 +143,8 @@ export function ArteQr(p: Props) {
   const chave = [p.url, p.nome, p.corPrincipal, p.corFundo, p.logoDataUrl ?? "", p.origem].join("|");
   const [desenhada, setDesenhada] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Resultado guardado com a logo medida: trocar a logo não mostra o aviso da anterior.
+  const [medida, setMedida] = useState<{ logo: string; baixa: boolean } | null>(null);
   const pronta = desenhada === chave;
   const { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug } = p;
 
@@ -161,6 +163,20 @@ export function ArteQr(p: Props) {
       vivo = false;
     };
   }, [chave, url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug]);
+
+  // Logo pequena demais para 300 dpi: avisa antes de imprimir (13/11/2026).
+  useEffect(() => {
+    if (!logoDataUrl) return;
+    let vivo = true;
+    const img = new Image();
+    img.onload = () => {
+      if (vivo) setMedida({ logo: logoDataUrl, baixa: qualidadeLogoImpressao(img.naturalWidth, img.naturalHeight).baixa });
+    };
+    img.src = logoDataUrl;
+    return () => {
+      vivo = false;
+    };
+  }, [logoDataUrl]);
 
   async function baixarPng() {
     if (!ref.current) return;
@@ -189,6 +205,7 @@ export function ArteQr(p: Props) {
       <h2 className="font-display text-lg font-bold text-azul-noite">{rotuloArte(p.origem)}</h2>
       <canvas ref={ref} className="w-full max-w-[280px] self-center rounded border border-cinza-claro shadow-sm" aria-label={`Arte do QR para ${rotuloArte(p.origem).toLowerCase()}`} />
       <p className="break-all text-xs text-cinza-medio">O QR abre {p.url}</p>
+      {logoDataUrl && medida?.logo === logoDataUrl && medida.baixa && <p className="rounded-md border border-ambar/40 bg-ambar/10 p-2 text-xs text-azul-noite">{AVISO_LOGO_BAIXA}</p>}
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={!pronta} onClick={baixarPdf} className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
           Baixar PDF para imprimir (10 x 15 cm)

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { salvarLogoAction } from "@/app/(app)/avaliacoes/actions";
-import { LIMITE_LOGO_BYTES } from "@/lib/avaliacoes/marca";
+import { AVISO_LOGO_BAIXA, LIMITE_LOGO_BYTES, qualidadeLogoImpressao } from "@/lib/avaliacoes/marca";
 
 /** Trocar ou tirar a logo da pesquisa. O servidor confere o arquivo pelo conteúdo. */
 export function LogoUpload({ temLogo }: { temLogo: boolean }) {
@@ -14,6 +14,7 @@ export function LogoUpload({ temLogo }: { temLogo: boolean }) {
   const [erro, setErro] = useState<string | null>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
+  const [previaBaixa, setPreviaBaixa] = useState(false);
 
   function abrir(j: "trocar" | "tirar") {
     setErro(null);
@@ -27,6 +28,7 @@ export function LogoUpload({ temLogo }: { temLogo: boolean }) {
     setErro(null);
     if (previa) URL.revokeObjectURL(previa);
     setArquivo(f);
+    setPreviaBaixa(false);
     setPrevia(f ? URL.createObjectURL(f) : null);
     if (f && f.size > LIMITE_LOGO_BYTES) setErro("A logo pode ter até 300 KB. Exporte numa resolução menor (500 px de largura basta).");
   }
@@ -68,7 +70,17 @@ export function LogoUpload({ temLogo }: { temLogo: boolean }) {
             {previa && (
               // Prévia local do arquivo escolhido (blob:).
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={previa} alt="Prévia da logo" className="max-h-32 self-center object-contain" />
+              <img
+                src={previa}
+                alt="Prévia da logo"
+                onLoad={(e) => setPreviaBaixa(qualidadeLogoImpressao(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight).baixa)}
+                className="max-h-32 self-center object-contain"
+              />
+            )}
+            {previa && previaBaixa && (
+              <p className="rounded-md border border-ambar/40 bg-ambar/10 p-2 text-xs text-azul-noite">
+                {AVISO_LOGO_BAIXA} Na página do celular ela fica boa; dá para usar agora e trocar depois.
+              </p>
             )}
             {erro && <p className="text-sm text-vermelho">{erro}</p>}
             <div className="flex gap-2">
