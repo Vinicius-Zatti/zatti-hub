@@ -8,7 +8,7 @@ import { mensagemSemEdicao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { BUCKET_LOGOS } from "@/lib/avaliacoes/servidor";
 import { TIPOS_LOGO, validarLogo, validarMarca, type EntradaMarca } from "@/lib/avaliacoes/marca";
-import { validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
+import { ehOrigem, validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
 
 // Avaliações (gestão). Tudo que grava vai pela sessão da pessoa, nas RPCs `avaliacoes_*`, que
 // conferem de novo gestão/master, módulo ligado e "editar" e gravam a auditoria na unidade. A
@@ -43,6 +43,7 @@ function mensagemErro(mensagem: string): string {
   if (mensagem.includes("nenhuma_ativa")) return "Deixe ao menos uma pergunta ligada.";
   if (mensagem.includes("texto_pergunta")) return "O texto de cada pergunta deve ter de 3 a 200 letras.";
   if (mensagem.includes("logo_invalida")) return "Arquivo de logo inválido.";
+  if (mensagem.includes("origens_vazias")) return "Deixe pelo menos um tipo de pesquisa ligado.";
   return "Não foi possível salvar. Tente de novo.";
 }
 
@@ -95,6 +96,19 @@ export async function salvarPerguntasAction(perguntas: PerguntaConfig[]): Promis
   if (!v.ok) return { erro: v.erro };
   const supabase = await createClient();
   const { error } = await supabase.rpc("avaliacoes_salvar_perguntas", { p_unidade_id: acesso.unidadeId, p_perguntas: v.perguntas });
+  if (error) return { erro: mensagemErro(error.message) };
+  revalidar();
+  return { ok: true };
+}
+
+/** Liga e desliga os tipos de pesquisa (salão, delivery próprio, apps). Pelo menos um fica ligado. */
+export async function definirOrigensAction(origens: string[]): Promise<Resultado> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  if (!Array.isArray(origens) || !origens.every(ehOrigem)) return { erro: "Tipo de pesquisa inválido." };
+  if (origens.length === 0) return { erro: "Deixe pelo menos um tipo de pesquisa ligado." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("avaliacoes_definir_origens", { p_unidade_id: acesso.unidadeId, p_origens: origens });
   if (error) return { erro: mensagemErro(error.message) };
   revalidar();
   return { ok: true };

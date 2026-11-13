@@ -65,13 +65,16 @@ export const ARTE = { larguraPx: 1181, alturaPx: 1772, larguraCm: 10, alturaCm: 
 export const CHAMADA_ARTE = "Conta pra gente como foi";
 
 export function subtituloArte(origem: Origem): string {
-  return origem === "salao" ? "Aponte a câmera do celular para o código. Leva 30 segundos." : "Pediu com a gente? Aponte a câmera e conte como chegou. Leva 30 segundos.";
+  if (origem === "salao") return "Aponte a câmera do celular para o código. Leva 30 segundos.";
+  if (origem === "app") return "Pediu pelo app? Aponte a câmera e conte como chegou. Leva 30 segundos.";
+  return "Pediu com a gente? Aponte a câmera e conte como chegou. Leva 30 segundos.";
 }
 
 export function nomeArquivoArte(slug: string, origem: Origem, extensao: "png" | "pdf"): string {
-  return `qr-avaliacao-${slug}-${origem === "salao" ? "mesa" : "delivery"}.${extensao}`;
+  const sufixo = origem === "salao" ? "mesa" : origem === "app" ? "apps" : "delivery";
+  return `qr-avaliacao-${slug}-${sufixo}.${extensao}`;
 }
 
 export function rotuloArte(origem: Origem): string {
-  return origem === "salao" ? "Mesa (salão)" : ROTULO_ORIGEM.delivery;
+  return origem === "salao" ? "Mesa (salão)" : ROTULO_ORIGEM[origem];
 }

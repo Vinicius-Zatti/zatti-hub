@@ -5,10 +5,18 @@
 
 export type ChavePergunta = "atendimento" | "comida" | "espera" | "nps" | "conheceu" | "comentario";
 export type TipoPergunta = "estrelas" | "faixas" | "nps" | "escolha" | "texto";
-export type Origem = "salao" | "delivery";
+// Três tipos de pesquisa (13/11/2026): consumo no local, delivery próprio e apps de entrega
+// (iFood, 99 e afins). A gestão desliga o que não usar (`avaliacoes_pesquisas.origens`).
+export type Origem = "salao" | "delivery" | "app";
 
-export const ORIGENS: readonly Origem[] = ["salao", "delivery"];
-export const ROTULO_ORIGEM: Record<Origem, string> = { salao: "Salão", delivery: "Delivery" };
+export const ORIGENS: readonly Origem[] = ["salao", "delivery", "app"];
+export const ROTULO_ORIGEM: Record<Origem, string> = { salao: "Salão", delivery: "Delivery próprio", app: "Apps de entrega" };
+/** Explicação curta de cada tipo, na tela de configurar. */
+export const DESCRICAO_ORIGEM: Record<Origem, string> = {
+  salao: "Quem comeu no restaurante. O QR fica na mesa ou no balcão.",
+  delivery: "Pedido feito direto com vocês (WhatsApp, site, telefone). O QR vai junto do pedido.",
+  app: "Pedido pelo iFood, 99 ou outro app. O QR vai junto do pedido desses apps.",
+};
 
 export type Opcao = { valor: string; rotulo: string };
 
@@ -74,8 +82,15 @@ export function ehChavePergunta(valor: unknown): valor is ChavePergunta {
   return typeof valor === "string" && CATALOGO.some((p) => p.chave === valor);
 }
 
+/** Tipos ligados na ordem fixa; sem a coluna (antes da migração de 13/11) valem os três. */
+export function lerOrigens(valor: unknown): Origem[] {
+  if (!Array.isArray(valor)) return [...ORIGENS];
+  const ligadas = ORIGENS.filter((o) => valor.includes(o));
+  return ligadas.length ? ligadas : [...ORIGENS];
+}
+
 export function ehOrigem(valor: unknown): valor is Origem {
-  return valor === "salao" || valor === "delivery";
+  return valor === "salao" || valor === "delivery" || valor === "app";
 }
 
 export function perguntasPadrao(): PerguntaConfig[] {

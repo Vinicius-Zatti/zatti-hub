@@ -105,7 +105,11 @@ export function FormularioAvaliacao(p: Props) {
   return (
     <form action={enviar} className="mt-6 space-y-8" noValidate>
       <h1 className="text-center text-2xl font-bold leading-tight">
-        {p.origem === "salao" ? `Como foi sua visita na ${p.nome}?` : `Como foi seu pedido da ${p.nome}?`}
+        {p.origem === "salao"
+          ? `Como foi sua visita na ${p.nome}?`
+          : p.origem === "app"
+            ? `Como foi seu pedido da ${p.nome} pelo app?`
+            : `Como foi seu pedido da ${p.nome}?`}
       </h1>
       <input type="hidden" name="slug" value={p.slug} />
       <input type="hidden" name="origem" value={p.origem} />

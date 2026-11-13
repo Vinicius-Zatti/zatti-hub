@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AcessoAtual } from "@/lib/acesso";
-import { lerPerguntas, type PerguntaConfig } from "./perguntas";
+import { lerOrigens, lerPerguntas, type Origem, type PerguntaConfig } from "./perguntas";
 import type { RespostaPainel } from "./painel";
 
 // Leituras do módulo Avaliações no servidor. A gestão lê pela própria sessão (RLS de
@@ -36,6 +36,8 @@ export type PesquisaGestao = {
   ativa: boolean;
   versaoAtual: number;
   alertaVinculoId: string | null;
+  /** Tipos de pesquisa ligados (13/11/2026). */
+  origens: Origem[];
   perguntas: PerguntaConfig[];
 };
 
@@ -51,6 +53,7 @@ type LinhaPesquisa = {
   ativa: boolean;
   versao_atual: number;
   alerta_vinculo_id: string | null;
+  origens: string[] | null;
 };
 
 /** Pesquisa da unidade da sessão (nulo = ainda não criada). Falha de leitura sobe para o
@@ -59,7 +62,7 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("avaliacoes_pesquisas")
-    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id")
+    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id, origens")
     .eq("unidade_id", acesso.unidadeId)
     .maybeSingle();
   if (error) {
@@ -87,6 +90,7 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
     ativa: p.ativa,
     versaoAtual: p.versao_atual,
     alertaVinculoId: p.alerta_vinculo_id,
+    origens: lerOrigens(p.origens),
     perguntas: lerPerguntas((versao as { perguntas?: unknown } | null)?.perguntas),
   };
 }
@@ -97,7 +101,7 @@ export const LIMITE_RESPOSTAS_PAINEL = 5000;
 type LinhaResposta = {
   id: string;
   criado_em: string;
-  origem: "salao" | "delivery";
+  origem: Origem;
   atendimento: number | null;
   comida: number | null;
   espera: string | null;
@@ -280,6 +284,8 @@ export type PesquisaPublica = {
   agradecimento: string;
   linkGoogle: string | null;
   ativa: boolean;
+  /** Tipos de pesquisa ligados (13/11/2026). */
+  origens: Origem[];
   perguntas: PerguntaConfig[];
   termoVersao: number;
   termoTexto: string;
@@ -305,8 +311,10 @@ export async function carregarPesquisaPublica(slug: string): Promise<PesquisaPub
     agradecimento: String(d.agradecimento),
     linkGoogle: typeof d.linkGoogle === "string" ? d.linkGoogle : null,
     ativa: d.ativa === true,
+    origens: lerOrigens(d.origens),
     perguntas: lerPerguntas(d.perguntas),
     termoVersao: Number(d.termoVersao),
     termoTexto: String(d.termoTexto),
   };
 }
+

@@ -54,7 +54,7 @@ describe("NPS e médias", () => {
       resposta({ id: "c", comida: 2, notaBaixa: true }),
     ]);
     expect(r.total).toBe(3);
-    expect(r.porOrigem).toEqual({ salao: 2, delivery: 1 });
+    expect(r.porOrigem).toEqual({ salao: 2, delivery: 1, app: 0 });
     expect(r.mediaAtendimento).toBe(3.5);
     expect(r.respostasAtendimento).toBe(2);
     expect(r.mediaComida).toBe(3);

@@ -33,7 +33,7 @@ export function lerPeriodo(valor: string | undefined): Periodo {
 }
 
 export function lerFiltroOrigem(valor: string | undefined): FiltroOrigem {
-  return valor === "salao" || valor === "delivery" ? valor : "todas";
+  return valor === "salao" || valor === "delivery" || valor === "app" ? valor : "todas";
 }
 
 function somarDiasIso(iso: string, dias: number): string {
@@ -126,6 +126,7 @@ export function resumir(respostas: RespostaPainel[]): ResumoAvaliacoes {
     porOrigem: {
       salao: respostas.filter((r) => r.origem === "salao").length,
       delivery: respostas.filter((r) => r.origem === "delivery").length,
+      app: respostas.filter((r) => r.origem === "app").length,
     },
     mediaAtendimento: media(atendimento),
     respostasAtendimento: atendimento.length,
