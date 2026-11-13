@@ -1,6 +1,7 @@
 import type { AcessoAtual } from "@/lib/acesso";
 import type { FlagsModulos, SituacaoContagemSetor } from "@/lib/configuracoes/modulos";
 import { createClient } from "@/lib/supabase/server";
+import { lerAvaliacoesHabilitado } from "@/lib/avaliacoes/servidor";
 
 type LinhaUnidade = {
   consolidado_vendas_habilitado: boolean;
@@ -45,6 +46,8 @@ export async function carregarFlagsModulos(acesso: AcessoAtual): Promise<FlagsMo
     conciliacao_habilitada: u.conciliacao_habilitada === true,
     fichas_tecnicas_habilitado: u.fichas_tecnicas_habilitado === true,
     garante_habilitado: u.garante_habilitado === true,
+    // Avaliações (12/11/2026): leitura à parte e tolerante (desligado se a coluna ainda não existe).
+    avaliacoes_habilitado: await lerAvaliacoesHabilitado(acesso.unidadeId),
     extrato_estoque_habilitado: u.extrato_estoque_habilitado === true,
     contagem_por_setor_habilitada: u.contagem_por_setor_habilitada === true,
     equipe_habilitado: acesso.equipeHabilitado,

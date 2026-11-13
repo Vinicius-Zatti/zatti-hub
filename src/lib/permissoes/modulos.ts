@@ -29,6 +29,7 @@ export type ChaveModulo =
   | "financeiro"
   | "cardapio"
   | "garante"
+  | "avaliacoes"
   | "equipe"
   | "relatorios"
   | "cadastros"
@@ -54,6 +55,8 @@ export const MODULOS: readonly DefinicaoModulo[] = [
   { chave: "financeiro", nome: "Financeiro", descricao: "Contas, lançamentos, cartões e conciliação", liberado: true },
   { chave: "cardapio", nome: "Cardápio", descricao: "Fichas técnicas e precificação", liberado: true },
   { chave: "garante", nome: "Garante", descricao: "Rotinas com foto, nota e planos de ação", liberado: true },
+  // Avaliações (12/11/2026): só gestão; a operação fica sem acesso (cai no fim de `nivelPadrao`).
+  { chave: "avaliacoes", nome: "Avaliações", descricao: "Pesquisa de satisfação pelo QR Code, painel e alerta de nota baixa", liberado: true },
   { chave: "equipe", nome: "Equipe", descricao: "Quem usa o Zatti Hub e o que cada um acessa", liberado: true },
   { chave: "relatorios", nome: "Relatórios", descricao: "DRE, Fluxo de Caixa, DFC e Painel M.E.G.A.", liberado: true },
   { chave: "cadastros", nome: "Cadastros", descricao: "Produtos, setores e fornecedores", liberado: true },
