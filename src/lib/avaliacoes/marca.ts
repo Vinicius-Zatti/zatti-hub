@@ -7,6 +7,15 @@ export const COR_FUNDO_PADRAO = "#FFFFFF";
 /** Contraste mínimo entre a cor principal (botões, nota escolhida) e a de fundo. 3 é o mínimo da
  * WCAG para elemento de tela; o texto sempre sai em preto ou branco, o que tiver mais contraste. */
 export const CONTRASTE_MINIMO = 3;
+/** Estrela marcada sempre dourada, qualquer que seja a marca (pedido de Vinícius, 13/11/2026):
+ * estrela na cor do botão (preta, azul) não parece avaliação. */
+export const COR_ESTRELA = "#F5B301";
+/** Escala de 0 a 10 do "indicaria": vermelho (0-6), âmbar (7-8) e verde (9-10), as faixas do NPS. */
+export function corDaNotaNps(n: number): { fundo: string; texto: string } {
+  if (n >= 9) return { fundo: "#2F9E5B", texto: "#FFFFFF" };
+  if (n >= 7) return { fundo: "#F5B301", texto: "#111111" };
+  return { fundo: "#E5484D", texto: "#FFFFFF" };
+}
 export const LIMITE_NOME = 60;
 export const LIMITE_AGRADECIMENTO = 200;
 
