@@ -7,7 +7,8 @@ import { carregarPesquisaPublica, type PesquisaPublica } from "@/lib/avaliacoes/
 import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao, ipParaLimite } from "@/lib/avaliacoes/anonimizacao";
 import { ehOrigem, normalizarWhatsapp, perguntasDoTipo, validarRespostas } from "@/lib/avaliacoes/perguntas";
 
-export type EstadoAvaliacao = { ok?: boolean; erro?: string; campo?: string };
+/** `respostaId` só vem quando a avaliação pode girar a roleta (app, roleta ligada). */
+export type EstadoAvaliacao = { ok?: boolean; erro?: string; campo?: string; respostaId?: string };
 
 const MENSAGEM_GENERICA = "Não deu para enviar agora. Tente de novo em instantes.";
 
@@ -77,8 +78,8 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
     console.error("avaliacoes_registrar_falhou", { codigo: error.code ?? null });
     return { erro: MENSAGEM_GENERICA };
   }
-  const r = (data ?? {}) as { ok?: boolean; codigo?: string; campo?: string };
-  if (r.ok) return { ok: true };
+  const r = (data ?? {}) as { ok?: boolean; codigo?: string; campo?: string; respostaId?: string };
+  if (r.ok) return typeof r.respostaId === "string" ? { ok: true, respostaId: r.respostaId } : { ok: true };
   switch (r.codigo) {
     case "limite":
       return { erro: "Já recebemos uma avaliação deste celular há pouco. Obrigado!" };
@@ -92,5 +93,48 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
       return { erro: "Pesquisa não encontrada." };
     default:
       return { erro: MENSAGEM_GENERICA };
+  }
+}
+
+export type ResultadoRoleta =
+  | { ok: true; premioId: string; premio: string; regra: string | null; cupom: string; validoAte: string }
+  | { ok: false; erro: string; campo?: "whatsapp" };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function dataBr(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso));
+}
+
+// Roleta (13/11/2026): só depois da avaliação de app gravada, com o id que a gravação devolveu. O
+// banco sorteia, gera o código e barra o segundo prêmio do mesmo WhatsApp em 30 dias.
+export async function girarRoletaAction(respostaId: string, whatsapp: string): Promise<ResultadoRoleta> {
+  if (typeof respostaId !== "string" || !UUID.test(respostaId)) return { ok: false, erro: "Avaliação não encontrada." };
+  const numero = normalizarWhatsapp(String(whatsapp ?? "").slice(0, 40));
+  if (!numero) return { ok: false, erro: "Esse WhatsApp não parece válido. Confira o DDD e o número.", campo: "whatsapp" };
+  const { data, error } = await createAdminClient().rpc("avaliacoes_girar_roleta", { p_resposta_id: respostaId, p_whatsapp: numero });
+  if (error) {
+    console.error("avaliacoes_girar_roleta_falhou", { codigo: error.code ?? null });
+    return { ok: false, erro: MENSAGEM_GENERICA };
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  if (r.ok === true && typeof r.cupom === "string" && typeof r.premio === "string" && typeof r.premioId === "string" && typeof r.validoAte === "string") {
+    return { ok: true, premioId: r.premioId, premio: r.premio, regra: typeof r.regra === "string" ? r.regra : null, cupom: r.cupom, validoAte: r.validoAte };
+  }
+  switch (r.codigo) {
+    case "ja_ganhou":
+      return {
+        ok: false,
+        erro: `Esse WhatsApp já ganhou um prêmio nos últimos 30 dias${typeof r.premio === "string" ? ` (${r.premio}` : ""}${typeof r.validoAte === "string" ? `, válido até ${dataBr(r.validoAte)})` : typeof r.premio === "string" ? ")" : ""}. Cada número gira uma vez por mês.`,
+        campo: "whatsapp",
+      };
+    case "whatsapp_invalido":
+      return { ok: false, erro: "Esse WhatsApp não parece válido. Confira o DDD e o número.", campo: "whatsapp" };
+    case "expirada":
+      return { ok: false, erro: "O tempo para girar a roleta desta avaliação acabou." };
+    case "desligada":
+      return { ok: false, erro: "A roleta está desligada no momento." };
+    default:
+      return { ok: false, erro: MENSAGEM_GENERICA };
   }
 }

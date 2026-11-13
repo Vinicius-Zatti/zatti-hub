@@ -16,6 +16,8 @@ type Props = {
   corFundo: string;
   /** Logo como data URL (vem do servidor), para o canvas não ficar bloqueado por outra origem. */
   logoDataUrl: string | null;
+  /** Roleta ligada: a arte dos apps chama para o prêmio. */
+  roleta?: boolean;
 };
 
 function quebrarLinhas(ctx: CanvasRenderingContext2D, texto: string, largura: number): string[] {
@@ -123,7 +125,7 @@ async function desenharArte(canvas: HTMLCanvasElement, p: Props): Promise<void> 
   // Instrução e endereço.
   ctx.fillStyle = texto;
   ctx.font = `500 46px ${fonte}`;
-  const linhasSub = quebrarLinhas(ctx, subtituloArte(p.origem), W - margem * 2);
+  const linhasSub = quebrarLinhas(ctx, subtituloArte(p.origem, p.roleta === true), W - margem * 2);
   linhasSub.forEach((l, i) => ctx.fillText(l, W / 2, y + i * 58));
   y += linhasSub.length * 58 + 30;
   ctx.font = `400 30px ${fonte}`;
@@ -140,19 +142,19 @@ function blobDoCanvas(canvas: HTMLCanvasElement, tipo: string, qualidade?: numbe
 export function ArteQr(p: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   // A arte está pronta quando o último desenho terminado é o do conteúdo atual.
-  const chave = [p.url, p.nome, p.corPrincipal, p.corFundo, p.logoDataUrl ?? "", p.origem].join("|");
+  const chave = [p.url, p.nome, p.corPrincipal, p.corFundo, p.logoDataUrl ?? "", p.origem, p.roleta ? "roleta" : ""].join("|");
   const [desenhada, setDesenhada] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Resultado guardado com a logo medida: trocar a logo não mostra o aviso da anterior.
   const [medida, setMedida] = useState<{ logo: string; baixa: boolean } | null>(null);
   const pronta = desenhada === chave;
-  const { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug } = p;
+  const { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta } = p;
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     let vivo = true;
-    desenharArte(canvas, { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug })
+    desenharArte(canvas, { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta })
       .then(() => {
         if (vivo) setDesenhada(chave);
       })
@@ -162,7 +164,7 @@ export function ArteQr(p: Props) {
     return () => {
       vivo = false;
     };
-  }, [chave, url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug]);
+  }, [chave, url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta]);
 
   // Logo pequena demais para 300 dpi: avisa antes de imprimir (13/11/2026).
   useEffect(() => {

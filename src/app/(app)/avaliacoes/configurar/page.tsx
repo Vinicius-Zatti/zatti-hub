@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirecionarSemEdicao, temPermissao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
-import { carregarDestinatarios, carregarPesquisa, carregarSituacaoAlertas, urlPublicaLogo } from "@/lib/avaliacoes/servidor";
+import { carregarDestinatarios, carregarPesquisa, carregarPremios, carregarSituacaoAlertas, urlPublicaLogo } from "@/lib/avaliacoes/servidor";
 import { ROTULO_ORIGEM, definicao, perguntasDoTipo } from "@/lib/avaliacoes/perguntas";
 import { urlBase, urlPublica } from "@/lib/avaliacoes/qr";
 import { DICA_ALERTA } from "@/lib/avaliacoes/alertas";
@@ -14,6 +14,8 @@ import { LogoUpload } from "@/components/avaliacoes/logo-upload";
 import { DestinatarioAlerta } from "@/components/avaliacoes/destinatario-alerta";
 import { TiposPesquisa } from "@/components/avaliacoes/tipos-pesquisa";
 import { EditorExtras } from "@/components/avaliacoes/editor-extras";
+import { EditorRoleta } from "@/components/avaliacoes/editor-roleta";
+import { chances } from "@/lib/avaliacoes/roleta";
 
 const CARTAO = "flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4";
 const TITULO = "font-display text-lg font-bold text-azul-noite";
@@ -35,9 +37,10 @@ export default async function ConfigurarAvaliacoesPage() {
   }
 
   const supabase = await createClient();
-  const [destinatarios, situacao, { data: termo }] = await Promise.all([
+  const [destinatarios, situacao, premios, { data: termo }] = await Promise.all([
     carregarDestinatarios(acesso, pesquisa.alertaVinculoId),
     carregarSituacaoAlertas(acesso),
+    carregarPremios(acesso),
     supabase.from("avaliacoes_termos").select("versao, modelo").order("versao", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const base = urlBase();
@@ -182,6 +185,34 @@ export default async function ConfigurarAvaliacoesPage() {
           )}
         </p>
         {podeEditar && <EditorExtras atendentes={pesquisa.atendentes} linkPedidoDireto={pesquisa.linkPedidoDireto} />}
+      </section>
+
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Roleta de prêmios (apps de entrega)</h2>
+        <p className="text-sm">
+          {pesquisa.roletaAtiva ? (
+            <span className="font-semibold text-verde">Ligada.</span>
+          ) : (
+            <span className="font-semibold text-cinza-medio">Desligada.</span>
+          )}{" "}
+          No fim da pesquisa dos apps, a pessoa gira e ganha um cupom para o próximo pedido direto, válido por {pesquisa.cupomValidadeDias} dias. A baixa fica na aba Cupons.
+        </p>
+        {premios.length > 0 ? (
+          <ul className="text-sm">
+            {premios.map((p, i) => (
+              <li key={p.id}>
+                <span className="font-semibold text-azul-noite">{p.nome}</span>
+                {p.regra ? ` (${p.regra})` : ""} <span className="text-cinza-medio">· chance {chances(premios)[i]}%</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-cinza-medio">Nenhum prêmio cadastrado.</p>
+        )}
+        {pesquisa.roletaAtiva && !pesquisa.linkPedidoDireto ? (
+          <p className="text-xs font-semibold text-ambar">Sem link de pedir direto: o cliente ganha o cupom, mas não vê o botão para pedir. Cadastre em &quot;Quem atende e pedir direto&quot;.</p>
+        ) : null}
+        {podeEditar && <EditorRoleta ativa={pesquisa.roletaAtiva} validadeDias={pesquisa.cupomValidadeDias} premios={premios} />}
       </section>
 
       <section className={CARTAO}>

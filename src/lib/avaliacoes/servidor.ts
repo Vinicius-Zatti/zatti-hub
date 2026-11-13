@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { AcessoAtual } from "@/lib/acesso";
 import { lerOrigens, lerPerguntas, type Origem, type PerguntaConfig } from "./perguntas";
 import type { RespostaPainel } from "./painel";
+import type { PremioPublico } from "./roleta";
 
 // Leituras do módulo Avaliações no servidor. A gestão lê pela própria sessão (RLS de
 // `usuario_pode_usar_avaliacoes`); o client admin só entra depois da barreira da tela
@@ -43,6 +44,8 @@ export type PesquisaGestao = {
   atendentes: string[];
   /** Link "pedir direto com a gente", no fim da pesquisa dos apps. */
   linkPedidoDireto: string | null;
+  roletaAtiva: boolean;
+  cupomValidadeDias: number;
 };
 
 type LinhaPesquisa = {
@@ -60,6 +63,8 @@ type LinhaPesquisa = {
   origens: string[] | null;
   atendentes: string[] | null;
   link_pedido_direto: string | null;
+  roleta_ativa: boolean | null;
+  cupom_validade_dias: number | null;
 };
 
 /** Pesquisa da unidade da sessão (nulo = ainda não criada). Falha de leitura sobe para o
@@ -68,7 +73,7 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("avaliacoes_pesquisas")
-    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id, origens, atendentes, link_pedido_direto")
+    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id, origens, atendentes, link_pedido_direto, roleta_ativa, cupom_validade_dias")
     .eq("unidade_id", acesso.unidadeId)
     .maybeSingle();
   if (error) {
@@ -99,6 +104,8 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
     origens: lerOrigens(p.origens),
     atendentes: Array.isArray(p.atendentes) ? p.atendentes : [],
     linkPedidoDireto: p.link_pedido_direto,
+    roletaAtiva: p.roleta_ativa === true,
+    cupomValidadeDias: p.cupom_validade_dias ?? 30,
     perguntas: lerPerguntas((versao as { perguntas?: unknown } | null)?.perguntas),
   };
 }
@@ -311,6 +318,9 @@ export type PesquisaPublica = {
   perguntas: PerguntaConfig[];
   atendentes: string[];
   linkPedidoDireto: string | null;
+  /** Prêmios da roleta (vazio = roleta desligada). */
+  roleta: PremioPublico[];
+  cupomValidadeDias: number;
   termoVersao: number;
   termoTexto: string;
 };
@@ -339,8 +349,79 @@ export async function carregarPesquisaPublica(slug: string): Promise<PesquisaPub
     perguntas: lerPerguntas(d.perguntas),
     atendentes: Array.isArray(d.atendentes) ? d.atendentes.filter((x): x is string => typeof x === "string") : [],
     linkPedidoDireto: typeof d.linkPedidoDireto === "string" ? d.linkPedidoDireto : null,
+    roleta: Array.isArray(d.roleta)
+      ? (d.roleta as Record<string, unknown>[]).flatMap((r) =>
+          typeof r?.id === "string" && typeof r?.nome === "string" ? [{ id: r.id, nome: r.nome, regra: typeof r.regra === "string" ? r.regra : null }] : [],
+        )
+      : [],
+    cupomValidadeDias: typeof d.cupomValidadeDias === "number" ? d.cupomValidadeDias : 30,
     termoVersao: Number(d.termoVersao),
     termoTexto: String(d.termoTexto),
   };
 }
 
+
+// ── Roleta e cupons (13/11/2026) ─────────────────────────────────────────
+
+export type PremioGestao = { id: string; nome: string; regra: string | null; peso: number };
+
+/** Prêmios ligados, na ordem da tela. */
+export async function carregarPremios(acesso: AcessoAtual): Promise<PremioGestao[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("avaliacoes_premios")
+    .select("id, nome, regra, peso")
+    .eq("unidade_id", acesso.unidadeId)
+    .eq("ativo", true)
+    .order("ordem", { ascending: true });
+  if (error) throw new Error("Não foi possível ler os prêmios da roleta.");
+  return (data ?? []) as PremioGestao[];
+}
+
+export type CupomGestao = {
+  id: string;
+  codigo: string;
+  premio: string;
+  regra: string | null;
+  criadoEm: string;
+  validoAte: string;
+  usadoEm: string | null;
+  /** Só os 4 últimos dígitos vão ao navegador. */
+  whatsappFinal: string;
+};
+
+export const LIMITE_CUPONS_TELA = 500;
+
+type LinhaCupom = {
+  id: string;
+  codigo: string;
+  premio_nome: string;
+  premio_regra: string | null;
+  criado_em: string;
+  valido_ate: string;
+  usado_em: string | null;
+  whatsapp: string;
+};
+
+/** Cupons da unidade desde `desdeIso`, mais novo primeiro. */
+export async function carregarCupons(acesso: AcessoAtual, desdeIso: string): Promise<CupomGestao[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("avaliacoes_cupons")
+    .select("id, codigo, premio_nome, premio_regra, criado_em, valido_ate, usado_em, whatsapp")
+    .eq("unidade_id", acesso.unidadeId)
+    .gte("criado_em", desdeIso)
+    .order("criado_em", { ascending: false })
+    .limit(LIMITE_CUPONS_TELA);
+  if (error) throw new Error("Não foi possível ler os cupons.");
+  return ((data ?? []) as LinhaCupom[]).map((c) => ({
+    id: c.id,
+    codigo: c.codigo,
+    premio: c.premio_nome,
+    regra: c.premio_regra,
+    criadoEm: c.criado_em,
+    validoAte: c.valido_ate,
+    usadoEm: c.usado_em,
+    whatsappFinal: c.whatsapp.slice(-4),
+  }));
+}
