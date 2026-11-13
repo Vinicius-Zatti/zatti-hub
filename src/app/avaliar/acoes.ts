@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { carregarPesquisaPublica, type PesquisaPublica } from "@/lib/avaliacoes/servidor";
 import { chaveHash, dispositivoValido, hashAnonimo, ipDaRequisicao, ipParaLimite } from "@/lib/avaliacoes/anonimizacao";
-import { ehOrigem, normalizarWhatsapp, perguntasAtivas, validarRespostas } from "@/lib/avaliacoes/perguntas";
+import { ehOrigem, normalizarWhatsapp, perguntasDoTipo, validarRespostas } from "@/lib/avaliacoes/perguntas";
 
 export type EstadoAvaliacao = { ok?: boolean; erro?: string; campo?: string };
 
@@ -26,9 +26,9 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
     return { erro: MENSAGEM_GENERICA };
   }
   if (!pesquisa) return { erro: "Pesquisa não encontrada." };
-  if (!pesquisa.ativa) return { erro: "Esta pesquisa está pausada no momento." };
+  if (!pesquisa.ativa || !pesquisa.origens.includes(origem)) return { erro: "Esta pesquisa está pausada no momento." };
 
-  const perguntas = perguntasAtivas(pesquisa.perguntas);
+  const perguntas = perguntasDoTipo(pesquisa.perguntas, origem, pesquisa.atendentes);
   const brutas: Record<string, unknown> = {};
   for (const p of perguntas) {
     const valor = formData.get(`q_${p.chave}`);
@@ -36,7 +36,7 @@ export async function enviarAvaliacaoAction(_estado: EstadoAvaliacao, formData: 
   }
   const outro = formData.get("q_conheceu_outro");
   if (typeof outro === "string") brutas.conheceu_outro = outro.slice(0, 200);
-  const validacao = validarRespostas(perguntas, brutas);
+  const validacao = validarRespostas(perguntas, brutas, pesquisa.atendentes);
   if (!validacao.ok) return { erro: validacao.erro, campo: validacao.chave };
 
   const consentiu = formData.get("consentimento") === "sim";

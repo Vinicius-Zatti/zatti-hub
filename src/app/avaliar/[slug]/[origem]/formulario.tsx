@@ -2,8 +2,24 @@
 
 import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
 import { enviarAvaliacaoAction, type EstadoAvaliacao } from "../../acoes";
-import { COR_ESTRELA, corDaNotaNps, corTextoSobre } from "@/lib/avaliacoes/marca";
-import { LIMITE_COMENTARIO, LIMITE_CONHECEU_OUTRO, type Origem, type PerguntaPublica } from "@/lib/avaliacoes/perguntas";
+import { COR_ESTRELA, contraste, corDaNotaNps, corTextoSobre } from "@/lib/avaliacoes/marca";
+import {
+  LIMITE_COMENTARIO,
+  LIMITE_CONHECEU_OUTRO,
+  NAO_LEMBRO,
+  TEXTO_COMENTARIO_OTIMO,
+  TEXTO_COMENTARIO_RUIM,
+  ehNotaBaixa,
+  humorDaAvaliacao,
+  type NotasAvaliacao,
+  type Origem,
+  type PerguntaPublica,
+} from "@/lib/avaliacoes/perguntas";
+
+// Página pública nova (13/11/2026), modelada no Falaê: capa da marca, uma pergunta por tela (tocou,
+// passou), e no fim o comentário que muda com a nota. Nota baixa pede o WhatsApp para a equipe
+// falar com a pessoa; o botão do Google aparece para TODOS (pedir só para quem gostou é proibido
+// pelo Google), com o comentário já copiado e mais destaque para quem deu 9 ou 10.
 
 const CHAVE_APARELHO = "zh_avaliacao_aparelho";
 
@@ -26,29 +42,35 @@ type Props = {
   slug: string;
   origem: Origem;
   nome: string;
+  logoUrl: string | null;
   corPrincipal: string;
   corFundo: string;
-  /** Cor do texto sobre o fundo (preto ou branco, o que contrastar mais). */
-  corTexto: string;
   agradecimento: string;
   linkGoogle: string | null;
+  linkPedidoDireto: string | null;
   perguntas: PerguntaPublica[];
+  atendentes: string[];
   termoVersao: number;
   termoTexto: string;
 };
 
 const ROTULO_ESTRELAS = ["", "Péssimo", "Ruim", "Regular", "Bom", "Excelente"];
+const PAUSA_AUTOMATICA_MS = 380;
 
-/** Estrela dourada quando marcada; vazia, só o contorno suave na cor do texto. */
+/** Tempo desde a abertura da página (o banco descarta envio em menos de 4 s: robô). */
+function msDesde(inicio: number): number {
+  return Date.now() - inicio;
+}
+
 function Estrela({ cheia, contorno }: { cheia: boolean; contorno: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className={`h-12 w-12 transition-transform duration-150 ${cheia ? "scale-110" : "scale-100"}`}
+      className={`h-14 w-14 transition-transform duration-150 ${cheia ? "scale-110" : "scale-100"}`}
       fill={cheia ? COR_ESTRELA : "none"}
       stroke={cheia ? COR_ESTRELA : contorno}
-      strokeWidth="1.6"
+      strokeWidth="1.5"
       strokeLinejoin="round"
     >
       <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
@@ -56,266 +78,458 @@ function Estrela({ cheia, contorno }: { cheia: boolean; contorno: string }) {
   );
 }
 
+function Logo({ url, nome, tamanho, corFundo }: { url: string | null; nome: string; tamanho: number; corFundo: string }) {
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white"
+      style={{ width: tamanho, height: tamanho, boxShadow: tamanho > 60 ? `0 0 0 6px ${corFundo}22, 0 18px 40px rgba(0,0,0,0.20)` : "0 0 0 2px rgba(0,0,0,0.12)" }}
+    >
+      {url ? (
+        // Logo do bucket público da unidade (até 300 KB); tamanho livre, por isso <img>.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={tamanho > 60 ? nome : ""} className="h-full w-full object-cover" />
+      ) : (
+        <span className="px-2 text-center text-xs font-bold leading-tight text-[#111111]">{nome}</span>
+      )}
+    </div>
+  );
+}
+
 export function FormularioAvaliacao(p: Props) {
   const [estado, acao, pendente] = useActionState<EstadoAvaliacao, FormData>(enviarAvaliacaoAction, {});
+  const [passo, setPasso] = useState(-1);
   const [valores, setValores] = useState<Record<string, string>>({});
-  const [faltando, setFaltando] = useState<string[]>([]);
+  const [outro, setOutro] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [consentimento, setConsentimento] = useState(false);
+  const [copiado, setCopiado] = useState(false);
   const inicio = useRef(0);
+  const avanco = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     inicio.current = Date.now();
+    return () => {
+      if (avanco.current) clearTimeout(avanco.current);
+    };
   }, []);
 
-  const textoPrincipal = corTextoSobre(p.corPrincipal);
-  const borda = `${p.corTexto}4D`;
-  const estiloEscolhido: CSSProperties = { backgroundColor: p.corPrincipal, borderColor: p.corPrincipal, color: textoPrincipal };
-  const estiloLivre: CSSProperties = { borderColor: borda };
-  // Cartão de cada pergunta: branco sobre fundo claro; translúcido sobre fundo escuro.
-  const claro = p.corTexto === "#111111";
-  const estiloCartao: CSSProperties = claro
-    ? { backgroundColor: "#FFFFFF", borderColor: "#11111114", boxShadow: "0 4px 18px rgba(17,17,17,0.07)" }
-    : { backgroundColor: "#FFFFFF12", borderColor: "#FFFFFF1F" };
-  const obrigatorias = p.perguntas.filter((q) => q.obrigatoria);
-  const respondidas = obrigatorias.filter((q) => (valores[q.chave] ?? "").trim()).length;
+  // Cores: a principal pinta a capa e a faixa do topo; o que a pessoa toca usa a "tinta" (preto ou
+  // branco, o que contrastar mais com o fundo). O botão leva a cor principal no texto quando dá
+  // para ler; senão, a cor do fundo.
+  const textoCapa = corTextoSobre(p.corPrincipal);
+  const tinta = corTextoSobre(p.corFundo);
+  const textoBotao = contraste(p.corPrincipal, tinta) >= 3 ? p.corPrincipal : p.corFundo;
+  const claro = tinta === "#111111";
+  const estiloOpcao: CSSProperties = claro
+    ? { backgroundColor: "#FFFFFF", borderColor: "#11111117", color: tinta }
+    : { backgroundColor: "#FFFFFF10", borderColor: "#FFFFFF26", color: tinta };
+  const estiloEscolhido: CSSProperties = { backgroundColor: tinta, borderColor: tinta, color: textoBotao };
+  const estiloBotao: CSSProperties = { backgroundColor: tinta, color: textoBotao };
+  const suave = `${tinta}A6`;
 
-  if (estado.ok) {
-    return (
-      <section className="mt-8 space-y-6 text-center" aria-live="polite">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full" style={{ backgroundColor: COR_ESTRELA }} aria-hidden="true">
-          <svg viewBox="0 0 24 24" className="h-10 w-10" fill="none" stroke="#111111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m5 12.5 4.5 4.5L19 7.5" />
-          </svg>
-        </div>
-        <h1 className="text-3xl font-bold">Obrigado!</h1>
-        <p className="text-lg">{p.agradecimento}</p>
-        {/* Para TODOS, qualquer nota: mostrar só para quem gostou é proibido pelo Google. */}
-        {p.linkGoogle ? (
-          <div className="space-y-2">
-            <p className="text-base opacity-80">Se puder, deixe sua avaliação no Google também. Ajuda muito.</p>
-            <a
-              href={p.linkGoogle}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex min-h-[56px] w-full items-center justify-center rounded-2xl px-6 text-lg font-semibold shadow-lg"
-              style={{ backgroundColor: p.corPrincipal, color: textoPrincipal }}
-            >
-              Avaliar no Google
-            </a>
-          </div>
-        ) : null}
-      </section>
-    );
+  const comentarioLigado = p.perguntas.some((q) => q.chave === "comentario");
+  const textoComentarioMedio = p.perguntas.find((q) => q.chave === "comentario")?.texto ?? "";
+  const telas = p.perguntas.filter((q) => q.chave !== "comentario");
+  const totalPassos = telas.length + 1; // + tela final (comentário e contato)
+  const notas: NotasAvaliacao = {};
+  for (const q of telas) {
+    const v = valores[q.chave];
+    if (v === undefined || v === "") continue;
+    if (q.tipo === "estrelas" || q.tipo === "nps") notas[q.chave] = Number(v);
+    else if (q.tipo === "simnao") notas[q.chave] = v === "sim";
+  }
+  const humor = humorDaAvaliacao(notas);
+  // Contato: sempre que a avaliação vira alerta (até nota 7 ou 8 com pedido errado), mas sem o "poxa".
+  const pedeContato = humor === "ruim" || ehNotaBaixa(notas);
+  const comentario = (valores.comentario ?? "").trim();
+
+  // Erro do servidor numa pergunta: volta para ela (ajuste no render, quando o estado muda).
+  const [estadoVisto, setEstadoVisto] = useState(estado);
+  if (estado !== estadoVisto) {
+    setEstadoVisto(estado);
+    const i = estado.campo ? telas.findIndex((q) => q.chave === estado.campo) : -1;
+    if (i >= 0) setPasso(i);
   }
 
-  function mudar(chave: string, valor: string) {
+  function escolher(chave: string, valor: string, avancar: boolean) {
     setValores((v) => ({ ...v, [chave]: valor }));
-    setFaltando((f) => f.filter((c) => c !== chave));
+    if (!avancar) return;
+    if (avanco.current) clearTimeout(avanco.current);
+    avanco.current = setTimeout(() => setPasso((n) => n + 1), PAUSA_AUTOMATICA_MS);
   }
 
   function enviar(formData: FormData) {
-    const pendentes = p.perguntas.filter((q) => q.obrigatoria && !(valores[q.chave] ?? "").trim()).map((q) => q.chave);
-    setFaltando(pendentes);
-    if (pendentes.length > 0) {
-      document.getElementById(`pergunta-${pendentes[0]}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const faltando = telas.findIndex((q) => q.obrigatoria && !(valores[q.chave] ?? "").trim());
+    if (faltando >= 0) {
+      setPasso(faltando);
       return;
     }
-    formData.set("decorrido", String(Date.now() - inicio.current));
+    for (const q of p.perguntas) {
+      const v = valores[q.chave];
+      if (v) formData.set(`q_${q.chave}`, v);
+    }
+    if (valores.conheceu === "outro" && outro.trim()) formData.set("q_conheceu_outro", outro);
+    if (pedeContato && whatsapp.trim()) {
+      formData.set("whatsapp", whatsapp);
+      if (consentimento) formData.set("consentimento", "sim");
+    }
+    formData.set("decorrido", String(msDesde(inicio.current)));
     formData.set("dispositivo", idDoAparelho());
     acao(formData);
   }
 
-  const campoComErro = estado.campo;
+  // ── Obrigado ───────────────────────────────────────────────────────────
+  if (estado.ok) {
+    const destaqueGoogle = humor === "otimo";
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center" style={{ backgroundColor: p.corFundo, color: tinta }} aria-live="polite">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full" style={{ backgroundColor: COR_ESTRELA, boxShadow: "0 14px 30px rgba(245,179,1,0.45)" }} aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-12 w-12" fill="none" stroke="#111111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m5 12.5 4.5 4.5L19 7.5" />
+          </svg>
+        </div>
+        <h1 className="mt-6 text-3xl font-extrabold">Obrigado!</h1>
+        <p className="mt-2 max-w-sm text-lg leading-snug" style={{ color: suave }}>
+          {pedeContato && whatsapp.trim() && consentimento ? "Recebemos sua mensagem. Alguém da equipe vai falar com você pelo WhatsApp." : p.agradecimento}
+        </p>
+
+        {p.origem === "app" && p.linkPedidoDireto ? (
+          <div className="mt-7 w-full max-w-sm rounded-2xl border-2 p-5 text-left" style={estiloOpcao}>
+            <p className="text-lg font-bold">Da próxima vez, peça direto com a gente</p>
+            <p className="mt-1 text-sm leading-snug" style={{ color: suave }}>
+              O pedido chega do mesmo jeito e fica mais em conta para a {p.nome}.
+            </p>
+            <a
+              href={p.linkPedidoDireto}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex min-h-[54px] w-full items-center justify-center rounded-2xl px-6 text-base font-bold shadow-lg"
+              style={estiloBotao}
+            >
+              Pedir direto com a {p.nome}
+            </a>
+          </div>
+        ) : null}
+
+        {/* Para TODOS, qualquer nota: pedir só para quem gostou é proibido pelo Google. */}
+        {p.linkGoogle ? (
+          <div className={`mt-5 w-full max-w-sm rounded-2xl p-5 text-left ${destaqueGoogle ? "border-2" : ""}`} style={destaqueGoogle ? estiloOpcao : undefined}>
+            <p className="text-base font-bold">Deixe sua avaliação no Google também</p>
+            <p className="mt-1 text-sm leading-snug" style={{ color: suave }}>
+              {comentario ? "Seu comentário vai copiado: lá é só colar." : "Leva 10 segundos e ajuda muito a gente."}
+            </p>
+            <a
+              href={p.linkGoogle}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                if (!comentario) return;
+                navigator.clipboard?.writeText(comentario).then(
+                  () => setCopiado(true),
+                  () => undefined,
+                );
+              }}
+              className="mt-4 flex min-h-[54px] w-full items-center justify-center rounded-2xl border-2 px-6 text-base font-bold"
+              style={destaqueGoogle ? estiloBotao : { borderColor: tinta, color: tinta }}
+            >
+              Avaliar no Google
+            </a>
+            {copiado ? <p className="mt-2 text-center text-sm font-semibold">Comentário copiado. Cole no Google.</p> : null}
+          </div>
+        ) : null}
+      </main>
+    );
+  }
+
+  // ── Capa ───────────────────────────────────────────────────────────────
+  if (passo < 0) {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center px-8 py-10 text-center" style={{ backgroundColor: p.corPrincipal, color: textoCapa }}>
+        <Logo url={p.logoUrl} nome={p.nome} tamanho={168} corFundo={textoCapa} />
+        <h1 className="mt-8 text-[28px] font-extrabold leading-tight">
+          {p.origem === "salao" ? `Como foi sua experiência na ${p.nome}?` : `Como foi seu pedido da ${p.nome}?`}
+        </h1>
+        <p className="mt-3 max-w-xs text-base leading-snug opacity-80">Sua opinião chega direto para a gente e ajuda a melhorar cada detalhe.</p>
+        <button
+          type="button"
+          onClick={() => setPasso(0)}
+          className="mt-9 flex min-h-[58px] w-full max-w-sm items-center justify-center rounded-2xl px-6 text-lg font-bold shadow-xl transition active:scale-[0.98]"
+          style={{ backgroundColor: textoCapa, color: p.corPrincipal }}
+        >
+          Começar avaliação
+        </button>
+        <p className="mt-4 text-sm opacity-70">Leva menos de 1 minuto</p>
+      </main>
+    );
+  }
+
+  const naUltima = passo >= telas.length;
+  const q = naUltima ? null : telas[passo];
+  const valor = q ? valores[q.chave] ?? "" : "";
+  const pct = Math.round((passo / totalPassos) * 100);
 
   return (
-    <form action={enviar} className="mt-5 space-y-4" noValidate>
-      <h1 className="text-center text-2xl font-bold leading-tight">
-        {p.origem === "salao"
-          ? `Como foi sua visita na ${p.nome}?`
-          : p.origem === "app"
-            ? `Como foi seu pedido da ${p.nome} pelo app?`
-            : `Como foi seu pedido da ${p.nome}?`}
-      </h1>
-      <p className="text-center text-sm opacity-70">Leva menos de 1 minuto.</p>
-      {obrigatorias.length > 0 ? (
-        <div className="sticky top-0 z-10 -mx-4 px-4 py-2" style={{ backgroundColor: p.corFundo }}>
-          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: `${p.corTexto}1A` }}>
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${Math.round((respondidas / obrigatorias.length) * 100)}%`, backgroundColor: COR_ESTRELA }}
-            />
-          </div>
+    <main className="flex min-h-dvh flex-col" style={{ backgroundColor: p.corFundo, color: tinta }}>
+      <header className="sticky top-0 z-10 flex items-center gap-3 px-4 py-4" style={{ backgroundColor: p.corPrincipal, color: textoCapa }}>
+        <button
+          type="button"
+          onClick={() => setPasso((n) => n - 1)}
+          aria-label="Voltar"
+          className="flex h-10 w-8 items-center justify-center text-3xl leading-none"
+        >
+          ‹
+        </button>
+        <Logo url={p.logoUrl} nome={p.nome} tamanho={42} corFundo={textoCapa} />
+        <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: `${textoCapa}26` }} aria-hidden="true">
+          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: textoCapa }} />
         </div>
-      ) : null}
-      <input type="hidden" name="slug" value={p.slug} />
-      <input type="hidden" name="origem" value={p.origem} />
-      <input type="hidden" name="termo" value={p.termoVersao} />
-      {/* Campo armadilha: invisível para pessoas; robô costuma preencher. */}
-      <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-        <label>
-          Não preencha
-          <input type="text" name="site" tabIndex={-1} autoComplete="off" />
-        </label>
-      </div>
+      </header>
 
-      {p.perguntas.map((q) => {
-        const valor = valores[q.chave] ?? "";
-        const nomeCampo = `q_${q.chave}`;
-        return (
-          <fieldset key={q.chave} id={`pergunta-${q.chave}`} className="scroll-mt-10 space-y-3 rounded-2xl border p-4" style={estiloCartao}>
-            <legend className="float-left mb-3 w-full text-lg font-semibold leading-snug">
-              {q.texto}
-              {!q.obrigatoria ? <span className="ml-2 text-sm font-normal opacity-70">(opcional)</span> : null}
-            </legend>
+      <div key={passo} className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pb-8 pt-12 motion-safe:animate-[entrar_0.28s_ease]">
+        <p className="text-xs font-bold uppercase tracking-widest" style={{ color: suave }}>
+          {passo + 1} de {totalPassos}
+        </p>
+
+        {q ? (
+          <>
+            <h1 className="mt-2 text-[26px] font-bold leading-tight">{q.texto}</h1>
+            {q.ajuda ? (
+              <p className="mt-2 text-base" style={{ color: suave }}>
+                {q.ajuda}
+              </p>
+            ) : null}
 
             {q.tipo === "estrelas" ? (
-              <div className="clear-both">
-                <div className="flex justify-between gap-1" role="radiogroup" aria-label={q.texto}>
+              <div className="mt-10">
+                <div className="flex justify-between" role="radiogroup" aria-label={q.texto}>
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <label key={n} className="block cursor-pointer rounded-xl p-1 has-[:focus-visible]:outline has-[:focus-visible]:outline-2">
-                      <input type="radio" name={nomeCampo} value={n} checked={valor === String(n)} onChange={() => mudar(q.chave, String(n))} className="sr-only" />
-                      <Estrela cheia={valor !== "" && n <= Number(valor)} contorno={`${p.corTexto}59`} />
-                      <span className="sr-only">{n} de 5</span>
-                    </label>
+                    <button
+                      key={n}
+                      type="button"
+                      role="radio"
+                      aria-checked={valor === String(n)}
+                      aria-label={`${n} de 5, ${ROTULO_ESTRELAS[n]}`}
+                      onClick={() => escolher(q.chave, String(n), true)}
+                      className="rounded-xl p-0.5"
+                    >
+                      <Estrela cheia={valor !== "" && n <= Number(valor)} contorno={`${tinta}40`} />
+                    </button>
                   ))}
                 </div>
-                <p className="mt-1 h-5 text-center text-sm font-semibold" aria-hidden="true">
+                <p className="mt-3 h-6 text-center text-lg font-bold" aria-hidden="true">
                   {valor ? ROTULO_ESTRELAS[Number(valor)] : ""}
                 </p>
               </div>
             ) : null}
 
             {q.tipo === "nps" ? (
-              <>
-                <div className="clear-both grid grid-cols-11 gap-1">
+              <div className="mt-10">
+                <div className="grid grid-cols-11 gap-1" role="radiogroup" aria-label={q.texto}>
                   {Array.from({ length: 11 }, (_, n) => {
                     const cor = corDaNotaNps(n);
                     const escolhida = valor === String(n);
                     return (
-                      <label key={n} className="block">
-                        <input type="radio" name={nomeCampo} value={n} checked={escolhida} onChange={() => mudar(q.chave, String(n))} className="peer sr-only" />
-                        <span
-                          className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border-2 text-sm font-bold tabular-nums transition-transform peer-focus-visible:outline peer-focus-visible:outline-2 ${escolhida ? "scale-110 shadow-md" : ""}`}
-                          style={escolhida ? { backgroundColor: cor.fundo, borderColor: cor.fundo, color: cor.texto } : { borderColor: cor.fundo }}
-                        >
-                          {n}
-                        </span>
-                      </label>
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={escolhida}
+                        onClick={() => escolher(q.chave, String(n), true)}
+                        className={`flex min-h-[48px] items-center justify-center rounded-lg border-2 text-sm font-bold tabular-nums transition-transform ${escolhida ? "scale-110 shadow-md" : ""}`}
+                        style={escolhida ? { backgroundColor: cor.fundo, borderColor: cor.fundo, color: cor.texto } : { borderColor: cor.fundo, color: cor.fundo, backgroundColor: claro ? "#FFFFFF" : "transparent" }}
+                      >
+                        {n}
+                      </button>
                     );
                   })}
                 </div>
-                <div className="flex justify-between text-sm opacity-70">
-                  <span>0 = de jeito nenhum</span>
-                  <span>10 = com certeza</span>
+                <div className="mt-2 flex justify-between text-xs" style={{ color: suave }}>
+                  <span>Não indicaria</span>
+                  <span>Com certeza</span>
                 </div>
-              </>
+              </div>
             ) : null}
 
-            {q.tipo === "faixas" || q.tipo === "escolha" ? (
-              <div className="clear-both grid grid-cols-2 gap-2">
-                {(q.opcoes ?? []).map((o) => (
-                  <label key={o.valor} className="block">
-                    <input type="radio" name={nomeCampo} value={o.valor} checked={valor === o.valor} onChange={() => mudar(q.chave, o.valor)} className="peer sr-only" />
-                    <span
-                      className="flex min-h-[52px] cursor-pointer items-center justify-center rounded-xl border-2 px-2 text-center text-base font-medium peer-focus-visible:outline peer-focus-visible:outline-2"
-                      style={valor === o.valor ? estiloEscolhido : estiloLivre}
-                    >
-                      {o.rotulo}
-                    </span>
-                  </label>
+            {q.tipo === "simnao" ? (
+              <div className="mt-8 grid gap-3" role="radiogroup" aria-label={q.texto}>
+                {[
+                  { v: "sim", r: "Sim, veio tudo certo" },
+                  { v: "nao", r: "Não, faltou ou veio errado" },
+                ].map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    role="radio"
+                    aria-checked={valor === o.v}
+                    onClick={() => escolher(q.chave, o.v, true)}
+                    className="flex min-h-[60px] items-center rounded-2xl border-2 px-5 text-left text-lg font-semibold"
+                    style={valor === o.v ? estiloEscolhido : estiloOpcao}
+                  >
+                    {o.r}
+                  </button>
                 ))}
               </div>
             ) : null}
 
-            {q.chave === "conheceu" && valor === "outro" ? (
-              <input
-                type="text"
-                name="q_conheceu_outro"
-                maxLength={LIMITE_CONHECEU_OUTRO}
-                placeholder="Conta pra gente onde"
-                className="min-h-[48px] w-full rounded-xl border-2 bg-transparent px-3 text-base"
-                style={estiloLivre}
-              />
+            {q.tipo === "atendente" ? (
+              <div className="mt-8 grid grid-cols-2 gap-3" role="radiogroup" aria-label={q.texto}>
+                {[...p.atendentes.map((n) => ({ v: n, r: n })), { v: NAO_LEMBRO, r: "Não lembro o nome" }].map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    role="radio"
+                    aria-checked={valor === o.v}
+                    onClick={() => escolher(q.chave, o.v, true)}
+                    className={`flex min-h-[56px] items-center justify-center rounded-2xl border-2 px-3 text-center text-base font-semibold ${o.v === NAO_LEMBRO ? "col-span-2" : ""}`}
+                    style={valor === o.v ? estiloEscolhido : estiloOpcao}
+                  >
+                    {o.r}
+                  </button>
+                ))}
+              </div>
             ) : null}
 
-            {q.tipo === "texto" ? (
-              <textarea
-                name={nomeCampo}
-                value={valor}
-                onChange={(e) => mudar(q.chave, e.target.value)}
-                maxLength={LIMITE_COMENTARIO}
-                rows={3}
-                placeholder="Escreva aqui, se quiser"
-                className="clear-both block w-full rounded-xl border-2 bg-transparent p-3 text-base"
-                style={estiloLivre}
-              />
+            {q.tipo === "escolha" ? (
+              <>
+                <div className="mt-8 flex flex-wrap gap-2.5" role="radiogroup" aria-label={q.texto}>
+                  {(q.opcoes ?? []).map((o) => (
+                    <button
+                      key={o.valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={valor === o.valor}
+                      onClick={() => escolher(q.chave, valor === o.valor ? "" : o.valor, false)}
+                      className="rounded-full border-2 px-4 py-3 text-base font-semibold"
+                      style={valor === o.valor ? estiloEscolhido : estiloOpcao}
+                    >
+                      {o.rotulo}
+                    </button>
+                  ))}
+                </div>
+                {q.chave === "conheceu" && valor === "outro" ? (
+                  <input
+                    type="text"
+                    value={outro}
+                    onChange={(e) => setOutro(e.target.value)}
+                    maxLength={LIMITE_CONHECEU_OUTRO}
+                    placeholder="Conta pra gente onde"
+                    className="mt-4 min-h-[52px] w-full rounded-2xl border-2 px-4 text-base"
+                    style={estiloOpcao}
+                  />
+                ) : null}
+              </>
             ) : null}
 
-            {faltando.includes(q.chave) || campoComErro === q.chave ? (
-              <p role="alert" className="text-sm font-semibold">
-                {faltando.includes(q.chave) ? "Responda esta pergunta para enviar." : estado.erro}
+            {estado.erro && estado.campo === q.chave ? (
+              <p role="alert" className="mt-6 text-base font-semibold">
+                {estado.erro}
               </p>
             ) : null}
-          </fieldset>
-        );
-      })}
 
-      <fieldset className="space-y-3 rounded-2xl border p-4" style={estiloCartao}>
-        <legend className="float-left mb-1 w-full text-lg font-semibold">
-          Quer que a gente fale com você? <span className="text-sm font-normal opacity-70">(opcional)</span>
-        </legend>
-        <label className="clear-both block text-base">
-          Seu WhatsApp
-          <input
-            type="tel"
-            name="whatsapp"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="(16) 91234-5678"
-            maxLength={25}
-            className="mt-1 min-h-[48px] w-full rounded-xl border-2 bg-transparent px-3 text-base"
-            style={estiloLivre}
-          />
-        </label>
-        <label className="flex cursor-pointer items-start gap-3 text-sm leading-snug">
-          <input
-            type="checkbox"
-            name="consentimento"
-            value="sim"
-            checked={consentimento}
-            onChange={(e) => setConsentimento(e.target.checked)}
-            className="mt-0.5 h-6 w-6 shrink-0"
-            style={{ accentColor: p.corPrincipal }}
-          />
-          <span>{p.termoTexto}</span>
-        </label>
-        <p className="text-xs opacity-70">O número só é guardado se você marcar a autorização acima.</p>
-        {campoComErro === "whatsapp" ? (
-          <p role="alert" className="text-sm font-semibold">
-            {estado.erro}
-          </p>
-        ) : null}
-      </fieldset>
+            <div className="mt-auto grid gap-2 pt-10">
+              {!q.obrigatoria ? (
+                <>
+                  <button type="button" onClick={() => setPasso((n) => n + 1)} className="min-h-[58px] w-full rounded-2xl px-6 text-lg font-bold shadow-lg" style={estiloBotao}>
+                    Continuar
+                  </button>
+                  {!valor ? (
+                    <button type="button" onClick={() => setPasso((n) => n + 1)} className="py-2 text-sm font-semibold" style={{ color: suave }}>
+                      Pular
+                    </button>
+                  ) : null}
+                </>
+              ) : valor ? (
+                <button type="button" onClick={() => setPasso((n) => n + 1)} className="min-h-[58px] w-full rounded-2xl px-6 text-lg font-bold shadow-lg" style={estiloBotao}>
+                  Continuar
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <form action={enviar} className="flex flex-1 flex-col" noValidate>
+            <input type="hidden" name="slug" value={p.slug} />
+            <input type="hidden" name="origem" value={p.origem} />
+            <input type="hidden" name="termo" value={p.termoVersao} />
+            {/* Campo armadilha: invisível para pessoas; robô costuma preencher. */}
+            <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+              <label>
+                Não preencha
+                <input type="text" name="site" tabIndex={-1} autoComplete="off" />
+              </label>
+            </div>
 
-      {estado.erro && campoComErro !== "whatsapp" && !p.perguntas.some((q) => q.chave === campoComErro) ? (
-        <p role="alert" className="rounded-xl border-2 p-3 text-center text-base font-medium" style={estiloLivre}>
-          {estado.erro}
-        </p>
-      ) : null}
-      {faltando.length > 0 ? (
-        <p role="alert" className="text-center text-base font-semibold">
-          Falta responder {faltando.length === 1 ? "1 pergunta" : `${faltando.length} perguntas`}.
-        </p>
-      ) : null}
+            <h1 className="mt-2 text-[26px] font-bold leading-tight">
+              {humor === "ruim" ? TEXTO_COMENTARIO_RUIM : humor === "otimo" ? TEXTO_COMENTARIO_OTIMO : comentarioLigado ? textoComentarioMedio : "Tudo pronto!"}
+            </h1>
+            {comentarioLigado ? (
+              <textarea
+                value={valores.comentario ?? ""}
+                onChange={(e) => setValores((v) => ({ ...v, comentario: e.target.value }))}
+                maxLength={LIMITE_COMENTARIO}
+                rows={4}
+                placeholder={humor === "ruim" ? "Conte o que deu errado" : humor === "otimo" ? "Pode falar da comida, do atendimento, de tudo" : "O que faria você dar um 9 ou 10?"}
+                aria-label="Comentário"
+                className="mt-6 w-full rounded-2xl border-2 p-4 text-base"
+                style={estiloOpcao}
+              />
+            ) : null}
 
-      <button
-        type="submit"
-        disabled={pendente}
-        className="mt-2 min-h-[58px] w-full rounded-2xl px-6 text-lg font-semibold shadow-lg transition active:scale-[0.98] disabled:opacity-60"
-        style={{ backgroundColor: p.corPrincipal, color: textoPrincipal }}
-      >
-        {pendente ? "Enviando..." : "Enviar avaliação"}
-      </button>
-      <p className="text-center text-xs opacity-60">Pesquisa da {p.nome}, feita no Zatti Hub.</p>
-    </form>
+            {pedeContato ? (
+              <div className="mt-5">
+                <label className="block text-base font-semibold">
+                  Quer que a gente fale com você?
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    placeholder="Seu WhatsApp com DDD"
+                    maxLength={25}
+                    className="mt-2 min-h-[52px] w-full rounded-2xl border-2 px-4 text-base font-normal"
+                    style={estiloOpcao}
+                  />
+                </label>
+                <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-snug" style={{ color: suave }}>
+                  <input
+                    type="checkbox"
+                    checked={consentimento}
+                    onChange={(e) => setConsentimento(e.target.checked)}
+                    className="mt-0.5 h-6 w-6 shrink-0"
+                    style={{ accentColor: tinta }}
+                  />
+                  <span>{p.termoTexto}</span>
+                </label>
+                {whatsapp.trim() && !consentimento ? <p className="mt-2 text-xs" style={{ color: suave }}>O número só é guardado se você marcar a autorização.</p> : null}
+                {estado.campo === "whatsapp" ? (
+                  <p role="alert" className="mt-2 text-sm font-semibold">
+                    {estado.erro}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {estado.erro && estado.campo !== "whatsapp" && !telas.some((t) => t.chave === estado.campo) ? (
+              <p role="alert" className="mt-5 rounded-2xl border-2 p-3 text-center text-base font-medium" style={estiloOpcao}>
+                {estado.erro}
+              </p>
+            ) : null}
+
+            <div className="mt-auto pt-10">
+              <button
+                type="submit"
+                disabled={pendente}
+                className="min-h-[58px] w-full rounded-2xl px-6 text-lg font-bold shadow-lg transition active:scale-[0.98] disabled:opacity-60"
+                style={estiloBotao}
+              >
+                {pendente ? "Enviando..." : "Enviar avaliação"}
+              </button>
+              <p className="mt-3 text-center text-xs" style={{ color: suave }}>
+                Pesquisa da {p.nome}, feita no Zatti Hub.
+              </p>
+            </div>
+          </form>
+        )}
+      </div>
+    </main>
   );
 }

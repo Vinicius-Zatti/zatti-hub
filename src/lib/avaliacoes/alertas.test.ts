@@ -19,6 +19,9 @@ function alerta(p: Partial<AlertaParaEnvio>): AlertaParaEnvio {
 describe("mensagem do alerta de nota baixa", () => {
   it("uma linha por avaliação, com origem, hora de Brasília, notas e espera", () => {
     expect(notasDoAlerta({ atendimento: 2, comida: null, nps: 5 })).toBe("Atendimento 2, Indicaria 5");
+    expect(notasDoAlerta({ atendimento: null, comida: 3, nps: 7, pedidoCerto: false, embalagem: 1 })).toBe(
+      "Pedido veio errado ou faltando, Comida 3, Temperatura e embalagem 1, Indicaria 7",
+    );
     expect(linhaDoAlerta(alerta({}))).toBe("Salão, 12/11/2026 20:14: Atendimento 2, Comida 4, Indicaria 5. Espera: Mais de 45 min.");
   });
 

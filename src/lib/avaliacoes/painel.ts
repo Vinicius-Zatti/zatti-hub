@@ -1,6 +1,6 @@
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { linhaCsv } from "@/lib/csv";
-import { OPCOES_CONHECEU, OPCOES_ESPERA, ROTULO_ORIGEM, rotuloOpcao, type Opcao, type Origem } from "./perguntas";
+import { CHAVES_ESTRELAS, OPCOES_CONHECEU, OPCOES_ESPERA, ROTULO_ORIGEM, definicao, rotuloAtendente, rotuloOpcao, type ChavePergunta, type Opcao, type Origem } from "./perguntas";
 
 // Avaliações: números do painel da gestão e o CSV. Funções puras sobre as respostas já lidas
 // (o recorte de período e de unidade vem do banco, pela RLS).
@@ -11,6 +11,13 @@ export type RespostaPainel = {
   origem: Origem;
   atendimento: number | null;
   comida: number | null;
+  tempo: number | null;
+  ambiente: number | null;
+  embalagem: number | null;
+  entrega: number | null;
+  atendimentoPedido: number | null;
+  pedidoCerto: boolean | null;
+  atendente: string | null;
   espera: string | null;
   nps: number | null;
   conheceu: string | null;
@@ -98,13 +105,39 @@ function distribuir(valores: (string | null)[], opcoes: readonly Opcao[]): ItemD
   });
 }
 
+/** Nota de 1 a 5 de uma pergunta, pelo nome da chave no banco. */
+export function notaDe(r: RespostaPainel, chave: ChavePergunta): number | null {
+  switch (chave) {
+    case "atendimento":
+      return r.atendimento;
+    case "comida":
+      return r.comida;
+    case "tempo":
+      return r.tempo;
+    case "ambiente":
+      return r.ambiente;
+    case "embalagem":
+      return r.embalagem;
+    case "entrega":
+      return r.entrega;
+    case "atendimento_pedido":
+      return r.atendimentoPedido;
+    default:
+      return null;
+  }
+}
+
+export type MediaPergunta = { chave: ChavePergunta; nome: string; media: number | null; respostas: number };
+export type LinhaAtendente = { nome: string; quantidade: number; mediaAtendimento: number | null; mediaIndicaria: number | null };
+
 export type ResumoAvaliacoes = {
   total: number;
   porOrigem: Record<Origem, number>;
-  mediaAtendimento: number | null;
-  respostasAtendimento: number;
-  mediaComida: number | null;
-  respostasComida: number;
+  /** Médias de 1 a 5 de cada pergunta de estrelas que teve resposta (atendimento e comida sempre). */
+  medias: MediaPergunta[];
+  /** Delivery e apps: quantos disseram que o pedido veio certo. */
+  pedidoCerto: { certos: number; total: number };
+  atendentes: LinhaAtendente[];
   nps: ReturnType<typeof calcularNps>;
   notasBaixas: number;
   espera: ItemDistribuicao[];
@@ -119,8 +152,25 @@ export function filtrarPorOrigem(respostas: RespostaPainel[], origem: FiltroOrig
 
 export function resumir(respostas: RespostaPainel[]): ResumoAvaliacoes {
   const notas = (f: (r: RespostaPainel) => number | null) => respostas.flatMap((r) => (f(r) === null ? [] : [f(r) as number]));
-  const atendimento = notas((r) => r.atendimento);
-  const comida = notas((r) => r.comida);
+  const medias: MediaPergunta[] = CHAVES_ESTRELAS.map((chave) => {
+    const valores = notas((r) => notaDe(r, chave));
+    return { chave, nome: definicao(chave).nome, media: media(valores), respostas: valores.length };
+  }).filter((m) => m.respostas > 0 || m.chave === "atendimento" || m.chave === "comida");
+  const comPedido = respostas.filter((r) => r.pedidoCerto !== null);
+  const porAtendente = new Map<string, RespostaPainel[]>();
+  for (const r of respostas) {
+    if (!r.atendente) continue;
+    const nome = rotuloAtendente(r.atendente);
+    porAtendente.set(nome, [...(porAtendente.get(nome) ?? []), r]);
+  }
+  const atendentes: LinhaAtendente[] = [...porAtendente.entries()]
+    .map(([nome, lista]) => ({
+      nome,
+      quantidade: lista.length,
+      mediaAtendimento: media(lista.flatMap((r) => (r.atendimento === null ? [] : [r.atendimento]))),
+      mediaIndicaria: media(lista.flatMap((r) => (r.nps === null ? [] : [r.nps]))),
+    }))
+    .sort((a, b) => b.quantidade - a.quantidade || a.nome.localeCompare(b.nome));
   return {
     total: respostas.length,
     porOrigem: {
@@ -128,10 +178,9 @@ export function resumir(respostas: RespostaPainel[]): ResumoAvaliacoes {
       delivery: respostas.filter((r) => r.origem === "delivery").length,
       app: respostas.filter((r) => r.origem === "app").length,
     },
-    mediaAtendimento: media(atendimento),
-    respostasAtendimento: atendimento.length,
-    mediaComida: media(comida),
-    respostasComida: comida.length,
+    medias,
+    pedidoCerto: { certos: comPedido.filter((r) => r.pedidoCerto).length, total: comPedido.length },
+    atendentes,
     nps: calcularNps(notas((r) => r.nps)),
     notasBaixas: respostas.filter((r) => r.notaBaixa).length,
     espera: distribuir(respostas.map((r) => r.espera), OPCOES_ESPERA),
@@ -168,13 +217,14 @@ export function formatarWhatsapp(digitos: string): string {
 
 export const DICAS = {
   total: "Quantas avaliações chegaram no período e na origem escolhidos. Cada envio da página do QR conta uma.",
-  atendimento: "Média das notas de 1 a 5 da pergunta de atendimento: soma das notas dividida por quantas pessoas responderam essa pergunta.",
-  comida: "Média das notas de 1 a 5 da pergunta da comida: soma das notas dividida por quantas pessoas responderam essa pergunta.",
+  media: "Média das notas de 1 a 5 desta pergunta: soma das notas dividida por quantas pessoas responderam essa pergunta.",
+  pedidoCerto: "Delivery e apps: porcentagem de quem respondeu que o pedido chegou certinho, sem faltar nada, sobre quem respondeu essa pergunta.",
+  atendentes: "Quantas avaliações citaram cada pessoa em \"quem atendeu\", com a média da nota de atendimento (1 a 5) e da nota de indicação (0 a 10) dessas avaliações.",
   nps:
     "NPS (de -100 a 100): porcentagem de quem deu 9 ou 10 na pergunta \"indicaria\" menos a porcentagem de quem deu de 0 a 6. Quem deu 7 ou 8 conta no total, mas não soma nem tira.",
   notasBaixas:
-    "Avaliações com atendimento ou comida até 2, ou nota de indicação até 6. São as que viram alerta no WhatsApp de quem você marcou para receber.",
-  espera: "Quantas pessoas escolheram cada faixa de tempo de espera, e a porcentagem sobre quem respondeu essa pergunta.",
+    "Avaliações com qualquer nota de estrelas até 2, nota de indicação até 6 ou pedido que veio errado. São as que viram alerta no WhatsApp de quem você marcou para receber.",
+  espera: "Pergunta antiga (até 13/11/2026): quantas pessoas escolheram cada faixa de tempo de espera, e a porcentagem sobre quem respondeu.",
   conheceu: "Quantas pessoas escolheram cada forma de conhecer o restaurante, e a porcentagem sobre quem respondeu essa pergunta.",
 } as const;
 
@@ -186,9 +236,10 @@ export function gerarCsv(respostas: RespostaPainel[]): string {
   const cabecalho = [
     "Data e hora",
     "Origem",
-    "Atendimento (1 a 5)",
-    "Comida (1 a 5)",
-    "Tempo de espera",
+    ...CHAVES_ESTRELAS.map((c) => `${definicao(c).nome} (1 a 5)`),
+    "Pedido certo",
+    "Quem atendeu",
+    "Tempo de espera (antiga)",
     "Indicaria (0 a 10)",
     "Como conheceu",
     "Como conheceu (outro)",
@@ -201,8 +252,12 @@ export function gerarCsv(respostas: RespostaPainel[]): string {
     linhaCsv([
       dataHoraBr(r.criadoEm),
       ROTULO_ORIGEM[r.origem],
-      r.atendimento === null ? "" : String(r.atendimento),
-      r.comida === null ? "" : String(r.comida),
+      ...CHAVES_ESTRELAS.map((c) => {
+        const n = notaDe(r, c);
+        return n === null ? "" : String(n);
+      }),
+      r.pedidoCerto === null ? "" : r.pedidoCerto ? "Sim" : "Não",
+      rotuloAtendente(r.atendente),
       rotuloOpcao("espera", r.espera),
       r.nps === null ? "" : String(r.nps),
       rotuloOpcao("conheceu", r.conheceu),

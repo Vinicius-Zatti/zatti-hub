@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirecionarSemEdicao, temPermissao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { carregarDestinatarios, carregarPesquisa, carregarSituacaoAlertas, urlPublicaLogo } from "@/lib/avaliacoes/servidor";
-import { ROTULO_ORIGEM, definicao } from "@/lib/avaliacoes/perguntas";
+import { ROTULO_ORIGEM, definicao, perguntasDoTipo } from "@/lib/avaliacoes/perguntas";
 import { urlBase, urlPublica } from "@/lib/avaliacoes/qr";
 import { DICA_ALERTA } from "@/lib/avaliacoes/alertas";
 import { DicaCalculo } from "@/components/dica-calculo";
@@ -13,6 +13,7 @@ import { EditorPerguntas } from "@/components/avaliacoes/editor-perguntas";
 import { LogoUpload } from "@/components/avaliacoes/logo-upload";
 import { DestinatarioAlerta } from "@/components/avaliacoes/destinatario-alerta";
 import { TiposPesquisa } from "@/components/avaliacoes/tipos-pesquisa";
+import { EditorExtras } from "@/components/avaliacoes/editor-extras";
 
 const CARTAO = "flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4";
 const TITULO = "font-display text-lg font-bold text-azul-noite";
@@ -132,16 +133,55 @@ export default async function ConfigurarAvaliacoesPage() {
 
       <section className={CARTAO}>
         <h2 className={TITULO}>Perguntas (versão {pesquisa.versaoAtual})</h2>
-        <ol className="flex flex-col gap-1 text-sm">
-          {pesquisa.perguntas.map((p) => (
-            <li key={p.chave} className={p.ativa ? "" : "text-cinza-medio line-through"}>
-              <span className="font-semibold">{definicao(p.chave).nome}:</span> {p.texto}
-              {!p.ativa && <span className="ml-2 text-xs no-underline">(desligada)</span>}
-            </li>
+        <p className="text-sm text-cinza">Cada tipo de pesquisa faz só as perguntas que fazem sentido para ele. Uma pergunta por tela; tocou na resposta, passa para a próxima.</p>
+        <div className="grid gap-3 md:grid-cols-3">
+          {pesquisa.origens.map((o) => (
+            <div key={o} className="rounded-md border border-cinza-claro p-3">
+              <p className="text-sm font-bold text-azul-noite">{ROTULO_ORIGEM[o]}</p>
+              <ol className="mt-1 list-decimal pl-5 text-sm">
+                {perguntasDoTipo(pesquisa.perguntas, o, pesquisa.atendentes).map((p) => (
+                  <li key={p.chave}>
+                    <span className="font-semibold">{definicao(p.chave).nome}:</span> {p.texto}
+                  </li>
+                ))}
+              </ol>
+            </div>
           ))}
-        </ol>
-        <p className="text-xs text-cinza-medio">No fim, a pessoa pode deixar o WhatsApp (opcional, com a autorização desmarcada).</p>
+        </div>
+        {pesquisa.perguntas.some((p) => !p.ativa) && (
+          <p className="text-xs text-cinza-medio">
+            Desligadas:{" "}
+            {pesquisa.perguntas
+              .filter((p) => !p.ativa)
+              .map((p) => definicao(p.chave).nome)
+              .join(", ")}
+            .
+          </p>
+        )}
+        <p className="text-xs text-cinza-medio">Quem dá nota baixa pode deixar o WhatsApp para a equipe falar com ele (opcional, com a autorização desmarcada).</p>
         {podeEditar && <EditorPerguntas atuais={pesquisa.perguntas} versao={pesquisa.versaoAtual} />}
+      </section>
+
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Quem atende e pedir direto</h2>
+        <p className="text-sm">
+          <span className="font-semibold text-azul-noite">Quem atende no salão: </span>
+          {pesquisa.atendentes.length ? pesquisa.atendentes.join(", ") : <span className="text-cinza-medio">ninguém cadastrado</span>}
+          {pesquisa.atendentes.length > 0 && !pesquisa.perguntas.find((p) => p.chave === "atendente")?.ativa ? (
+            <span className="text-cinza-medio"> (a pergunta &quot;quem atendeu&quot; está desligada)</span>
+          ) : null}
+        </p>
+        <p className="text-sm">
+          <span className="font-semibold text-azul-noite">Link de pedir direto: </span>
+          {pesquisa.linkPedidoDireto ? (
+            <a href={pesquisa.linkPedidoDireto} target="_blank" rel="noopener noreferrer" className="break-all text-azul-petroleo underline">
+              {pesquisa.linkPedidoDireto}
+            </a>
+          ) : (
+            <span className="text-cinza-medio">sem link (o convite não aparece)</span>
+          )}
+        </p>
+        {podeEditar && <EditorExtras atendentes={pesquisa.atendentes} linkPedidoDireto={pesquisa.linkPedidoDireto} />}
       </section>
 
       <section className={CARTAO}>

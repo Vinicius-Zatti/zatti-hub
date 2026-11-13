@@ -23,7 +23,9 @@ describe("cores e contraste", () => {
   it("marca com cores parecidas não salva; link do Google só https", () => {
     const base = { nomeExibido: "Dom Quixote", corPrincipal: "#1F4E79", corFundo: "#FFFFFF", textoAgradecimento: "Obrigado!", linkGoogle: "", ativa: true };
     expect(validarMarca(base)).toMatchObject({ ok: true, marca: { linkGoogle: null } });
-    expect(validarMarca({ ...base, corPrincipal: "#F0F0F0" })).toMatchObject({ ok: false });
+    // Sem contraste mínimo desde 13/11/2026 (amarelo da marca sobre fundo creme salva).
+    expect(validarMarca({ ...base, corPrincipal: "#FCBB23", corFundo: "#FFF9EC" })).toMatchObject({ ok: true });
+    expect(validarMarca({ ...base, corPrincipal: "azul" })).toMatchObject({ ok: false });
     expect(validarMarca({ ...base, linkGoogle: "http://g.page/x" })).toMatchObject({ ok: false });
     expect(validarMarca({ ...base, nomeExibido: " " })).toMatchObject({ ok: false });
     expect(normalizarLinkGoogle("https://g.page/r/abc/review")).toEqual({ ok: true, valor: "https://g.page/r/abc/review" });

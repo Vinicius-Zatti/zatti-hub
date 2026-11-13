@@ -21,6 +21,13 @@ function resposta(p: Partial<RespostaPainel>): RespostaPainel {
     origem: "salao",
     atendimento: null,
     comida: null,
+    tempo: null,
+    ambiente: null,
+    embalagem: null,
+    entrega: null,
+    atendimentoPedido: null,
+    pedidoCerto: null,
+    atendente: null,
     espera: null,
     nps: null,
     conheceu: null,
@@ -55,14 +62,33 @@ describe("NPS e médias", () => {
     ]);
     expect(r.total).toBe(3);
     expect(r.porOrigem).toEqual({ salao: 2, delivery: 1, app: 0 });
-    expect(r.mediaAtendimento).toBe(3.5);
-    expect(r.respostasAtendimento).toBe(2);
-    expect(r.mediaComida).toBe(3);
+    expect(r.medias.find((m) => m.chave === "atendimento")).toMatchObject({ media: 3.5, respostas: 2 });
+    expect(r.medias.find((m) => m.chave === "comida")).toMatchObject({ media: 3, respostas: 2 });
+    // Pergunta sem nenhuma nota não vira cartão (só atendimento e comida aparecem sempre).
+    expect(r.medias.map((m) => m.chave)).toEqual(["atendimento", "comida"]);
     expect(r.nps.nps).toBe(0);
     expect(r.notasBaixas).toBe(2);
     expect(r.espera.find((e) => e.valor === "ate_15")).toMatchObject({ quantidade: 1, percentual: 50 });
     expect(r.conheceu.find((e) => e.valor === "outro")).toMatchObject({ quantidade: 1, percentual: 50 });
     expect(r.conheceuOutros).toEqual(["Rádio"]);
+  });
+
+  it("perguntas novas (13/11/2026): médias por pergunta, pedido certo e quem atendeu", () => {
+    const r = resumir([
+      resposta({ id: "a", atendimento: 5, tempo: 4, ambiente: 5, atendente: "Bruno", nps: 10 }),
+      resposta({ id: "b", atendimento: 3, tempo: 2, atendente: "Bruno", nps: 6, notaBaixa: true }),
+      resposta({ id: "c", atendente: "nao_lembro", atendimento: 4 }),
+      resposta({ id: "d", origem: "app", pedidoCerto: false, embalagem: 2, comida: 3, notaBaixa: true }),
+      resposta({ id: "e", origem: "app", pedidoCerto: true, embalagem: 5, comida: 5 }),
+    ]);
+    expect(r.medias.find((m) => m.chave === "tempo")).toMatchObject({ media: 3, respostas: 2 });
+    expect(r.medias.find((m) => m.chave === "embalagem")).toMatchObject({ media: 3.5, respostas: 2 });
+    expect(r.medias.some((m) => m.chave === "entrega")).toBe(false);
+    expect(r.pedidoCerto).toEqual({ certos: 1, total: 2 });
+    expect(r.atendentes).toEqual([
+      { nome: "Bruno", quantidade: 2, mediaAtendimento: 4, mediaIndicaria: 8 },
+      { nome: "Não lembra o nome", quantidade: 1, mediaAtendimento: 4, mediaIndicaria: null },
+    ]);
   });
 
   it("filtro de origem", () => {
@@ -116,7 +142,7 @@ describe("contatos e CSV", () => {
     ]);
     expect(csv.startsWith("﻿Data e hora;Origem;")).toBe(true);
     const linha = csv.split("\r\n")[1];
-    expect(linha).toContain("12/11/2026 20:14;Salão;5;4;Até 15 min;9;Instagram;;");
+    expect(linha).toContain("12/11/2026 20:14;Salão;5;4;;;;;;;;Até 15 min;9;Instagram;;");
     expect(linha).toContain(`"'=HYPERLINK(""x"")"`);
     expect(linha).toContain("(16) 99999-0001");
   });

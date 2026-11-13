@@ -1,5 +1,5 @@
 import { dataHoraBr } from "./painel";
-import { ROTULO_ORIGEM, rotuloOpcao, ehOrigem } from "./perguntas";
+import { ROTULO_ORIGEM, rotuloAtendente, rotuloOpcao, ehOrigem } from "./perguntas";
 
 // Alerta de nota baixa pelo WhatsApp do Vini (12/11/2026). Mesmo contrato dos avisos do Garante:
 // o banco reserva (`avaliacoes_alertas_reservar`), o Hub monta o texto aqui, o Vini envia e
@@ -18,6 +18,13 @@ export type AlertaParaEnvio = {
   origem: string;
   atendimento: number | null;
   comida: number | null;
+  tempo?: number | null;
+  ambiente?: number | null;
+  embalagem?: number | null;
+  entrega?: number | null;
+  atendimentoPedido?: number | null;
+  pedidoCerto?: boolean | null;
+  atendente?: string | null;
   nps: number | null;
   espera: string | null;
   comentario: string | null;
@@ -32,12 +39,28 @@ function primeiroNome(nome: string | null | undefined): string | null {
   return limpo ? limpo.split(/\s+/)[0] : null;
 }
 
-/** "Atendimento 2, Indicaria 5" (só as notas respondidas). */
-export function notasDoAlerta(a: Pick<AlertaParaEnvio, "atendimento" | "comida" | "nps">): string {
+type NotasDoAlerta = Pick<AlertaParaEnvio, "atendimento" | "comida" | "nps"> &
+  Partial<Pick<AlertaParaEnvio, "tempo" | "ambiente" | "embalagem" | "entrega" | "atendimentoPedido" | "pedidoCerto">>;
+
+const ROTULOS_NOTA: [keyof NotasDoAlerta, string][] = [
+  ["atendimento", "Atendimento"],
+  ["atendimentoPedido", "Atendimento no pedido"],
+  ["comida", "Comida"],
+  ["embalagem", "Temperatura e embalagem"],
+  ["tempo", "Tempo até a mesa"],
+  ["entrega", "Tempo de entrega"],
+  ["ambiente", "Ambiente"],
+];
+
+/** "Pedido veio errado, Comida 2, Indicaria 5" (só o que foi respondido). */
+export function notasDoAlerta(a: NotasDoAlerta): string {
   const partes: string[] = [];
-  if (a.atendimento !== null) partes.push(`Atendimento ${a.atendimento}`);
-  if (a.comida !== null) partes.push(`Comida ${a.comida}`);
-  if (a.nps !== null) partes.push(`Indicaria ${a.nps}`);
+  if (a.pedidoCerto === false) partes.push("Pedido veio errado ou faltando");
+  for (const [chave, rotulo] of ROTULOS_NOTA) {
+    const n = a[chave];
+    if (typeof n === "number") partes.push(`${rotulo} ${n}`);
+  }
+  if (a.nps !== null && a.nps !== undefined) partes.push(`Indicaria ${a.nps}`);
   return partes.join(", ");
 }
 
@@ -53,6 +76,7 @@ export function linhaDoAlerta(a: AlertaParaEnvio): string {
   const origem = ehOrigem(a.origem) ? ROTULO_ORIGEM[a.origem] : a.origem;
   const partes = [`${origem}, ${dataHoraBr(a.criadoEm)}: ${notasDoAlerta(a)}.`];
   if (a.espera) partes.push(`Espera: ${rotuloOpcao("espera", a.espera)}.`);
+  if (a.atendente) partes.push(`Atendido por: ${rotuloAtendente(a.atendente)}.`);
   const comentario = comentarioSeguro(a.comentario);
   if (comentario) partes.push(`Comentário: "${comentario}"`);
   if (a.whatsappCliente) partes.push("O cliente deixou contato para retorno: a gestão vê em Avaliações.");
@@ -80,4 +104,4 @@ export function telefoneParaEnvio(whatsapp: string): string {
 }
 
 export const DICA_ALERTA =
-  "Toda avaliação com atendimento ou comida até 2, ou nota de indicação até 6, vira alerta. O Hub junta o que chegou desde o último ciclo (a cada 10 min, das 7h às 23h) numa mensagem só e o Vini manda para o WhatsApp da pessoa marcada aqui. Alerta com mais de 3 dias sem sair expira. Avaliação que chegou sem ninguém marcado não vira alerta depois.";
+  "Toda avaliação com alguma nota de estrelas até 2, nota de indicação até 6 ou pedido que veio errado vira alerta. O Hub junta o que chegou desde o último ciclo (a cada 10 min, das 7h às 23h) numa mensagem só e o Vini manda para o WhatsApp da pessoa marcada aqui. Alerta com mais de 3 dias sem sair expira. Avaliação que chegou sem ninguém marcado não vira alerta depois.";
