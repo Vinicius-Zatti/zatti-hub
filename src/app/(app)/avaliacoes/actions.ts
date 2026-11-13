@@ -8,6 +8,7 @@ import { mensagemSemEdicao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { BUCKET_LOGOS } from "@/lib/avaliacoes/servidor";
 import { TIPOS_LOGO, validarLogo, validarMarca, type EntradaMarca } from "@/lib/avaliacoes/marca";
+import { codigoValido, normalizarCodigo, validarRoleta, type PremioEntrada } from "@/lib/avaliacoes/roleta";
 import { ehOrigem, normalizarAtendentes, validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
 
 // Avaliações (gestão). Tudo que grava vai pela sessão da pessoa, nas RPCs `avaliacoes_*`, que
@@ -45,6 +46,9 @@ function mensagemErro(mensagem: string): string {
   if (mensagem.includes("nenhuma_ativa")) return "Deixe ao menos uma pergunta ligada.";
   if (mensagem.includes("texto_pergunta")) return "O texto de cada pergunta deve ter de 3 a 200 letras.";
   if (mensagem.includes("logo_invalida")) return "Arquivo de logo inválido.";
+  if (mensagem.includes("roleta_sem_premio")) return "Cadastre ao menos um prêmio para ligar a roleta.";
+  if (mensagem.includes("premio_invalido") || mensagem.includes("premios_invalidos")) return "Confira os prêmios: nome de 2 a 60 letras e chance de 1 a 100.";
+  if (mensagem.includes("validade_invalida")) return "A validade do cupom deve ser de 1 a 180 dias.";
   if (mensagem.includes("origens_vazias")) return "Deixe pelo menos um tipo de pesquisa ligado.";
   return "Não foi possível salvar. Tente de novo.";
 }
@@ -194,4 +198,49 @@ export async function salvarLogoAction(formData: FormData): Promise<Resultado> {
   if (typeof data === "string" && data && data !== caminho) await admin.storage.from(BUCKET_LOGOS).remove([data]);
   revalidar();
   return { ok: true };
+}
+
+/** Liga ou desliga a roleta dos apps, a validade do cupom e os prêmios (até 8). */
+export async function salvarRoletaAction(entrada: { ativa: boolean; validadeDias: number; premios: PremioEntrada[] }): Promise<Resultado> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  if (!entrada || typeof entrada.ativa !== "boolean" || !Array.isArray(entrada.premios)) return { erro: "Pedido inválido." };
+  const v = validarRoleta({
+    ativa: entrada.ativa,
+    validadeDias: Number(entrada.validadeDias),
+    premios: entrada.premios.map((p) => ({ id: typeof p?.id === "string" ? p.id : null, nome: String(p?.nome ?? ""), regra: String(p?.regra ?? ""), peso: Number(p?.peso) })),
+  });
+  if (!v.ok) return { erro: v.erro };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("avaliacoes_salvar_roleta", {
+    p_unidade_id: acesso.unidadeId,
+    p_ativa: v.ativa,
+    p_validade_dias: v.validadeDias,
+    p_premios: v.premios.map((p) => ({ ...(p.id ? { id: p.id } : {}), nome: p.nome, regra: p.regra, peso: p.peso })),
+  });
+  if (error) return { erro: mensagemErro(error.message) };
+  revalidar();
+  return { ok: true };
+}
+
+export type ResultadoBaixa = { ok: true; premio: string; regra: string | null } | { erro: string };
+
+/** Dá baixa no cupom que o cliente apresentou no pedido direto. */
+export async function baixarCupomAction(codigoDigitado: string): Promise<ResultadoBaixa> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  const codigo = normalizarCodigo(String(codigoDigitado ?? "").slice(0, 20));
+  if (!codigoValido(codigo)) return { erro: "O código tem 6 letras e números (ex.: K7P2QM). Confira o que o cliente mandou." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("avaliacoes_baixar_cupom", { p_unidade_id: acesso.unidadeId, p_codigo: codigo });
+  if (error) return { erro: mensagemErro(error.message) };
+  const r = (data ?? {}) as { ok?: boolean; codigo?: string; premio?: string; regra?: string | null; usadoEm?: string; validoAte?: string };
+  const data_ = (iso?: string) => (iso ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso)) : "");
+  if (r.ok) {
+    revalidar();
+    return { ok: true, premio: r.premio ?? "", regra: r.regra ?? null };
+  }
+  if (r.codigo === "ja_usado") return { erro: `Este cupom (${r.premio ?? ""}) já foi usado em ${data_(r.usadoEm)}.` };
+  if (r.codigo === "vencido") return { erro: `Este cupom (${r.premio ?? ""}) venceu em ${data_(r.validoAte)}.` };
+  return { erro: "Cupom não encontrado nesta unidade. Confira o código." };
 }

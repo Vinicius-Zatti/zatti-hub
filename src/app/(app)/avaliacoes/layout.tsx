@@ -5,6 +5,7 @@ const SUB_ITEMS = [
   { label: "Painel", href: "/avaliacoes" },
   { label: "Configurar", href: "/avaliacoes/configurar" },
   { label: "Arte do QR", href: "/avaliacoes/qr" },
+  { label: "Cupons", href: "/avaliacoes/cupons" },
 ];
 
 // Avaliações (12/11/2026): gestão e master, módulo ligado. Cada página e cada Server Action

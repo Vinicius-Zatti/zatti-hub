@@ -43,6 +43,7 @@ export default async function ArteQrPage() {
             corPrincipal={pesquisa.corPrincipal}
             corFundo={pesquisa.corFundo}
             logoDataUrl={logoDataUrl}
+            roleta={pesquisa.roletaAtiva}
           />
         ))}
       </div>

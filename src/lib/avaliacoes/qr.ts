@@ -64,7 +64,8 @@ export const ARTE = { larguraPx: 1181, alturaPx: 1772, larguraCm: 10, alturaCm: 
 
 export const CHAMADA_ARTE = "Conta pra gente como foi";
 
-export function subtituloArte(origem: Origem): string {
+export function subtituloArte(origem: Origem, roleta = false): string {
+  if (origem === "app" && roleta) return "Pediu pelo app? Avalie seu pedido e gire a roleta de prêmios. Leva menos de 1 minuto.";
   if (origem === "salao") return "Aponte a câmera do celular para o código. Leva menos de 1 minuto.";
   if (origem === "app") return "Pediu pelo app? Aponte a câmera e avalie seu pedido. Leva menos de 1 minuto.";
   return "Aponte a câmera do celular e avalie seu pedido. Leva menos de 1 minuto.";

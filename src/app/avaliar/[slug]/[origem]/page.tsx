@@ -49,6 +49,7 @@ export default async function PaginaAvaliar({ params }: { params: Promise<Params
       agradecimento={pesquisa.agradecimento}
       linkGoogle={pesquisa.linkGoogle}
       linkPedidoDireto={pesquisa.linkPedidoDireto}
+      roleta={pesquisa.roleta}
       perguntas={perguntasDoTipo(pesquisa.perguntas, origem, pesquisa.atendentes)}
       atendentes={pesquisa.atendentes}
       termoVersao={pesquisa.termoVersao}

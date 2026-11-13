@@ -2,6 +2,8 @@
 
 import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
 import { enviarAvaliacaoAction, type EstadoAvaliacao } from "../../acoes";
+import { RoletaPremios } from "./roleta";
+import type { PremioPublico } from "@/lib/avaliacoes/roleta";
 import { COR_ESTRELA, contraste, corDaNotaNps, corTextoSobre } from "@/lib/avaliacoes/marca";
 import {
   LIMITE_COMENTARIO,
@@ -48,6 +50,8 @@ type Props = {
   agradecimento: string;
   linkGoogle: string | null;
   linkPedidoDireto: string | null;
+  /** Prêmios da roleta (vazio = sem roleta). Só no fim da pesquisa dos apps. */
+  roleta: PremioPublico[];
   perguntas: PerguntaPublica[];
   atendentes: string[];
   termoVersao: number;
@@ -192,7 +196,20 @@ export function FormularioAvaliacao(p: Props) {
           {pedeContato && whatsapp.trim() && consentimento ? "Recebemos sua mensagem. Alguém da equipe vai falar com você pelo WhatsApp." : p.agradecimento}
         </p>
 
-        {p.origem === "app" && p.linkPedidoDireto ? (
+        {p.origem === "app" && estado.respostaId && p.roleta.length > 0 ? (
+          <div className="mt-7 w-full max-w-sm">
+            <RoletaPremios
+              respostaId={estado.respostaId}
+              premios={p.roleta}
+              nome={p.nome}
+              corPrincipal={p.corPrincipal}
+              tinta={tinta}
+              textoBotao={textoBotao}
+              estiloCartao={estiloOpcao}
+              linkPedidoDireto={p.linkPedidoDireto}
+            />
+          </div>
+        ) : p.origem === "app" && p.linkPedidoDireto ? (
           <div className="mt-7 w-full max-w-sm rounded-2xl border-2 p-5 text-left" style={estiloOpcao}>
             <p className="text-lg font-bold">Da próxima vez, peça direto com a gente</p>
             <p className="mt-1 text-sm leading-snug" style={{ color: suave }}>
