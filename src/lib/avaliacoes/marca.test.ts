@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contraste, corTextoSobre, normalizarCor, normalizarLinkGoogle, qualidadeLogoImpressao, validarLogo, validarMarca } from "./marca";
+import { COR_ESTRELA, contraste, corDaNotaNps, corTextoSobre, normalizarCor, normalizarLinkGoogle, qualidadeLogoImpressao, validarLogo, validarMarca } from "./marca";
 
 describe("cores e contraste", () => {
   it("normaliza a cor para #RRGGBB maiúsculo", () => {
@@ -59,5 +59,15 @@ describe("qualidade da logo para impressão", () => {
     expect(qualidadeLogoImpressao(800, 800).baixa).toBe(false);
     expect(qualidadeLogoImpressao(1200, 300).baixa).toBe(false);
     expect(qualidadeLogoImpressao(0, 0).baixa).toBe(false);
+  });
+});
+
+describe("corDaNotaNps", () => {
+  it("separa as faixas do NPS: 0-6 vermelho, 7-8 âmbar, 9-10 verde", () => {
+    expect(corDaNotaNps(0).fundo).toBe(corDaNotaNps(6).fundo);
+    expect(corDaNotaNps(7).fundo).toBe(COR_ESTRELA);
+    expect(corDaNotaNps(8).fundo).toBe(COR_ESTRELA);
+    expect(corDaNotaNps(9).fundo).toBe(corDaNotaNps(10).fundo);
+    expect(corDaNotaNps(6).fundo).not.toBe(corDaNotaNps(9).fundo);
   });
 });

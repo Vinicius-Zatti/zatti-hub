@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { salvarMarcaAction } from "@/app/(app)/avaliacoes/actions";
-import { CONTRASTE_MINIMO, LIMITE_AGRADECIMENTO, LIMITE_NOME, contraste, corTextoSobre, normalizarCor, textoContraste } from "@/lib/avaliacoes/marca";
+import { COR_ESTRELA, CONTRASTE_MINIMO, LIMITE_AGRADECIMENTO, LIMITE_NOME, contraste, corTextoSobre, normalizarCor, textoContraste } from "@/lib/avaliacoes/marca";
 
 export type MarcaAtual = {
   nomeExibido: string;
@@ -147,12 +147,13 @@ export function Previa({ nome, principal, fundo }: { nome: string; principal: st
   const texto = corTextoSobre(fundo);
   const textoBotao = corTextoSobre(principal);
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-cinza-claro p-4" style={{ backgroundColor: fundo, color: texto }} aria-label="Prévia da página">
+    <div className="flex flex-col gap-3 overflow-hidden rounded-lg border border-cinza-claro p-4 pt-0" style={{ backgroundColor: fundo, color: texto }} aria-label="Prévia da página">
+      <div className="-mx-4 h-8" style={{ backgroundColor: principal }} aria-hidden="true" />
       <p className="text-center text-base font-bold">{nome || "Nome"}</p>
       <p className="text-sm font-semibold">Como foi o atendimento?</p>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
-          <svg key={n} viewBox="0 0 24 24" className="h-7 w-7" fill={n <= 4 ? principal : "none"} stroke={principal} strokeWidth="1.6" aria-hidden="true">
+          <svg key={n} viewBox="0 0 24 24" className="h-7 w-7" fill={n <= 4 ? COR_ESTRELA : "none"} stroke={n <= 4 ? COR_ESTRELA : `${texto}59`} strokeWidth="1.6" aria-hidden="true">
             <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
           </svg>
         ))}

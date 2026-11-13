@@ -27,16 +27,24 @@ export default async function PaginaAvaliar({ params }: { params: Promise<Params
   if (!pesquisa) notFound();
   const texto = corTextoSobre(pesquisa.corFundo);
 
+  // Visual de 13/11/2026: faixa na cor principal no topo, logo em destaque sobre ela e as perguntas
+  // em cartões (antes era tudo solto no fundo e parecia formulário de sistema).
   return (
     <div className="min-h-dvh" style={{ backgroundColor: pesquisa.corFundo, color: texto }}>
-      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10 pt-6">
-        {pesquisa.logoUrl ? (
-          // Logo do bucket público da unidade (até 300 KB); tamanho livre, por isso <img>.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={pesquisa.logoUrl} alt={pesquisa.nome} className="mx-auto h-auto max-h-28 w-auto max-w-[60%] object-contain" />
-        ) : (
-          <p className="text-center text-2xl font-bold">{pesquisa.nome}</p>
-        )}
+      <div className="h-36 w-full" style={{ backgroundColor: pesquisa.corPrincipal }} aria-hidden="true" />
+      <main className="mx-auto -mt-20 flex w-full max-w-md flex-col px-4 pb-10">
+        <div
+          className="mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-white"
+          style={{ boxShadow: `0 0 0 5px ${pesquisa.corFundo}, 0 12px 28px rgba(0,0,0,0.22)` }}
+        >
+          {pesquisa.logoUrl ? (
+            // Logo do bucket público da unidade (até 300 KB); tamanho livre, por isso <img>.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={pesquisa.logoUrl} alt={pesquisa.nome} className="h-full w-full object-contain p-2" />
+          ) : (
+            <span className="px-3 text-center text-base font-bold leading-tight text-[#111111]">{pesquisa.nome}</span>
+          )}
+        </div>
         {/* Tipo desligado pela gestão (13/11/2026) mostra a mesma pausa da pesquisa parada. */}
         {pesquisa.ativa && pesquisa.origens.includes(origem) ? (
           <FormularioAvaliacao
@@ -44,6 +52,7 @@ export default async function PaginaAvaliar({ params }: { params: Promise<Params
             origem={origem}
             nome={pesquisa.nome}
             corPrincipal={pesquisa.corPrincipal}
+            corFundo={pesquisa.corFundo}
             corTexto={texto}
             agradecimento={pesquisa.agradecimento}
             linkGoogle={pesquisa.linkGoogle}

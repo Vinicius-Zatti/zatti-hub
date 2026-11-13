@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
 import { enviarAvaliacaoAction, type EstadoAvaliacao } from "../../acoes";
-import { corTextoSobre } from "@/lib/avaliacoes/marca";
+import { COR_ESTRELA, corDaNotaNps, corTextoSobre } from "@/lib/avaliacoes/marca";
 import { LIMITE_COMENTARIO, LIMITE_CONHECEU_OUTRO, type Origem, type PerguntaPublica } from "@/lib/avaliacoes/perguntas";
 
 const CHAVE_APARELHO = "zh_avaliacao_aparelho";
@@ -27,6 +27,7 @@ type Props = {
   origem: Origem;
   nome: string;
   corPrincipal: string;
+  corFundo: string;
   /** Cor do texto sobre o fundo (preto ou branco, o que contrastar mais). */
   corTexto: string;
   agradecimento: string;
@@ -36,9 +37,20 @@ type Props = {
   termoTexto: string;
 };
 
-function Estrela({ cheia, cor }: { cheia: boolean; cor: string }) {
+const ROTULO_ESTRELAS = ["", "Péssimo", "Ruim", "Regular", "Bom", "Excelente"];
+
+/** Estrela dourada quando marcada; vazia, só o contorno suave na cor do texto. */
+function Estrela({ cheia, contorno }: { cheia: boolean; contorno: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-11 w-11" fill={cheia ? cor : "none"} stroke={cor} strokeWidth="1.6" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`h-12 w-12 transition-transform duration-150 ${cheia ? "scale-110" : "scale-100"}`}
+      fill={cheia ? COR_ESTRELA : "none"}
+      stroke={cheia ? COR_ESTRELA : contorno}
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+    >
       <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
     </svg>
   );
@@ -58,10 +70,22 @@ export function FormularioAvaliacao(p: Props) {
   const borda = `${p.corTexto}4D`;
   const estiloEscolhido: CSSProperties = { backgroundColor: p.corPrincipal, borderColor: p.corPrincipal, color: textoPrincipal };
   const estiloLivre: CSSProperties = { borderColor: borda };
+  // Cartão de cada pergunta: branco sobre fundo claro; translúcido sobre fundo escuro.
+  const claro = p.corTexto === "#111111";
+  const estiloCartao: CSSProperties = claro
+    ? { backgroundColor: "#FFFFFF", borderColor: "#11111114", boxShadow: "0 4px 18px rgba(17,17,17,0.07)" }
+    : { backgroundColor: "#FFFFFF12", borderColor: "#FFFFFF1F" };
+  const obrigatorias = p.perguntas.filter((q) => q.obrigatoria);
+  const respondidas = obrigatorias.filter((q) => (valores[q.chave] ?? "").trim()).length;
 
   if (estado.ok) {
     return (
-      <section className="mt-10 space-y-6 text-center" aria-live="polite">
+      <section className="mt-8 space-y-6 text-center" aria-live="polite">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full" style={{ backgroundColor: COR_ESTRELA }} aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-10 w-10" fill="none" stroke="#111111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m5 12.5 4.5 4.5L19 7.5" />
+          </svg>
+        </div>
         <h1 className="text-3xl font-bold">Obrigado!</h1>
         <p className="text-lg">{p.agradecimento}</p>
         {/* Para TODOS, qualquer nota: mostrar só para quem gostou é proibido pelo Google. */}
@@ -72,7 +96,7 @@ export function FormularioAvaliacao(p: Props) {
               href={p.linkGoogle}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-[56px] w-full items-center justify-center rounded-2xl px-6 text-lg font-semibold"
+              className="flex min-h-[56px] w-full items-center justify-center rounded-2xl px-6 text-lg font-semibold shadow-lg"
               style={{ backgroundColor: p.corPrincipal, color: textoPrincipal }}
             >
               Avaliar no Google
@@ -103,7 +127,7 @@ export function FormularioAvaliacao(p: Props) {
   const campoComErro = estado.campo;
 
   return (
-    <form action={enviar} className="mt-6 space-y-8" noValidate>
+    <form action={enviar} className="mt-5 space-y-4" noValidate>
       <h1 className="text-center text-2xl font-bold leading-tight">
         {p.origem === "salao"
           ? `Como foi sua visita na ${p.nome}?`
@@ -111,6 +135,17 @@ export function FormularioAvaliacao(p: Props) {
             ? `Como foi seu pedido da ${p.nome} pelo app?`
             : `Como foi seu pedido da ${p.nome}?`}
       </h1>
+      <p className="text-center text-sm opacity-70">Leva menos de 1 minuto.</p>
+      {obrigatorias.length > 0 ? (
+        <div className="sticky top-0 z-10 -mx-4 px-4 py-2" style={{ backgroundColor: p.corFundo }}>
+          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: `${p.corTexto}1A` }}>
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${Math.round((respondidas / obrigatorias.length) * 100)}%`, backgroundColor: COR_ESTRELA }}
+            />
+          </div>
+        </div>
+      ) : null}
       <input type="hidden" name="slug" value={p.slug} />
       <input type="hidden" name="origem" value={p.origem} />
       <input type="hidden" name="termo" value={p.termoVersao} />
@@ -126,38 +161,47 @@ export function FormularioAvaliacao(p: Props) {
         const valor = valores[q.chave] ?? "";
         const nomeCampo = `q_${q.chave}`;
         return (
-          <fieldset key={q.chave} id={`pergunta-${q.chave}`} className="scroll-mt-4 space-y-3">
-            <legend className="mb-3 text-lg font-semibold leading-snug">
+          <fieldset key={q.chave} id={`pergunta-${q.chave}`} className="scroll-mt-10 space-y-3 rounded-2xl border p-4" style={estiloCartao}>
+            <legend className="float-left mb-3 w-full text-lg font-semibold leading-snug">
               {q.texto}
               {!q.obrigatoria ? <span className="ml-2 text-sm font-normal opacity-70">(opcional)</span> : null}
             </legend>
 
             {q.tipo === "estrelas" ? (
-              <div className="flex justify-between gap-1" role="radiogroup" aria-label={q.texto}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <label key={n} className="block cursor-pointer rounded-xl p-1 has-[:focus-visible]:outline has-[:focus-visible]:outline-2">
-                    <input type="radio" name={nomeCampo} value={n} checked={valor === String(n)} onChange={() => mudar(q.chave, String(n))} className="sr-only" />
-                    <Estrela cheia={valor !== "" && n <= Number(valor)} cor={p.corPrincipal} />
-                    <span className="sr-only">{n} de 5</span>
-                  </label>
-                ))}
+              <div className="clear-both">
+                <div className="flex justify-between gap-1" role="radiogroup" aria-label={q.texto}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <label key={n} className="block cursor-pointer rounded-xl p-1 has-[:focus-visible]:outline has-[:focus-visible]:outline-2">
+                      <input type="radio" name={nomeCampo} value={n} checked={valor === String(n)} onChange={() => mudar(q.chave, String(n))} className="sr-only" />
+                      <Estrela cheia={valor !== "" && n <= Number(valor)} contorno={`${p.corTexto}59`} />
+                      <span className="sr-only">{n} de 5</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 h-5 text-center text-sm font-semibold" aria-hidden="true">
+                  {valor ? ROTULO_ESTRELAS[Number(valor)] : ""}
+                </p>
               </div>
             ) : null}
 
             {q.tipo === "nps" ? (
               <>
-                <div className="grid grid-cols-6 gap-2">
-                  {Array.from({ length: 11 }, (_, n) => (
-                    <label key={n} className="block">
-                      <input type="radio" name={nomeCampo} value={n} checked={valor === String(n)} onChange={() => mudar(q.chave, String(n))} className="peer sr-only" />
-                      <span
-                        className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-xl border-2 text-lg font-semibold peer-focus-visible:outline peer-focus-visible:outline-2"
-                        style={valor === String(n) ? estiloEscolhido : estiloLivre}
-                      >
-                        {n}
-                      </span>
-                    </label>
-                  ))}
+                <div className="clear-both grid grid-cols-11 gap-1">
+                  {Array.from({ length: 11 }, (_, n) => {
+                    const cor = corDaNotaNps(n);
+                    const escolhida = valor === String(n);
+                    return (
+                      <label key={n} className="block">
+                        <input type="radio" name={nomeCampo} value={n} checked={escolhida} onChange={() => mudar(q.chave, String(n))} className="peer sr-only" />
+                        <span
+                          className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border-2 text-sm font-bold tabular-nums transition-transform peer-focus-visible:outline peer-focus-visible:outline-2 ${escolhida ? "scale-110 shadow-md" : ""}`}
+                          style={escolhida ? { backgroundColor: cor.fundo, borderColor: cor.fundo, color: cor.texto } : { borderColor: cor.fundo }}
+                        >
+                          {n}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
                 <div className="flex justify-between text-sm opacity-70">
                   <span>0 = de jeito nenhum</span>
@@ -167,7 +211,7 @@ export function FormularioAvaliacao(p: Props) {
             ) : null}
 
             {q.tipo === "faixas" || q.tipo === "escolha" ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="clear-both grid grid-cols-2 gap-2">
                 {(q.opcoes ?? []).map((o) => (
                   <label key={o.valor} className="block">
                     <input type="radio" name={nomeCampo} value={o.valor} checked={valor === o.valor} onChange={() => mudar(q.chave, o.valor)} className="peer sr-only" />
@@ -201,7 +245,7 @@ export function FormularioAvaliacao(p: Props) {
                 maxLength={LIMITE_COMENTARIO}
                 rows={3}
                 placeholder="Escreva aqui, se quiser"
-                className="w-full rounded-xl border-2 bg-transparent p-3 text-base"
+                className="clear-both block w-full rounded-xl border-2 bg-transparent p-3 text-base"
                 style={estiloLivre}
               />
             ) : null}
@@ -215,11 +259,11 @@ export function FormularioAvaliacao(p: Props) {
         );
       })}
 
-      <fieldset className="space-y-3 rounded-2xl border-2 p-4" style={estiloLivre}>
-        <legend className="px-1 text-lg font-semibold">
+      <fieldset className="space-y-3 rounded-2xl border p-4" style={estiloCartao}>
+        <legend className="float-left mb-1 w-full text-lg font-semibold">
           Quer que a gente fale com você? <span className="text-sm font-normal opacity-70">(opcional)</span>
         </legend>
-        <label className="block text-base">
+        <label className="clear-both block text-base">
           Seu WhatsApp
           <input
             type="tel"
@@ -266,7 +310,7 @@ export function FormularioAvaliacao(p: Props) {
       <button
         type="submit"
         disabled={pendente}
-        className="min-h-[56px] w-full rounded-2xl px-6 text-lg font-semibold transition active:scale-[0.98] disabled:opacity-60"
+        className="mt-2 min-h-[58px] w-full rounded-2xl px-6 text-lg font-semibold shadow-lg transition active:scale-[0.98] disabled:opacity-60"
         style={{ backgroundColor: p.corPrincipal, color: textoPrincipal }}
       >
         {pendente ? "Enviando..." : "Enviar avaliação"}
