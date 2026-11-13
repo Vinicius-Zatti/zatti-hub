@@ -78,9 +78,15 @@ select lives_ok($$ select public.avaliacoes_salvar_extras('org-pt-loja', array['
   'gestão salva nomes e link');
 select is((select atendentes from avaliacoes_pesquisas where unidade_id = 'org-pt-loja'), array['Bruno', 'Carla Souza']::text[],
   'nomes sem espaço sobrando e sem repetir');
-select lives_ok($$ select public.avaliacoes_salvar_perguntas('org-pt-loja',
-  (select jsonb_agg(case when q ->> 'chave' = 'atendente' then jsonb_set(q, '{ativa}', 'true') else q end)
-     from jsonb_array_elements(public.avaliacoes_perguntas_padrao()) q)) $$, 'gestão liga "quem atendeu"');
+-- O modelo de fábrica só o banco lê: a lista com "quem atendeu" ligada fica numa tabela temporária.
+select pg_temp.servidor();
+create temp table pt_perguntas as
+  select jsonb_agg(case when q ->> 'chave' = 'atendente' then jsonb_set(q, '{ativa}', 'true') else q end) as lista
+    from jsonb_array_elements(public.avaliacoes_perguntas_padrao()) q;
+grant select on pt_perguntas to authenticated;
+select pg_temp.como('00000000-0000-0000-0000-0000000b9001');
+select lives_ok($$ select public.avaliacoes_salvar_perguntas('org-pt-loja', (select lista from pt_perguntas)) $$,
+  'gestão liga "quem atendeu"');
 
 select pg_temp.servidor();
 select is(pg_temp.reg('salao', 'b1', '{"atendimento": 5, "comida": 5, "tempo": 5, "ambiente": 5, "nps": 10, "atendente": "Zé"}') ->> 'campo', 'atendente',
