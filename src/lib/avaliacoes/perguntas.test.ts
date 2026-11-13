@@ -7,8 +7,7 @@ import {
   perguntasAtivas,
   perguntasPadrao,
   validarPerguntas,
-  validarRespostas,
-} from "./perguntas";
+  validarRespostas, ehOrigem, lerOrigens } from "./perguntas";
 
 describe("modelo de perguntas", () => {
   it("nasce com as 6 perguntas ligadas, na ordem do catálogo", () => {
@@ -87,5 +86,17 @@ describe("nota baixa e WhatsApp", () => {
     expect(normalizarWhatsapp("+55 16 3333-4444")).toBe("551633334444");
     expect(normalizarWhatsapp("99999-0001")).toBeNull();
     expect(normalizarWhatsapp("0016999990001")).toBeNull();
+  });
+});
+
+describe("tipos de pesquisa (13/11/2026)", () => {
+  it("salão, delivery próprio e apps; o resto não é origem", () => {
+    expect(ehOrigem("app")).toBe(true);
+    expect(ehOrigem("ifood")).toBe(false);
+  });
+  it("lerOrigens mantém a ordem fixa e, sem dado, liga os três", () => {
+    expect(lerOrigens(["app", "salao"])).toEqual(["salao", "app"]);
+    expect(lerOrigens(["x"])).toEqual(["salao", "delivery", "app"]);
+    expect(lerOrigens(null)).toEqual(["salao", "delivery", "app"]);
   });
 });

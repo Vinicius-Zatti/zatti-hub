@@ -30,9 +30,10 @@ import { CriarPesquisa } from "@/components/avaliacoes/criar-pesquisa";
 import { ExportarCsv } from "@/components/avaliacoes/exportar-csv";
 
 const ORIGENS_FILTRO: { valor: FiltroOrigem; rotulo: string }[] = [
-  { valor: "todas", rotulo: "Salão e delivery" },
+  { valor: "todas", rotulo: "Todas" },
   { valor: "salao", rotulo: "Salão" },
-  { valor: "delivery", rotulo: "Delivery" },
+  { valor: "delivery", rotulo: "Delivery próprio" },
+  { valor: "app", rotulo: "Apps de entrega" },
 ];
 
 const PILULA = "rounded-md px-3 py-1.5 text-xs font-semibold";
@@ -67,7 +68,7 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
   const link = (p: string, o: FiltroOrigem) => `/avaliacoes?periodo=${p}${o === "todas" ? "" : `&origem=${o}`}`;
 
   const cartoes = [
-    { rotulo: "Avaliações", valor: String(r.total), dica: DICAS.total, extra: `${r.porOrigem.salao} salão · ${r.porOrigem.delivery} delivery` },
+    { rotulo: "Avaliações", valor: String(r.total), dica: DICAS.total, extra: `${r.porOrigem.salao} salão · ${r.porOrigem.delivery} delivery · ${r.porOrigem.app} apps` },
     { rotulo: "Atendimento", valor: textoMedia(r.mediaAtendimento), dica: DICAS.atendimento, extra: `de 5 · ${r.respostasAtendimento} notas` },
     { rotulo: "Comida", valor: textoMedia(r.mediaComida), dica: DICAS.comida, extra: `de 5 · ${r.respostasComida} notas` },
     {

@@ -53,5 +53,6 @@ describe("QR Code", () => {
   it("nome do arquivo diz mesa ou delivery", () => {
     expect(nomeArquivoArte("dom-quixote", "salao", "pdf")).toBe("qr-avaliacao-dom-quixote-mesa.pdf");
     expect(nomeArquivoArte("dom-quixote", "delivery", "png")).toBe("qr-avaliacao-dom-quixote-delivery.png");
+    expect(nomeArquivoArte("dom-quixote", "app", "pdf")).toBe("qr-avaliacao-dom-quixote-apps.pdf");
   });
 });

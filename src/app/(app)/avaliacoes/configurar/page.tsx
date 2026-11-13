@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirecionarSemEdicao, temPermissao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { carregarDestinatarios, carregarPesquisa, carregarSituacaoAlertas, urlPublicaLogo } from "@/lib/avaliacoes/servidor";
-import { ORIGENS, ROTULO_ORIGEM, definicao } from "@/lib/avaliacoes/perguntas";
+import { ROTULO_ORIGEM, definicao } from "@/lib/avaliacoes/perguntas";
 import { urlBase, urlPublica } from "@/lib/avaliacoes/qr";
 import { DICA_ALERTA } from "@/lib/avaliacoes/alertas";
 import { DicaCalculo } from "@/components/dica-calculo";
@@ -12,6 +12,7 @@ import { EditorMarca, Previa } from "@/components/avaliacoes/editor-marca";
 import { EditorPerguntas } from "@/components/avaliacoes/editor-perguntas";
 import { LogoUpload } from "@/components/avaliacoes/logo-upload";
 import { DestinatarioAlerta } from "@/components/avaliacoes/destinatario-alerta";
+import { TiposPesquisa } from "@/components/avaliacoes/tipos-pesquisa";
 
 const CARTAO = "flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4";
 const TITULO = "font-display text-lg font-bold text-azul-noite";
@@ -56,7 +57,7 @@ export default async function ConfigurarAvaliacoesPage() {
         <h2 className={TITULO}>Endereço da pesquisa</h2>
         <p className="text-sm text-cinza">Fixo: o QR impresso continua valendo mesmo se você trocar a logo, as cores ou as perguntas.</p>
         <ul className="flex flex-col gap-1 text-sm">
-          {ORIGENS.map((o) => (
+          {pesquisa.origens.map((o) => (
             <li key={o}>
               <span className="font-semibold text-azul-noite">{ROTULO_ORIGEM[o]}: </span>
               <a href={urlPublica(pesquisa.slug, o, base)} target="_blank" rel="noopener noreferrer" className="break-all text-azul-petroleo underline">
@@ -68,6 +69,12 @@ export default async function ConfigurarAvaliacoesPage() {
         <Link href="/avaliacoes/qr" className="self-start rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco">
           Baixar a arte do QR para imprimir
         </Link>
+      </section>
+
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Tipos de pesquisa</h2>
+        <p className="text-sm text-cinza">Cada tipo tem o próprio QR e aparece separado no painel. Desligue o que o restaurante não usa; o QR de um tipo desligado mostra que a pesquisa está pausada.</p>
+        <TiposPesquisa ligadas={pesquisa.origens} podeEditar={podeEditar} />
       </section>
 
       <section className={CARTAO}>

@@ -37,7 +37,8 @@ export default async function PaginaAvaliar({ params }: { params: Promise<Params
         ) : (
           <p className="text-center text-2xl font-bold">{pesquisa.nome}</p>
         )}
-        {pesquisa.ativa ? (
+        {/* Tipo desligado pela gestão (13/11/2026) mostra a mesma pausa da pesquisa parada. */}
+        {pesquisa.ativa && pesquisa.origens.includes(origem) ? (
           <FormularioAvaliacao
             slug={pesquisa.slug}
             origem={origem}
