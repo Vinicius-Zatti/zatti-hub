@@ -186,7 +186,7 @@ export function FormularioAvaliacao(p: Props) {
 
             {q.tipo === "nps" ? (
               <>
-                <div className="clear-both grid grid-cols-6 gap-2">
+                <div className="clear-both grid grid-cols-11 gap-1">
                   {Array.from({ length: 11 }, (_, n) => {
                     const cor = corDaNotaNps(n);
                     const escolhida = valor === String(n);
@@ -194,7 +194,7 @@ export function FormularioAvaliacao(p: Props) {
                       <label key={n} className="block">
                         <input type="radio" name={nomeCampo} value={n} checked={escolhida} onChange={() => mudar(q.chave, String(n))} className="peer sr-only" />
                         <span
-                          className={`flex min-h-[48px] cursor-pointer items-center justify-center rounded-xl border-2 text-lg font-semibold transition-transform peer-focus-visible:outline peer-focus-visible:outline-2 ${escolhida ? "scale-105 shadow-md" : ""}`}
+                          className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg border-2 text-sm font-bold tabular-nums transition-transform peer-focus-visible:outline peer-focus-visible:outline-2 ${escolhida ? "scale-110 shadow-md" : ""}`}
                           style={escolhida ? { backgroundColor: cor.fundo, borderColor: cor.fundo, color: cor.texto } : { borderColor: cor.fundo }}
                         >
                           {n}
