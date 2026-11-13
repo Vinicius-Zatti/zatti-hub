@@ -208,6 +208,7 @@ function itemAvaliacoes(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
             { label: "Painel", href: "/avaliacoes" },
             { label: "Configurar", href: "/avaliacoes/configurar" },
             { label: "Arte do QR", href: "/avaliacoes/qr" },
+            { label: "Cupons", href: "/avaliacoes/cupons" },
           ],
         },
       ],
