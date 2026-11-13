@@ -8,7 +8,7 @@ import { mensagemSemEdicao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { BUCKET_LOGOS } from "@/lib/avaliacoes/servidor";
 import { TIPOS_LOGO, validarLogo, validarMarca, type EntradaMarca } from "@/lib/avaliacoes/marca";
-import { ehOrigem, validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
+import { ehOrigem, normalizarAtendentes, validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
 
 // Avaliações (gestão). Tudo que grava vai pela sessão da pessoa, nas RPCs `avaliacoes_*`, que
 // conferem de novo gestão/master, módulo ligado e "editar" e gravam a auditoria na unidade. A
@@ -32,7 +32,9 @@ async function acessoEditar() {
 /** Mensagem simples para os códigos que as RPCs levantam. */
 function mensagemErro(mensagem: string): string {
   if (mensagem.includes("sem_permissao")) return "Você não tem permissão para mudar as Avaliações desta unidade.";
-  if (mensagem.includes("contraste_baixo")) return "A cor principal e a de fundo estão parecidas demais. Escureça ou clareie uma delas.";
+  if (mensagem.includes("atendentes_demais")) return "Cadastre até 30 nomes.";
+  if (mensagem.includes("atendente_invalido")) return "Cada nome pode ter até 40 letras.";
+  if (mensagem.includes("link_pedido_invalido")) return "O link de pedir direto precisa começar com https:// e ter até 500 letras.";
   if (mensagem.includes("cor_invalida")) return "Cor inválida. Use o formato #1F4E79.";
   if (mensagem.includes("nome_invalido")) return "O nome exibido deve ter de 2 a 60 letras.";
   if (mensagem.includes("agradecimento_invalido")) return "O texto de agradecimento deve ter de 3 a 200 letras.";
@@ -96,6 +98,35 @@ export async function salvarPerguntasAction(perguntas: PerguntaConfig[]): Promis
   if (!v.ok) return { erro: v.erro };
   const supabase = await createClient();
   const { error } = await supabase.rpc("avaliacoes_salvar_perguntas", { p_unidade_id: acesso.unidadeId, p_perguntas: v.perguntas });
+  if (error) return { erro: mensagemErro(error.message) };
+  revalidar();
+  return { ok: true };
+}
+
+/** Quem atende (para a pergunta "quem atendeu", só no salão) e o link de pedir direto (fim da
+ * pesquisa dos apps). */
+export async function salvarExtrasAction(entrada: { atendentes: string[]; linkPedidoDireto: string }): Promise<Resultado> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  if (!entrada || !Array.isArray(entrada.atendentes) || typeof entrada.linkPedidoDireto !== "string") return { erro: "Pedido inválido." };
+  const nomes = normalizarAtendentes(entrada.atendentes.map((n) => String(n ?? "")));
+  if (!nomes.ok) return { erro: nomes.erro };
+  const link = entrada.linkPedidoDireto.trim();
+  if (link) {
+    let url: URL | null = null;
+    try {
+      url = new URL(link);
+    } catch {
+      url = null;
+    }
+    if (!url || url.protocol !== "https:" || link.length > 500) return { erro: "O link de pedir direto precisa começar com https:// (copie o link inteiro)." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("avaliacoes_salvar_extras", {
+    p_unidade_id: acesso.unidadeId,
+    p_atendentes: nomes.nomes,
+    p_link_pedido_direto: link || null,
+  });
   if (error) return { erro: mensagemErro(error.message) };
   revalidar();
   return { ok: true };

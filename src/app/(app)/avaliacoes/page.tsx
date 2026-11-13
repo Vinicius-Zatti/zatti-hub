@@ -18,9 +18,10 @@ import {
   textoNps,
   type FiltroOrigem,
   type ItemDistribuicao,
+  type LinhaAtendente,
   type RespostaPainel,
 } from "@/lib/avaliacoes/painel";
-import { ROTULO_ORIGEM, rotuloOpcao } from "@/lib/avaliacoes/perguntas";
+import { ROTULO_ORIGEM, rotuloAtendente, rotuloOpcao } from "@/lib/avaliacoes/perguntas";
 import { notasDoAlerta } from "@/lib/avaliacoes/alertas";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { DicaCalculo } from "@/components/dica-calculo";
@@ -40,7 +41,7 @@ const PILULA = "rounded-md px-3 py-1.5 text-xs font-semibold";
 const PILULA_ATIVA = `${PILULA} bg-azul-noite text-branco`;
 const PILULA_LIVRE = `${PILULA} border border-cinza-claro bg-branco text-azul-noite hover:border-azul-petroleo`;
 
-/** Painel das Avaliações (gestão): médias, NPS, tempo de espera, como conheceu, comentários e
+/** Painel das Avaliações (gestão): médias de cada pergunta, pedido certo, NPS, quem atendeu, como conheceu, comentários e
  * contatos que autorizaram, no período e na origem escolhidos. Lido pela sessão (RLS). */
 export default async function PainelAvaliacoesPage({ searchParams }: { searchParams: Promise<{ periodo?: string; origem?: string }> }) {
   const acesso = await requireAvaliacoes();
@@ -68,9 +69,19 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
   const link = (p: string, o: FiltroOrigem) => `/avaliacoes?periodo=${p}${o === "todas" ? "" : `&origem=${o}`}`;
 
   const cartoes = [
-    { rotulo: "Avaliações", valor: String(r.total), dica: DICAS.total, extra: `${r.porOrigem.salao} salão · ${r.porOrigem.delivery} delivery · ${r.porOrigem.app} apps` },
-    { rotulo: "Atendimento", valor: textoMedia(r.mediaAtendimento), dica: DICAS.atendimento, extra: `de 5 · ${r.respostasAtendimento} notas` },
-    { rotulo: "Comida", valor: textoMedia(r.mediaComida), dica: DICAS.comida, extra: `de 5 · ${r.respostasComida} notas` },
+    { rotulo: "Avaliações", valor: String(r.total), dica: DICAS.total, extra: `${r.porOrigem.salao} salão · ${r.porOrigem.delivery} delivery · ${r.porOrigem.app} apps`, destaque: false },
+    ...r.medias.map((m) => ({ rotulo: m.nome, valor: textoMedia(m.media), dica: DICAS.media, extra: `de 5 · ${m.respostas} notas`, destaque: false })),
+    ...(r.pedidoCerto.total > 0
+      ? [
+          {
+            rotulo: "Pedido certo",
+            valor: `${Math.round((r.pedidoCerto.certos / r.pedidoCerto.total) * 100)}%`,
+            dica: DICAS.pedidoCerto,
+            extra: `${r.pedidoCerto.total - r.pedidoCerto.certos} vieram errados ou faltando`,
+            destaque: false,
+          },
+        ]
+      : []),
     {
       rotulo: "NPS",
       valor: textoNps(r.nps.nps),
@@ -78,7 +89,7 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
       extra: `${r.nps.promotores} promotores · ${r.nps.neutros} neutros · ${r.nps.detratores} detratores`,
       destaque: true,
     },
-    { rotulo: "Notas baixas", valor: String(r.notasBaixas), dica: DICAS.notasBaixas, extra: "viram alerta no WhatsApp" },
+    { rotulo: "Notas baixas", valor: String(r.notasBaixas), dica: DICAS.notasBaixas, extra: "viram alerta no WhatsApp", destaque: false },
   ];
 
   return (
@@ -137,8 +148,9 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
       ) : (
         <>
           <div className="grid gap-5 lg:grid-cols-2">
-            <TabelaDistribuicao titulo="Tempo de espera" dica={DICAS.espera} itens={r.espera} />
             <TabelaDistribuicao titulo="Como conheceu" dica={DICAS.conheceu} itens={r.conheceu} />
+            {r.atendentes.length > 0 && <TabelaAtendentes linhas={r.atendentes} />}
+            {r.espera.some((i) => i.quantidade > 0) && <TabelaDistribuicao titulo="Tempo de espera (pergunta antiga)" dica={DICAS.espera} itens={r.espera} />}
           </div>
           {r.conheceuOutros.length > 0 && (
             <p className="text-sm text-cinza">
@@ -189,6 +201,45 @@ function TabelaDistribuicao({ titulo, dica, itens }: { titulo: string; dica: str
   );
 }
 
+function TabelaAtendentes({ linhas }: { linhas: LinhaAtendente[] }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="flex items-center gap-1 font-display text-lg font-bold text-azul-noite">
+        Quem atendeu
+        <DicaCalculo rotulo="quem atendeu" texto={DICAS.atendentes} />
+      </h2>
+      <TabelaRolavel ariaLabel="Quem atendeu">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-azul-petroleo text-branco">
+              <Th>Pessoa</Th>
+              <Th align="right" larguraFixa="96px">
+                Avaliações
+              </Th>
+              <Th align="right" larguraFixa="110px">
+                Atendimento
+              </Th>
+              <Th align="right" larguraFixa="96px">
+                Indicaria
+              </Th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => (
+              <tr key={l.nome} className="border-b border-cinza-claro">
+                <td className="px-3 py-2">{l.nome}</td>
+                <td className="px-3 py-2 text-right">{l.quantidade}</td>
+                <td className="px-3 py-2 text-right">{textoMedia(l.mediaAtendimento)}</td>
+                <td className="px-3 py-2 text-right">{textoMedia(l.mediaIndicaria)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TabelaRolavel>
+    </section>
+  );
+}
+
 function TabelaComentarios({ linhas }: { linhas: RespostaPainel[] }) {
   return (
     <section className="flex flex-col gap-2">
@@ -214,6 +265,7 @@ function TabelaComentarios({ linhas }: { linhas: RespostaPainel[] }) {
                   <td className="px-3 py-2 text-cinza">
                     {notasDoAlerta(l) || "-"}
                     {l.espera ? <span className="block text-xs text-cinza-medio">Espera: {rotuloOpcao("espera", l.espera)}</span> : null}
+                    {l.atendente ? <span className="block text-xs text-cinza-medio">Atendido por: {rotuloAtendente(l.atendente)}</span> : null}
                   </td>
                   <td className="min-w-[260px] whitespace-pre-line px-3 py-2">{l.comentario}</td>
                 </tr>

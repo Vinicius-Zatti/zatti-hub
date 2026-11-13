@@ -3,9 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ModalFlutuante } from "@/components/modal-flutuante";
-import { DicaCalculo } from "@/components/dica-calculo";
 import { salvarMarcaAction } from "@/app/(app)/avaliacoes/actions";
-import { COR_ESTRELA, CONTRASTE_MINIMO, LIMITE_AGRADECIMENTO, LIMITE_NOME, contraste, corTextoSobre, normalizarCor, textoContraste } from "@/lib/avaliacoes/marca";
+import { COR_ESTRELA, LIMITE_AGRADECIMENTO, LIMITE_NOME, contraste, corTextoSobre, normalizarCor } from "@/lib/avaliacoes/marca";
 
 export type MarcaAtual = {
   nomeExibido: string;
@@ -19,8 +18,6 @@ export type MarcaAtual = {
 const CAMPO = "mt-1 w-full rounded-md border border-cinza-claro bg-branco px-2 py-1.5 text-sm";
 const ROTULO = "text-xs font-semibold text-cinza-medio";
 
-const DICA_CONTRASTE = `Contraste entre a cor principal e a de fundo, de 1 (iguais) a 21 (preto no branco), pela fórmula da WCAG: (luminância da mais clara + 0,05) dividido por (luminância da mais escura + 0,05). Abaixo de ${CONTRASTE_MINIMO} os botões e as notas escolhidas somem no fundo, por isso não salva. O texto sai sempre em preto ou branco, o que contrastar mais.`;
-
 /** Nome exibido, cores, agradecimento, link do Google e pausa, num modal com prévia. */
 export function EditorMarca({ atual }: { atual: MarcaAtual }) {
   const router = useRouter();
@@ -31,8 +28,6 @@ export function EditorMarca({ atual }: { atual: MarcaAtual }) {
 
   const principal = normalizarCor(form.corPrincipal);
   const fundo = normalizarCor(form.corFundo);
-  const c = principal && fundo ? contraste(principal, fundo) : null;
-  const contrasteOk = c !== null && c >= CONTRASTE_MINIMO;
 
   function abrir() {
     setForm({ ...atual, linkGoogle: atual.linkGoogle ?? "" });
@@ -74,12 +69,11 @@ export function EditorMarca({ atual }: { atual: MarcaAtual }) {
                 <input className={CAMPO} value={form.nomeExibido} maxLength={LIMITE_NOME} onChange={(e) => setForm({ ...form, nomeExibido: e.target.value })} />
               </label>
               <div className="grid grid-cols-2 gap-3">
-                <CampoCor rotulo="Cor principal (botões)" valor={form.corPrincipal} aoMudar={(v) => setForm({ ...form, corPrincipal: v })} />
-                <CampoCor rotulo="Cor de fundo" valor={form.corFundo} aoMudar={(v) => setForm({ ...form, corFundo: v })} />
+                <CampoCor rotulo="Cor principal (capa e topo)" valor={form.corPrincipal} aoMudar={(v) => setForm({ ...form, corPrincipal: v })} />
+                <CampoCor rotulo="Cor de fundo (perguntas)" valor={form.corFundo} aoMudar={(v) => setForm({ ...form, corFundo: v })} />
               </div>
-              <p className={`flex items-center gap-1 text-xs ${contrasteOk ? "text-cinza-medio" : "font-semibold text-vermelho"}`}>
-                Contraste {c === null ? "-" : textoContraste(c)} {contrasteOk ? "(bom)" : `(mínimo ${CONTRASTE_MINIMO})`}
-                <DicaCalculo rotulo="contraste" texto={DICA_CONTRASTE} />
+              <p className="text-xs text-cinza-medio">
+                Use a cor forte da marca como principal e uma cor clara (ou bem escura) de fundo. Textos e botões saem sozinhos em preto ou branco, o que ficar mais legível.
               </p>
               <label className={ROTULO}>
                 Texto da tela de obrigado
@@ -115,7 +109,7 @@ export function EditorMarca({ atual }: { atual: MarcaAtual }) {
           </div>
           {erro && <p className="text-sm text-vermelho">{erro}</p>}
           <div className="flex gap-2">
-            <button type="submit" disabled={pendente || !contrasteOk} className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
+            <button type="submit" disabled={pendente || !principal || !fundo} className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
               {pendente ? "Salvando..." : form.ativa ? "Salvar a marca da pesquisa" : "Salvar e pausar a pesquisa"}
             </button>
             <button type="button" onClick={() => setAberto(false)} className="rounded-md border border-cinza-claro px-3 py-2 text-xs">
@@ -141,34 +135,37 @@ function CampoCor({ rotulo, valor, aoMudar }: { rotulo: string; valor: string; a
   );
 }
 
-/** Miniatura da página pública com as cores escolhidas. */
+/** Miniatura da página pública: a capa e uma pergunta, com as cores escolhidas. */
 export function Previa({ nome, principal, fundo }: { nome: string; principal: string | null; fundo: string | null }) {
   if (!principal || !fundo) return <div className="rounded-lg border border-dashed border-cinza-claro p-4 text-sm text-cinza-medio">Prévia aparece com as duas cores válidas.</div>;
-  const texto = corTextoSobre(fundo);
-  const textoBotao = corTextoSobre(principal);
+  const textoCapa = corTextoSobre(principal);
+  const tinta = corTextoSobre(fundo);
+  const textoBotao = contraste(principal, tinta) >= 3 ? principal : fundo;
   return (
-    <div className="flex flex-col gap-3 overflow-hidden rounded-lg border border-cinza-claro p-4 pt-0" style={{ backgroundColor: fundo, color: texto }} aria-label="Prévia da página">
-      <div className="-mx-4 h-8" style={{ backgroundColor: principal }} aria-hidden="true" />
-      <p className="text-center text-base font-bold">{nome || "Nome"}</p>
-      <p className="text-sm font-semibold">Como foi o atendimento?</p>
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <svg key={n} viewBox="0 0 24 24" className="h-7 w-7" fill={n <= 4 ? COR_ESTRELA : "none"} stroke={n <= 4 ? COR_ESTRELA : `${texto}59`} strokeWidth="1.6" aria-hidden="true">
-            <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
-          </svg>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <span className="rounded-lg border-2 px-2 py-2 text-center" style={{ backgroundColor: principal, borderColor: principal, color: textoBotao }}>
-          Até 15 min
-        </span>
-        <span className="rounded-lg border-2 px-2 py-2 text-center" style={{ borderColor: `${texto}4D` }}>
-          De 15 a 30 min
+    <div className="grid grid-cols-2 gap-2" aria-label="Prévia da página">
+      <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-lg p-3 text-center" style={{ backgroundColor: principal, color: textoCapa }}>
+        <span className="h-12 w-12 rounded-full bg-white" aria-hidden="true" />
+        <p className="text-sm font-extrabold leading-tight">Como foi sua experiência na {nome || "Nome"}?</p>
+        <span className="mt-1 w-full rounded-md px-2 py-1.5 text-xs font-bold" style={{ backgroundColor: textoCapa, color: principal }}>
+          Começar avaliação
         </span>
       </div>
-      <span className="rounded-xl px-3 py-2 text-center text-sm font-semibold" style={{ backgroundColor: principal, color: textoBotao }}>
-        Enviar avaliação
-      </span>
+      <div className="flex min-h-[220px] flex-col overflow-hidden rounded-lg border border-cinza-claro" style={{ backgroundColor: fundo, color: tinta }}>
+        <div className="h-6" style={{ backgroundColor: principal }} aria-hidden="true" />
+        <div className="flex flex-1 flex-col gap-2 p-3">
+          <p className="text-xs font-bold leading-tight">Como você avalia o nosso atendimento?</p>
+          <div className="flex gap-0.5">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <svg key={n} viewBox="0 0 24 24" className="h-5 w-5" fill={n <= 4 ? COR_ESTRELA : "none"} stroke={n <= 4 ? COR_ESTRELA : `${tinta}40`} strokeWidth="1.6" aria-hidden="true">
+                <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
+              </svg>
+            ))}
+          </div>
+          <span className="mt-auto rounded-md px-2 py-1.5 text-center text-xs font-bold" style={{ backgroundColor: tinta, color: textoBotao }}>
+            Continuar
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,12 +1,11 @@
 // Avaliações: marca da unidade na página pública e na arte do QR (cores, logo, link do Google).
-// Funções puras. O banco confere de novo o formato das cores, o contraste e o link
+// Funções puras. O banco confere de novo o formato das cores e o link
 // (`avaliacoes_salvar_marca`).
 
 export const COR_PRINCIPAL_PADRAO = "#1F4E79";
 export const COR_FUNDO_PADRAO = "#FFFFFF";
-/** Contraste mínimo entre a cor principal (botões, nota escolhida) e a de fundo. 3 é o mínimo da
- * WCAG para elemento de tela; o texto sempre sai em preto ou branco, o que tiver mais contraste. */
-export const CONTRASTE_MINIMO = 3;
+// Sem contraste mínimo entre a principal e a de fundo desde 13/11/2026: na página nova a principal
+// é só a capa e a faixa do topo, e o que a pessoa toca sai em preto ou branco.
 /** Estrela marcada sempre dourada, qualquer que seja a marca (pedido de Vinícius, 13/11/2026):
  * estrela na cor do botão (preta, azul) não parece avaliação. */
 export const COR_ESTRELA = "#F5B301";
@@ -88,13 +87,6 @@ export function validarMarca(e: EntradaMarca): { ok: true; marca: MarcaValidada 
   const principal = normalizarCor(e.corPrincipal);
   const fundo = normalizarCor(e.corFundo);
   if (!principal || !fundo) return { ok: false, erro: "Cor inválida. Use o seletor de cor ou o código no formato #1F4E79." };
-  const c = contraste(principal, fundo);
-  if (c < CONTRASTE_MINIMO) {
-    return {
-      ok: false,
-      erro: `A cor principal e a de fundo estão parecidas demais (contraste ${textoContraste(c)}; o mínimo é ${CONTRASTE_MINIMO}). Escureça ou clareie uma delas.`,
-    };
-  }
   const agradecimento = e.textoAgradecimento.trim();
   if (agradecimento.length < 3 || agradecimento.length > LIMITE_AGRADECIMENTO) {
     return { ok: false, erro: `O texto de agradecimento deve ter de 3 a ${LIMITE_AGRADECIMENTO} letras.` };

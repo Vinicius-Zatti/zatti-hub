@@ -33,7 +33,7 @@ $$;
 create or replace function pg_temp.reg(p_origem text, p_aparelho text)
 returns jsonb language sql as $$
   select public.avaliacoes_registrar((select slug from public.avaliacoes_pesquisas where unidade_id = 'org-to-loja'), p_origem,
-    '{"atendimento": 5, "comida": 5, "espera": "ate_15", "nps": 10, "conheceu": "ifood", "comentario": "Chegou quente"}'::jsonb,
+    '{"atendimento": 5, "comida": 5, "tempo": 5, "ambiente": 5, "pedido_certo": true, "embalagem": 5, "entrega": 5, "atendimento_pedido": 5, "espera": "ate_15", "nps": 10, "conheceu": "ifood", "comentario": "Chegou quente"}'::jsonb,
     null, false, 1, '', 20000, repeat('e', 64), rpad(p_aparelho, 64, '0'), now())
 $$;
 

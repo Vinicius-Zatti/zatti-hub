@@ -59,7 +59,7 @@ $$;
 -- Resposta completa e boa, para variar só o que importa em cada teste.
 create or replace function pg_temp.boa()
 returns jsonb language sql as $$
-  select '{"atendimento": 5, "comida": 5, "espera": "ate_15", "nps": 10, "conheceu": "instagram", "comentario": "Tudo ótimo"}'::jsonb
+  select '{"atendimento": 5, "comida": 5, "tempo": 5, "ambiente": 5, "espera": "ate_15", "nps": 10, "conheceu": "instagram", "comentario": "Tudo ótimo"}'::jsonb
 $$;
 -- Chama a RPC como o servidor do Hub (service role).
 create or replace function pg_temp.reg(p_slug text, p_aparelho text, p_respostas jsonb, p_agora timestamptz,
@@ -118,8 +118,9 @@ select lives_ok($$ select public.avaliacoes_salvar_marca('org-av-b-loja', 'Loja 
 
 -- ── Marca ────────────────────────────────────────────────────────────────
 select pg_temp.como('00000000-0000-0000-0000-0000000a7001');
-select throws_ok($$ select public.avaliacoes_salvar_marca('org-av-a-loja', 'Dom Quixote', '#F0F0F0', '#FFFFFF', 'Obrigado!', null, true) $$,
-  '22023', 'contraste_baixo', 'cores parecidas não salvam');
+-- Contraste mínimo saiu em 13/11/2026 (20261113150000): cor fora do formato continua barrada.
+select throws_ok($$ select public.avaliacoes_salvar_marca('org-av-a-loja', 'Dom Quixote', '#F0F0F', '#FFFFFF', 'Obrigado!', null, true) $$,
+  '22023', 'cor_invalida', 'cor fora do formato não salva');
 select throws_ok($$ select public.avaliacoes_salvar_marca('org-av-a-loja', 'Dom Quixote', '#1F4E79', '#FFFFFF', 'Obrigado!', 'http://g.page/x', true) $$,
   '22023', 'link_google_invalido', 'link do Google só https');
 select lives_ok($$ select public.avaliacoes_salvar_marca('org-av-a-loja', 'Dom Quixote', '#7A1F1F', '#FFF8EE', 'Obrigado!', 'https://g.page/r/x/review', true) $$,

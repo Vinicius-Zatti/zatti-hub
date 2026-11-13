@@ -39,6 +39,10 @@ export type PesquisaGestao = {
   /** Tipos de pesquisa ligados (13/11/2026). */
   origens: Origem[];
   perguntas: PerguntaConfig[];
+  /** Nomes para "quem atendeu" (13/11/2026). */
+  atendentes: string[];
+  /** Link "pedir direto com a gente", no fim da pesquisa dos apps. */
+  linkPedidoDireto: string | null;
 };
 
 type LinhaPesquisa = {
@@ -54,6 +58,8 @@ type LinhaPesquisa = {
   versao_atual: number;
   alerta_vinculo_id: string | null;
   origens: string[] | null;
+  atendentes: string[] | null;
+  link_pedido_direto: string | null;
 };
 
 /** Pesquisa da unidade da sessão (nulo = ainda não criada). Falha de leitura sobe para o
@@ -62,7 +68,7 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("avaliacoes_pesquisas")
-    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id, origens")
+    .select("id, slug, nome_exibido, cor_principal, cor_fundo, logo_path, texto_agradecimento, link_google, ativa, versao_atual, alerta_vinculo_id, origens, atendentes, link_pedido_direto")
     .eq("unidade_id", acesso.unidadeId)
     .maybeSingle();
   if (error) {
@@ -91,6 +97,8 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
     versaoAtual: p.versao_atual,
     alertaVinculoId: p.alerta_vinculo_id,
     origens: lerOrigens(p.origens),
+    atendentes: Array.isArray(p.atendentes) ? p.atendentes : [],
+    linkPedidoDireto: p.link_pedido_direto,
     perguntas: lerPerguntas((versao as { perguntas?: unknown } | null)?.perguntas),
   };
 }
@@ -104,6 +112,13 @@ type LinhaResposta = {
   origem: Origem;
   atendimento: number | null;
   comida: number | null;
+  tempo: number | null;
+  ambiente: number | null;
+  embalagem: number | null;
+  entrega: number | null;
+  atendimento_pedido: number | null;
+  pedido_certo: boolean | null;
+  atendente: string | null;
   espera: string | null;
   nps: number | null;
   conheceu: string | null;
@@ -121,7 +136,7 @@ export async function carregarRespostas(acesso: AcessoAtual, desdeIso: string): 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("avaliacoes_respostas")
-    .select("id, criado_em, origem, atendimento, comida, espera, nps, conheceu, conheceu_outro, comentario, nota_baixa, whatsapp, consentimento_em, consentimento_versao")
+    .select("id, criado_em, origem, atendimento, comida, tempo, ambiente, embalagem, entrega, atendimento_pedido, pedido_certo, atendente, espera, nps, conheceu, conheceu_outro, comentario, nota_baixa, whatsapp, consentimento_em, consentimento_versao")
     .eq("unidade_id", acesso.unidadeId)
     .gte("criado_em", desdeIso)
     .order("criado_em", { ascending: false })
@@ -139,6 +154,13 @@ export async function carregarRespostas(acesso: AcessoAtual, desdeIso: string): 
       origem: r.origem,
       atendimento: r.atendimento,
       comida: r.comida,
+      tempo: r.tempo,
+      ambiente: r.ambiente,
+      embalagem: r.embalagem,
+      entrega: r.entrega,
+      atendimentoPedido: r.atendimento_pedido,
+      pedidoCerto: r.pedido_certo,
+      atendente: r.atendente,
       espera: r.espera,
       nps: r.nps,
       conheceu: r.conheceu,
@@ -287,6 +309,8 @@ export type PesquisaPublica = {
   /** Tipos de pesquisa ligados (13/11/2026). */
   origens: Origem[];
   perguntas: PerguntaConfig[];
+  atendentes: string[];
+  linkPedidoDireto: string | null;
   termoVersao: number;
   termoTexto: string;
 };
@@ -313,6 +337,8 @@ export async function carregarPesquisaPublica(slug: string): Promise<PesquisaPub
     ativa: d.ativa === true,
     origens: lerOrigens(d.origens),
     perguntas: lerPerguntas(d.perguntas),
+    atendentes: Array.isArray(d.atendentes) ? d.atendentes.filter((x): x is string => typeof x === "string") : [],
+    linkPedidoDireto: typeof d.linkPedidoDireto === "string" ? d.linkPedidoDireto : null,
     termoVersao: Number(d.termoVersao),
     termoTexto: String(d.termoTexto),
   };

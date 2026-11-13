@@ -4,10 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { salvarPerguntasAction } from "@/app/(app)/avaliacoes/actions";
-import { LIMITE_TEXTO_PERGUNTA, definicao, type PerguntaConfig, type TipoPergunta } from "@/lib/avaliacoes/perguntas";
+import { LIMITE_TEXTO_PERGUNTA, ROTULO_ORIGEM, definicao, type PerguntaConfig, type TipoPergunta } from "@/lib/avaliacoes/perguntas";
 
 const ROTULO_TIPO: Record<TipoPergunta, string> = {
   estrelas: "Estrelas de 1 a 5",
+  simnao: "Sim ou não",
+  atendente: "Lista de quem atende + Não lembro",
   faixas: "Faixas de tempo",
   nps: "Nota de 0 a 10",
   escolha: "Lista de opções + Outro",
@@ -60,8 +62,8 @@ export function EditorPerguntas({ atuais, versao }: { atuais: PerguntaConfig[]; 
         >
           <h2 className="font-display text-lg font-bold text-azul-noite">Perguntas da pesquisa</h2>
           <p className="text-sm text-cinza">
-            O tipo de cada pergunta e as opções são fixos, para os números do painel continuarem comparáveis. Pergunta desligada some da página; as respostas antigas
-            dela continuam no painel.
+            O tipo de cada pergunta, as opções e em que pesquisa ela aparece (salão, delivery próprio ou apps) são fixos, para os números do painel continuarem
+            comparáveis. Pergunta desligada some da página; as respostas antigas dela continuam no painel.
           </p>
           <ul className="flex flex-col gap-3">
             {lista.map((p, i) => {
@@ -72,7 +74,7 @@ export function EditorPerguntas({ atuais, versao }: { atuais: PerguntaConfig[]; 
                     <span className="text-sm font-semibold text-azul-noite">
                       {def.nome}
                       <span className="ml-2 text-xs font-normal text-cinza-medio">
-                        {ROTULO_TIPO[def.tipo]} · {def.obrigatoria ? "obrigatória" : "opcional"}
+                        {ROTULO_TIPO[def.tipo]} · {def.obrigatoria ? "obrigatória" : "opcional"} · {def.origens.map((o) => ROTULO_ORIGEM[o]).join(", ")}
                       </span>
                     </span>
                     <label className="flex items-center gap-2 text-sm">
@@ -89,6 +91,12 @@ export function EditorPerguntas({ atuais, versao }: { atuais: PerguntaConfig[]; 
                     aria-label={`Texto da pergunta ${def.nome}`}
                   />
                   {def.opcoes && <p className="mt-1 text-xs text-cinza-medio">Opções: {def.opcoes.map((o) => o.rotulo).join(", ")}</p>}
+                  {def.chave === "atendente" && <p className="mt-1 text-xs text-cinza-medio">Os nomes ficam em &quot;Quem atende e pedir direto&quot;. Sem nome cadastrado, a pergunta não aparece.</p>}
+                  {def.chave === "comentario" && (
+                    <p className="mt-1 text-xs text-cinza-medio">
+                      Este texto vale para nota média. Com nota baixa a página pergunta &quot;O que aconteceu?&quot;; com 9 ou 10, &quot;O que você mais gostou?&quot;.
+                    </p>
+                  )}
                 </li>
               );
             })}

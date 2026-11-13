@@ -65,9 +65,9 @@ export const ARTE = { larguraPx: 1181, alturaPx: 1772, larguraCm: 10, alturaCm: 
 export const CHAMADA_ARTE = "Conta pra gente como foi";
 
 export function subtituloArte(origem: Origem): string {
-  if (origem === "salao") return "Aponte a câmera do celular para o código. Leva 30 segundos.";
-  if (origem === "app") return "Pediu pelo app? Aponte a câmera e conte como chegou. Leva 30 segundos.";
-  return "Pediu com a gente? Aponte a câmera e conte como chegou. Leva 30 segundos.";
+  if (origem === "salao") return "Aponte a câmera do celular para o código. Leva menos de 1 minuto.";
+  if (origem === "app") return "Pediu pelo app? Aponte a câmera e avalie seu pedido. Leva menos de 1 minuto.";
+  return "Aponte a câmera do celular e avalie seu pedido. Leva menos de 1 minuto.";
 }
 
 export function nomeArquivoArte(slug: string, origem: Origem, extensao: "png" | "pdf"): string {
