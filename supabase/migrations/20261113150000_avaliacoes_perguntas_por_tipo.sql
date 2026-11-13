@@ -25,6 +25,10 @@ alter table public.avaliacoes_respostas
   add column if not exists pedido_certo boolean,
   add column if not exists atendente text check (atendente is null or char_length(atendente) between 1 and 40);
 
+-- O painel lê as respostas por lista de colunas (os hashes ficam de fora): as novas entram na lista.
+grant select (tempo, ambiente, embalagem, entrega, atendimento_pedido, pedido_certo, atendente)
+  on public.avaliacoes_respostas to authenticated;
+
 alter table public.avaliacoes_pesquisas
   add column if not exists atendentes text[] not null default '{}'::text[],
   add column if not exists link_pedido_direto text;

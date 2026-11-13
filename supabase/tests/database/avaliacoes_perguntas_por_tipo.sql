@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(21);
 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
   ('00000000-0000-0000-0000-0000000b9001', 'gestora-pt@teste.local', 'x', now(), 'authenticated', 'authenticated'),
@@ -91,6 +91,11 @@ select is((select atendente from pg_temp.resposta('b2')), 'Carla Souza', 'guarda
 select ok((public.avaliacoes_pesquisa_publica(pg_temp.slug()) ->> 'linkPedidoDireto') = 'https://wa.me/5516999990000'
           and (public.avaliacoes_pesquisa_publica(pg_temp.slug()) -> 'atendentes') ? 'Bruno',
   'a página pública recebe os nomes e o link');
+
+-- ── A gestão lê as colunas novas no painel ─────────────────────────────────
+select pg_temp.como('00000000-0000-0000-0000-0000000b9001');
+select is((select count(*)::int from avaliacoes_respostas where unidade_id = 'org-pt-loja' and atendente is not null and tempo is not null),
+  1, 'gestão lê quem atendeu e as notas novas pelo app');
 
 -- ── Cores sem contraste mínimo ────────────────────────────────────────────
 select pg_temp.como('00000000-0000-0000-0000-0000000b9001');
