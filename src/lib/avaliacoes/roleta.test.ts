@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anguloFinal, chances, codigoValido, normalizarCodigo, resumirCupons, validarRoleta } from "./roleta";
+import { anguloFinal, chances, codigoValido, normalizarCodigo, resumirCupons, rotuloFatia, validarRoleta } from "./roleta";
 
 describe("roleta: configuração", () => {
   const dq = [
@@ -57,5 +57,24 @@ describe("roleta: roda e cupom", () => {
     );
     expect(r).toEqual({ emitidos: 4, usados: 1, vencidos: 1, abertos: 2, taxaUso: 25 });
     expect(resumirCupons([]).taxaUso).toBeNull();
+  });
+});
+
+describe("roleta: nome na fatia", () => {
+  it("até 4 fatias o nome vai deitado; de 5 em diante, em pé", () => {
+    expect(rotuloFatia("Frete grátis", 4)).toMatchObject({ radial: false, linhas: ["Frete grátis"] });
+    expect(rotuloFatia("Frete grátis", 5)).toMatchObject({ radial: true, linhas: ["Frete grátis"] });
+  });
+  it("quebra por palavra em até 2 linhas, sem passar do que cabe", () => {
+    const r = rotuloFatia("R$ 12 de desconto", 6);
+    expect(r.linhas).toEqual(["R$ 12 de", "desconto"]);
+    const longo = rotuloFatia("Batata frita grande grátis hoje", 8);
+    expect(longo.linhas).toHaveLength(2);
+    expect(longo.linhas.every((l) => l.length <= 13)).toBe(true);
+    expect(longo.linhas[1].endsWith("…")).toBe(true);
+  });
+  it("nome no limite de letras cabe nas 8 fatias", () => {
+    expect(rotuloFatia("Batata grande + refri 2L", 8).linhas.join(" ")).not.toContain("…");
+    expect(validarRoleta({ ativa: true, validadeDias: 30, premios: [{ nome: "x".repeat(25), regra: "", peso: 1 }] })).toMatchObject({ ok: false });
   });
 });

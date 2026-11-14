@@ -2,14 +2,18 @@
 
 import { useState, useTransition, type CSSProperties } from "react";
 import { girarRoletaAction } from "../../acoes";
-import { anguloFinal, type PremioPublico } from "@/lib/avaliacoes/roleta";
+import { anguloFinal, rotuloFatia, type PremioPublico } from "@/lib/avaliacoes/roleta";
 
 // Roleta de prêmios no fim da pesquisa dos apps (13/11/2026), modelo do Falaê: a pessoa deixa o
 // WhatsApp, gira e ganha um cupom para o próximo pedido direto. O sorteio é do banco; a roda só
 // mostra o resultado. As fatias têm o mesmo tamanho (a chance real fica com a gestão).
 
 type Props = {
+  /** Avaliação gravada que pode girar. Vazio só no teste da tela Configurar. */
   respostaId: string;
+  /** Teste na tela Configurar (14/11/2026): sorteia aqui mesmo com os pesos da tela, sem gravar
+   * nada e sem cupom de verdade. */
+  teste?: { pesos: number[]; validadeDias: number };
   premios: PremioPublico[];
   nome: string;
   corPrincipal: string;
@@ -54,21 +58,34 @@ function Roda({ premios, corPrincipal, angulo }: { premios: PremioPublico[]; cor
           const grande = fatia > 180 ? 1 : 0;
           const cor = i % 2 === 0 ? corPrincipal : "#FFFFFF";
           const meio = i * fatia + fatia / 2;
-          const [tx, ty] = ponto(meio, 58);
+          const rotulo = rotuloFatia(p.nome, premios.length);
+          // Deitado: perto da borda, acompanhando o arco. Em pé: no meio do raio, do centro para fora.
+          const [tx, ty] = ponto(meio, rotulo.radial ? 56 : 60);
+          const altura = rotulo.fonte * 1.15;
+          // Em pé: na metade esquerda vira 180 graus para ninguém ler de cabeça para baixo com a roda parada.
+          const giro = rotulo.radial ? (meio > 180 ? meio + 90 : meio - 90) : meio;
           return (
             <g key={p.id}>
-              <path d={`M100 100 L${x1} ${y1} A94 94 0 ${grande} 1 ${x2} ${y2} Z`} fill={cor} stroke="#111111" strokeWidth="1" />
+              {premios.length === 1 ? (
+                <circle cx="100" cy="100" r="94" fill={cor} />
+              ) : (
+                <path d={`M100 100 L${x1} ${y1} A94 94 0 ${grande} 1 ${x2} ${y2} Z`} fill={cor} stroke="#111111" strokeWidth="1" />
+              )}
               <text
                 x={tx}
                 y={ty}
-                transform={`rotate(${meio} ${tx} ${ty})`}
+                transform={`rotate(${giro} ${tx} ${ty})`}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={premios.length > 5 ? 8 : 10}
+                fontSize={rotulo.fonte}
                 fontWeight="800"
                 fill="#111111"
               >
-                {p.nome.length > 18 ? `${p.nome.slice(0, 17)}…` : p.nome}
+                {rotulo.linhas.map((linha, j) => (
+                  <tspan key={j} x={tx} dy={j === 0 ? -((rotulo.linhas.length - 1) * altura) / 2 : altura}>
+                    {linha}
+                  </tspan>
+                ))}
               </text>
             </g>
           );
@@ -88,28 +105,48 @@ export function RoletaPremios(p: Props) {
   const [mostrar, setMostrar] = useState(false);
   const [pendente, startTransition] = useTransition();
 
+  function animar(indice: number) {
+    setGirando(true);
+    // Começa de onde parou, para girar de novo no teste.
+    setAngulo((atual) => atual - (atual % 360) + anguloFinal(indice, p.premios.length));
+    setTimeout(() => {
+      setGirando(false);
+      setMostrar(true);
+    }, GIRO_MS + 200);
+  }
+
   function girar() {
     setErro(null);
+    if (p.teste) {
+      const n = whatsapp.replace(/\D/g, "");
+      if (n.length < 10 || n.length > 13) return setErro("Esse WhatsApp não parece válido. Confira o DDD e o número.");
+      const pesos = p.teste.pesos.map((x) => (x > 0 ? x : 0));
+      let sorte = Math.random() * pesos.reduce((a, b) => a + b, 0);
+      let indice = pesos.findIndex((x) => (sorte -= x) < 0);
+      if (indice < 0) indice = 0;
+      const premio = p.premios[indice];
+      const validade = new Date(Date.now() + p.teste.validadeDias * 86_400_000).toISOString();
+      setResultado({ premio: premio.nome, regra: premio.regra, cupom: "TESTE0", validoAte: validade });
+      animar(indice);
+      return;
+    }
     startTransition(async () => {
       const r = await girarRoletaAction(p.respostaId, whatsapp);
       if (!r.ok) {
         setErro(r.erro);
         return;
       }
-      const indice = Math.max(0, p.premios.findIndex((x) => x.id === r.premioId));
       setResultado({ premio: r.premio, regra: r.regra, cupom: r.cupom, validoAte: r.validoAte });
-      setGirando(true);
-      setAngulo(anguloFinal(indice, p.premios.length));
-      setTimeout(() => {
-        setGirando(false);
-        setMostrar(true);
-      }, GIRO_MS + 200);
+      animar(Math.max(0, p.premios.findIndex((x) => x.id === r.premioId)));
     });
   }
 
   if (resultado && mostrar) {
     return (
       <div className="w-full max-w-sm rounded-2xl border-2 p-5 text-center" style={p.estiloCartao} aria-live="polite">
+        {p.teste ? (
+          <p className="mb-3 rounded-lg bg-[#F5B301] px-2 py-1 text-xs font-bold text-[#111111]">TESTE: nada foi gravado e este cupom não vale</p>
+        ) : null}
         <p className="text-sm font-bold uppercase tracking-widest opacity-70">Você ganhou</p>
         <p className="mt-1 text-2xl font-extrabold leading-tight">{resultado.premio}</p>
         {resultado.regra ? <p className="mt-1 text-sm opacity-80">{resultado.regra}</p> : null}
@@ -130,6 +167,19 @@ export function RoletaPremios(p: Props) {
           >
             Pedir direto agora
           </a>
+        ) : null}
+        {p.teste ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResultado(null);
+              setMostrar(false);
+            }}
+            className="mt-3 w-full rounded-2xl border-2 px-6 py-3 text-sm font-bold"
+            style={{ borderColor: p.tinta }}
+          >
+            Girar de novo (teste)
+          </button>
         ) : null}
       </div>
     );

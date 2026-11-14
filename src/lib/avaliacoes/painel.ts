@@ -288,6 +288,8 @@ export const DICAS = {
   notasBaixas:
     "Avaliações com qualquer nota de estrelas até 2, nota de indicação até 6 ou pedido que veio errado. São as que viram alerta no WhatsApp de quem você marcou para receber.",
   espera: "Pergunta antiga (até 13/11/2026): quantas pessoas escolheram cada faixa de tempo de espera, e a porcentagem sobre quem respondeu.",
+  leitura:
+    "Frases montadas pelo app com os números da tela, comparando com o período anterior do mesmo tamanho (7, 30 ou 90 dias antes) e na mesma origem. Só compara e aponta o ponto mais forte e o mais fraco quando há ao menos 5 respostas. NPS: zona crítica até 0, aperfeiçoamento de 1 a 50, qualidade de 51 a 75 e excelência acima de 75.",
   conheceu: "Quantas pessoas escolheram cada forma de conhecer o restaurante, e a porcentagem sobre quem respondeu essa pergunta.",
 } as const;
 
@@ -334,4 +336,91 @@ export function gerarCsv(respostas: RespostaPainel[], livres: PerguntaConfig[] =
     ]),
   );
   return "﻿" + [linhaCsv(cabecalho), ...linhas].join("\r\n") + "\r\n";
+}
+
+// ── Gráficos e leitura (14/11/2026) ──────────────────────────────────────
+
+/** Início do período anterior, do mesmo tamanho, para comparar (meia-noite de Brasília). */
+export function inicioAnterior(periodo: Periodo, de: string): string {
+  return `${somarDiasIso(de, -Number(periodo))}T03:00:00.000Z`;
+}
+
+/** Dia (AAAA-MM-DD) de Brasília de um instante. */
+export function diaBr(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}
+
+export type PontoDia = { dia: string; total: number; notasBaixas: number };
+
+/** Avaliações por dia do período (dias sem avaliação entram com zero), com as notas baixas de cada dia. */
+export function serieDiaria(respostas: RespostaPainel[], de: string, ate: string): PontoDia[] {
+  const mapa = new Map<string, PontoDia>();
+  for (let d = de; d <= ate; d = somarDiasIso(d, 1)) mapa.set(d, { dia: d, total: 0, notasBaixas: 0 });
+  for (const r of respostas) {
+    const p = mapa.get(diaBr(r.criadoEm));
+    if (!p) continue;
+    p.total += 1;
+    if (r.notaBaixa) p.notasBaixas += 1;
+  }
+  return [...mapa.values()];
+}
+
+/** Faixa do NPS como o mercado lê: crítica (até 0), aperfeiçoamento (1 a 50), qualidade (51 a 75) e excelência (76 a 100). */
+export function zonaNps(nps: number): string {
+  if (nps <= 0) return "zona crítica";
+  if (nps <= 50) return "zona de aperfeiçoamento";
+  if (nps <= 75) return "zona de qualidade";
+  return "zona de excelência";
+}
+
+/** Base mínima para comparar com o período anterior ou apontar a pergunta mais forte e a mais fraca. */
+export const BASE_MINIMA_LEITURA = 5;
+
+function formatarNumero(n: number): string {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/** Leitura curta do período, só com o que os números mostram (sem palpite de causa). Frases na
+ * ordem: volume, NPS, pergunta mais forte e mais fraca, pedido certo, notas baixas e alerta de base pequena. */
+export function gerarLeitura(atual: ResumoAvaliacoes, anterior: ResumoAvaliacoes | null): string[] {
+  if (atual.total === 0) return [];
+  const comparar = anterior !== null && anterior.total >= BASE_MINIMA_LEITURA && atual.total >= BASE_MINIMA_LEITURA;
+  const frases: string[] = [];
+
+  const volume = `${atual.total === 1 ? "Chegou 1 avaliação" : `Chegaram ${atual.total} avaliações`} no período`;
+  if (anterior !== null && anterior.total > 0) {
+    const dif = atual.total - anterior.total;
+    frases.push(`${volume}, ${dif === 0 ? "o mesmo número" : `${Math.abs(dif)} a ${dif > 0 ? "mais" : "menos"}`} que no período anterior (${anterior.total}).`);
+  } else frases.push(`${volume}.`);
+
+  if (atual.nps.nps !== null) {
+    let t = `O NPS está em ${atual.nps.nps}, ${zonaNps(atual.nps.nps)}`;
+    if (comparar && anterior.nps.nps !== null) {
+      const dif = atual.nps.nps - anterior.nps.nps;
+      t += dif === 0 ? ", igual ao período anterior" : `, ${dif > 0 ? "subiu" : "caiu"} ${Math.abs(dif)} pontos (era ${anterior.nps.nps})`;
+    }
+    frases.push(`${t}: ${atual.nps.promotores} promotores e ${atual.nps.detratores} detratores.`);
+  }
+
+  const comBase = atual.medias.filter((m) => m.media !== null && m.respostas >= BASE_MINIMA_LEITURA);
+  if (comBase.length >= 2) {
+    const ordem = [...comBase].sort((a, b) => (b.media as number) - (a.media as number));
+    const forte = ordem[0];
+    const fraca = ordem[ordem.length - 1];
+    if (forte.media !== fraca.media) {
+      let t = `Ponto mais forte: ${forte.nome.toLowerCase()} (${formatarNumero(forte.media as number)}). Ponto mais fraco: ${fraca.nome.toLowerCase()} (${formatarNumero(fraca.media as number)})`;
+      const antes = comparar ? anterior.medias.find((m) => m.chave === fraca.chave && m.respostas >= BASE_MINIMA_LEITURA) : undefined;
+      if (antes?.media != null && antes.media !== fraca.media) t += `, ${(fraca.media as number) > antes.media ? "subiu" : "caiu"} de ${formatarNumero(antes.media)}`;
+      frases.push(`${t}.`);
+    }
+  }
+
+  const errados = atual.pedidoCerto.total - atual.pedidoCerto.certos;
+  if (errados > 0) frases.push(`${errados} ${errados === 1 ? "pedido veio errado ou faltando" : "pedidos vieram errados ou faltando"}, ${Math.round((errados / atual.pedidoCerto.total) * 100)}% de quem respondeu.`);
+
+  if (atual.notasBaixas > 0) frases.push(`${atual.notasBaixas} ${atual.notasBaixas === 1 ? "avaliação teve nota baixa" : "avaliações tiveram nota baixa"} (${Math.round((atual.notasBaixas / atual.total) * 100)}% do total): veja os comentários abaixo.`);
+  else frases.push("Nenhuma nota baixa no período.");
+
+  if (atual.total < 10) frases.push("Ainda são poucas avaliações: leia como sinal, não como tendência.");
+  return frases;
 }
