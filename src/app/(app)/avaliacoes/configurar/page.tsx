@@ -186,7 +186,13 @@ async function AbaFinal({ pesquisa, podeEditar, acesso }: { pesquisa: Pesquisa; 
             {pesquisa.roletaAtiva && !pesquisa.linkPedidoDireto && (
               <p className="text-xs font-semibold text-ambar">Sem o link de pedir direto, o cliente ganha o cupom mas não vê o botão para pedir. Preencha o campo acima.</p>
             )}
-            <EditorRoleta ativa={pesquisa.roletaAtiva} validadeDias={pesquisa.cupomValidadeDias} premios={premios} podeEditar={podeEditar} />
+            <EditorRoleta
+              ativa={pesquisa.roletaAtiva}
+              validadeDias={pesquisa.cupomValidadeDias}
+              premios={premios}
+              podeEditar={podeEditar}
+              marca={{ nome: pesquisa.nomeExibido, corPrincipal: pesquisa.corPrincipal, corFundo: pesquisa.corFundo, linkPedidoDireto: pesquisa.linkPedidoDireto }}
+            />
             <p className="text-xs text-cinza-medio">
               A baixa do cupom fica na aba{" "}
               <Link href="/avaliacoes/cupons" className="font-semibold text-azul-petroleo underline">

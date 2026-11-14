@@ -9,7 +9,11 @@ import { anguloFinal, type PremioPublico } from "@/lib/avaliacoes/roleta";
 // mostra o resultado. As fatias têm o mesmo tamanho (a chance real fica com a gestão).
 
 type Props = {
+  /** Avaliação gravada que pode girar. Vazio só no teste da tela Configurar. */
   respostaId: string;
+  /** Teste na tela Configurar (14/11/2026): sorteia aqui mesmo com os pesos da tela, sem gravar
+   * nada e sem cupom de verdade. */
+  teste?: { pesos: number[]; validadeDias: number };
   premios: PremioPublico[];
   nome: string;
   corPrincipal: string;
@@ -88,28 +92,48 @@ export function RoletaPremios(p: Props) {
   const [mostrar, setMostrar] = useState(false);
   const [pendente, startTransition] = useTransition();
 
+  function animar(indice: number) {
+    setGirando(true);
+    // Começa de onde parou, para girar de novo no teste.
+    setAngulo((atual) => atual - (atual % 360) + anguloFinal(indice, p.premios.length));
+    setTimeout(() => {
+      setGirando(false);
+      setMostrar(true);
+    }, GIRO_MS + 200);
+  }
+
   function girar() {
     setErro(null);
+    if (p.teste) {
+      const n = whatsapp.replace(/\D/g, "");
+      if (n.length < 10 || n.length > 13) return setErro("Esse WhatsApp não parece válido. Confira o DDD e o número.");
+      const pesos = p.teste.pesos.map((x) => (x > 0 ? x : 0));
+      let sorte = Math.random() * pesos.reduce((a, b) => a + b, 0);
+      let indice = pesos.findIndex((x) => (sorte -= x) < 0);
+      if (indice < 0) indice = 0;
+      const premio = p.premios[indice];
+      const validade = new Date(Date.now() + p.teste.validadeDias * 86_400_000).toISOString();
+      setResultado({ premio: premio.nome, regra: premio.regra, cupom: "TESTE0", validoAte: validade });
+      animar(indice);
+      return;
+    }
     startTransition(async () => {
       const r = await girarRoletaAction(p.respostaId, whatsapp);
       if (!r.ok) {
         setErro(r.erro);
         return;
       }
-      const indice = Math.max(0, p.premios.findIndex((x) => x.id === r.premioId));
       setResultado({ premio: r.premio, regra: r.regra, cupom: r.cupom, validoAte: r.validoAte });
-      setGirando(true);
-      setAngulo(anguloFinal(indice, p.premios.length));
-      setTimeout(() => {
-        setGirando(false);
-        setMostrar(true);
-      }, GIRO_MS + 200);
+      animar(Math.max(0, p.premios.findIndex((x) => x.id === r.premioId)));
     });
   }
 
   if (resultado && mostrar) {
     return (
       <div className="w-full max-w-sm rounded-2xl border-2 p-5 text-center" style={p.estiloCartao} aria-live="polite">
+        {p.teste ? (
+          <p className="mb-3 rounded-lg bg-[#F5B301] px-2 py-1 text-xs font-bold text-[#111111]">TESTE: nada foi gravado e este cupom não vale</p>
+        ) : null}
         <p className="text-sm font-bold uppercase tracking-widest opacity-70">Você ganhou</p>
         <p className="mt-1 text-2xl font-extrabold leading-tight">{resultado.premio}</p>
         {resultado.regra ? <p className="mt-1 text-sm opacity-80">{resultado.regra}</p> : null}
@@ -130,6 +154,19 @@ export function RoletaPremios(p: Props) {
           >
             Pedir direto agora
           </a>
+        ) : null}
+        {p.teste ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResultado(null);
+              setMostrar(false);
+            }}
+            className="mt-3 w-full rounded-2xl border-2 px-6 py-3 text-sm font-bold"
+            style={{ borderColor: p.tinta }}
+          >
+            Girar de novo (teste)
+          </button>
         ) : null}
       </div>
     );
