@@ -60,7 +60,7 @@ grant select on pl to authenticated;
 select pg_temp.como('00000000-0000-0000-0000-0000000d9001');
 select isnt(public.avaliacoes_criar_pesquisa('org-pl-loja'), null, 'gestão cria a pesquisa');
 select lives_ok($$ select public.avaliacoes_salvar_perguntas('org-pl-loja', (select lista from pl)) $$, 'gestão grava a lista com perguntas próprias');
-select is((select perguntas -> 2 ->> 'chave' from avaliacoes_pesquisa_versoes v join avaliacoes_pesquisas p on p.id = v.pesquisa_id and v.versao = p.versao_atual
+select is((select perguntas -> 1 ->> 'chave' from avaliacoes_pesquisa_versoes v join avaliacoes_pesquisas p on p.id = v.pesquisa_id and v.versao = p.versao_atual
             where p.unidade_id = 'org-pl-loja'), 'extra_preco1', 'a ordem enviada é a ordem gravada');
 select is((select q -> 'opcoes' from avaliacoes_pesquisa_versoes v join avaliacoes_pesquisas p on p.id = v.pesquisa_id and v.versao = p.versao_atual,
                   jsonb_array_elements(v.perguntas) q
@@ -79,19 +79,19 @@ select throws_ok($$ select public.avaliacoes_salvar_perguntas('org-pl-loja',
 
 -- ── Gravação ───────────────────────────────────────────────────────────────
 select pg_temp.servidor();
-select is(pg_temp.reg('app', 'p1', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_burg01": "Smash"}') ->> 'campo', 'extra_preco1',
+select is(pg_temp.reg('app', 'c1', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_burg01": "Smash"}') ->> 'campo', 'extra_preco1',
   'própria obrigatória cobrada onde vale');
-select is(pg_temp.reg('app', 'p2', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_preco1": 4, "extra_burg01": "Frango"}') ->> 'campo', 'extra_burg01',
+select is(pg_temp.reg('app', 'c2', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_preco1": 4, "extra_burg01": "Frango"}') ->> 'campo', 'extra_burg01',
   'opção fora da lista é recusada');
-select is(pg_temp.reg('app', 'p3', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_preco1": 2, "extra_burg01": "Smash"}') ->> 'ok', 'true',
+select is(pg_temp.reg('app', 'c3', '{"pedido_certo": true, "embalagem": 5, "nps": 10, "extra_preco1": 2, "extra_burg01": "Smash"}') ->> 'ok', 'true',
   'app grava sem a comida (desligada só no app)');
-select ok((select extras = '{"extra_preco1": 2, "extra_burg01": "Smash"}'::jsonb and comida is null and nota_baixa from pg_temp.resposta('p3')),
+select ok((select extras = '{"extra_preco1": 2, "extra_burg01": "Smash"}'::jsonb and comida is null and nota_baixa from pg_temp.resposta('c3')),
   'respostas próprias em extras; estrela 2 vira nota baixa');
-select is(pg_temp.reg('delivery', 'p4', '{"pedido_certo": true, "embalagem": 5, "entrega": 5, "atendimento_pedido": 5, "nps": 10}') ->> 'campo', 'comida',
+select is(pg_temp.reg('delivery', 'c4', '{"pedido_certo": true, "embalagem": 5, "entrega": 5, "atendimento_pedido": 5, "nps": 10}') ->> 'campo', 'comida',
   'no delivery a comida continua obrigatória');
-select is(pg_temp.reg('delivery', 'p5', '{"pedido_certo": true, "comida": 5, "embalagem": 5, "entrega": 5, "atendimento_pedido": 5, "nps": 10, "extra_preco1": 1}') ->> 'ok', 'true',
+select is(pg_temp.reg('delivery', 'c5', '{"pedido_certo": true, "comida": 5, "embalagem": 5, "entrega": 5, "atendimento_pedido": 5, "nps": 10, "extra_preco1": 1}') ->> 'ok', 'true',
   'delivery grava e ignora a própria que não vale nele');
-select ok((select extras is null and not nota_baixa from pg_temp.resposta('p5')), 'resposta de pergunta que não vale no tipo nem é guardada');
+select ok((select extras is null and not nota_baixa from pg_temp.resposta('c5')), 'resposta de pergunta que não vale no tipo nem é guardada');
 
 select * from finish();
 rollback;
