@@ -176,7 +176,18 @@ export function EditorRoleta({
             className="grid grid-cols-1 gap-2 rounded-lg border border-cinza-claro p-3 sm:grid-cols-[1fr_1fr_110px_auto] sm:items-end sm:border-0 sm:p-0"
           >
             <label className={ROTULO}>
-              Prêmio
+              <span className="flex justify-between gap-2">
+                <span>Prêmio (vai na roleta)</span>
+                <span
+                  className={
+                    l.nome.length >= LIMITE_NOME_PREMIO
+                      ? "text-ambar"
+                      : "font-normal text-cinza-medio"
+                  }
+                >
+                  {l.nome.length}/{LIMITE_NOME_PREMIO}
+                </span>
+              </span>
               <input
                 className={`${CAMPO} mt-1`}
                 value={l.nome}
@@ -239,6 +250,12 @@ export function EditorRoleta({
             + Adicionar prêmio
           </button>
         )}
+        <p className="text-xs text-cinza-medio">
+          O nome do prêmio aparece na fatia da roleta, por isso tem até{" "}
+          {LIMITE_NOME_PREMIO} letras: escreva curto (&quot;Batata
+          grátis&quot;) e deixe o detalhe na regra, que aparece no resultado.
+          Confira no teste abaixo como ficou.
+        </p>
         <p className="text-xs text-cinza-medio">
           O número de cada prêmio é o peso: com números iguais, todos têm a
           mesma chance. Dê número maior ao prêmio mais barato para ele sair mais

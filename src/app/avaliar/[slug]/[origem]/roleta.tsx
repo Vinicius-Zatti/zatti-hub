@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type CSSProperties } from "react";
 import { girarRoletaAction } from "../../acoes";
-import { anguloFinal, type PremioPublico } from "@/lib/avaliacoes/roleta";
+import { anguloFinal, rotuloFatia, type PremioPublico } from "@/lib/avaliacoes/roleta";
 
 // Roleta de prêmios no fim da pesquisa dos apps (13/11/2026), modelo do Falaê: a pessoa deixa o
 // WhatsApp, gira e ganha um cupom para o próximo pedido direto. O sorteio é do banco; a roda só
@@ -58,21 +58,32 @@ function Roda({ premios, corPrincipal, angulo }: { premios: PremioPublico[]; cor
           const grande = fatia > 180 ? 1 : 0;
           const cor = i % 2 === 0 ? corPrincipal : "#FFFFFF";
           const meio = i * fatia + fatia / 2;
-          const [tx, ty] = ponto(meio, 58);
+          const rotulo = rotuloFatia(p.nome, premios.length);
+          // Deitado: perto da borda, acompanhando o arco. Em pé: no meio do raio, do centro para fora.
+          const [tx, ty] = ponto(meio, rotulo.radial ? 56 : 60);
+          const altura = rotulo.fonte * 1.15;
           return (
             <g key={p.id}>
-              <path d={`M100 100 L${x1} ${y1} A94 94 0 ${grande} 1 ${x2} ${y2} Z`} fill={cor} stroke="#111111" strokeWidth="1" />
+              {premios.length === 1 ? (
+                <circle cx="100" cy="100" r="94" fill={cor} />
+              ) : (
+                <path d={`M100 100 L${x1} ${y1} A94 94 0 ${grande} 1 ${x2} ${y2} Z`} fill={cor} stroke="#111111" strokeWidth="1" />
+              )}
               <text
                 x={tx}
                 y={ty}
-                transform={`rotate(${meio} ${tx} ${ty})`}
+                transform={`rotate(${rotulo.radial ? meio - 90 : meio} ${tx} ${ty})`}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={premios.length > 5 ? 8 : 10}
+                fontSize={rotulo.fonte}
                 fontWeight="800"
                 fill="#111111"
               >
-                {p.nome.length > 18 ? `${p.nome.slice(0, 17)}…` : p.nome}
+                {rotulo.linhas.map((linha, j) => (
+                  <tspan key={j} x={tx} dy={j === 0 ? -((rotulo.linhas.length - 1) * altura) / 2 : altura}>
+                    {linha}
+                  </tspan>
+                ))}
               </text>
             </g>
           );

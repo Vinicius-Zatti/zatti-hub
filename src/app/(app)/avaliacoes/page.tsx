@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { temPermissao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
@@ -9,6 +10,9 @@ import {
   dataHoraBr,
   filtrarPorOrigem,
   formatarWhatsapp,
+  gerarLeitura,
+  inicioAnterior,
+  serieDiaria,
   intervaloPeriodo,
   lerFiltroOrigem,
   lerPeriodo,
@@ -19,7 +23,6 @@ import {
   type ResumoLivre,
   textoNps,
   type FiltroOrigem,
-  type ItemDistribuicao,
   type LinhaAtendente,
   type RespostaPainel,
 } from "@/lib/avaliacoes/painel";
@@ -31,6 +34,7 @@ import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CriarPesquisa } from "@/components/avaliacoes/criar-pesquisa";
 import { ExportarCsv } from "@/components/avaliacoes/exportar-csv";
+import { BarraNps, BarrasDistribuicao, BarrasNotas, GraficoDiario } from "@/components/avaliacoes/graficos";
 
 const ORIGENS_FILTRO: { valor: FiltroOrigem; rotulo: string }[] = [
   { valor: "todas", rotulo: "Todas" },
@@ -63,9 +67,17 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
   }
 
   const { de, ate, desdeIso } = intervaloPeriodo(periodo);
-  const { respostas: todas, cortado } = await carregarRespostas(acesso, desdeIso);
-  const respostas = filtrarPorOrigem(todas, origem);
+  // Lê também o período anterior, do mesmo tamanho, para a leitura comparar.
+  const { respostas: lidas, cortado } = await carregarRespostas(acesso, inicioAnterior(periodo, de));
+  const desde = new Date(desdeIso).getTime();
+  const noFiltro = filtrarPorOrigem(lidas, origem);
+  const respostas = noFiltro.filter((x) => new Date(x.criadoEm).getTime() >= desde);
   const r = resumir(respostas);
+  // Corte de 5.000: se nem chegou ao período anterior, o atual também ficou incompleto.
+  const atualCortado = cortado && !lidas.some((x) => new Date(x.criadoEm).getTime() < desde);
+  const anterior = cortado ? null : resumir(noFiltro.filter((x) => new Date(x.criadoEm).getTime() < desde));
+  const leitura = gerarLeitura(r, anterior);
+  const dias = serieDiaria(respostas, de, ate);
   const livres = resumirLivres(
     respostas,
     pesquisa.perguntasLivres,
@@ -77,7 +89,6 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
 
   const cartoes = [
     { rotulo: "Avaliações", valor: String(r.total), dica: DICAS.total, extra: `${r.porOrigem.salao} salão · ${r.porOrigem.delivery} delivery · ${r.porOrigem.app} apps`, destaque: false },
-    ...r.medias.map((m) => ({ rotulo: m.nome, valor: textoMedia(m.media), dica: DICAS.media, extra: `de 5 · ${m.respostas} notas`, destaque: false })),
     ...(r.pedidoCerto.total > 0
       ? [
           {
@@ -129,13 +140,13 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
         </nav>
       </div>
 
-      {cortado && (
+      {atualCortado && (
         <p className="rounded-lg border border-ambar bg-ambar/10 p-3 text-sm text-azul-noite">
           O período tem mais de {LIMITE_RESPOSTAS_PAINEL.toLocaleString("pt-BR")} avaliações: os números usam as {LIMITE_RESPOSTAS_PAINEL.toLocaleString("pt-BR")} mais recentes. Escolha um período menor.
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cartoes.map((c) => (
           <div key={c.rotulo} className={`rounded-lg border bg-branco p-3 ${c.destaque ? "border-azul-petroleo" : "border-cinza-claro"}`}>
             <p className="flex items-center gap-1 text-xs font-semibold text-cinza-medio">
@@ -154,10 +165,40 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
         </p>
       ) : (
         <>
+          {leitura.length > 0 && (
+            <section className="rounded-lg border border-azul-petroleo/40 bg-azul-petroleo/5 p-4">
+              <h2 className="flex items-center gap-1 font-display text-lg font-bold text-azul-noite">
+                Leitura do período
+                <DicaCalculo rotulo="leitura do período" texto={DICAS.leitura} />
+              </h2>
+              <ul className="mt-2 flex flex-col gap-1 text-sm text-cinza">
+                {leitura.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+          <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
+            <Bloco titulo="Avaliações por dia">
+              <GraficoDiario dias={dias} />
+            </Bloco>
+            <Bloco titulo="NPS" dica={DICAS.nps}>
+              <BarraNps nps={r.nps} />
+            </Bloco>
+          </div>
           <div className="grid gap-5 lg:grid-cols-2">
-            <TabelaDistribuicao titulo="Como conheceu" dica={DICAS.conheceu} itens={r.conheceu} />
+            <Bloco titulo="Nota de cada pergunta" dica={DICAS.media}>
+              <BarrasNotas medias={r.medias} />
+            </Bloco>
+            <Bloco titulo="Como conheceu" dica={DICAS.conheceu}>
+              <BarrasDistribuicao itens={r.conheceu} />
+            </Bloco>
             {r.atendentes.length > 0 && <TabelaAtendentes linhas={r.atendentes} />}
-            {r.espera.some((i) => i.quantidade > 0) && <TabelaDistribuicao titulo="Tempo de espera (pergunta antiga)" dica={DICAS.espera} itens={r.espera} />}
+            {r.espera.some((i) => i.quantidade > 0) && (
+              <Bloco titulo="Tempo de espera (pergunta antiga)" dica={DICAS.espera}>
+                <BarrasDistribuicao itens={r.espera} />
+              </Bloco>
+            )}
           </div>
           {livres.length > 0 && <PerguntasLivres itens={livres} />}
           {r.conheceuOutros.length > 0 && (
@@ -174,37 +215,14 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
   );
 }
 
-function TabelaDistribuicao({ titulo, dica, itens }: { titulo: string; dica: string; itens: ItemDistribuicao[] }) {
+function Bloco({ titulo, dica, children }: { titulo: string; dica?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
-      <TabelaRolavel ariaLabel={titulo}>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-azul-petroleo text-branco">
-              <Th>Resposta</Th>
-              <Th align="right" larguraFixa="96px">
-                Pessoas
-              </Th>
-              <Th align="right" larguraFixa="88px">
-                <span className="inline-flex items-center gap-1">
-                  %
-                  <DicaCalculo rotulo={`porcentagem de ${titulo.toLowerCase()}`} texto={dica} />
-                </span>
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((i) => (
-              <tr key={i.valor} className="border-b border-cinza-claro">
-                <td className="px-3 py-2">{i.rotulo}</td>
-                <td className="px-3 py-2 text-right">{i.quantidade}</td>
-                <td className="px-3 py-2 text-right">{i.percentual}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </TabelaRolavel>
+    <section className="flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
+      <h2 className="flex items-center gap-1 font-display text-lg font-bold text-azul-noite">
+        {titulo}
+        {dica && <DicaCalculo rotulo={titulo.toLowerCase()} texto={dica} />}
+      </h2>
+      {children}
     </section>
   );
 }
@@ -297,24 +315,22 @@ function PerguntasLivres({ itens }: { itens: ResumoLivre[] }) {
             <p className="font-semibold text-azul-noite">{p.texto}</p>
             <p className="text-xs text-cinza-medio">{p.respostas === 1 ? "1 resposta" : `${p.respostas} respostas`}</p>
             {p.respostas === 0 ? null : p.tipo === "estrelas" ? (
-              <p className="mt-1 font-display text-2xl font-bold text-azul-noite">
-                {textoMedia(p.media)} <span className="text-xs font-normal text-cinza-medio">de 5</span>
-              </p>
+              <div className="mt-2">
+                <BarrasNotas medias={[{ chave: "atendimento", nome: "Média", media: p.media, respostas: p.respostas }]} />
+              </div>
             ) : p.tipo === "simnao" ? (
-              <p className="mt-1 font-display text-2xl font-bold text-azul-noite">
-                {Math.round((p.sim / p.respostas) * 100)}% <span className="text-xs font-normal text-cinza-medio">disseram sim</span>
-              </p>
+              <div className="mt-2">
+                <BarrasDistribuicao
+                  itens={[
+                    { valor: "sim", rotulo: "Sim", quantidade: p.sim, percentual: Math.round((p.sim / p.respostas) * 100) },
+                    { valor: "nao", rotulo: "Não", quantidade: p.respostas - p.sim, percentual: 100 - Math.round((p.sim / p.respostas) * 100) },
+                  ]}
+                />
+              </div>
             ) : p.tipo === "escolha" ? (
-              <ul className="mt-1 flex flex-col gap-0.5">
-                {p.opcoes.map((o) => (
-                  <li key={o.valor} className="flex justify-between gap-2">
-                    <span>{o.rotulo}</span>
-                    <span className="tabular-nums text-cinza">
-                      {o.quantidade} ({o.percentual}%)
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2">
+                <BarrasDistribuicao itens={p.opcoes} />
+              </div>
             ) : (
               <ul className="mt-1 list-disc pl-5 text-cinza">
                 {p.textos.map((t, i) => (
