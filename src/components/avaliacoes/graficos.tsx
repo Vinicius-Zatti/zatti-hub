@@ -48,7 +48,7 @@ export function GraficoDiario({ dias }: { dias: PontoDia[] }) {
               {d.total > 0 && <rect x={x} y={H - BASE - hTotal} width={largura} height={hTotal} rx={Math.min(3, largura / 2)} className="fill-azul-petroleo" />}
               {d.notasBaixas > 0 && <rect x={x} y={H - BASE - hBaixa} width={largura} height={hBaixa} className="fill-vermelho" />}
               {comData(d.dia, i) && (
-                <text x={i * passo + passo / 2} y={H - 8} textAnchor="middle" className="fill-cinza-medio text-[10px]">
+                <text x={i === 0 ? 0 : i * passo + passo / 2} y={H - 8} textAnchor={i === 0 ? "start" : "middle"} className="fill-cinza-medio text-[10px]">
                   {dias.length <= 7 ? `${semana} ${curta(d.dia)}` : curta(d.dia)}
                 </text>
               )}
