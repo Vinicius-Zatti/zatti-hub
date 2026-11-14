@@ -11,6 +11,7 @@ import {
   lerPeriodo,
   media,
   resumir,
+  resumirLivres,
   type RespostaPainel,
 } from "./painel";
 
@@ -33,6 +34,7 @@ function resposta(p: Partial<RespostaPainel>): RespostaPainel {
     conheceu: null,
     conheceuOutro: null,
     comentario: null,
+    extras: null,
     notaBaixa: false,
     whatsapp: null,
     consentimentoEm: null,
@@ -145,5 +147,31 @@ describe("contatos e CSV", () => {
     expect(linha).toContain("12/11/2026 20:14;Salão;5;4;;;;;;;;Até 15 min;9;Instagram;;");
     expect(linha).toContain(`"'=HYPERLINK(""x"")"`);
     expect(linha).toContain("(16) 99999-0001");
+  });
+});
+
+describe("perguntas da gestão no painel (14/11/2026)", () => {
+  const livres = [
+    { chave: "extra_preco1" as const, texto: "E o preço?", ativa: true, origens: ["salao" as const], tipo: "estrelas" as const, obrigatoria: true },
+    { chave: "extra_burg01" as const, texto: "Qual burger?", ativa: true, origens: ["app" as const], tipo: "escolha" as const, obrigatoria: false, opcoes: ["Smash", "Duplo"] },
+    { chave: "extra_volta1" as const, texto: "Voltaria?", ativa: false, origens: ["app" as const], tipo: "simnao" as const, obrigatoria: false },
+  ];
+  const respostas = [
+    resposta({ id: "a", extras: { extra_preco1: 4, extra_burg01: "Smash" } }),
+    resposta({ id: "b", extras: { extra_preco1: 2, extra_burg01: "Smash" } }),
+    resposta({ id: "c", extras: null }),
+  ];
+
+  it("média das estrelas, contagem das opções e some quem não teve resposta nem está ligada", () => {
+    const r = resumirLivres(respostas, livres, ["extra_preco1", "extra_burg01"]);
+    expect(r.map((x) => x.chave)).toEqual(["extra_preco1", "extra_burg01"]);
+    expect(r[0]).toMatchObject({ respostas: 2, media: 3 });
+    expect(r[1].opcoes.map((o) => o.quantidade)).toEqual([2, 0]);
+  });
+
+  it("CSV ganha uma coluna por pergunta da gestão", () => {
+    const csv = gerarCsv([respostas[0]], livres);
+    expect(csv).toContain("E o preço?");
+    expect(csv).toContain(";4;Smash;");
   });
 });

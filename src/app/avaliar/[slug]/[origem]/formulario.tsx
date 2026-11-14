@@ -368,10 +368,16 @@ export function FormularioAvaliacao(p: Props) {
 
             {q.tipo === "simnao" ? (
               <div className="mt-8 grid gap-3" role="radiogroup" aria-label={q.texto}>
-                {[
-                  { v: "sim", r: "Sim, veio tudo certo" },
-                  { v: "nao", r: "Não, faltou ou veio errado" },
-                ].map((o) => (
+                {(q.chave === "pedido_certo"
+                  ? [
+                      { v: "sim", r: "Sim, veio tudo certo" },
+                      { v: "nao", r: "Não, faltou ou veio errado" },
+                    ]
+                  : [
+                      { v: "sim", r: "Sim" },
+                      { v: "nao", r: "Não" },
+                    ]
+                ).map((o) => (
                   <button
                     key={o.v}
                     type="button"
@@ -434,6 +440,19 @@ export function FormularioAvaliacao(p: Props) {
                   />
                 ) : null}
               </>
+            ) : null}
+
+            {q.tipo === "texto" ? (
+              <textarea
+                value={valor}
+                onChange={(e) => setValores((v) => ({ ...v, [q.chave]: e.target.value }))}
+                maxLength={LIMITE_COMENTARIO}
+                rows={4}
+                placeholder="Escreva aqui"
+                aria-label={q.texto}
+                className="mt-8 w-full rounded-2xl border-2 p-4 text-base"
+                style={estiloOpcao}
+              />
             ) : null}
 
             {estado.erro && estado.campo === q.chave ? (

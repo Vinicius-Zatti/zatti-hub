@@ -3,29 +3,45 @@ import { createClient } from "@/lib/supabase/server";
 import { redirecionarSemEdicao, temPermissao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
 import { carregarDestinatarios, carregarPesquisa, carregarPremios, carregarSituacaoAlertas, urlPublicaLogo } from "@/lib/avaliacoes/servidor";
-import { ROTULO_ORIGEM, definicao, perguntasDoTipo } from "@/lib/avaliacoes/perguntas";
+import { LIMITE_AGRADECIMENTO, LIMITE_NOME } from "@/lib/avaliacoes/marca";
+import { ROTULO_ORIGEM } from "@/lib/avaliacoes/perguntas";
 import { urlBase, urlPublica } from "@/lib/avaliacoes/qr";
 import { DICA_ALERTA } from "@/lib/avaliacoes/alertas";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { CriarPesquisa } from "@/components/avaliacoes/criar-pesquisa";
-import { EditorMarca, Previa } from "@/components/avaliacoes/editor-marca";
+import { EditorCores, PausaPesquisa } from "@/components/avaliacoes/editor-marca";
 import { EditorPerguntas } from "@/components/avaliacoes/editor-perguntas";
+import { CampoSalvavel } from "@/components/avaliacoes/campo-salvavel";
 import { LogoUpload } from "@/components/avaliacoes/logo-upload";
 import { DestinatarioAlerta } from "@/components/avaliacoes/destinatario-alerta";
 import { TiposPesquisa } from "@/components/avaliacoes/tipos-pesquisa";
-import { EditorExtras } from "@/components/avaliacoes/editor-extras";
 import { EditorRoleta } from "@/components/avaliacoes/editor-roleta";
-import { chances } from "@/lib/avaliacoes/roleta";
+import { CARTAO } from "@/components/avaliacoes/ui";
 
-const CARTAO = "flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4";
+const ABAS = [
+  { id: "perguntas", rotulo: "Perguntas" },
+  { id: "aparencia", rotulo: "Aparência" },
+  { id: "final", rotulo: "Fim da pesquisa" },
+  { id: "alerta", rotulo: "Alerta de nota baixa" },
+  { id: "qr", rotulo: "Tipos e QR" },
+  { id: "dados", rotulo: "Dados (LGPD)" },
+] as const;
+type Aba = (typeof ABAS)[number]["id"];
+
 const TITULO = "font-display text-lg font-bold text-azul-noite";
 
-/** Configurar (gestão com "editar"): endereço, marca, perguntas, alerta e o texto de
- * consentimento. Quem só vê é levado ao painel (`TELAS_DE_EDICAO`). */
-export default async function ConfigurarAvaliacoesPage() {
+function lerAba(valor: string | undefined): Aba {
+  return ABAS.some((a) => a.id === valor) ? (valor as Aba) : "perguntas";
+}
+
+/** Configurar (gestão com "editar"), refeita em 14/11/2026: abas por assunto e cada bloco com o
+ * próprio salvar. Perguntas por tipo de pesquisa, com criar, editar, ligar, desligar e ordenar.
+ * Quem só vê é levado ao painel (`TELAS_DE_EDICAO`). */
+export default async function ConfigurarAvaliacoesPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
   const acesso = await requireAvaliacoes();
   redirecionarSemEdicao(acesso, "/avaliacoes/configurar");
   const podeEditar = temPermissao(acesso, "avaliacoes", "editar");
+  const aba = lerAba((await searchParams).aba);
   const pesquisa = await carregarPesquisa(acesso);
   if (!pesquisa) {
     return (
@@ -36,29 +52,183 @@ export default async function ConfigurarAvaliacoesPage() {
     );
   }
 
-  const supabase = await createClient();
-  const [destinatarios, situacao, premios, { data: termo }] = await Promise.all([
-    carregarDestinatarios(acesso, pesquisa.alertaVinculoId),
-    carregarSituacaoAlertas(acesso),
-    carregarPremios(acesso),
-    supabase.from("avaliacoes_termos").select("versao, modelo").order("versao", { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  const base = urlBase();
-  const logoUrl = urlPublicaLogo(pesquisa.logoPath);
-  const termoAtual = termo as { versao: number; modelo: string } | null;
-
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-azul-noite">Configurar as Avaliações</h1>
-        <p className="text-sm text-cinza-medio">
-          {pesquisa.nomeExibido} ·{" "}
-          {pesquisa.ativa ? "pesquisa no ar" : <span className="font-semibold text-ambar">pesquisa pausada (o QR mostra um aviso)</span>}
-        </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-azul-noite">Configurar as Avaliações</h1>
+          <p className="text-sm text-cinza-medio">{pesquisa.nomeExibido}</p>
+        </div>
+        <PausaPesquisa ativa={pesquisa.ativa} podeEditar={podeEditar} />
       </div>
 
+      <nav className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0" aria-label="Partes da configuração">
+        <div className="flex min-w-max gap-1 border-b border-cinza-claro">
+          {ABAS.map((a) => (
+            <Link
+              key={a.id}
+              href={a.id === "perguntas" ? "/avaliacoes/configurar" : `/avaliacoes/configurar?aba=${a.id}`}
+              aria-current={a.id === aba ? "page" : undefined}
+              scroll={false}
+              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold ${a.id === aba ? "border-azul-noite text-azul-noite" : "border-transparent text-cinza hover:text-azul-noite"}`}
+            >
+              {a.rotulo}
+            </Link>
+          ))}
+        </div>
+      </nav>
+
+      {aba === "perguntas" && (
+        <section className={CARTAO}>
+          <h2 className={TITULO}>Perguntas</h2>
+          <EditorPerguntas perguntas={pesquisa.perguntas} origens={pesquisa.origens} atendentes={pesquisa.atendentes} podeEditar={podeEditar} />
+        </section>
+      )}
+
+      {aba === "aparencia" && <AbaAparencia pesquisa={pesquisa} podeEditar={podeEditar} />}
+      {aba === "final" && <AbaFinal pesquisa={pesquisa} podeEditar={podeEditar} acesso={acesso} />}
+      {aba === "alerta" && <AbaAlerta pesquisa={pesquisa} podeEditar={podeEditar} acesso={acesso} />}
+      {aba === "qr" && <AbaQr pesquisa={pesquisa} podeEditar={podeEditar} />}
+      {aba === "dados" && <AbaDados pesquisa={pesquisa} organizacao={acesso.organizacaoNome} />}
+    </div>
+  );
+}
+
+type Pesquisa = NonNullable<Awaited<ReturnType<typeof carregarPesquisa>>>;
+type Acesso = Awaited<ReturnType<typeof requireAvaliacoes>>;
+
+function AbaAparencia({ pesquisa, podeEditar }: { pesquisa: Pesquisa; podeEditar: boolean }) {
+  const logoUrl = urlPublicaLogo(pesquisa.logoPath);
+  return (
+    <>
       <section className={CARTAO}>
-        <h2 className={TITULO}>Endereço da pesquisa</h2>
+        <h2 className={TITULO}>Logo</h2>
+        <div className="flex flex-wrap items-center gap-4">
+          {logoUrl ? (
+            // Logo pública da unidade (bucket só de logos).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt={`Logo da ${pesquisa.nomeExibido}`} className="h-20 w-20 rounded-full border border-cinza-claro bg-white object-cover" />
+          ) : (
+            <span className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-cinza-claro text-center text-[11px] text-cinza-medio">sem logo</span>
+          )}
+          <div className="flex flex-col gap-1">
+            <p className="text-xs text-cinza-medio">Aparece redonda na capa e no topo de cada pergunta. PNG ou JPEG, até 300 KB.</p>
+            {podeEditar && <LogoUpload temLogo={Boolean(logoUrl)} />}
+          </div>
+        </div>
+      </section>
+      <section className={CARTAO}>
+        <CampoSalvavel
+          titulo="Nome do restaurante na página"
+          explicacao={'Aparece na capa ("Como foi sua experiência na ...?") e nos botões.'}
+          valor={pesquisa.nomeExibido}
+          campo="nomeExibido"
+          maximo={LIMITE_NOME}
+          podeEditar={podeEditar}
+        />
+      </section>
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Cores</h2>
+        <EditorCores nome={pesquisa.nomeExibido} principal={pesquisa.corPrincipal} fundo={pesquisa.corFundo} podeEditar={podeEditar} />
+      </section>
+    </>
+  );
+}
+
+async function AbaFinal({ pesquisa, podeEditar, acesso }: { pesquisa: Pesquisa; podeEditar: boolean; acesso: Acesso }) {
+  const premios = pesquisa.origens.includes("app") ? await carregarPremios(acesso) : [];
+  return (
+    <>
+      <p className="text-sm text-cinza">Depois de enviar, o cliente vê a mensagem de obrigado e, embaixo, os botões que você deixar ligados.</p>
+      <section className={CARTAO}>
+        <CampoSalvavel
+          titulo="Mensagem de obrigado"
+          valor={pesquisa.textoAgradecimento}
+          campo="textoAgradecimento"
+          multilinha
+          maximo={LIMITE_AGRADECIMENTO}
+          podeEditar={podeEditar}
+        />
+      </section>
+      <section className={CARTAO}>
+        <CampoSalvavel
+          titulo="Botão Avaliar no Google"
+          explicacao={
+            <>
+              No Perfil da Empresa no Google, toque em &quot;Pedir avaliações&quot; e cole o link aqui. O botão aparece para todos, qualquer nota (regra do Google), com o
+              comentário já copiado. Sem link, sem botão.
+            </>
+          }
+          valor={pesquisa.linkGoogle ?? ""}
+          campo="linkGoogle"
+          tipo="url"
+          placeholder="https://g.page/r/.../review"
+          podeEditar={podeEditar}
+          vazio="Sem link: o botão não aparece."
+        />
+      </section>
+      {pesquisa.origens.includes("app") && (
+        <>
+          <section className={CARTAO}>
+            <CampoSalvavel
+              titulo="Pedir direto com vocês (só apps de entrega)"
+              explicacao="Site, cardápio digital ou WhatsApp de pedidos. Quem pediu pelo iFood ou 99 vê o convite para pedir direto da próxima vez."
+              valor={pesquisa.linkPedidoDireto ?? ""}
+              campo="linkPedidoDireto"
+              tipo="url"
+              placeholder="https://..."
+              podeEditar={podeEditar}
+              vazio="Sem link: o convite não aparece."
+            />
+          </section>
+          <section className={CARTAO}>
+            <h2 className={TITULO}>Roleta de prêmios (só apps de entrega)</h2>
+            {pesquisa.roletaAtiva && !pesquisa.linkPedidoDireto && (
+              <p className="text-xs font-semibold text-ambar">Sem o link de pedir direto, o cliente ganha o cupom mas não vê o botão para pedir. Preencha o campo acima.</p>
+            )}
+            <EditorRoleta ativa={pesquisa.roletaAtiva} validadeDias={pesquisa.cupomValidadeDias} premios={premios} podeEditar={podeEditar} />
+            <p className="text-xs text-cinza-medio">
+              A baixa do cupom fica na aba{" "}
+              <Link href="/avaliacoes/cupons" className="font-semibold text-azul-petroleo underline">
+                Cupons
+              </Link>
+              .
+            </p>
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
+async function AbaAlerta({ pesquisa, podeEditar, acesso }: { pesquisa: Pesquisa; podeEditar: boolean; acesso: Acesso }) {
+  const [destinatarios, situacao] = await Promise.all([carregarDestinatarios(acesso, pesquisa.alertaVinculoId), carregarSituacaoAlertas(acesso)]);
+  return (
+    <section className={CARTAO}>
+      <h2 className={`${TITULO} flex items-center gap-1`}>
+        Alerta de nota baixa no WhatsApp
+        <DicaCalculo rotulo="alerta de nota baixa" texto={DICA_ALERTA} />
+      </h2>
+      <DestinatarioAlerta unidadeNome={pesquisa.nomeExibido} atual={destinatarios.atual} candidatos={destinatarios.candidatos} podeEditar={podeEditar} />
+      <p className="text-xs text-cinza-medio">
+        Esperando envio: {situacao.pendentes} · enviados nos últimos 7 dias: {situacao.enviados7d}
+        {situacao.incertosOuFalhos7d > 0 ? ` · sem confirmação ou vencidos: ${situacao.incertosOuFalhos7d}` : ""}
+      </p>
+    </section>
+  );
+}
+
+function AbaQr({ pesquisa, podeEditar }: { pesquisa: Pesquisa; podeEditar: boolean }) {
+  const base = urlBase();
+  return (
+    <>
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Tipos de pesquisa</h2>
+        <p className="text-sm text-cinza">Cada tipo tem o próprio QR, as próprias perguntas e aparece separado no painel. Desligue o que o restaurante não usa.</p>
+        <TiposPesquisa ligadas={pesquisa.origens} podeEditar={podeEditar} />
+      </section>
+      <section className={CARTAO}>
+        <h2 className={TITULO}>Endereço de cada QR</h2>
         <p className="text-sm text-cinza">Fixo: o QR impresso continua valendo mesmo se você trocar a logo, as cores ou as perguntas.</p>
         <ul className="flex flex-col gap-1 text-sm">
           {pesquisa.origens.map((o) => (
@@ -74,172 +244,27 @@ export default async function ConfigurarAvaliacoesPage() {
           Baixar a arte do QR para imprimir
         </Link>
       </section>
+    </>
+  );
+}
 
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Tipos de pesquisa</h2>
-        <p className="text-sm text-cinza">Cada tipo tem o próprio QR e aparece separado no painel. Desligue o que o restaurante não usa; o QR de um tipo desligado mostra que a pesquisa está pausada.</p>
-        <TiposPesquisa ligadas={pesquisa.origens} podeEditar={podeEditar} />
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Marca</h2>
-        <div className="grid gap-4 md:grid-cols-[1fr_280px]">
-          <div className="flex flex-col gap-3 text-sm">
-            <div className="flex items-center gap-3">
-              {logoUrl ? (
-                // Logo pública da unidade (bucket só de logos).
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt={`Logo da ${pesquisa.nomeExibido}`} className="h-16 w-auto max-w-[160px] rounded border border-cinza-claro object-contain p-1" />
-              ) : (
-                <span className="rounded border border-dashed border-cinza-claro px-3 py-4 text-xs text-cinza-medio">Sem logo: a página mostra o nome</span>
-              )}
-              {podeEditar && <LogoUpload temLogo={Boolean(logoUrl)} />}
-            </div>
-            <p>
-              <span className="font-semibold text-azul-noite">Nome exibido: </span>
-              {pesquisa.nomeExibido}
-            </p>
-            <p>
-              <span className="font-semibold text-azul-noite">Cores: </span>
-              principal {pesquisa.corPrincipal} · fundo {pesquisa.corFundo}
-            </p>
-            <p>
-              <span className="font-semibold text-azul-noite">Tela de obrigado: </span>
-              {pesquisa.textoAgradecimento}
-            </p>
-            <p>
-              <span className="font-semibold text-azul-noite">Avaliar no Google: </span>
-              {pesquisa.linkGoogle ? (
-                <a href={pesquisa.linkGoogle} target="_blank" rel="noopener noreferrer" className="break-all text-azul-petroleo underline">
-                  {pesquisa.linkGoogle}
-                </a>
-              ) : (
-                <span className="text-cinza-medio">sem link (o botão não aparece)</span>
-              )}
-            </p>
-            {podeEditar && (
-              <EditorMarca
-                atual={{
-                  nomeExibido: pesquisa.nomeExibido,
-                  corPrincipal: pesquisa.corPrincipal,
-                  corFundo: pesquisa.corFundo,
-                  textoAgradecimento: pesquisa.textoAgradecimento,
-                  linkGoogle: pesquisa.linkGoogle,
-                  ativa: pesquisa.ativa,
-                }}
-              />
-            )}
-          </div>
-          <Previa nome={pesquisa.nomeExibido} principal={pesquisa.corPrincipal} fundo={pesquisa.corFundo} />
-        </div>
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Perguntas (versão {pesquisa.versaoAtual})</h2>
-        <p className="text-sm text-cinza">Cada tipo de pesquisa faz só as perguntas que fazem sentido para ele. Uma pergunta por tela; tocou na resposta, passa para a próxima.</p>
-        <div className="grid gap-3 md:grid-cols-3">
-          {pesquisa.origens.map((o) => (
-            <div key={o} className="rounded-md border border-cinza-claro p-3">
-              <p className="text-sm font-bold text-azul-noite">{ROTULO_ORIGEM[o]}</p>
-              <ol className="mt-1 list-decimal pl-5 text-sm">
-                {perguntasDoTipo(pesquisa.perguntas, o, pesquisa.atendentes).map((p) => (
-                  <li key={p.chave}>
-                    <span className="font-semibold">{definicao(p.chave).nome}:</span> {p.texto}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))}
-        </div>
-        {pesquisa.perguntas.some((p) => !p.ativa) && (
-          <p className="text-xs text-cinza-medio">
-            Desligadas:{" "}
-            {pesquisa.perguntas
-              .filter((p) => !p.ativa)
-              .map((p) => definicao(p.chave).nome)
-              .join(", ")}
-            .
-          </p>
-        )}
-        <p className="text-xs text-cinza-medio">Quem dá nota baixa pode deixar o WhatsApp para a equipe falar com ele (opcional, com a autorização desmarcada).</p>
-        {podeEditar && <EditorPerguntas atuais={pesquisa.perguntas} versao={pesquisa.versaoAtual} />}
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Quem atende e pedir direto</h2>
-        <p className="text-sm">
-          <span className="font-semibold text-azul-noite">Quem atende no salão: </span>
-          {pesquisa.atendentes.length ? pesquisa.atendentes.join(", ") : <span className="text-cinza-medio">ninguém cadastrado</span>}
-          {pesquisa.atendentes.length > 0 && !pesquisa.perguntas.find((p) => p.chave === "atendente")?.ativa ? (
-            <span className="text-cinza-medio"> (a pergunta &quot;quem atendeu&quot; está desligada)</span>
-          ) : null}
-        </p>
-        <p className="text-sm">
-          <span className="font-semibold text-azul-noite">Link de pedir direto: </span>
-          {pesquisa.linkPedidoDireto ? (
-            <a href={pesquisa.linkPedidoDireto} target="_blank" rel="noopener noreferrer" className="break-all text-azul-petroleo underline">
-              {pesquisa.linkPedidoDireto}
-            </a>
-          ) : (
-            <span className="text-cinza-medio">sem link (o convite não aparece)</span>
-          )}
-        </p>
-        {podeEditar && <EditorExtras atendentes={pesquisa.atendentes} linkPedidoDireto={pesquisa.linkPedidoDireto} />}
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Roleta de prêmios (apps de entrega)</h2>
-        <p className="text-sm">
-          {pesquisa.roletaAtiva ? (
-            <span className="font-semibold text-verde">Ligada.</span>
-          ) : (
-            <span className="font-semibold text-cinza-medio">Desligada.</span>
-          )}{" "}
-          No fim da pesquisa dos apps, a pessoa gira e ganha um cupom para o próximo pedido direto, válido por {pesquisa.cupomValidadeDias} dias. A baixa fica na aba Cupons.
-        </p>
-        {premios.length > 0 ? (
-          <ul className="text-sm">
-            {premios.map((p, i) => (
-              <li key={p.id}>
-                <span className="font-semibold text-azul-noite">{p.nome}</span>
-                {p.regra ? ` (${p.regra})` : ""} <span className="text-cinza-medio">· chance {chances(premios)[i]}%</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-cinza-medio">Nenhum prêmio cadastrado.</p>
-        )}
-        {pesquisa.roletaAtiva && !pesquisa.linkPedidoDireto ? (
-          <p className="text-xs font-semibold text-ambar">Sem link de pedir direto: o cliente ganha o cupom, mas não vê o botão para pedir. Cadastre em &quot;Quem atende e pedir direto&quot;.</p>
-        ) : null}
-        {podeEditar && <EditorRoleta ativa={pesquisa.roletaAtiva} validadeDias={pesquisa.cupomValidadeDias} premios={premios} />}
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={`${TITULO} flex items-center gap-1`}>
-          Alerta de nota baixa no WhatsApp
-          <DicaCalculo rotulo="alerta de nota baixa" texto={DICA_ALERTA} />
-        </h2>
-        <DestinatarioAlerta unidadeNome={pesquisa.nomeExibido} atual={destinatarios.atual} candidatos={destinatarios.candidatos} podeEditar={podeEditar} />
-        <p className="text-xs text-cinza-medio">
-          Esperando envio: {situacao.pendentes} · enviados nos últimos 7 dias: {situacao.enviados7d}
-          {situacao.incertosOuFalhos7d > 0 ? ` · sem confirmação ou vencidos: ${situacao.incertosOuFalhos7d}` : ""}
-        </p>
-      </section>
-
-      <section className={CARTAO}>
-        <h2 className={TITULO}>Dados de quem responde (LGPD)</h2>
-        <p className="text-sm text-cinza">
-          A pesquisa não pede nome nem e-mail. O WhatsApp é opcional e só é guardado se a pessoa marcar a autorização (que vem desmarcada). Guardamos a data, a versão e a
-          cópia do texto que ela aceitou. O IP não é guardado: só um código embaralhado, usado para barrar envio repetido. A{" "}
-          {acesso.organizacaoNome || "empresa"} é a controladora desses dados; a Zatti, a operadora.
-        </p>
-        {termoAtual && (
-          <blockquote className="rounded-md bg-off-white p-3 text-sm text-azul-noite">
-            Texto da autorização (versão {termoAtual.versao}): {termoAtual.modelo.replaceAll("{restaurante}", pesquisa.nomeExibido)}
-          </blockquote>
-        )}
-      </section>
-    </div>
+async function AbaDados({ pesquisa, organizacao }: { pesquisa: Pesquisa; organizacao: string | null }) {
+  const supabase = await createClient();
+  const { data: termo } = await supabase.from("avaliacoes_termos").select("versao, modelo").order("versao", { ascending: false }).limit(1).maybeSingle();
+  const termoAtual = termo as { versao: number; modelo: string } | null;
+  return (
+    <section className={CARTAO}>
+      <h2 className={TITULO}>Dados de quem responde (LGPD)</h2>
+      <p className="text-sm text-cinza">
+        A pesquisa não pede nome nem e-mail. O WhatsApp é opcional e só é guardado se a pessoa marcar a autorização (que vem desmarcada). Guardamos a data, a versão e a cópia
+        do texto que ela aceitou. O IP não é guardado: só um código embaralhado, usado para barrar envio repetido. A {organizacao || "empresa"} é a controladora desses dados; a
+        Zatti, a operadora.
+      </p>
+      {termoAtual && (
+        <blockquote className="rounded-md bg-off-white p-3 text-sm text-azul-noite">
+          Texto da autorização (versão {termoAtual.versao}): {termoAtual.modelo.replaceAll("{restaurante}", pesquisa.nomeExibido)}
+        </blockquote>
+      )}
+    </section>
   );
 }

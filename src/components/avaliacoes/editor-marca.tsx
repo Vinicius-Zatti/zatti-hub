@@ -3,133 +3,134 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ModalFlutuante } from "@/components/modal-flutuante";
-import { salvarMarcaAction } from "@/app/(app)/avaliacoes/actions";
-import { COR_ESTRELA, LIMITE_AGRADECIMENTO, LIMITE_NOME, contraste, corTextoSobre, normalizarCor } from "@/lib/avaliacoes/marca";
+import { salvarMarcaParcialAction } from "@/app/(app)/avaliacoes/actions";
+import { COR_ESTRELA, contraste, corTextoSobre, normalizarCor } from "@/lib/avaliacoes/marca";
+import { BOTAO_PRIMARIO, BOTAO_SECUNDARIO, ROTULO } from "./ui";
 
-export type MarcaAtual = {
-  nomeExibido: string;
-  corPrincipal: string;
-  corFundo: string;
-  textoAgradecimento: string;
-  linkGoogle: string | null;
-  ativa: boolean;
-};
-
-const CAMPO = "mt-1 w-full rounded-md border border-cinza-claro bg-branco px-2 py-1.5 text-sm";
-const ROTULO = "text-xs font-semibold text-cinza-medio";
-
-/** Nome exibido, cores, agradecimento, link do Google e pausa, num modal com prévia. */
-export function EditorMarca({ atual }: { atual: MarcaAtual }) {
+/** Cores da página (principal e fundo), com a prévia ao lado mudando junto e o próprio "Salvar". */
+export function EditorCores({ nome, principal, fundo, podeEditar }: { nome: string; principal: string; fundo: string; podeEditar: boolean }) {
   const router = useRouter();
-  const [aberto, setAberto] = useState(false);
+  const [cores, setCores] = useState({ principal, fundo });
+  const [base, setBase] = useState({ principal, fundo });
+  if (base.principal !== principal || base.fundo !== fundo) {
+    setBase({ principal, fundo });
+    setCores({ principal, fundo });
+  }
+  const [pendente, startTransition] = useTransition();
+  const [aviso, setAviso] = useState<{ erro: boolean; texto: string } | null>(null);
+  const p = normalizarCor(cores.principal);
+  const f = normalizarCor(cores.fundo);
+  const mudou = cores.principal.toUpperCase() !== principal.toUpperCase() || cores.fundo.toUpperCase() !== fundo.toUpperCase();
+
+  return (
+    <div className="grid gap-5 md:grid-cols-[1fr_300px]">
+      <div className="flex flex-col gap-3">
+        {podeEditar ? (
+          <>
+            <CampoCor rotulo="Cor principal" ajuda="Capa e faixa do topo. Use a cor forte da marca." valor={cores.principal} aoMudar={(v) => setCores({ ...cores, principal: v })} />
+            <CampoCor rotulo="Cor de fundo" ajuda="Fundo das perguntas. Clara (ou bem escura) deixa a leitura fácil." valor={cores.fundo} aoMudar={(v) => setCores({ ...cores, fundo: v })} />
+            <p className="text-xs text-cinza-medio">Textos e botões saem sozinhos em preto ou branco, o que ficar mais legível em cada cor.</p>
+            {mudou && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={pendente || !p || !f}
+                  onClick={() => {
+                    setAviso(null);
+                    startTransition(async () => {
+                      const r = await salvarMarcaParcialAction({ corPrincipal: cores.principal, corFundo: cores.fundo });
+                      if ("erro" in r) return setAviso({ erro: true, texto: r.erro });
+                      setAviso({ erro: false, texto: "Cores salvas." });
+                      router.refresh();
+                    });
+                  }}
+                  className={BOTAO_PRIMARIO}
+                >
+                  {pendente ? "Salvando..." : "Salvar as cores"}
+                </button>
+                <button type="button" disabled={pendente} onClick={() => setCores({ principal, fundo })} className={BOTAO_SECUNDARIO}>
+                  Desfazer
+                </button>
+              </div>
+            )}
+            {aviso && <p className={`text-xs font-semibold ${aviso.erro ? "text-vermelho" : "text-verde"}`}>{aviso.texto}</p>}
+          </>
+        ) : (
+          <p className="text-sm text-cinza">
+            Principal {principal} · fundo {fundo}
+          </p>
+        )}
+      </div>
+      <Previa nome={nome} principal={p} fundo={f} />
+    </div>
+  );
+}
+
+/** Pesquisa no ar ou pausada (QR mostra um aviso de pausa), com confirmação para pausar. */
+export function PausaPesquisa({ ativa, podeEditar }: { ativa: boolean; podeEditar: boolean }) {
+  const router = useRouter();
+  const [confirmar, setConfirmar] = useState(false);
   const [pendente, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...atual, linkGoogle: atual.linkGoogle ?? "" });
 
-  const principal = normalizarCor(form.corPrincipal);
-  const fundo = normalizarCor(form.corFundo);
-
-  function abrir() {
-    setForm({ ...atual, linkGoogle: atual.linkGoogle ?? "" });
-    setErro(null);
-    setAberto(true);
-  }
-
-  function salvar() {
+  function mudar(nova: boolean) {
     setErro(null);
     startTransition(async () => {
-      const r = await salvarMarcaAction(form);
-      if ("erro" in r) {
-        setErro(r.erro);
-        return;
-      }
-      setAberto(false);
+      const r = await salvarMarcaParcialAction({ ativa: nova });
+      if ("erro" in r) return setErro(r.erro);
+      setConfirmar(false);
       router.refresh();
     });
   }
 
   return (
-    <>
-      <button type="button" onClick={abrir} className="rounded-md border border-azul-petroleo px-3 py-1.5 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10">
-        Editar nome, cores e link do Google
-      </button>
-      <ModalFlutuante aberto={aberto} onFechar={() => !pendente && setAberto(false)} larga>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            salvar();
-          }}
-          className="flex flex-col gap-3"
-        >
-          <h2 className="font-display text-lg font-bold text-azul-noite">Marca da pesquisa</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-3">
-              <label className={ROTULO}>
-                Nome exibido na página
-                <input className={CAMPO} value={form.nomeExibido} maxLength={LIMITE_NOME} onChange={(e) => setForm({ ...form, nomeExibido: e.target.value })} />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <CampoCor rotulo="Cor principal (capa e topo)" valor={form.corPrincipal} aoMudar={(v) => setForm({ ...form, corPrincipal: v })} />
-                <CampoCor rotulo="Cor de fundo (perguntas)" valor={form.corFundo} aoMudar={(v) => setForm({ ...form, corFundo: v })} />
-              </div>
-              <p className="text-xs text-cinza-medio">
-                Use a cor forte da marca como principal e uma cor clara (ou bem escura) de fundo. Textos e botões saem sozinhos em preto ou branco, o que ficar mais legível.
-              </p>
-              <label className={ROTULO}>
-                Texto da tela de obrigado
-                <textarea
-                  className={CAMPO}
-                  rows={2}
-                  maxLength={LIMITE_AGRADECIMENTO}
-                  value={form.textoAgradecimento}
-                  onChange={(e) => setForm({ ...form, textoAgradecimento: e.target.value })}
-                />
-              </label>
-              <label className={ROTULO}>
-                Link para avaliar no Google (opcional)
-                <input
-                  className={CAMPO}
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://g.page/r/.../review"
-                  value={form.linkGoogle}
-                  onChange={(e) => setForm({ ...form, linkGoogle: e.target.value })}
-                />
-                <span className="mt-1 block font-normal">
-                  No Perfil da Empresa no Google, toque em &quot;Pedir avaliações&quot; e copie o link. O botão aparece para todos na tela de obrigado, qualquer nota. Sem link,
-                  sem botão.
-                </span>
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={!form.ativa} onChange={(e) => setForm({ ...form, ativa: !e.target.checked })} className="h-4 w-4" />
-                Pausar a pesquisa (o QR abre um aviso de pausa e ninguém consegue responder)
-              </label>
-            </div>
-            <Previa nome={form.nomeExibido} principal={principal} fundo={fundo} />
-          </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${ativa ? "bg-verde/10 text-verde" : "bg-ambar/15 text-ambar"}`}>
+        <span className={`h-2 w-2 rounded-full ${ativa ? "bg-verde" : "bg-ambar"}`} aria-hidden="true" />
+        {ativa ? "Pesquisa no ar" : "Pesquisa pausada"}
+      </span>
+      {podeEditar &&
+        (ativa ? (
+          <button type="button" onClick={() => setConfirmar(true)} className="text-xs font-semibold text-cinza underline hover:text-azul-noite">
+            Pausar
+          </button>
+        ) : (
+          <button type="button" disabled={pendente} onClick={() => mudar(true)} className={BOTAO_PRIMARIO}>
+            {pendente ? "Ligando..." : "Pôr no ar de novo"}
+          </button>
+        ))}
+      {erro && !confirmar && <span className="text-xs text-vermelho">{erro}</span>}
+      <ModalFlutuante aberto={confirmar} onFechar={() => !pendente && setConfirmar(false)}>
+        <div className="flex flex-col gap-3">
+          <h2 className="font-display text-lg font-bold text-azul-noite">Pausar a pesquisa?</h2>
+          <ul className="list-disc pl-5 text-sm text-cinza">
+            <li>Quem ler o QR vê um aviso de pesquisa pausada e não consegue responder.</li>
+            <li>Nada é apagado: perguntas, respostas e QR impresso continuam iguais. Para voltar, toque em &quot;Pôr no ar de novo&quot;.</li>
+          </ul>
           {erro && <p className="text-sm text-vermelho">{erro}</p>}
           <div className="flex gap-2">
-            <button type="submit" disabled={pendente || !principal || !fundo} className="rounded-md bg-azul-noite px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
-              {pendente ? "Salvando..." : form.ativa ? "Salvar a marca da pesquisa" : "Salvar e pausar a pesquisa"}
+            <button type="button" disabled={pendente} onClick={() => mudar(false)} className="rounded-md bg-ambar px-4 py-2 text-sm font-semibold text-branco disabled:opacity-60">
+              {pendente ? "Pausando..." : "Pausar a pesquisa"}
             </button>
-            <button type="button" onClick={() => setAberto(false)} className="rounded-md border border-cinza-claro px-3 py-2 text-xs">
+            <button type="button" onClick={() => setConfirmar(false)} className={BOTAO_SECUNDARIO}>
               Cancelar
             </button>
           </div>
-        </form>
+        </div>
       </ModalFlutuante>
-    </>
+    </div>
   );
 }
 
-function CampoCor({ rotulo, valor, aoMudar }: { rotulo: string; valor: string; aoMudar: (v: string) => void }) {
+function CampoCor({ rotulo, ajuda, valor, aoMudar }: { rotulo: string; ajuda: string; valor: string; aoMudar: (v: string) => void }) {
   const cor = normalizarCor(valor) ?? "#FFFFFF";
   return (
     <label className={ROTULO}>
-      {rotulo}
+      <span className="text-sm text-azul-noite">{rotulo}</span>
+      <span className="block font-normal">{ajuda}</span>
       <span className="mt-1 flex items-center gap-2">
-        <input type="color" value={cor.toLowerCase()} onChange={(e) => aoMudar(e.target.value.toUpperCase())} className="h-9 w-10 shrink-0 cursor-pointer rounded border border-cinza-claro" aria-label={rotulo} />
-        <input className="w-full rounded-md border border-cinza-claro bg-branco px-2 py-1.5 font-mono text-sm uppercase" value={valor} maxLength={7} onChange={(e) => aoMudar(e.target.value)} />
+        <input type="color" value={cor.toLowerCase()} onChange={(e) => aoMudar(e.target.value.toUpperCase())} className="h-10 w-12 shrink-0 cursor-pointer rounded border border-cinza-claro" aria-label={rotulo} />
+        <input className="w-32 rounded-md border border-cinza-claro bg-branco px-2 py-2 font-mono text-sm uppercase" value={valor} maxLength={7} onChange={(e) => aoMudar(e.target.value)} />
       </span>
     </label>
   );

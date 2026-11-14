@@ -1,6 +1,19 @@
 import { formatarDataBr, hojeIsoBrasil } from "@/lib/financeiro-gerencial/datas";
 import { linhaCsv } from "@/lib/csv";
-import { CHAVES_ESTRELAS, OPCOES_CONHECEU, OPCOES_ESPERA, ROTULO_ORIGEM, definicao, rotuloAtendente, rotuloOpcao, type ChavePergunta, type Opcao, type Origem } from "./perguntas";
+import {
+  CHAVES_ESTRELAS,
+  OPCOES_CONHECEU,
+  OPCOES_ESPERA,
+  ROTULO_ORIGEM,
+  definicao,
+  rotuloAtendente,
+  rotuloOpcao,
+  type ChavePergunta,
+  type Opcao,
+  type Origem,
+  type PerguntaConfig,
+  type TipoLivre,
+} from "./perguntas";
 
 // Avaliações: números do painel da gestão e o CSV. Funções puras sobre as respostas já lidas
 // (o recorte de período e de unidade vem do banco, pela RLS).
@@ -23,6 +36,8 @@ export type RespostaPainel = {
   conheceu: string | null;
   conheceuOutro: string | null;
   comentario: string | null;
+  /** Respostas das perguntas da gestão (14/11/2026), pela chave. */
+  extras: Record<string, unknown> | null;
   notaBaixa: boolean;
   whatsapp: string | null;
   consentimentoEm: string | null;
@@ -189,6 +204,54 @@ export function resumir(respostas: RespostaPainel[]): ResumoAvaliacoes {
   };
 }
 
+// ── Perguntas da gestão (14/11/2026) ─────────────────────────────────────
+
+export type ResumoLivre = {
+  chave: string;
+  texto: string;
+  tipo: TipoLivre;
+  respostas: number;
+  /** Estrelas: média de 1 a 5. */
+  media: number | null;
+  /** Sim ou não: quantos disseram sim. */
+  sim: number;
+  /** Lista de opções: quantos escolheram cada uma. */
+  opcoes: ItemDistribuicao[];
+  /** Texto: o que escreveram, mais novo primeiro (até 20). */
+  textos: string[];
+};
+
+/** Resultado de cada pergunta da gestão que teve resposta no recorte (ou que está na lista atual). */
+export function resumirLivres(respostas: RespostaPainel[], livres: PerguntaConfig[], atuais: readonly string[] = []): ResumoLivre[] {
+  return livres.flatMap((p) => {
+    const valores = respostas.flatMap((r) => (r.extras && p.chave in r.extras ? [r.extras[p.chave]] : []));
+    if (valores.length === 0 && !atuais.includes(p.chave)) return [];
+    const tipo = p.tipo ?? "estrelas";
+    const numeros = valores.filter((v): v is number => typeof v === "number");
+    const textos = valores.filter((v): v is string => typeof v === "string");
+    return [
+      {
+        chave: p.chave,
+        texto: p.texto,
+        tipo,
+        respostas: valores.length,
+        media: tipo === "estrelas" ? media(numeros) : null,
+        sim: valores.filter((v) => v === true).length,
+        opcoes: tipo === "escolha" ? distribuir(textos, (p.opcoes ?? []).map((o) => ({ valor: o, rotulo: o }))) : [],
+        textos: tipo === "texto" ? textos.slice(0, 20) : [],
+      },
+    ];
+  });
+}
+
+/** Resposta de uma pergunta da gestão como texto (CSV e lista). */
+export function textoLivre(valor: unknown): string {
+  if (valor === true) return "Sim";
+  if (valor === false) return "Não";
+  if (typeof valor === "number" || typeof valor === "string") return String(valor).replace(/\r?\n/g, " ");
+  return "";
+}
+
 export function textoMedia(valor: number | null): string {
   return valor === null ? "-" : valor.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
@@ -232,7 +295,7 @@ export const DICAS = {
 
 /** Separador ";" (Excel em português), com BOM. `campoCsv` neutraliza fórmula. O WhatsApp só sai
  * de quem autorizou (quem não autorizou nem tem número guardado). */
-export function gerarCsv(respostas: RespostaPainel[]): string {
+export function gerarCsv(respostas: RespostaPainel[], livres: PerguntaConfig[] = []): string {
   const cabecalho = [
     "Data e hora",
     "Origem",
@@ -244,6 +307,7 @@ export function gerarCsv(respostas: RespostaPainel[]): string {
     "Como conheceu",
     "Como conheceu (outro)",
     "Comentário",
+    ...livres.map((p) => p.texto),
     "Nota baixa",
     "WhatsApp (autorizado)",
     "Autorizado em",
@@ -263,6 +327,7 @@ export function gerarCsv(respostas: RespostaPainel[]): string {
       rotuloOpcao("conheceu", r.conheceu),
       r.conheceuOutro ?? "",
       (r.comentario ?? "").replace(/\r?\n/g, " "),
+      ...livres.map((p) => textoLivre(r.extras?.[p.chave])),
       r.notaBaixa ? "Sim" : "Não",
       r.whatsapp && r.consentimentoEm ? formatarWhatsapp(r.whatsapp) : "",
       r.whatsapp && r.consentimentoEm ? dataHoraBr(r.consentimentoEm) : "",

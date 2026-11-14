@@ -14,7 +14,9 @@ import {
   lerPeriodo,
   PERIODOS,
   resumir,
+  resumirLivres,
   textoMedia,
+  type ResumoLivre,
   textoNps,
   type FiltroOrigem,
   type ItemDistribuicao,
@@ -64,6 +66,11 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
   const { respostas: todas, cortado } = await carregarRespostas(acesso, desdeIso);
   const respostas = filtrarPorOrigem(todas, origem);
   const r = resumir(respostas);
+  const livres = resumirLivres(
+    respostas,
+    pesquisa.perguntasLivres,
+    pesquisa.perguntas.filter((p) => p.ativa).map((p) => p.chave),
+  );
   const comentarios = comComentario(respostas);
   const contatos = contatosComConsentimento(respostas);
   const link = (p: string, o: FiltroOrigem) => `/avaliacoes?periodo=${p}${o === "todas" ? "" : `&origem=${o}`}`;
@@ -102,7 +109,7 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
             {!pesquisa.ativa && <span className="ml-2 rounded-full bg-ambar/15 px-2 py-0.5 text-xs font-semibold text-ambar">pesquisa pausada</span>}
           </p>
         </div>
-        <ExportarCsv respostas={respostas} nomeArquivo={`avaliacoes-${pesquisa.slug}-${de}-a-${ate}.csv`} />
+        <ExportarCsv respostas={respostas} livres={pesquisa.perguntasLivres} nomeArquivo={`avaliacoes-${pesquisa.slug}-${de}-a-${ate}.csv`} />
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -152,6 +159,7 @@ export default async function PainelAvaliacoesPage({ searchParams }: { searchPar
             {r.atendentes.length > 0 && <TabelaAtendentes linhas={r.atendentes} />}
             {r.espera.some((i) => i.quantidade > 0) && <TabelaDistribuicao titulo="Tempo de espera (pergunta antiga)" dica={DICAS.espera} itens={r.espera} />}
           </div>
+          {livres.length > 0 && <PerguntasLivres itens={livres} />}
           {r.conheceuOutros.length > 0 && (
             <p className="text-sm text-cinza">
               <span className="font-semibold text-azul-noite">Outros lugares citados: </span>
@@ -274,6 +282,49 @@ function TabelaComentarios({ linhas }: { linhas: RespostaPainel[] }) {
           </table>
         </TabelaRolavel>
       )}
+    </section>
+  );
+}
+
+/** Perguntas criadas pela gestão: média, % de sim, opções ou o que escreveram. */
+function PerguntasLivres({ itens }: { itens: ResumoLivre[] }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Suas perguntas</h2>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {itens.map((p) => (
+          <div key={p.chave} className="rounded-lg border border-cinza-claro bg-branco p-3 text-sm">
+            <p className="font-semibold text-azul-noite">{p.texto}</p>
+            <p className="text-xs text-cinza-medio">{p.respostas === 1 ? "1 resposta" : `${p.respostas} respostas`}</p>
+            {p.respostas === 0 ? null : p.tipo === "estrelas" ? (
+              <p className="mt-1 font-display text-2xl font-bold text-azul-noite">
+                {textoMedia(p.media)} <span className="text-xs font-normal text-cinza-medio">de 5</span>
+              </p>
+            ) : p.tipo === "simnao" ? (
+              <p className="mt-1 font-display text-2xl font-bold text-azul-noite">
+                {Math.round((p.sim / p.respostas) * 100)}% <span className="text-xs font-normal text-cinza-medio">disseram sim</span>
+              </p>
+            ) : p.tipo === "escolha" ? (
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {p.opcoes.map((o) => (
+                  <li key={o.valor} className="flex justify-between gap-2">
+                    <span>{o.rotulo}</span>
+                    <span className="tabular-nums text-cinza">
+                      {o.quantidade} ({o.percentual}%)
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="mt-1 list-disc pl-5 text-cinza">
+                {p.textos.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
