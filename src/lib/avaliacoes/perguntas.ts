@@ -1,14 +1,16 @@
-// Avaliações: modelo fixo de perguntas. A gestão liga, desliga e muda o texto; o tipo, as opções,
-// se é obrigatória e em que tipo de pesquisa vale vêm daqui. Espelho de `avaliacoes_pergunta_no_tipo`,
-// `avaliacoes_validar_perguntas` e `avaliacoes_registrar` no banco
-// (supabase/migrations/20261113150000_avaliacoes_perguntas_por_tipo.sql), que é a barreira de verdade.
+// Avaliações: perguntas. As do modelo têm tipo e opções fixos (a gestão liga, desliga por pesquisa,
+// muda o texto e a ordem); desde 14/11/2026 a gestão também cria as próprias (estrelas, sim ou não,
+// lista de opções ou texto). Espelho de `avaliacoes_pergunta_no_tipo`, `avaliacoes_validar_perguntas`,
+// `avaliacoes_pergunta_vale` e `avaliacoes_registrar` no banco (migrações 20261113150000 e
+// 20261114120000), que é a barreira de verdade.
 // Funções puras: servem à página pública e ao painel.
 //
 // 13/11/2026: cada tipo de pesquisa ganhou as próprias perguntas (antes delivery e app perguntavam
 // "quanto tempo você esperou?"), modeladas no Falaê. "Espera" em faixas sai do modelo; fica só para
 // ler respostas antigas.
 
-export type ChavePergunta =
+/** Perguntas do modelo (fixas). */
+export type ChaveFixa =
   | "atendimento"
   | "pedido_certo"
   | "comida"
@@ -22,6 +24,9 @@ export type ChavePergunta =
   | "comentario"
   | "conheceu"
   | "espera";
+/** Pergunta criada pela gestão (14/11/2026): "extra_" + 6 letras ou números. */
+export type ChaveLivre = `extra_${string}`;
+export type ChavePergunta = ChaveFixa | ChaveLivre;
 export type TipoPergunta = "estrelas" | "simnao" | "atendente" | "faixas" | "nps" | "escolha" | "texto";
 // Três tipos de pesquisa (13/11/2026): consumo no local, delivery próprio e apps de entrega
 // (iFood, 99 e afins). A gestão desliga o que não usar (`avaliacoes_pesquisas.origens`).
@@ -50,6 +55,8 @@ export type DefinicaoPergunta = {
   /** Em que tipo de pesquisa a pergunta aparece. Vazio = só respostas antigas. */
   origens: readonly Origem[];
   opcoes?: readonly Opcao[];
+  /** Criada pela gestão (tipo, opções e pesquisas editáveis; pode ser apagada). */
+  livre?: boolean;
 };
 
 export const OPCOES_ESPERA: readonly Opcao[] = [
@@ -111,7 +118,7 @@ export const CATALOGO_EDITAVEL = CATALOGO.filter((p) => p.origens.length > 0);
 /** Desligadas de fábrica. */
 const DESLIGADAS_PADRAO: readonly ChavePergunta[] = ["atendente"];
 /** Notas de 1 a 5 (entram na nota baixa e nas médias). */
-export const CHAVES_ESTRELAS = CATALOGO.filter((p) => p.tipo === "estrelas").map((p) => p.chave);
+export const CHAVES_ESTRELAS = CATALOGO.filter((p) => p.tipo === "estrelas").map((p) => p.chave as ChaveFixa);
 
 /** Texto do comentário conforme as notas: nota baixa pergunta o que aconteceu, nota alta o que
  * mais gostou; no meio vale o texto da gestão. */
@@ -123,21 +130,84 @@ export const LIMITE_COMENTARIO = 1000;
 export const LIMITE_CONHECEU_OUTRO = 80;
 export const LIMITE_ATENDENTES = 30;
 export const LIMITE_NOME_ATENDENTE = 40;
+export const LIMITE_LIVRES = 10;
+export const LIMITE_OPCOES = 8;
+export const LIMITE_TEXTO_OPCAO = 40;
 
-/** Configuração gravada em `avaliacoes_pesquisa_versoes.perguntas`. */
-export type PerguntaConfig = { chave: ChavePergunta; texto: string; ativa: boolean };
+/** Tipos que a gestão escolhe ao criar uma pergunta. */
+export type TipoLivre = "estrelas" | "simnao" | "escolha" | "texto";
+export const TIPOS_LIVRES: readonly TipoLivre[] = ["estrelas", "simnao", "escolha", "texto"];
+
+/** Configuração gravada em `avaliacoes_pesquisa_versoes.perguntas`, na ordem da página.
+ * `origens`: em que pesquisas vale (do modelo: parte das do catálogo; sem o campo, todas as do
+ * catálogo). `tipo`, `opcoes` e `obrigatoria` só nas perguntas da gestão. */
+export type PerguntaConfig = {
+  chave: ChavePergunta;
+  texto: string;
+  ativa: boolean;
+  origens?: Origem[];
+  tipo?: TipoLivre;
+  opcoes?: string[];
+  obrigatoria?: boolean;
+};
 
 /** Pergunta pronta para a página pública: definição + texto da unidade. */
 export type PerguntaPublica = DefinicaoPergunta & { texto: string };
 
-export function definicao(chave: ChavePergunta): DefinicaoPergunta {
+export function definicao(chave: ChaveFixa): DefinicaoPergunta {
   const d = CATALOGO.find((p) => p.chave === chave);
   if (!d) throw new Error(`Pergunta desconhecida: ${chave}`);
   return d;
 }
 
-export function ehChavePergunta(valor: unknown): valor is ChavePergunta {
+export function ehChaveFixa(valor: unknown): valor is ChaveFixa {
   return typeof valor === "string" && CATALOGO.some((p) => p.chave === valor);
+}
+
+export function ehChaveLivre(valor: unknown): valor is ChaveLivre {
+  return typeof valor === "string" && /^extra_[a-z0-9]{6}$/.test(valor);
+}
+
+export function ehChavePergunta(valor: unknown): valor is ChavePergunta {
+  return ehChaveFixa(valor) || ehChaveLivre(valor);
+}
+
+/** Chave nova para pergunta da gestão, sem repetir as que já existem. */
+export function novaChaveLivre(existentes: readonly string[], aleatorio: () => number = Math.random): ChaveLivre {
+  const letras = "abcdefghijklmnopqrstuvwxyz0123456789";
+  for (;;) {
+    let sufixo = "";
+    for (let i = 0; i < 6; i++) sufixo += letras[Math.floor(aleatorio() * letras.length) % letras.length];
+    const chave: ChaveLivre = `extra_${sufixo}`;
+    if (!existentes.includes(chave)) return chave;
+  }
+}
+
+/** Em que pesquisas a pergunta pode valer (do modelo: as do catálogo; da gestão: as três). */
+export function origensPossiveis(chave: ChavePergunta): readonly Origem[] {
+  return ehChaveFixa(chave) ? definicao(chave).origens : ORIGENS;
+}
+
+/** Em que pesquisas a pergunta aparece hoje (ligada e marcada). */
+export function origensDaPergunta(p: PerguntaConfig): Origem[] {
+  if (!p.ativa) return [];
+  return origensPossiveis(p.chave).filter((o) => (p.origens ? p.origens.includes(o) : !ehChaveLivre(p.chave)));
+}
+
+/** Definição completa: a do catálogo ou a montada da pergunta da gestão. */
+export function definicaoDe(p: PerguntaConfig): DefinicaoPergunta {
+  if (ehChaveFixa(p.chave)) return definicao(p.chave);
+  const tipo = p.tipo ?? "estrelas";
+  return {
+    chave: p.chave,
+    tipo,
+    nome: p.texto.length > 48 ? `${p.texto.slice(0, 47)}…` : p.texto,
+    textoPadrao: p.texto,
+    obrigatoria: p.obrigatoria === true,
+    origens: p.origens ?? [],
+    opcoes: tipo === "escolha" ? (p.opcoes ?? []).map((o) => ({ valor: o, rotulo: o })) : undefined,
+    livre: true,
+  };
 }
 
 /** Tipos ligados na ordem fixa; sem a coluna (antes da migração de 13/11) valem os três. */
@@ -155,55 +225,148 @@ export function perguntasPadrao(): PerguntaConfig[] {
   return CATALOGO_EDITAVEL.map((p) => ({ chave: p.chave, texto: p.textoPadrao, ativa: !DESLIGADAS_PADRAO.includes(p.chave) }));
 }
 
-/** Lê o JSON do banco (ou do formulário) na ordem do catálogo editável; chave faltando entra
- * desligada com o texto padrão. Nunca lança. */
-export function lerPerguntas(bruto: unknown): PerguntaConfig[] {
-  const lista = Array.isArray(bruto) ? bruto : [];
-  return CATALOGO_EDITAVEL.map((def) => {
-    const achada = lista.find((q) => q && typeof q === "object" && (q as { chave?: unknown }).chave === def.chave) as
-      | { texto?: unknown; ativa?: unknown }
-      | undefined;
-    if (!achada) return { chave: def.chave, texto: def.textoPadrao, ativa: false };
-    return {
-      chave: def.chave,
-      texto: typeof achada.texto === "string" && achada.texto.trim() ? achada.texto : def.textoPadrao,
-      ativa: achada.ativa === true,
-    };
-  });
+function lerOrigensDaPergunta(valor: unknown, possiveis: readonly Origem[]): Origem[] | undefined {
+  if (!Array.isArray(valor)) return undefined;
+  return possiveis.filter((o) => valor.includes(o));
 }
 
-/** Mesmas regras de `avaliacoes_validar_perguntas` para a lista do editor (todas as editáveis,
- * cada uma uma vez). Devolve a lista normalizada ou o erro. */
-export function validarPerguntas(perguntas: PerguntaConfig[]): { ok: true; perguntas: PerguntaConfig[] } | { ok: false; erro: string } {
-  if (perguntas.length !== CATALOGO_EDITAVEL.length) return { ok: false, erro: "Lista de perguntas incompleta. Recarregue a página." };
+/** Lê o JSON do banco na ordem gravada (a ordem da página). Pergunta do modelo que falta entra
+ * desligada no fim; a "espera" antiga e o que não se reconhece saem. Nunca lança. */
+export function lerPerguntas(bruto: unknown): PerguntaConfig[] {
+  const lista = Array.isArray(bruto) ? (bruto as Record<string, unknown>[]) : [];
+  const saida: PerguntaConfig[] = [];
+  const vistas = new Set<string>();
+  for (const q of lista) {
+    if (!q || typeof q !== "object" || vistas.has(String(q.chave))) continue;
+    const chave = q.chave;
+    if (ehChaveFixa(chave)) {
+      const def = definicao(chave);
+      if (def.origens.length === 0) continue;
+      vistas.add(chave);
+      const origens = lerOrigensDaPergunta(q.origens, def.origens);
+      saida.push({
+        chave,
+        texto: typeof q.texto === "string" && q.texto.trim() ? q.texto : def.textoPadrao,
+        ativa: q.ativa === true,
+        ...(origens ? { origens } : {}),
+      });
+    } else if (ehChaveLivre(chave) && typeof q.texto === "string" && (TIPOS_LIVRES as readonly unknown[]).includes(q.tipo)) {
+      vistas.add(chave);
+      const tipo = q.tipo as TipoLivre;
+      saida.push({
+        chave,
+        texto: q.texto,
+        ativa: q.ativa === true,
+        origens: lerOrigensDaPergunta(q.origens, ORIGENS) ?? [],
+        tipo,
+        obrigatoria: q.obrigatoria === true,
+        ...(tipo === "escolha" ? { opcoes: Array.isArray(q.opcoes) ? q.opcoes.filter((o): o is string => typeof o === "string") : [] } : {}),
+      });
+    }
+  }
+  for (const def of CATALOGO_EDITAVEL) {
+    if (!vistas.has(def.chave)) saida.push({ chave: def.chave, texto: def.textoPadrao, ativa: false });
+  }
+  return saida;
+}
+
+const INVALIDA = { ok: false as const, erro: "Lista de perguntas inválida. Recarregue a página." };
+
+/** Mesmas regras de `avaliacoes_validar_perguntas`: as do modelo uma vez cada (todas), as da
+ * gestão com tipo, opções e pesquisas. Recebe dado cru (vem do navegador) e devolve a lista
+ * normalizada, só com os campos que o banco aceita, ou o erro. */
+export function validarPerguntas(perguntas: unknown): { ok: true; perguntas: PerguntaConfig[] } | { ok: false; erro: string } {
+  if (!Array.isArray(perguntas) || perguntas.length === 0 || perguntas.length > CATALOGO_EDITAVEL.length + LIMITE_LIVRES) return INVALIDA;
   const vistas = new Set<string>();
   const saida: PerguntaConfig[] = [];
-  for (const p of perguntas) {
-    if (!ehChavePergunta(p.chave) || p.chave === "espera" || vistas.has(p.chave) || typeof p.ativa !== "boolean") {
-      return { ok: false, erro: "Lista de perguntas inválida. Recarregue a página." };
+  let livres = 0;
+  for (const bruta of perguntas as Record<string, unknown>[]) {
+    if (!bruta || typeof bruta !== "object") return INVALIDA;
+    const chave = bruta.chave;
+    if (!ehChavePergunta(chave) || chave === "espera" || vistas.has(chave) || typeof bruta.ativa !== "boolean") return INVALIDA;
+    vistas.add(chave);
+    const texto = (typeof bruta.texto === "string" ? bruta.texto : "").trim();
+    const possiveis = origensPossiveis(chave);
+    let origens: Origem[] | undefined;
+    if (bruta.origens !== undefined) {
+      const lista = bruta.origens;
+      if (!Array.isArray(lista) || lista.some((o) => !ehOrigem(o) || !possiveis.includes(o)) || new Set(lista).size !== lista.length) return INVALIDA;
+      origens = possiveis.filter((o) => lista.includes(o));
     }
-    vistas.add(p.chave);
-    const texto = (p.texto ?? "").trim();
-    if (texto.length < 3 || texto.length > LIMITE_TEXTO_PERGUNTA) {
-      return { ok: false, erro: `O texto de "${definicao(p.chave).nome}" deve ter de 3 a ${LIMITE_TEXTO_PERGUNTA} letras.` };
+    if (ehChaveLivre(chave)) {
+      livres++;
+      const tipo = bruta.tipo as TipoLivre;
+      if (!TIPOS_LIVRES.includes(tipo) || typeof bruta.obrigatoria !== "boolean") return INVALIDA;
+      if (texto.length < 3 || texto.length > LIMITE_TEXTO_PERGUNTA) return { ok: false, erro: `O texto da pergunta deve ter de 3 a ${LIMITE_TEXTO_PERGUNTA} letras.` };
+      if (!origens || origens.length === 0) return { ok: false, erro: `Escolha em que pesquisa aparece "${texto}".` };
+      const nova: PerguntaConfig = { chave, texto, ativa: bruta.ativa, origens, tipo, obrigatoria: bruta.obrigatoria };
+      if (tipo === "escolha") {
+        const opcoes = Array.isArray(bruta.opcoes) ? bruta.opcoes.map((o) => (typeof o === "string" ? o.trim() : "")) : [];
+        if (opcoes.length < 2 || opcoes.length > LIMITE_OPCOES) return { ok: false, erro: `"${texto}" precisa de 2 a ${LIMITE_OPCOES} opções.` };
+        if (opcoes.some((o) => !o || o.length > LIMITE_TEXTO_OPCAO)) return { ok: false, erro: `Cada opção pode ter de 1 a ${LIMITE_TEXTO_OPCAO} letras.` };
+        if (new Set(opcoes.map((o) => o.toLowerCase())).size !== opcoes.length) return { ok: false, erro: `"${texto}" tem opção repetida.` };
+        nova.opcoes = opcoes;
+      }
+      saida.push(nova);
+    } else {
+      if (texto.length < 3 || texto.length > LIMITE_TEXTO_PERGUNTA) {
+        return { ok: false, erro: `O texto de "${definicao(chave).nome}" deve ter de 3 a ${LIMITE_TEXTO_PERGUNTA} letras.` };
+      }
+      saida.push({ chave, texto, ativa: bruta.ativa, ...(origens ? { origens } : {}) });
     }
-    saida.push({ chave: p.chave, texto, ativa: p.ativa });
   }
+  if (CATALOGO_EDITAVEL.some((d) => !vistas.has(d.chave))) return { ok: false, erro: "Lista de perguntas incompleta. Recarregue a página." };
+  if (livres > LIMITE_LIVRES) return { ok: false, erro: `Crie até ${LIMITE_LIVRES} perguntas próprias.` };
   if (!saida.some((p) => p.ativa)) return { ok: false, erro: "Deixe ao menos uma pergunta ligada." };
   return { ok: true, perguntas: saida };
 }
 
-/** Perguntas ligadas que valem neste tipo de pesquisa, na ordem do catálogo. "Quem atendeu" só
- * entra com ao menos um nome cadastrado. */
+/** Liga ou desliga a pergunta só nesta pesquisa (as outras ficam como estão). */
+export function alternarNaOrigem(p: PerguntaConfig, origem: Origem, ligar: boolean): PerguntaConfig {
+  const atuais = origensDaPergunta(p);
+  const possiveis = origensPossiveis(p.chave);
+  const novas = ligar ? possiveis.filter((o) => o === origem || atuais.includes(o)) : atuais.filter((o) => o !== origem);
+  const livre = ehChaveLivre(p.chave);
+  if (novas.length === 0) return livre ? { ...p, ativa: false } : { chave: p.chave, texto: p.texto, ativa: false };
+  if (!livre && novas.length === possiveis.length) return { chave: p.chave, texto: p.texto, ativa: true };
+  return { ...p, ativa: true, origens: novas };
+}
+
+/** Sobe ou desce a pergunta passando a vizinha que aparece na mesma pesquisa. A lista é uma só
+ * para os três tipos; entre as duas pode haver perguntas de outros tipos, e quem pula por cima
+ * delas é a que não divide pesquisa com elas, para a ordem dos outros tipos não mudar. */
+export function moverNaOrigem(lista: PerguntaConfig[], chave: ChavePergunta, origem: Origem, direcao: "subir" | "descer"): PerguntaConfig[] {
+  const visiveis = lista.map((p, i) => ({ p, i })).filter(({ p }) => origensDaPergunta(p).includes(origem) && p.chave !== "comentario");
+  const pos = visiveis.findIndex(({ p }) => p.chave === chave);
+  const vizinha = visiveis[direcao === "subir" ? pos - 1 : pos + 1];
+  if (pos < 0 || !vizinha) return lista;
+  const de = visiveis[pos].i;
+  const ate = vizinha.i;
+  const [ini, fim] = de < ate ? [de, ate] : [ate, de];
+  const entre = lista.slice(ini + 1, fim);
+  const conflita = (p: PerguntaConfig) => entre.some((q) => origensDaPergunta(q).some((o) => origensDaPergunta(p).includes(o)));
+  // Quem pula: a pergunta movida (padrão) ou a vizinha, se só ela pode pular sem bagunçar outro tipo.
+  const pulaVizinha = conflita(lista[de]) && !conflita(lista[ate]);
+  const [quem, destino] = pulaVizinha ? [ate, de] : [de, ate];
+  const nova = [...lista];
+  const [item] = nova.splice(quem, 1);
+  const alvo = nova.indexOf(lista[destino]);
+  // Fica antes do destino quando vai para cima dele, depois quando vai para baixo.
+  nova.splice(quem > destino ? alvo : alvo + 1, 0, item);
+  return nova;
+}
+
+/** Perguntas que valem neste tipo de pesquisa, na ordem gravada. "Quem atendeu" só entra com ao
+ * menos um nome cadastrado. */
 export function perguntasDoTipo(config: PerguntaConfig[], origem: Origem, atendentes: readonly string[] = []): PerguntaPublica[] {
   return config
-    .filter((p) => p.ativa)
-    .map((p) => ({ ...definicao(p.chave), texto: p.texto }))
-    .filter((p) => p.origens.includes(origem) && (p.tipo !== "atendente" || atendentes.length > 0));
+    .filter((p) => origensDaPergunta(p).includes(origem))
+    .map((p) => ({ ...definicaoDe(p), texto: p.texto }))
+    .filter((p) => p.tipo !== "atendente" || atendentes.length > 0);
 }
 
 /** Respostas como vão para a RPC: notas em número, sim/não em booleano, escolhas em texto. */
-export type RespostasEnvio = Partial<Record<ChavePergunta, number | string | boolean>> & { conheceu_outro?: string };
+export type RespostasEnvio = { [chave: string]: number | string | boolean | undefined };
 
 export type ResultadoRespostas = { ok: true; respostas: RespostasEnvio } | { ok: false; erro: string; chave: ChavePergunta };
 
@@ -267,12 +430,15 @@ export function normalizarWhatsapp(bruto: string): string | null {
 }
 
 /** Notas de uma avaliação, como o banco e a página usam para a nota baixa. */
-export type NotasAvaliacao = Partial<Record<ChavePergunta, number | boolean | string | null>>;
+export type NotasAvaliacao = { [chave: string]: number | boolean | string | null | undefined };
 
-/** Nota baixa (vira alerta): qualquer estrela até 2, indicaria até 6 ou pedido que veio errado.
- * Igual ao banco. */
+/** Nota baixa (vira alerta): qualquer estrela até 2 (do modelo ou das perguntas da gestão),
+ * indicaria até 6 ou pedido que veio errado. Igual ao banco. Nas perguntas da gestão só as
+ * estrelas chegam aqui como número. */
 export function ehNotaBaixa(n: NotasAvaliacao): boolean {
-  const estrelaBaixa = CHAVES_ESTRELAS.some((c) => typeof n[c] === "number" && (n[c] as number) <= 2);
+  const estrelaBaixa = Object.entries(n).some(
+    ([c, v]) => typeof v === "number" && v <= 2 && ((CHAVES_ESTRELAS as readonly string[]).includes(c) || ehChaveLivre(c)),
+  );
   return estrelaBaixa || (typeof n.nps === "number" && n.nps <= 6) || n.pedido_certo === false;
 }
 

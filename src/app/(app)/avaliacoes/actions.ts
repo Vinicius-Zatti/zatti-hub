@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemSemEdicao } from "@/lib/acesso";
 import { requireAvaliacoes } from "@/lib/avaliacoes/acesso";
-import { BUCKET_LOGOS } from "@/lib/avaliacoes/servidor";
+import { BUCKET_LOGOS, carregarPesquisa } from "@/lib/avaliacoes/servidor";
 import { TIPOS_LOGO, validarLogo, validarMarca, type EntradaMarca } from "@/lib/avaliacoes/marca";
 import { codigoValido, normalizarCodigo, validarRoleta, type PremioEntrada } from "@/lib/avaliacoes/roleta";
 import { ehOrigem, normalizarAtendentes, validarPerguntas, type PerguntaConfig } from "@/lib/avaliacoes/perguntas";
@@ -45,6 +45,9 @@ function mensagemErro(mensagem: string): string {
   if (mensagem.includes("vinculo_nao_elegivel")) return "Essa pessoa não tem acesso a esta unidade.";
   if (mensagem.includes("nenhuma_ativa")) return "Deixe ao menos uma pergunta ligada.";
   if (mensagem.includes("texto_pergunta")) return "O texto de cada pergunta deve ter de 3 a 200 letras.";
+  if (mensagem.includes("livres_demais")) return "Crie até 10 perguntas próprias.";
+  if (mensagem.includes("opcoes_invalidas")) return "Cada lista precisa de 2 a 8 opções, sem repetir, com até 40 letras.";
+  if (mensagem.includes("pergunta_livre_invalida") || mensagem.includes("perguntas_invalidas")) return "Lista de perguntas inválida. Recarregue a página.";
   if (mensagem.includes("logo_invalida")) return "Arquivo de logo inválido.";
   if (mensagem.includes("roleta_sem_premio")) return "Cadastre ao menos um prêmio para ligar a roleta.";
   if (mensagem.includes("premio_invalido") || mensagem.includes("premios_invalidos")) return "Confira os prêmios: nome de 2 a 60 letras e chance de 1 a 100.";
@@ -92,13 +95,44 @@ export async function salvarMarcaAction(entrada: EntradaMarca): Promise<Resultad
   return { ok: true };
 }
 
+/** Uma mudança só da marca (nome, cores, obrigado, Google ou pausa): lê o que está gravado e troca
+ * só o campo pedido, para cada bloco da tela salvar sozinho. */
+export async function salvarMarcaParcialAction(parcial: Partial<EntradaMarca>): Promise<Resultado> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  if (!parcial || typeof parcial !== "object") return { erro: "Pedido inválido." };
+  const atual = await carregarPesquisa(acesso);
+  if (!atual) return { erro: "Crie a pesquisa antes." };
+  const texto = (v: unknown, padrao: string) => (typeof v === "string" ? v : padrao);
+  return salvarMarcaAction({
+    nomeExibido: texto(parcial.nomeExibido, atual.nomeExibido),
+    corPrincipal: texto(parcial.corPrincipal, atual.corPrincipal),
+    corFundo: texto(parcial.corFundo, atual.corFundo),
+    textoAgradecimento: texto(parcial.textoAgradecimento, atual.textoAgradecimento),
+    linkGoogle: texto(parcial.linkGoogle, atual.linkGoogle ?? ""),
+    ativa: typeof parcial.ativa === "boolean" ? parcial.ativa : atual.ativa,
+  });
+}
+
+/** Só os nomes de quem atende ou só o link de pedir direto (o outro fica como está). */
+export async function salvarExtrasParcialAction(parcial: { atendentes?: string[]; linkPedidoDireto?: string }): Promise<Resultado> {
+  const { acesso, bloqueio } = await acessoEditar();
+  if (bloqueio) return { erro: bloqueio };
+  if (!parcial || typeof parcial !== "object") return { erro: "Pedido inválido." };
+  const atual = await carregarPesquisa(acesso);
+  if (!atual) return { erro: "Crie a pesquisa antes." };
+  return salvarExtrasAction({
+    atendentes: Array.isArray(parcial.atendentes) ? parcial.atendentes : atual.atendentes,
+    linkPedidoDireto: typeof parcial.linkPedidoDireto === "string" ? parcial.linkPedidoDireto : (atual.linkPedidoDireto ?? ""),
+  });
+}
+
+/** Grava a lista inteira de perguntas (ordem, texto, onde aparece e as perguntas da gestão). Cada
+ * mudança vira uma versão nova; as avaliações antigas ficam na versão em que foram respondidas. */
 export async function salvarPerguntasAction(perguntas: PerguntaConfig[]): Promise<Resultado> {
   const { acesso, bloqueio } = await acessoEditar();
   if (bloqueio) return { erro: bloqueio };
-  if (!Array.isArray(perguntas)) return { erro: "Pedido inválido." };
-  const v = validarPerguntas(
-    perguntas.map((p) => ({ chave: p?.chave, texto: typeof p?.texto === "string" ? p.texto : "", ativa: p?.ativa })) as PerguntaConfig[],
-  );
+  const v = validarPerguntas(perguntas);
   if (!v.ok) return { erro: v.erro };
   const supabase = await createClient();
   const { error } = await supabase.rpc("avaliacoes_salvar_perguntas", { p_unidade_id: acesso.unidadeId, p_perguntas: v.perguntas });

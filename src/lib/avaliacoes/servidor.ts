@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AcessoAtual } from "@/lib/acesso";
-import { lerOrigens, lerPerguntas, type Origem, type PerguntaConfig } from "./perguntas";
+import { ehChaveLivre, lerOrigens, lerPerguntas, type Origem, type PerguntaConfig } from "./perguntas";
 import type { RespostaPainel } from "./painel";
 import type { PremioPublico } from "./roleta";
 
@@ -46,6 +46,9 @@ export type PesquisaGestao = {
   linkPedidoDireto: string | null;
   roletaAtiva: boolean;
   cupomValidadeDias: number;
+  /** Perguntas da gestão de todas as versões (a mais nova de cada), para o painel ler respostas
+   * de pergunta que já foi apagada. */
+  perguntasLivres: PerguntaConfig[];
 };
 
 type LinhaPesquisa = {
@@ -82,13 +85,21 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
   }
   if (!data) return null;
   const p = data as LinhaPesquisa;
-  const { data: versao, error: erroVersao } = await supabase
+  const { data: versoes, error: erroVersao } = await supabase
     .from("avaliacoes_pesquisa_versoes")
-    .select("perguntas")
+    .select("versao, perguntas")
     .eq("pesquisa_id", p.id)
-    .eq("versao", p.versao_atual)
-    .maybeSingle();
+    .order("versao", { ascending: false })
+    .limit(500);
   if (erroVersao) throw new Error("Não foi possível ler as perguntas da pesquisa.");
+  const lista = (versoes ?? []) as { versao: number; perguntas: unknown }[];
+  const versao = lista.find((v) => v.versao === p.versao_atual) ?? null;
+  const livres = new Map<string, PerguntaConfig>();
+  for (const v of lista) {
+    for (const q of lerPerguntas(v.perguntas)) {
+      if (ehChaveLivre(q.chave) && !livres.has(q.chave)) livres.set(q.chave, q);
+    }
+  }
   return {
     id: p.id,
     slug: p.slug,
@@ -106,7 +117,8 @@ export async function carregarPesquisa(acesso: AcessoAtual): Promise<PesquisaGes
     linkPedidoDireto: p.link_pedido_direto,
     roletaAtiva: p.roleta_ativa === true,
     cupomValidadeDias: p.cupom_validade_dias ?? 30,
-    perguntas: lerPerguntas((versao as { perguntas?: unknown } | null)?.perguntas),
+    perguntas: lerPerguntas(versao?.perguntas),
+    perguntasLivres: [...livres.values()],
   };
 }
 
@@ -131,6 +143,7 @@ type LinhaResposta = {
   conheceu: string | null;
   conheceu_outro: string | null;
   comentario: string | null;
+  extras: Record<string, unknown> | null;
   nota_baixa: boolean;
   whatsapp: string | null;
   consentimento_em: string | null;
@@ -143,7 +156,7 @@ export async function carregarRespostas(acesso: AcessoAtual, desdeIso: string): 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("avaliacoes_respostas")
-    .select("id, criado_em, origem, atendimento, comida, tempo, ambiente, embalagem, entrega, atendimento_pedido, pedido_certo, atendente, espera, nps, conheceu, conheceu_outro, comentario, nota_baixa, whatsapp, consentimento_em, consentimento_versao")
+    .select("id, criado_em, origem, atendimento, comida, tempo, ambiente, embalagem, entrega, atendimento_pedido, pedido_certo, atendente, espera, nps, conheceu, conheceu_outro, comentario, extras, nota_baixa, whatsapp, consentimento_em, consentimento_versao")
     .eq("unidade_id", acesso.unidadeId)
     .gte("criado_em", desdeIso)
     .order("criado_em", { ascending: false })
@@ -173,6 +186,7 @@ export async function carregarRespostas(acesso: AcessoAtual, desdeIso: string): 
       conheceu: r.conheceu,
       conheceuOutro: r.conheceu_outro,
       comentario: r.comentario,
+      extras: r.extras && typeof r.extras === "object" ? r.extras : null,
       notaBaixa: r.nota_baixa,
       whatsapp: r.whatsapp,
       consentimentoEm: r.consentimento_em,

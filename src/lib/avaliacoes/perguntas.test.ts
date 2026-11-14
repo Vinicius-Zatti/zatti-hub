@@ -13,6 +13,11 @@ import {
   validarRespostas,
   ehOrigem,
   lerOrigens,
+  alternarNaOrigem,
+  ehChaveLivre,
+  moverNaOrigem,
+  novaChaveLivre,
+  origensDaPergunta,
 } from "./perguntas";
 
 describe("modelo de perguntas (13/11/2026)", () => {
@@ -164,5 +169,71 @@ describe("tipos de pesquisa (13/11/2026)", () => {
     expect(lerOrigens(["app", "salao"])).toEqual(["salao", "app"]);
     expect(lerOrigens(["x"])).toEqual(["salao", "delivery", "app"]);
     expect(lerOrigens(null)).toEqual(["salao", "delivery", "app"]);
+  });
+});
+
+describe("perguntas da gestão e pergunta por tipo (14/11/2026)", () => {
+  const preco = { chave: "extra_preco1", texto: "E o preço?", ativa: true, origens: ["salao", "app"], tipo: "estrelas", obrigatoria: true } as const;
+  const burger = { chave: "extra_burg01", texto: "Qual foi o seu burger?", ativa: true, origens: ["app"], tipo: "escolha", obrigatoria: false, opcoes: ["Smash", "Duplo"] } as const;
+  const comLivres = () => [...perguntasPadrao().slice(0, 3), { ...preco, origens: [...preco.origens] }, { ...burger, origens: [...burger.origens], opcoes: [...burger.opcoes] }, ...perguntasPadrao().slice(3)];
+
+  it("valida a pergunta da gestão: tipo, opções, pesquisas e limite de 10", () => {
+    expect(validarPerguntas(comLivres()).ok).toBe(true);
+    const semOnde = comLivres().map((p) => (p.chave === "extra_preco1" ? { ...p, origens: [] } : p));
+    expect(validarPerguntas(semOnde)).toMatchObject({ ok: false });
+    const umaOpcao = comLivres().map((p) => (p.chave === "extra_burg01" ? { ...p, opcoes: ["Smash"] } : p));
+    expect(validarPerguntas(umaOpcao)).toMatchObject({ ok: false });
+    const repetida = comLivres().map((p) => (p.chave === "extra_burg01" ? { ...p, opcoes: ["Smash", "smash"] } : p));
+    expect(validarPerguntas(repetida)).toMatchObject({ ok: false });
+    const onze = [...perguntasPadrao(), ...Array.from({ length: 11 }, (_, i) => ({ ...preco, chave: `extra_x0000${i.toString(36)}`, origens: ["salao"] }))];
+    expect(validarPerguntas(onze).ok).toBe(false);
+    // Pergunta do modelo não pode ir para pesquisa em que não faz sentido.
+    const atendimentoNoApp = perguntasPadrao().map((p) => (p.chave === "atendimento" ? { ...p, origens: ["app"] } : p));
+    expect(validarPerguntas(atendimentoNoApp).ok).toBe(false);
+  });
+
+  it("a ordem gravada vale na página e a pergunta da gestão aparece só onde foi marcada", () => {
+    const lidas = lerPerguntas(comLivres());
+    const salao = perguntasDoTipo(lidas, "salao").map((p) => p.chave);
+    expect(salao.slice(0, 3)).toEqual(["atendimento", "comida", "extra_preco1"]);
+    expect(perguntasDoTipo(lidas, "app").map((p) => p.chave)).toContain("extra_burg01");
+    expect(perguntasDoTipo(lidas, "delivery").map((p) => p.chave)).not.toContain("extra_preco1");
+    const b = perguntasDoTipo(lidas, "app").find((p) => p.chave === "extra_burg01");
+    expect(b).toMatchObject({ tipo: "escolha", obrigatoria: false, livre: true, opcoes: [{ valor: "Smash", rotulo: "Smash" }, { valor: "Duplo", rotulo: "Duplo" }] });
+  });
+
+  it("desligar num tipo não mexe nos outros; ligar de novo em todos volta ao padrão", () => {
+    const comida = perguntasPadrao().find((p) => p.chave === "comida")!;
+    const semApp = alternarNaOrigem(comida, "app", false);
+    expect(origensDaPergunta(semApp)).toEqual(["salao", "delivery"]);
+    expect(alternarNaOrigem(semApp, "app", true)).toEqual({ chave: "comida", texto: comida.texto, ativa: true });
+    const nenhuma = alternarNaOrigem(alternarNaOrigem(semApp, "salao", false), "delivery", false);
+    expect(nenhuma.ativa).toBe(false);
+    expect(origensDaPergunta(alternarNaOrigem(nenhuma, "delivery", true))).toEqual(["delivery"]);
+  });
+
+  it("subir e descer troca com a vizinha da mesma pesquisa", () => {
+    const lista = perguntasPadrao();
+    const movida = moverNaOrigem(lista, "comida", "salao", "subir");
+    expect(perguntasDoTipo(movida, "salao").map((p) => p.chave).slice(0, 2)).toEqual(["comida", "atendimento"]);
+    // No delivery a ordem relativa não muda (atendimento não aparece lá).
+    expect(perguntasDoTipo(movida, "delivery").map((p) => p.chave)).toEqual(perguntasDoTipo(lista, "delivery").map((p) => p.chave));
+    expect(moverNaOrigem(lista, "atendimento", "salao", "subir")).toBe(lista);
+  });
+
+  it("respostas: escolha só da lista, estrela baixa da gestão vira nota baixa", () => {
+    const app = perguntasDoTipo(lerPerguntas(comLivres()), "app");
+    const base = { pedido_certo: "sim", comida: "5", embalagem: "5", nps: "10", extra_preco1: "4" };
+    expect(validarRespostas(app, { ...base, extra_burg01: "Smash" })).toMatchObject({ ok: true, respostas: { extra_preco1: 4, extra_burg01: "Smash" } });
+    expect(validarRespostas(app, { ...base, extra_burg01: "Frango" })).toMatchObject({ ok: false, chave: "extra_burg01" });
+    expect(validarRespostas(app, { ...base, extra_preco1: "" })).toMatchObject({ ok: false, chave: "extra_preco1" });
+    expect(ehNotaBaixa({ nps: 10, extra_preco1: 2 })).toBe(true);
+    expect(ehNotaBaixa({ nps: 10, extra_preco1: 3 })).toBe(false);
+  });
+
+  it("chave nova não repete", () => {
+    const sempreZero = () => 0;
+    expect(novaChaveLivre([], sempreZero)).toBe("extra_aaaaaa");
+    expect(ehChaveLivre(novaChaveLivre(["extra_aaaaaa"]))).toBe(true);
   });
 });
