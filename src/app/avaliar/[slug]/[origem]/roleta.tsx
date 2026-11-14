@@ -62,6 +62,8 @@ function Roda({ premios, corPrincipal, angulo }: { premios: PremioPublico[]; cor
           // Deitado: perto da borda, acompanhando o arco. Em pé: no meio do raio, do centro para fora.
           const [tx, ty] = ponto(meio, rotulo.radial ? 56 : 60);
           const altura = rotulo.fonte * 1.15;
+          // Em pé: na metade esquerda vira 180 graus para ninguém ler de cabeça para baixo com a roda parada.
+          const giro = rotulo.radial ? (meio > 180 ? meio + 90 : meio - 90) : meio;
           return (
             <g key={p.id}>
               {premios.length === 1 ? (
@@ -72,7 +74,7 @@ function Roda({ premios, corPrincipal, angulo }: { premios: PremioPublico[]; cor
               <text
                 x={tx}
                 y={ty}
-                transform={`rotate(${rotulo.radial ? meio - 90 : meio} ${tx} ${ty})`}
+                transform={`rotate(${giro} ${tx} ${ty})`}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontSize={rotulo.fonte}
