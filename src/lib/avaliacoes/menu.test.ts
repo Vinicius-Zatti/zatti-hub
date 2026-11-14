@@ -38,7 +38,7 @@ describe("Avaliações no menu e nas permissões", () => {
     const menu = montarMenuRestaurantePiloto(ctx);
     const soVe = aplicarPermissoesMenu(menu, niveisEfetivos("gestao", false, { avaliacoes: "ver" }));
     const hrefs = soVe.find((i) => i.label === "Avaliações")?.sections?.flatMap((s) => s.items.map((x) => x.href));
-    expect(hrefs).toEqual(["/avaliacoes", "/avaliacoes/qr"]);
+    expect(hrefs).toEqual(["/avaliacoes", "/avaliacoes/qr", "/avaliacoes/cupons"]);
     expect(destinoSemEdicao("/avaliacoes/configurar", niveisEfetivos("gestao", false, { avaliacoes: "ver" }))).toBe("/avaliacoes");
     const sem = aplicarPermissoesMenu(menu, niveisEfetivos("gestao", false, { avaliacoes: "sem_acesso" }));
     expect(sem.map((i) => i.label)).not.toContain("Avaliações");
