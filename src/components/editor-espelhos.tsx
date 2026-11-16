@@ -110,17 +110,34 @@ export function EditorEspelhos({
     [itensPorFornecedorBase, avulsos]
   );
 
+  // Pedido desta contagem já recebido é histórico (Dom Quixote, 16/11/2026):
+  // o bloco fica só para consulta, sem botão que o banco recusaria, e não
+  // entra na disputa de vencedor dos outros fornecedores.
+  const recebidos = useMemo(
+    () => fornecedores.filter((f) => pedidoSalvoPorFornecedor[f]?.recebido === true),
+    [fornecedores, pedidoSalvoPorFornecedor]
+  );
+  function pedidoRecebido(fornecedor: string): boolean {
+    return recebidos.includes(fornecedor);
+  }
+  const contagemMaisNova = datasDisponiveis[0] && datasDisponiveis[0] !== dataUsada ? datasDisponiveis[0] : null;
+  const comoPedirDeNovo = contagemMaisNova
+    ? `Para pedir de novo, escolha a contagem de ${contagemMaisNova} no seletor acima.`
+    : "Para pedir de novo, faça a contagem de hoje e abra a cotação nela.";
+  const mensagemBlocoRecebido = `Este pedido já foi recebido e fica aqui só para consulta: não dá para mudar quantidade, preço, vencedor nem incluir item. ${comoPedirDeNovo}`;
+
   // sku -> fornecedores que também cotam esse item - só existe disputa de
   // "fornecedor vencedor" quando o mesmo SKU aparece em mais de um bloco.
   const fornecedoresPorSku = useMemo(() => {
     const mapa: Record<string, string[]> = {};
     for (const fornecedor of fornecedores) {
+      if (recebidos.includes(fornecedor)) continue;
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
         (mapa[item.sku] ??= []).push(fornecedor);
       }
     }
     return mapa;
-  }, [fornecedores, itensPorFornecedor]);
+  }, [fornecedores, itensPorFornecedor, recebidos]);
 
   // Vencedor só existe quando alguém clicou "Confirmar aqui" de propósito -
   // nunca inferido de "tem quantidade salva" (fornecedor único ficaria
@@ -141,12 +158,15 @@ export function EditorEspelhos({
   // fornecedor); preço é por fornecedor+SKU (cada um cota o próprio valor).
   const [quantidadesTexto, setQuantidadesTexto] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
-    for (const fornecedor of fornecedores) {
+    // Pedido recebido não entra: a quantidade dele é a que foi entregue, não
+    // a necessidade de agora (o bloco dele mostra a própria, ver `quantidadeDe`).
+    const abertos = fornecedores.filter((f) => !pedidoSalvoPorFornecedor[f]?.recebido);
+    for (const fornecedor of abertos) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
         inicial[item.sku] = textoEdicaoQuantidade(item.quantidadePedida, item.unidadeBase);
       }
     }
-    for (const fornecedor of fornecedores) {
+    for (const fornecedor of abertos) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
         if (!(item.sku in inicial)) inicial[item.sku] = textoEdicaoQuantidade(item.quantidadeSugerida, item.unidadeBase);
       }
@@ -188,7 +208,23 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  function quantidadeDe(sku: string): number {
+  // Quantidade de cada item como foi gravada no pedido recebido.
+  const quantidadesRecebidas = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const fornecedor of recebidos) {
+      for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
+        mapa[chave(fornecedor, item.sku)] = item.quantidadePedida;
+      }
+    }
+    return mapa;
+  }, [recebidos, pedidoSalvoPorFornecedor]);
+
+  /** Com `fornecedor` de pedido recebido, a quantidade gravada nele; senão a
+   * quantidade global do SKU (a mesma em todo bloco aberto). */
+  function quantidadeDe(sku: string, fornecedor?: string): number {
+    if (fornecedor !== undefined && pedidoRecebido(fornecedor)) {
+      return quantidadesRecebidas[chave(fornecedor, sku)] ?? 0;
+    }
     return toNumeroBR(quantidadesTexto[sku]) ?? 0;
   }
 
@@ -273,6 +309,12 @@ export function EditorEspelhos({
     return !item.nomeCompra.trim() || !item.unidadeEmbalagemFornecedor.trim() || !item.qtdUnidadeBasePorEmbalagem;
   }
 
+  function textoQuantidadeRecebida(fornecedor: string, item: SugestaoCompra, modoAtual: "interno" | "fornecedor"): string {
+    const base = quantidadeDe(item.sku, fornecedor);
+    if (modoAtual === "interno" || !item.qtdUnidadeBasePorEmbalagem) return formatNumero(base);
+    return formatNumero(Math.ceil(base / item.qtdUnidadeBasePorEmbalagem));
+  }
+
   const [previsaoEntrega, setPrevisaoEntrega] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -328,6 +370,9 @@ export function EditorEspelhos({
   const [desfazendoTroca, setDesfazendoTroca] = useState(false);
 
   function itensVisiveisDoFornecedor(fornecedor: string): SugestaoCompra[] {
+    // Recebido mostra tudo o que foi pedido, mesmo que outro bloco tenha
+    // ganhado o item depois.
+    if (pedidoRecebido(fornecedor)) return itensPorFornecedor[fornecedor] ?? [];
     return (itensPorFornecedor[fornecedor] ?? []).filter((item) => {
       const v = vencedor[item.sku];
       return v === undefined || v === null || v === fornecedor;
@@ -707,7 +752,7 @@ export function EditorEspelhos({
         filtrarBusca(
           fornecedor,
           itensVisiveisDoFornecedor(fornecedor).filter(
-            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)],
+            (item) => quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)],
           ),
         ).length === 0,
     );
@@ -739,6 +784,17 @@ export function EditorEspelhos({
 
       <AvisoVariasContagens datasUsadas={datasUsadas} />
 
+      {recebidos.length > 0 && (
+        <div className="rounded-lg border border-ambar/40 bg-ambar/10 px-4 py-3 text-sm text-cinza">
+          <span className="font-semibold">
+            {recebidos.length === 1
+              ? `O pedido de ${recebidos[0]} desta contagem (${dataUsada}) já foi recebido.`
+              : `Os pedidos de ${recebidos.slice(0, -1).join(", ")} e ${recebidos[recebidos.length - 1]} desta contagem (${dataUsada}) já foram recebidos.`}
+          </span>{" "}
+          {`${recebidos.length === 1 ? "Ele fica" : "Eles ficam"} aqui só para consulta, e o item que veio nele não aparece nos outros fornecedores desta contagem. ${comoPedirDeNovo}`}
+        </div>
+      )}
+
       {fornecedores.length > 0 && (
         <div className="flex flex-col gap-1">
           <CampoBusca
@@ -768,10 +824,10 @@ export function EditorEspelhos({
         {fornecedores.map((fornecedor) => {
           const todosItens = itensVisiveisDoFornecedor(fornecedor);
           const itensExibidos = todosItens.filter(
-            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)]
+            (item) => quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)]
           );
           const itensOcultos = todosItens.filter(
-            (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
+            (item) => !(quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)])
           );
           const opcoesAdicionar = opcoesParaAdicionar(fornecedor, itensOcultos);
           const itensNaTela = filtrarBusca(fornecedor, itensExibidos);
@@ -779,41 +835,50 @@ export function EditorEspelhos({
           const subtotal = itensExibidos.reduce((soma, item) => {
             const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;
-            return soma + quantidadeDe(item.sku) * preco;
+            return soma + quantidadeDe(item.sku, fornecedor) * preco;
           }, 0);
           const pedidoMinimo = pedidoMinimoPorFornecedor[fornecedor] ?? null;
           const bateuMinimo = pedidoMinimo === null || subtotal >= pedidoMinimo;
 
           const modoAtual = modo[fornecedor] ?? "interno";
-          const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
+          const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku, fornecedor), 0);
+          const bloqueado = pedidoRecebido(fornecedor);
 
           return (
             <div key={fornecedor} className="rounded-lg border border-cinza-claro bg-branco">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cinza-claro bg-azul-noite px-4 py-2.5">
                 <span className="truncate text-sm font-bold text-branco">{fornecedor}</span>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-[11px] font-semibold text-cinza-claro">
-                    Previsão de entrega
-                    <input
-                      type="date"
-                      value={previsaoEntrega[fornecedor] ?? ""}
-                      onChange={(e) => atualizarPrevisao(fornecedor, e.target.value)}
-                      className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
-                    />
-                  </label>
-                  {!bateuMinimo && (
+                  {bloqueado ? (
+                    <span className="rounded-full bg-verde/20 px-2 py-0.5 text-[11px] font-bold text-branco">
+                      Pedido recebido
+                    </span>
+                  ) : (
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-cinza-claro">
+                      Previsão de entrega
+                      <input
+                        type="date"
+                        value={previsaoEntrega[fornecedor] ?? ""}
+                        onChange={(e) => atualizarPrevisao(fornecedor, e.target.value)}
+                        className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
+                      />
+                    </label>
+                  )}
+                  {!bloqueado && !bateuMinimo && (
                     <span className="text-xs font-semibold text-ambar">
                       abaixo do pedido mínimo ({formatMoeda(pedidoMinimo as number)})
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => compartilhar(fornecedor)}
-                    disabled={compartilhando[fornecedor]}
-                    className="shrink-0 rounded-md bg-ambar px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-[#b07720] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {compartilhando[fornecedor] ? "Gerando..." : "Compartilhar"}
-                  </button>
+                  {!bloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => compartilhar(fornecedor)}
+                      disabled={compartilhando[fornecedor]}
+                      className="shrink-0 rounded-md bg-ambar px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-[#b07720] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {compartilhando[fornecedor] ? "Gerando..." : "Compartilhar"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -841,6 +906,12 @@ export function EditorEspelhos({
                   Nome Fornecedor
                 </button>
               </div>
+
+              {bloqueado && (
+                <div className="border-b border-cinza-claro bg-off-white px-4 py-2 text-xs text-cinza">
+                  {mensagemBlocoRecebido}
+                </div>
+              )}
 
               {modoAtual === "fornecedor" && itensExibidos.some(itemSemEmbalagem) && (
                 <div className="border-b border-vermelho/30 bg-vermelho/5 px-4 py-2 text-xs text-vermelho">
@@ -870,7 +941,7 @@ export function EditorEspelhos({
                       const jaVencido = vencedor[item.sku] === fornecedor;
                       const kPreco = chave(fornecedor, item.sku);
                       const preco = precoDe(fornecedor, item.sku);
-                      const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
+                      const precoTotal = preco !== null ? quantidadeDe(item.sku, fornecedor) * preco : null;
                       const menorPreco = melhorPrecoPorSku[item.sku];
                       const comparacaoAtiva =
                         vencedor[item.sku] == null &&
@@ -958,18 +1029,22 @@ export function EditorEspelhos({
                                 ) : (
                                   <div className="flex items-center justify-end gap-1.5">
                                     <span className="tabular-nums text-cinza">
-                                      {modoAtual === "interno"
-                                        ? (quantidadesTexto[item.sku] ?? "")
-                                        : (quantidadesTextoEmbalagem[item.sku] ?? "")}
+                                      {bloqueado
+                                        ? textoQuantidadeRecebida(fornecedor, item, modoAtual)
+                                        : modoAtual === "interno"
+                                          ? (quantidadesTexto[item.sku] ?? "")
+                                          : (quantidadesTextoEmbalagem[item.sku] ?? "")}
                                     </span>
                                     <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoQtd(fornecedor, item)}
-                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                                    >
-                                      Editar
-                                    </button>
+                                    {!bloqueado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => iniciarEdicaoQtd(fornecedor, item)}
+                                        className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                      >
+                                        Editar
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </td>
@@ -1019,13 +1094,15 @@ export function EditorEspelhos({
                                         {formatMoeda(diferencaExibida)} acima
                                       </span>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoPreco(fornecedor, item)}
-                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                                    >
-                                      Editar
-                                    </button>
+                                    {!bloqueado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => iniciarEdicaoPreco(fornecedor, item)}
+                                        className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                      >
+                                        Editar
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </td>
@@ -1035,7 +1112,11 @@ export function EditorEspelhos({
                             {precoTotal !== null ? formatMoeda(precoTotal) : "a calcular"}
                           </td>
                           <td className="px-3 py-2">
-                            {jaVencido ? (
+                            {bloqueado ? (
+                              <span className="rounded-full bg-off-white px-2 py-0.5 text-xs font-semibold text-cinza-medio">
+                                recebido
+                              </span>
+                            ) : jaVencido ? (
                               <button
                                 type="button"
                                 onClick={() => setConfirmarTroca({ sku: item.sku, fornecedor })}
@@ -1054,7 +1135,7 @@ export function EditorEspelhos({
                                 {confirmandoVencedor[item.sku] ? "Confirmando..." : "Confirmar aqui"}
                               </button>
                             )}
-                            {!disputado && (
+                            {!bloqueado && !disputado && (
                               <span className="ml-1 text-[10px] text-cinza-medio">único fornecedor</span>
                             )}
                           </td>
@@ -1077,7 +1158,7 @@ export function EditorEspelhos({
                 </table>
               </TabelaRolavel>
 
-              {opcoesAdicionar.length > 0 && (
+              {!bloqueado && opcoesAdicionar.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-cinza-claro px-4 py-2">
                   <span className="text-xs text-cinza-medio">Precisa comprar mais alguma coisa desse fornecedor?</span>
                   <CodigoSelect

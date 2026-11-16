@@ -7,6 +7,7 @@ import {
   desfazerVencedor,
   atualizarPrevisaoEntrega,
   listarParticipacoesCotacao,
+  listarFornecedoresRecebidos,
 } from "@/lib/pedidos";
 import { listProdutos, atualizarPrecoProduto, vincularFornecedorNoProduto } from "@/lib/sheets/produtos";
 import { SEM_FORNECEDOR, unirConcorrentes } from "@/lib/pedido";
@@ -199,15 +200,17 @@ export async function desfazerVencedorAction(input: {
     exigirEdicao(acesso, "estoque");
     await exigirLimiteRequisicao("pedidos_cotacao");
     const entrada = validarEntrada(desfazerVencedorSchema, input);
-    const [participacoes, fornecedoresCadastro] = await Promise.all([
+    const [participacoes, fornecedoresCadastro, recebidos] = await Promise.all([
       listarParticipacoesCotacao(acesso.unidadeId, entrada.dataContagemBase, entrada.item.sku),
       listFornecedores(acesso.spreadsheetId),
+      listarFornecedoresRecebidos(acesso.unidadeId, entrada.dataContagemBase),
     ]);
     const concorrentes = unirConcorrentes(
       entrada.fornecedorAtual,
       entrada.outrosFornecedores,
       participacoes.map((p) => p.fornecedor),
-      fornecedoresCadastro.map((f) => f.nomeFantasia || f.razaoSocial).filter(Boolean)
+      fornecedoresCadastro.map((f) => f.nomeFantasia || f.razaoSocial).filter(Boolean),
+      recebidos
     );
     await desfazerVencedor({
       unidadeId: acesso.unidadeId,

@@ -68,6 +68,18 @@ function erroGravacaoItem(error: { code?: string; message: string }): Error {
   return new Error(error.message);
 }
 
+/** Pedido já recebido é histórico: a cotação daquela contagem não muda mais
+ * nada nele. Dom Quixote, 16/11/2026: o pedido da semana foi feito antes da
+ * contagem do dia, em cima da contagem anterior, e os fornecedores que já
+ * tinham recebido o pedido dela recusavam tudo sem dizer por quê. Pedido novo
+ * nasce de uma contagem nova (um pedido por fornecedor e contagem). */
+export function mensagemPedidoRecebido(fornecedor: string, dataContagemBase: string): string {
+  return (
+    `O pedido de ${fornecedor.trim()} da contagem de ${dataContagemBase} já foi recebido e não muda mais. ` +
+    "Para fazer um pedido novo, faça a contagem de hoje e abra a cotação nela."
+  );
+}
+
 async function garantirPedido(
   supabase: Awaited<ReturnType<typeof createClient>>,
   unidadeId: string,
@@ -77,12 +89,13 @@ async function garantirPedido(
 ): Promise<string> {
   const { data: existente, error: erroExistente } = await supabase
     .from("pedidos")
-    .select("id")
+    .select("id, recebido")
     .eq("unidade_id", unidadeId)
     .eq("fornecedor", fornecedor)
     .eq("data_contagem_base", dataContagemBase)
     .maybeSingle();
   if (erroExistente) throw new Error(erroExistente.message);
+  if (existente?.recebido) throw new ErroPublico(mensagemPedidoRecebido(fornecedor, dataContagemBase));
   if (existente) return existente.id;
 
   const { data: novo, error } = await supabase
@@ -206,6 +219,9 @@ export async function confirmarItem(params: {
       .eq("unidade_id", params.unidadeId)
       .eq("data_contagem_base", params.dataContagemBase)
       .neq("fornecedor", params.fornecedor)
+      // Recebido é histórico: a quantidade nova não vai para ele (e o banco
+      // recusaria o UPDATE inteiro, travando o item em todos os fornecedores).
+      .eq("recebido", false)
       .order("id")
       .range(de, ate),
   );
@@ -274,7 +290,10 @@ export async function confirmarVencedor(params: {
     .select("id")
     .eq("unidade_id", params.unidadeId)
     .eq("data_contagem_base", params.dataContagemBase)
-    .in("fornecedor", params.outrosFornecedores);
+    .in("fornecedor", params.outrosFornecedores)
+    // Pedido já recebido fica como foi entregue: perder a disputa agora não
+    // apaga o item dele.
+    .eq("recebido", false);
   if (erroBuscarPerdedores) throw new Error(erroBuscarPerdedores.message);
 
   const ids = (pedidosPerdedores ?? []).map((p) => p.id);
@@ -319,6 +338,23 @@ export async function desfazerVencedor(params: {
     p_preco_antigo: params.item.precoAntigo,
   });
   if (error) throw erroGravacaoItem(error);
+}
+
+/** Fornecedores com o pedido desta contagem base já recebido (nome como está
+ * gravado no pedido). */
+export async function listarFornecedoresRecebidos(unidadeId: string, dataContagemBase: string): Promise<string[]> {
+  const supabase = await createClient();
+  const linhas = await buscarTudo<{ fornecedor: string }>((de, ate) =>
+    supabase
+      .from("pedidos")
+      .select("fornecedor")
+      .eq("unidade_id", unidadeId)
+      .eq("data_contagem_base", dataContagemBase)
+      .eq("recebido", true)
+      .order("fornecedor")
+      .range(de, ate),
+  );
+  return linhas.map((l) => l.fornecedor);
 }
 
 /** Fornecedores que participaram da cotação (unidade + contagem base), por

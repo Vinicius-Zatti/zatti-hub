@@ -6,7 +6,14 @@ import { filtrarPorFornecedorOuItem, filtrarPorNomeOuSku } from "@/lib/busca-lis
 import { useRouter, usePathname } from "next/navigation";
 import type { Fornecedor, Produto, SugestaoCompra } from "@/lib/types";
 import { nomeGrupo } from "@/lib/grupos";
-import { agruparPorFornecedor, agruparPorGrupo, ordenarFornecedores, ordenarGrupos, SEM_FORNECEDOR } from "@/lib/pedido";
+import {
+  agruparPorFornecedor,
+  agruparPorGrupo,
+  fornecedorNaLista,
+  ordenarFornecedores,
+  ordenarGrupos,
+  SEM_FORNECEDOR,
+} from "@/lib/pedido";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { DicaVirarCelular } from "@/components/dica-virar-celular";
@@ -53,6 +60,7 @@ export function PedidoCompras({
   quantidadesSalvas,
   setoresPendentes = [],
   cadastroRapidoProduto = null,
+  fornecedoresRecebidos = [],
 }: {
   itens: SugestaoCompra[];
   /** Contagem base: a mais recente das marcadas, onde o pedido fica gravado. */
@@ -76,6 +84,9 @@ export function PedidoCompras({
    * produto" cadastra em modal e a linha nova já entra na conferência com o
    * campo Comprar aberto. Só Gestão/master (`criarProdutoAction` confere). */
   cadastroRapidoProduto?: ConfigCadastroRapido | null;
+  /** Fornecedores com o pedido desta contagem já recebido: histórico, a
+   * quantidade confirmada aqui não vai mais para eles (Dom Quixote, 16/11/2026). */
+  fornecedoresRecebidos?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,7 +145,16 @@ export function PedidoCompras({
     setConfirmando((c) => ({ ...c, [item.sku]: true }));
     setErroConfirmar((e) => ({ ...e, [item.sku]: "" }));
 
-    const fornecedoresDoItem = item.fornecedores.length ? item.fornecedores : valorBase > 0 ? [SEM_FORNECEDOR] : [];
+    const fornecedoresCadastrados = item.fornecedores.length ? item.fornecedores : valorBase > 0 ? [SEM_FORNECEDOR] : [];
+    const fornecedoresDoItem = fornecedoresCadastrados.filter((f) => !fornecedorNaLista(f, fornecedoresRecebidos));
+    if (fornecedoresDoItem.length === 0 && fornecedoresCadastrados.length > 0) {
+      setConfirmando((c) => ({ ...c, [item.sku]: false }));
+      setErroConfirmar((e) => ({
+        ...e,
+        [item.sku]: `O pedido de ${fornecedoresCadastrados.join(" e ")} da contagem de ${dataUsada} já foi recebido. Para pedir de novo, faça a contagem de hoje e abra a cotação nela.`,
+      }));
+      return;
+    }
     const resultados = await Promise.all(
       fornecedoresDoItem.map((fornecedor) =>
         confirmarItemAction({
