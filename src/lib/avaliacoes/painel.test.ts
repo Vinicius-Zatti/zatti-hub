@@ -6,6 +6,10 @@ import {
   filtrarPorOrigem,
   formatarWhatsapp,
   gerarCsv,
+  gerarLeitura,
+  inicioAnterior,
+  serieDiaria,
+  zonaNps,
   intervaloPeriodo,
   lerFiltroOrigem,
   lerPeriodo,
@@ -173,5 +177,48 @@ describe("perguntas da gestão no painel (14/11/2026)", () => {
     const csv = gerarCsv([respostas[0]], livres);
     expect(csv).toContain("E o preço?");
     expect(csv).toContain(";4;Smash;");
+  });
+});
+
+describe("painel: gráficos e leitura", () => {
+  const lote = (n: number, p: Partial<RespostaPainel>) => Array.from({ length: n }, (_, i) => resposta({ id: `${p.origem ?? "x"}${i}`, ...p }));
+
+  it("período anterior do mesmo tamanho e série por dia de Brasília", () => {
+    expect(inicioAnterior("7", "2026-11-08")).toBe("2026-11-01T03:00:00.000Z");
+    // 23h14 UTC do dia 12 = 20h14 em Brasília, dia 12; 01h do dia 13 UTC = 22h do dia 12.
+    const serie = serieDiaria([resposta({}), resposta({ id: "b", criadoEm: "2026-11-13T01:00:00.000Z", notaBaixa: true })], "2026-11-11", "2026-11-13");
+    expect(serie).toEqual([
+      { dia: "2026-11-11", total: 0, notasBaixas: 0 },
+      { dia: "2026-11-12", total: 2, notasBaixas: 1 },
+      { dia: "2026-11-13", total: 0, notasBaixas: 0 },
+    ]);
+  });
+
+  it("zonas do NPS", () => {
+    expect([zonaNps(-10), zonaNps(0), zonaNps(50), zonaNps(51), zonaNps(76)]).toEqual([
+      "zona crítica",
+      "zona crítica",
+      "zona de aperfeiçoamento",
+      "zona de qualidade",
+      "zona de excelência",
+    ]);
+  });
+
+  it("leitura compara com o período anterior e aponta o mais forte e o mais fraco", () => {
+    const atual = resumir([...lote(8, { nps: 10, atendimento: 5, comida: 4 }), ...lote(2, { origem: "app", nps: 3, atendimento: 5, comida: 2, pedidoCerto: false, notaBaixa: true })]);
+    const anterior = resumir(lote(6, { nps: 8, atendimento: 4, comida: 4 }));
+    const l = gerarLeitura(atual, anterior);
+    expect(l[0]).toBe("Chegaram 10 avaliações no período, 4 a mais que no período anterior (6).");
+    expect(l[1]).toBe("O NPS está em 60, zona de qualidade, subiu 60 pontos (era 0): 8 promotores e 2 detratores.");
+    expect(l[2]).toBe("Ponto mais forte: atendimento (5,0). Ponto mais fraco: comida (3,6), caiu de 4,0.");
+    expect(l).toContain("2 pedidos vieram errados ou faltando, 100% de quem respondeu.");
+    expect(l.at(-1)).toContain("2 avaliações tiveram nota baixa (20% do total)");
+  });
+
+  it("base pequena: não compara e avisa", () => {
+    const l = gerarLeitura(resumir(lote(3, { nps: 10, atendimento: 5, comida: 5 })), resumir(lote(1, { nps: 0 })));
+    expect(l[1]).toBe("O NPS está em 100, zona de excelência: 3 promotores e 0 detratores.");
+    expect(l.at(-1)).toBe("Ainda são poucas avaliações: leia como sinal, não como tendência.");
+    expect(gerarLeitura(resumir([]), null)).toEqual([]);
   });
 });

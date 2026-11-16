@@ -2,7 +2,9 @@
 // sorteia, gera o código e confere tudo de novo (supabase/migrations/20261113170000_avaliacoes_roleta.sql).
 
 export const LIMITE_PREMIOS = 8;
-export const LIMITE_NOME_PREMIO = 60;
+/** Nome que cabe na fatia (14/11/2026): até 24 letras, em no máximo 2 linhas. O banco aceita 60,
+ * mas a tela só deixa gravar 24; o detalhe vai na regra, que aparece no resultado. */
+export const LIMITE_NOME_PREMIO = 24;
 export const LIMITE_REGRA_PREMIO = 120;
 export const VALIDADE_PADRAO_DIAS = 30;
 
@@ -34,6 +36,30 @@ export function validarRoleta(e: {
   if (premios.length > LIMITE_PREMIOS) return { ok: false, erro: `Cadastre até ${LIMITE_PREMIOS} prêmios.` };
   if (e.ativa && premios.length === 0) return { ok: false, erro: "Cadastre ao menos um prêmio para ligar a roleta." };
   return { ok: true, ativa: e.ativa, validadeDias: e.validadeDias, premios };
+}
+
+/** Como o nome vai escrito na fatia: até 4 fatias, deitado (acompanha a borda); de 5 a 8, em pé,
+ * do centro para fora, porque a fatia fica estreita. Quebra por palavra em até 2 linhas; o que não
+ * couber termina em "…". */
+export function rotuloFatia(nome: string, total: number): { linhas: string[]; fonte: number; radial: boolean } {
+  const radial = total > 4;
+  const fonte = total <= 2 ? 11 : total <= 4 ? 10 : total <= 6 ? 9 : 8;
+  const porLinha = total <= 2 ? 16 : total === 3 ? 14 : total <= 6 ? 12 : 13;
+  const palavras = nome.replace(/\s+/g, " ").trim().split(" ");
+  const linhas: string[] = [];
+  let atual = "";
+  for (const palavra of palavras) {
+    const junto = atual ? `${atual} ${palavra}` : palavra;
+    if (junto.length <= porLinha || !atual) atual = junto;
+    else {
+      linhas.push(atual);
+      atual = palavra;
+    }
+  }
+  if (atual) linhas.push(atual);
+  const cortar = (t: string) => (t.length > porLinha ? `${t.slice(0, porLinha - 1).trimEnd()}…` : t);
+  if (linhas.length > 2) linhas.splice(1, linhas.length, `${linhas.slice(1).join(" ").slice(0, porLinha - 1).trimEnd()}…`);
+  return { linhas: linhas.map(cortar), fonte, radial };
 }
 
 /** Chance de cada prêmio em % (peso dividido pela soma dos pesos), arredondada. */
