@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { incluirParticipacoes, unirConcorrentes } from "./pedido";
+import { fornecedorNaLista, incluirParticipacoes, unirConcorrentes } from "./pedido";
 import type { SugestaoCompra } from "./types";
 
 // Parecer do Codex (24/10/2026, ponto 3): participação do fornecedor por
@@ -63,5 +63,18 @@ describe("unirConcorrentes", () => {
 
   it("sem participação fica a lista da tela", () => {
     expect(unirConcorrentes("JM", ["Ceasa"], [], ["JM", "Ceasa"])).toEqual(["Ceasa"]);
+  });
+
+  it("fornecedor com o pedido já recebido não volta como concorrente", () => {
+    expect(
+      unirConcorrentes("JM", ["Ceasa", "Mega G"], ["Sem limites"], ["JM", "Ceasa", "Mega G", "Sem limites "], ["mega g", "Sem limites"])
+    ).toEqual(["Ceasa"]);
+  });
+});
+
+describe("fornecedorNaLista", () => {
+  it("ignora maiúscula e espaço sobrando", () => {
+    expect(fornecedorNaLista("Sem limites ", ["mega g", "Sem limites"])).toBe(true);
+    expect(fornecedorNaLista("Ceasa", ["mega g"])).toBe(false);
   });
 });

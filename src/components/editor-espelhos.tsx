@@ -110,17 +110,34 @@ export function EditorEspelhos({
     [itensPorFornecedorBase, avulsos]
   );
 
+  // Pedido desta contagem já recebido é histórico (Dom Quixote, 16/11/2026):
+  // o bloco fica só para consulta, sem botão que o banco recusaria, e não
+  // entra na disputa de vencedor dos outros fornecedores.
+  const recebidos = useMemo(
+    () => fornecedores.filter((f) => pedidoSalvoPorFornecedor[f]?.recebido === true),
+    [fornecedores, pedidoSalvoPorFornecedor]
+  );
+  function pedidoRecebido(fornecedor: string): boolean {
+    return recebidos.includes(fornecedor);
+  }
+  const contagemMaisNova = datasDisponiveis[0] && datasDisponiveis[0] !== dataUsada ? datasDisponiveis[0] : null;
+  const comoPedirDeNovo = contagemMaisNova
+    ? `Para pedir de novo, escolha a contagem de ${contagemMaisNova} no seletor acima.`
+    : "Para pedir de novo, faça a contagem de hoje e abra a cotação nela.";
+  const mensagemBlocoRecebido = `Este pedido já foi recebido e fica aqui só para consulta: não dá para mudar quantidade, preço, vencedor nem incluir item. ${comoPedirDeNovo}`;
+
   // sku -> fornecedores que também cotam esse item - só existe disputa de
   // "fornecedor vencedor" quando o mesmo SKU aparece em mais de um bloco.
   const fornecedoresPorSku = useMemo(() => {
     const mapa: Record<string, string[]> = {};
     for (const fornecedor of fornecedores) {
+      if (recebidos.includes(fornecedor)) continue;
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
         (mapa[item.sku] ??= []).push(fornecedor);
       }
     }
     return mapa;
-  }, [fornecedores, itensPorFornecedor]);
+  }, [fornecedores, itensPorFornecedor, recebidos]);
 
   // Vencedor só existe quando alguém clicou "Confirmar aqui" de propósito -
   // nunca inferido de "tem quantidade salva" (fornecedor único ficaria
@@ -739,6 +756,17 @@ export function EditorEspelhos({
 
       <AvisoVariasContagens datasUsadas={datasUsadas} />
 
+      {recebidos.length > 0 && (
+        <div className="rounded-lg border border-ambar/40 bg-ambar/10 px-4 py-3 text-sm text-cinza">
+          <span className="font-semibold">
+            {recebidos.length === 1
+              ? `O pedido de ${recebidos[0]} desta contagem (${dataUsada}) já foi recebido.`
+              : `Os pedidos de ${recebidos.slice(0, -1).join(", ")} e ${recebidos[recebidos.length - 1]} desta contagem (${dataUsada}) já foram recebidos.`}
+          </span>{" "}
+          {`${recebidos.length === 1 ? "Ele fica" : "Eles ficam"} aqui só para consulta. ${comoPedirDeNovo}`}
+        </div>
+      )}
+
       {fornecedores.length > 0 && (
         <div className="flex flex-col gap-1">
           <CampoBusca
@@ -786,22 +814,29 @@ export function EditorEspelhos({
 
           const modoAtual = modo[fornecedor] ?? "interno";
           const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
+          const bloqueado = pedidoRecebido(fornecedor);
 
           return (
             <div key={fornecedor} className="rounded-lg border border-cinza-claro bg-branco">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cinza-claro bg-azul-noite px-4 py-2.5">
                 <span className="truncate text-sm font-bold text-branco">{fornecedor}</span>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-[11px] font-semibold text-cinza-claro">
-                    Previsão de entrega
-                    <input
-                      type="date"
-                      value={previsaoEntrega[fornecedor] ?? ""}
-                      onChange={(e) => atualizarPrevisao(fornecedor, e.target.value)}
-                      className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
-                    />
-                  </label>
-                  {!bateuMinimo && (
+                  {bloqueado ? (
+                    <span className="rounded-full bg-verde/20 px-2 py-0.5 text-[11px] font-bold text-branco">
+                      Pedido recebido
+                    </span>
+                  ) : (
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-cinza-claro">
+                      Previsão de entrega
+                      <input
+                        type="date"
+                        value={previsaoEntrega[fornecedor] ?? ""}
+                        onChange={(e) => atualizarPrevisao(fornecedor, e.target.value)}
+                        className="rounded border border-cinza-claro bg-branco px-1.5 py-0.5 text-xs text-cinza focus:outline-none"
+                      />
+                    </label>
+                  )}
+                  {!bloqueado && !bateuMinimo && (
                     <span className="text-xs font-semibold text-ambar">
                       abaixo do pedido mínimo ({formatMoeda(pedidoMinimo as number)})
                     </span>
@@ -841,6 +876,12 @@ export function EditorEspelhos({
                   Nome Fornecedor
                 </button>
               </div>
+
+              {bloqueado && (
+                <div className="border-b border-cinza-claro bg-off-white px-4 py-2 text-xs text-cinza">
+                  {mensagemBlocoRecebido}
+                </div>
+              )}
 
               {modoAtual === "fornecedor" && itensExibidos.some(itemSemEmbalagem) && (
                 <div className="border-b border-vermelho/30 bg-vermelho/5 px-4 py-2 text-xs text-vermelho">
@@ -963,13 +1004,15 @@ export function EditorEspelhos({
                                         : (quantidadesTextoEmbalagem[item.sku] ?? "")}
                                     </span>
                                     <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoQtd(fornecedor, item)}
-                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                                    >
-                                      Editar
-                                    </button>
+                                    {!bloqueado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => iniciarEdicaoQtd(fornecedor, item)}
+                                        className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                      >
+                                        Editar
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </td>
@@ -1019,13 +1062,15 @@ export function EditorEspelhos({
                                         {formatMoeda(diferencaExibida)} acima
                                       </span>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() => iniciarEdicaoPreco(fornecedor, item)}
-                                      className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
-                                    >
-                                      Editar
-                                    </button>
+                                    {!bloqueado && (
+                                      <button
+                                        type="button"
+                                        onClick={() => iniciarEdicaoPreco(fornecedor, item)}
+                                        className="rounded-md border border-cinza-claro px-1.5 py-0.5 text-[10px] font-semibold text-cinza-medio hover:bg-off-white"
+                                      >
+                                        Editar
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </td>
@@ -1035,7 +1080,11 @@ export function EditorEspelhos({
                             {precoTotal !== null ? formatMoeda(precoTotal) : "a calcular"}
                           </td>
                           <td className="px-3 py-2">
-                            {jaVencido ? (
+                            {bloqueado ? (
+                              <span className="rounded-full bg-off-white px-2 py-0.5 text-xs font-semibold text-cinza-medio">
+                                recebido
+                              </span>
+                            ) : jaVencido ? (
                               <button
                                 type="button"
                                 onClick={() => setConfirmarTroca({ sku: item.sku, fornecedor })}
@@ -1054,7 +1103,7 @@ export function EditorEspelhos({
                                 {confirmandoVencedor[item.sku] ? "Confirmando..." : "Confirmar aqui"}
                               </button>
                             )}
-                            {!disputado && (
+                            {!bloqueado && !disputado && (
                               <span className="ml-1 text-[10px] text-cinza-medio">único fornecedor</span>
                             )}
                           </td>
@@ -1077,7 +1126,7 @@ export function EditorEspelhos({
                 </table>
               </TabelaRolavel>
 
-              {opcoesAdicionar.length > 0 && (
+              {!bloqueado && opcoesAdicionar.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-cinza-claro px-4 py-2">
                   <span className="text-xs text-cinza-medio">Precisa comprar mais alguma coisa desse fornecedor?</span>
                   <CodigoSelect

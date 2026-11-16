@@ -103,6 +103,7 @@ export default async function PedidosPage({
       fornecedoresCadastro={fornecedores}
       quantidadesSalvas={quantidadesSalvas}
       setoresPendentes={resultado.setoresPendentes}
+      fornecedoresRecebidos={pedidosSalvos.filter((p) => p.recebido).map((p) => p.fornecedor)}
       cadastroRapidoProduto={configCadastroRapido(cadastroRapido, contagemPorSetorVale(acesso), acesso.fonteDadosEstoque)}
     />
   );

@@ -21,6 +21,7 @@ const pedidos = vi.hoisted(() => ({
   desfazerVencedor: vi.fn(async () => undefined),
   atualizarPrevisaoEntrega: vi.fn(async () => undefined),
   listarParticipacoesCotacao: vi.fn(async () => [] as { fornecedor: string; sku: string }[]),
+  listarFornecedoresRecebidos: vi.fn(async () => [] as string[]),
 }));
 vi.mock("@/lib/pedidos", () => pedidos);
 
@@ -99,5 +100,19 @@ describe("desfazer vencedor com participação persistida", () => {
       item,
     });
     expect(r).toEqual({ ok: true, concorrentes: ["Ceasa"] });
+  });
+
+  // Dom Quixote, 16/11/2026: o banco recusa o desfazer inteiro se tentar
+  // recriar o item num pedido já recebido.
+  it("concorrente com o pedido já recebido não é recriado", async () => {
+    pedidos.listarFornecedoresRecebidos.mockResolvedValueOnce(["ceasa"]);
+    const r = await desfazerVencedorAction({
+      dataContagemBase: "24/10/2026",
+      fornecedorAtual: "JM",
+      outrosFornecedores: ["Ceasa"],
+      item,
+    });
+    expect(pedidos.listarFornecedoresRecebidos).toHaveBeenCalledWith("uni-1", "24/10/2026");
+    expect(r).toEqual({ ok: true, concorrentes: [] });
   });
 });

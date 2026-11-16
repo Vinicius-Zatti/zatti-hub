@@ -199,17 +199,27 @@ export function incluirParticipacoes(
   return mapa;
 }
 
+/** O fornecedor está na lista, ignorando maiúscula e espaço sobrando
+ * ("Sem limites " no Cadastro e "Sem limites" no pedido são o mesmo). */
+export function fornecedorNaLista(nome: string, lista: string[]): boolean {
+  const chave = chaveNormalizada(nome);
+  return lista.some((outro) => chaveNormalizada(outro) === chave);
+}
+
 /** Concorrentes que o desfazer vencedor recria: os que a tela mandou mais os
  * que participaram da cotação do item (gravados no banco), sem repetir o
  * mesmo fornecedor com grafia diferente e sem o vencedor atual. A tela pode
- * ter perdido um concorrente (recarregou, vínculo falhou); o banco não. */
+ * ter perdido um concorrente (recarregou, vínculo falhou); o banco não.
+ * Fornecedor com o pedido desta contagem já recebido fica de fora: o item não
+ * volta para um pedido fechado (o banco recusaria o desfazer inteiro). */
 export function unirConcorrentes(
   fornecedorAtual: string,
   daTela: string[],
   participantes: string[],
-  fornecedoresCadastro: string[]
+  fornecedoresCadastro: string[],
+  recebidos: string[] = []
 ): string[] {
-  const vistos = new Set([chaveNormalizada(fornecedorAtual)]);
+  const vistos = new Set([chaveNormalizada(fornecedorAtual), ...recebidos.map(chaveNormalizada)]);
   const resultado: string[] = [];
   for (const bruto of [...daTela, ...participantes]) {
     const nome = nomeFornecedorCanonico(bruto, fornecedoresCadastro);
