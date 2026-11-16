@@ -90,7 +90,14 @@ export function mesclarPedidosPorFornecedorCanonico(pedidos: Pedido[], fornecedo
     for (const p of [...lista].sort((a, b) => a.atualizadoEm.localeCompare(b.atualizadoEm))) {
       for (const item of p.itens) itensPorSku.set(item.sku, item);
     }
-    resultado.push({ ...maisRecente, fornecedor, itens: Array.from(itensPorSku.values()) });
+    // Uma grafia recebida basta: toda gravação vai para o nome canônico, que
+    // pode ser justamente o recebido, e o bloco não pode parecer editável.
+    resultado.push({
+      ...maisRecente,
+      fornecedor,
+      recebido: lista.some((p) => p.recebido),
+      itens: Array.from(itensPorSku.values()),
+    });
   }
   return resultado;
 }

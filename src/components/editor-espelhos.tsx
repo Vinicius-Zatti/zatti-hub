@@ -158,12 +158,15 @@ export function EditorEspelhos({
   // fornecedor); preço é por fornecedor+SKU (cada um cota o próprio valor).
   const [quantidadesTexto, setQuantidadesTexto] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
-    for (const fornecedor of fornecedores) {
+    // Pedido recebido não entra: a quantidade dele é a que foi entregue, não
+    // a necessidade de agora (o bloco dele mostra a própria, ver `quantidadeDe`).
+    const abertos = fornecedores.filter((f) => !pedidoSalvoPorFornecedor[f]?.recebido);
+    for (const fornecedor of abertos) {
       for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
         inicial[item.sku] = textoEdicaoQuantidade(item.quantidadePedida, item.unidadeBase);
       }
     }
-    for (const fornecedor of fornecedores) {
+    for (const fornecedor of abertos) {
       for (const item of itensPorFornecedor[fornecedor] ?? []) {
         if (!(item.sku in inicial)) inicial[item.sku] = textoEdicaoQuantidade(item.quantidadeSugerida, item.unidadeBase);
       }
@@ -205,7 +208,23 @@ export function EditorEspelhos({
     return inicial;
   });
 
-  function quantidadeDe(sku: string): number {
+  // Quantidade de cada item como foi gravada no pedido recebido.
+  const quantidadesRecebidas = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const fornecedor of recebidos) {
+      for (const item of pedidoSalvoPorFornecedor[fornecedor]?.itens ?? []) {
+        mapa[chave(fornecedor, item.sku)] = item.quantidadePedida;
+      }
+    }
+    return mapa;
+  }, [recebidos, pedidoSalvoPorFornecedor]);
+
+  /** Com `fornecedor` de pedido recebido, a quantidade gravada nele; senão a
+   * quantidade global do SKU (a mesma em todo bloco aberto). */
+  function quantidadeDe(sku: string, fornecedor?: string): number {
+    if (fornecedor !== undefined && pedidoRecebido(fornecedor)) {
+      return quantidadesRecebidas[chave(fornecedor, sku)] ?? 0;
+    }
     return toNumeroBR(quantidadesTexto[sku]) ?? 0;
   }
 
@@ -290,6 +309,12 @@ export function EditorEspelhos({
     return !item.nomeCompra.trim() || !item.unidadeEmbalagemFornecedor.trim() || !item.qtdUnidadeBasePorEmbalagem;
   }
 
+  function textoQuantidadeRecebida(fornecedor: string, item: SugestaoCompra, modoAtual: "interno" | "fornecedor"): string {
+    const base = quantidadeDe(item.sku, fornecedor);
+    if (modoAtual === "interno" || !item.qtdUnidadeBasePorEmbalagem) return formatNumero(base);
+    return formatNumero(Math.ceil(base / item.qtdUnidadeBasePorEmbalagem));
+  }
+
   const [previsaoEntrega, setPrevisaoEntrega] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {};
     for (const fornecedor of fornecedores) {
@@ -345,6 +370,9 @@ export function EditorEspelhos({
   const [desfazendoTroca, setDesfazendoTroca] = useState(false);
 
   function itensVisiveisDoFornecedor(fornecedor: string): SugestaoCompra[] {
+    // Recebido mostra tudo o que foi pedido, mesmo que outro bloco tenha
+    // ganhado o item depois.
+    if (pedidoRecebido(fornecedor)) return itensPorFornecedor[fornecedor] ?? [];
     return (itensPorFornecedor[fornecedor] ?? []).filter((item) => {
       const v = vencedor[item.sku];
       return v === undefined || v === null || v === fornecedor;
@@ -724,7 +752,7 @@ export function EditorEspelhos({
         filtrarBusca(
           fornecedor,
           itensVisiveisDoFornecedor(fornecedor).filter(
-            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)],
+            (item) => quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)],
           ),
         ).length === 0,
     );
@@ -763,7 +791,7 @@ export function EditorEspelhos({
               ? `O pedido de ${recebidos[0]} desta contagem (${dataUsada}) já foi recebido.`
               : `Os pedidos de ${recebidos.slice(0, -1).join(", ")} e ${recebidos[recebidos.length - 1]} desta contagem (${dataUsada}) já foram recebidos.`}
           </span>{" "}
-          {`${recebidos.length === 1 ? "Ele fica" : "Eles ficam"} aqui só para consulta. ${comoPedirDeNovo}`}
+          {`${recebidos.length === 1 ? "Ele fica" : "Eles ficam"} aqui só para consulta, e o item que veio nele não aparece nos outros fornecedores desta contagem. ${comoPedirDeNovo}`}
         </div>
       )}
 
@@ -796,10 +824,10 @@ export function EditorEspelhos({
         {fornecedores.map((fornecedor) => {
           const todosItens = itensVisiveisDoFornecedor(fornecedor);
           const itensExibidos = todosItens.filter(
-            (item) => quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)]
+            (item) => quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)]
           );
           const itensOcultos = todosItens.filter(
-            (item) => !(quantidadeDe(item.sku) > 0 || revelados[chave(fornecedor, item.sku)])
+            (item) => !(quantidadeDe(item.sku, fornecedor) > 0 || revelados[chave(fornecedor, item.sku)])
           );
           const opcoesAdicionar = opcoesParaAdicionar(fornecedor, itensOcultos);
           const itensNaTela = filtrarBusca(fornecedor, itensExibidos);
@@ -807,13 +835,13 @@ export function EditorEspelhos({
           const subtotal = itensExibidos.reduce((soma, item) => {
             const preco = precoDe(fornecedor, item.sku);
             if (preco === null) return soma;
-            return soma + quantidadeDe(item.sku) * preco;
+            return soma + quantidadeDe(item.sku, fornecedor) * preco;
           }, 0);
           const pedidoMinimo = pedidoMinimoPorFornecedor[fornecedor] ?? null;
           const bateuMinimo = pedidoMinimo === null || subtotal >= pedidoMinimo;
 
           const modoAtual = modo[fornecedor] ?? "interno";
-          const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku), 0);
+          const totalVolumes = itensExibidos.reduce((soma, item) => soma + quantidadeDe(item.sku, fornecedor), 0);
           const bloqueado = pedidoRecebido(fornecedor);
 
           return (
@@ -841,14 +869,16 @@ export function EditorEspelhos({
                       abaixo do pedido mínimo ({formatMoeda(pedidoMinimo as number)})
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => compartilhar(fornecedor)}
-                    disabled={compartilhando[fornecedor]}
-                    className="shrink-0 rounded-md bg-ambar px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-[#b07720] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {compartilhando[fornecedor] ? "Gerando..." : "Compartilhar"}
-                  </button>
+                  {!bloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => compartilhar(fornecedor)}
+                      disabled={compartilhando[fornecedor]}
+                      className="shrink-0 rounded-md bg-ambar px-2.5 py-1 text-[11px] font-bold text-azul-noite hover:bg-[#b07720] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {compartilhando[fornecedor] ? "Gerando..." : "Compartilhar"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -911,7 +941,7 @@ export function EditorEspelhos({
                       const jaVencido = vencedor[item.sku] === fornecedor;
                       const kPreco = chave(fornecedor, item.sku);
                       const preco = precoDe(fornecedor, item.sku);
-                      const precoTotal = preco !== null ? quantidadeDe(item.sku) * preco : null;
+                      const precoTotal = preco !== null ? quantidadeDe(item.sku, fornecedor) * preco : null;
                       const menorPreco = melhorPrecoPorSku[item.sku];
                       const comparacaoAtiva =
                         vencedor[item.sku] == null &&
@@ -999,9 +1029,11 @@ export function EditorEspelhos({
                                 ) : (
                                   <div className="flex items-center justify-end gap-1.5">
                                     <span className="tabular-nums text-cinza">
-                                      {modoAtual === "interno"
-                                        ? (quantidadesTexto[item.sku] ?? "")
-                                        : (quantidadesTextoEmbalagem[item.sku] ?? "")}
+                                      {bloqueado
+                                        ? textoQuantidadeRecebida(fornecedor, item, modoAtual)
+                                        : modoAtual === "interno"
+                                          ? (quantidadesTexto[item.sku] ?? "")
+                                          : (quantidadesTextoEmbalagem[item.sku] ?? "")}
                                     </span>
                                     <span className="text-xs text-cinza-medio">{unidadeExibida}</span>
                                     {!bloqueado && (

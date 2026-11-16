@@ -127,6 +127,14 @@ describe("mesclarPedidosPorFornecedorCanonico", () => {
     expect(resultado[0].id).toBe(novo.id); // pedido mais recente empresta id/metadados
     expect(resultado[0].itens.map((i) => i.sku).sort()).toEqual(["CERV-BUD", "CERV-SKOL"]);
   });
+
+  it("uma grafia já recebida deixa o bloco recebido, mesmo com outra mais nova aberta", () => {
+    const recebido = { ...pedido("Sem limites", "2026-11-09T10:00:00Z", [pedidoItem("CERV-BUD")]), recebido: true };
+    const aberto = pedido("Sem Limites", "2026-11-16T10:00:00Z", [pedidoItem("CERV-SKOL")]);
+    const resultado = mesclarPedidosPorFornecedorCanonico([recebido, aberto], ["Sem limites "]);
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].recebido).toBe(true);
+  });
 });
 
 describe("ordenarFornecedores", () => {
