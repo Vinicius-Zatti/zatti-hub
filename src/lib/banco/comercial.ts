@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import type { Etapa, EventoLead, Lead, Origem, TipoEvento, VendeDelivery } from "@/lib/comercial/funil";
+import type { LeadProspeccao } from "@/lib/comercial/prospeccao-fria";
 
 /** Acesso ao banco do Comercial (CRM de leads). O RLS (`usuario_e_master()`)
  * é a barreira real; toda escrita passa pela RPC `zh_leads_atualizar`, que
@@ -62,6 +63,25 @@ export async function carregarLeads(): Promise<Lead[]> {
   const { data, error } = await supabase.from("zh_leads").select("*").order("ultimo_evento_em", { ascending: false }).limit(1000);
   if (error) falhou(error, "carregar leads");
   return (data ?? []).map(mapLead);
+}
+
+/** Lojas da prospecção fria com as mudanças de etapa da linha do tempo, para
+ * o painel (até 1000 lojas, o mesmo teto do funil). */
+export async function carregarProspeccaoFria(): Promise<LeadProspeccao[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("zh_leads")
+    .select("*, zh_leads_eventos(em, para_etapa)")
+    .eq("origem", "prospeccao_fria")
+    .order("criado_em", { ascending: false })
+    .limit(1000);
+  if (error) falhou(error, "carregar prospecção fria");
+  return (data ?? []).map((r: Linha) => ({
+    ...mapLead(r),
+    passos: (Array.isArray(r.zh_leads_eventos) ? (r.zh_leads_eventos as Linha[]) : [])
+      .filter((e) => typeof e.para_etapa === "string" && e.para_etapa !== "")
+      .map((e) => ({ em: s(e.em), paraEtapa: e.para_etapa as Etapa })),
+  }));
 }
 
 export async function carregarLead(id: string): Promise<{ lead: Lead; eventos: EventoLead[] } | null> {
