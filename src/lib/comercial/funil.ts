@@ -54,7 +54,7 @@ export const SUGESTAO_ETAPA: Record<Etapa, string> = {
   perdido: "Nutrição: voltar a falar num novo ciclo",
 };
 
-export const ORIGENS = ["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "outra"] as const;
+export const ORIGENS = ["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "prospeccao_fria", "outra"] as const;
 export type Origem = (typeof ORIGENS)[number];
 export const ROTULO_ORIGEM: Record<Origem, string> = {
   instagram: "Instagram",
@@ -63,6 +63,7 @@ export const ROTULO_ORIGEM: Record<Origem, string> = {
   site: "Site",
   indicacao: "Indicação",
   teste: "Teste",
+  prospeccao_fria: "Prospecção fria",
   outra: "Outra",
 };
 
@@ -217,12 +218,15 @@ export function calcularIndicadores(leads: Lead[]): Indicadores {
   };
 }
 
-export type FiltroComercial = { origem: Origem | ""; produto: "livro" | "zatti-hub" | "consultoria" | ""; desde: string | null };
+/** Filtro de origem: uma origem, todas ("") ou todas menos a prospecção fria
+ * (separa as lojas abordadas a frio dos leads que chegaram sozinhos). */
+export const SEM_PROSPECCAO_FRIA = "sem_prospeccao_fria" as const;
+export type FiltroComercial = { origem: Origem | "" | typeof SEM_PROSPECCAO_FRIA; produto: "livro" | "zatti-hub" | "consultoria" | ""; desde: string | null };
 
 export function filtrarLeads(leads: Lead[], f: FiltroComercial): Lead[] {
   return leads.filter(
     (l) =>
-      (!f.origem || l.origem === f.origem) &&
+      (!f.origem || (f.origem === SEM_PROSPECCAO_FRIA ? l.origem !== "prospeccao_fria" : l.origem === f.origem)) &&
       (!f.produto || chaveProduto(l.produtoInteresse) === f.produto) &&
       (!f.desde || l.criadoEm.slice(0, 10) >= f.desde),
   );

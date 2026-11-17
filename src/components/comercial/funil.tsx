@@ -13,6 +13,7 @@ import {
   ORIGENS,
   ROTULO_ETAPA,
   ROTULO_ORIGEM,
+  SEM_PROSPECCAO_FRIA,
   calcularIndicadores,
   diasDesde,
   filtrarLeads,
@@ -107,6 +108,7 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
             {ORIGENS.map((o) => (
               <option key={o} value={o}>{ROTULO_ORIGEM[o]}</option>
             ))}
+            <option value={SEM_PROSPECCAO_FRIA}>Todas, menos prospecção fria</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wide text-cinza-medio">

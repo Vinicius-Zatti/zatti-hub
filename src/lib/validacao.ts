@@ -1085,7 +1085,7 @@ export const novoLeadSchema = z
     negocio: texto(80),
     instagram: texto(200),
     whatsapp: texto(30),
-    origem: z.enum(["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "outra"]),
+    origem: z.enum(["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "prospeccao_fria", "outra"]),
     cidadeBairro: texto(120),
     seguidores: inteiroOuNull,
     ultimoPostEm: dataIsoSchema.nullable(),
