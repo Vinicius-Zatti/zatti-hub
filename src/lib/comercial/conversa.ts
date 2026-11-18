@@ -4,10 +4,15 @@
 import type { EventoLead, FalaMensagem } from "@/lib/comercial/funil";
 
 /** RPC que trata o evento recebido do Vini: mensagens só arquivam (não criam
- * lead nem mexem em etapa); o resto segue a entrada de sempre. */
-export function rpcDoEvento(evento: unknown): "zh_leads_registrar_mensagem" | "zh_leads_registrar_evento" {
+ * lead nem mexem em etapa); "negociacao" move o card para a reunião de
+ * diagnóstico depois da reunião (SDR-142, 18/11); o resto segue a entrada de sempre. */
+export function rpcDoEvento(
+  evento: unknown,
+): "zh_leads_registrar_mensagem" | "zh_leads_registrar_negociacao" | "zh_leads_registrar_evento" {
   const tipo = evento && typeof evento === "object" ? (evento as { tipo?: unknown }).tipo : undefined;
-  return tipo === "mensagem" ? "zh_leads_registrar_mensagem" : "zh_leads_registrar_evento";
+  if (tipo === "mensagem") return "zh_leads_registrar_mensagem";
+  if (tipo === "negociacao") return "zh_leads_registrar_negociacao";
+  return "zh_leads_registrar_evento";
 }
 
 /** Lê `dados` de um evento "mensagem" ({de, canal}); valor fora do contrato vira null. */
