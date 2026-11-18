@@ -21,7 +21,7 @@ import {
 } from "@/lib/equipe/regras";
 import { editarVinculoNoBanco, gerarSenhaProvisoriaNoBanco } from "@/lib/equipe/servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
-import { carregarTitularOrganizacao } from "@/lib/equipe/titular-servidor";
+import { remetenteDoAcesso } from "@/lib/equipe/remetente-servidor";
 import { alterarFlagModulo, validarExtratoEstoque } from "@/lib/acessos/alterar-flag";
 import { modulosUnidadeNova, ORGANIZACAO_NOVA } from "@/lib/modulos-padrao";
 
@@ -386,10 +386,9 @@ export async function gerarSenhaProvisoriaAction(
     const organizacao = vinculo.organizacoes as { nome?: string } | { nome?: string }[] | null;
     const organizacaoNome = (Array.isArray(organizacao) ? organizacao[0]?.nome : organizacao?.nome) ?? "";
     if (usuario.user?.email) {
-      // Titular do cliente é cliente direto de Vinícius: sai pelo número dele; o resto, pelo chip (18/11).
-      const titular = await carregarTitularOrganizacao(admin, vinculo.organizacao_id as string).catch(() => null);
+      // Comprador e titular são clientes diretos de Vinícius: saem pelo número dele; o resto, pelo chip (18/11).
       envio = await enviarAcessoPeloVini({
-        remetente: titular?.vinculoId === vinculoId ? "vinicius" : "hub",
+        remetente: await remetenteDoAcesso(admin, userId),
         tipo: "conta_nova",
         idempotencia: randomUUID(),
         whatsapp,
