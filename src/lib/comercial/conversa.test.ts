@@ -17,6 +17,9 @@ describe("rpcDoEvento", () => {
   it("mensagem vai para a RPC que só arquiva", () => {
     expect(rpcDoEvento({ tipo: "mensagem", chave: "msg-1" })).toBe("zh_leads_registrar_mensagem");
   });
+  it("negociação vai para a RPC que move o card até a reunião de diagnóstico", () => {
+    expect(rpcDoEvento({ tipo: "negociacao", chave: "negociacao-1" })).toBe("zh_leads_registrar_negociacao");
+  });
   it("formulário, pagamento, etapa e tipo desconhecido seguem a entrada de sempre", () => {
     for (const tipo of ["formulario", "pagamento", "etapa", "outro", undefined]) {
       expect(rpcDoEvento({ tipo })).toBe("zh_leads_registrar_evento");

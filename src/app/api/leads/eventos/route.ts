@@ -9,7 +9,9 @@ import { rpcDoEvento } from "@/lib/comercial/conversa";
 // WhatsApp, nada sobrescrito, etapa só para frente, idempotência pela chave
 // do evento) mora na RPC `zh_leads_registrar_evento`. Mensagens da conversa
 // do SDR (tipo "mensagem", 17/11) vão para `zh_leads_registrar_mensagem`, que
-// só arquiva na linha do tempo: não cria lead nem mexe em etapa.
+// só arquiva na linha do tempo: não cria lead nem mexe em etapa. Tipo "negociacao"
+// (18/11, SDR-142) vai para `zh_leads_registrar_negociacao`: depois da reunião, o
+// Vini move o card até a reunião de diagnóstico e escreve a próxima ação.
 
 export const dynamic = "force-dynamic";
 
