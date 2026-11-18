@@ -8,8 +8,8 @@
 --     da origem Reforma a recria, e as duas migrações não se cruzam);
 --   - nunca cria lead (sem lead devolve {ok: false, motivo: 'sem_lead'});
 --   - só para frente: card em reuniao_diagnostico, consultoria_fechada ou perdido não muda de etapa;
---   - próxima ação: escrita junto com o avanço; com o card já na reunião, só preenche se estiver vazia
---     (o que Vinícius escreveu no card nunca é sobrescrito);
+--   - próxima ação: só troca a que está vazia ou é automática (do formulário, do pagamento ou o próprio
+--     lembrete do Vini); a que Vinícius escreveu fica, e a anterior vai para a linha do tempo;
 --   - reenvio da mesma chave não duplica.
 -- Nada é apagado.
 begin;
@@ -36,6 +36,7 @@ declare
   v_existente public.zh_leads%rowtype;
   v_evento_id uuid;
   v_lead_id uuid;
+  v_acao_automatica boolean;
 begin
   -- Mesma validação de token da zh_leads_registrar_evento.
   if p_token is null or char_length(p_token) < 32 or not exists (
@@ -65,6 +66,7 @@ begin
   if v_acao_em is not null and (v_acao_em < v_reuniao or v_acao_em > v_hoje + 60) then
     raise exception 'Prazo da proxima acao invalido' using errcode = '22023';
   end if;
+  v_em := least(v_em, now()); -- etapa_desde nunca no futuro
 
   -- Reenvio da mesma chave: devolve o que já existe, sem gravar de novo.
   select e.id, e.lead_id into v_evento_id, v_lead_id
@@ -89,7 +91,7 @@ begin
   if v_whats is not null then
     select * into v_existente from public.zh_leads l
     where l.whatsapp is not null and left(l.whatsapp, 2) || right(l.whatsapp, 8) = left(v_whats, 2) || right(v_whats, 8)
-    order by (l.whatsapp = v_whats) desc, l.ultimo_evento_em desc
+    order by l.ultimo_evento_em desc -- mesmo desempate da leitura do SDR (estagio-lead.js)
     limit 1
     for update;
   end if;
@@ -100,24 +102,27 @@ begin
     return jsonb_build_object('ok', false, 'motivo', 'sem_lead');
   end if;
 
+  -- Ação que o sistema escreveu sozinho (pode ser trocada); qualquer outra é de Vinícius e fica.
+  v_acao_automatica := v_existente.proxima_acao = ''
+    or v_existente.proxima_acao like 'Ver se concluiu o pagamento%'
+    or v_existente.proxima_acao = 'Chamar no WhatsApp e marcar a reunião de diagnóstico'
+    or v_existente.proxima_acao like 'Oferecer o Zatti Hub%'
+    or v_existente.proxima_acao like 'Oferecer a consultoria%'
+    or v_existente.proxima_acao like 'Registrar o combinado da reunião%';
+
   if v_existente.etapa in ('consultoria_fechada', 'perdido')
-     or (v_existente.etapa = 'reuniao_diagnostico' and v_existente.proxima_acao <> '') then
+     or (v_existente.etapa = 'reuniao_diagnostico' and not v_acao_automatica) then
     return jsonb_build_object('ok', true, 'mudou', false, 'etapa', v_existente.etapa, 'lead_id', v_existente.id);
   end if;
 
-  if v_existente.etapa = 'reuniao_diagnostico' then
-    -- Já na reunião, sem próxima ação: só preenche a ação.
-    update public.zh_leads l set
-      proxima_acao = left(v_acao, 300), proxima_acao_em = v_acao_em,
-      ultimo_evento_em = greatest(l.ultimo_evento_em, v_em)
-    where l.id = v_existente.id;
-  else
-    update public.zh_leads l set
-      etapa = 'reuniao_diagnostico', etapa_desde = v_em, motivo_perda = '',
-      proxima_acao = left(v_acao, 300), proxima_acao_em = v_acao_em,
-      ultimo_evento_em = greatest(l.ultimo_evento_em, v_em)
-    where l.id = v_existente.id;
-  end if;
+  update public.zh_leads l set
+    etapa = 'reuniao_diagnostico',
+    etapa_desde = case when l.etapa = 'reuniao_diagnostico' then l.etapa_desde else v_em end,
+    motivo_perda = '',
+    proxima_acao = case when v_acao_automatica then left(v_acao, 300) else l.proxima_acao end,
+    proxima_acao_em = case when v_acao_automatica then v_acao_em else l.proxima_acao_em end,
+    ultimo_evento_em = greatest(l.ultimo_evento_em, v_em)
+  where l.id = v_existente.id;
 
   insert into public.zh_leads_eventos (lead_id, chave_externa, em, tipo, de_etapa, para_etapa, texto, dados, autor)
   values (
@@ -125,7 +130,10 @@ begin
     case when v_existente.etapa = 'reuniao_diagnostico' then 'proxima_acao' else 'etapa' end,
     v_existente.etapa, 'reuniao_diagnostico',
     left(coalesce(nullif(p_evento->>'texto', ''), 'Reunião de diagnóstico feita em ' || to_char(v_reuniao, 'DD/MM')), 1000),
-    jsonb_strip_nulls(jsonb_build_object('reuniao_em', v_reuniao, 'proxima_acao', left(v_acao, 300), 'proxima_acao_em', v_acao_em)),
+    jsonb_strip_nulls(jsonb_build_object('reuniao_em', v_reuniao,
+      'proxima_acao', case when v_acao_automatica then left(v_acao, 300) else v_existente.proxima_acao end,
+      'proxima_acao_em', case when v_acao_automatica then v_acao_em else v_existente.proxima_acao_em end,
+      'proxima_acao_anterior', nullif(v_existente.proxima_acao, ''))),
     'sdr'
   )
   on conflict (chave_externa) do nothing;

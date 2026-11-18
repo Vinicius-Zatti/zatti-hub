@@ -3,7 +3,7 @@
 --   2. card antes da reunião vai para reuniao_diagnostico com a próxima ação (casa sem o nono dígito);
 --   3. reenvio da mesma chave não grava de novo;
 --   4. card já na reunião com ação escrita, fechado ou perdido não muda;
---   5. card na reunião sem ação só ganha a ação;
+--   5. card na reunião sem ação só ganha a ação; ação escrita à mão em etapa anterior fica (o card anda);
 --   6. sem lead: devolve sem_lead e não cria; formato e datas erradas são recusados.
 --
 -- Rodar com o Supabase local no ar: `npx supabase test db`.
@@ -13,7 +13,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(19);
+select plan(23);
 
 insert into zh_leads_segredos (chave, versao, valor)
 values ('vini_eventos', 1, encode(extensions.digest(convert_to(repeat('t', 64), 'UTF8'), 'sha256'), 'hex'));
@@ -23,7 +23,8 @@ insert into zh_leads (whatsapp, nome, origem, etapa, proxima_acao) values
   ('24977775555', 'Lead Na Reuniao', 'site', 'reuniao_diagnostico', 'Retorno da proposta até sexta'),
   ('24977774444', 'Lead Fechado', 'site', 'consultoria_fechada', ''),
   ('24977773333', 'Lead Perdido', 'site', 'perdido', ''),
-  ('24977772222', 'Lead Sem Acao', 'site', 'reuniao_diagnostico', '');
+  ('24977772222', 'Lead Sem Acao', 'site', 'reuniao_diagnostico', ''),
+  ('24977771111', 'Lead App', 'site', 'comprou_app', 'Mandar proposta v2 até 21/11');
 
 create temp table ev (n text, j jsonb) on commit drop;
 grant all on ev to anon;
@@ -64,6 +65,10 @@ select is(zh_leads_registrar_negociacao(repeat('t', 64),
   'true', 'card na reunião sem ação ganha a ação');
 
 select is(zh_leads_registrar_negociacao(repeat('t', 64),
+  (select j || '{"chave":"neg-10","lead":{"whatsapp":"24977771111"}}'::jsonb from ev where n = 'ok'))->>'mudou',
+  'true', 'card do app com ação escrita à mão anda para a reunião');
+
+select is(zh_leads_registrar_negociacao(repeat('t', 64),
   (select j || '{"chave":"neg-6","lead":{"whatsapp":"31911112222"}}'::jsonb from ev where n = 'ok')),
   '{"ok": false, "motivo": "sem_lead"}'::jsonb, 'sem lead: devolve sem_lead');
 
@@ -81,7 +86,7 @@ select throws_ok(
 
 reset role;
 
-select is((select count(*)::int from zh_leads), 5, 'nenhum lead foi criado');
+select is((select count(*)::int from zh_leads), 6, 'nenhum lead foi criado');
 select is((select etapa from zh_leads where whatsapp = '24977776666'), 'reuniao_diagnostico', 'card movido');
 select is((select proxima_acao from zh_leads where whatsapp = '24977776666'),
   'Registrar o combinado da reunião de diagnóstico', 'próxima ação automática do formulário foi trocada');
@@ -93,6 +98,12 @@ select is((select proxima_acao from zh_leads where whatsapp = '24977772222'),
 select is((select count(*)::int from zh_leads_eventos where chave_externa = 'neg-1'), 1, 'chave repetida gravou uma vez só');
 select is((select tipo || ':' || de_etapa || '>' || para_etapa || ':' || autor from zh_leads_eventos where chave_externa = 'neg-1'),
   'etapa:preencheu_formulario>reuniao_diagnostico:sdr', 'linha do tempo registra o avanço pelo SDR');
+
+select is((select etapa from zh_leads where whatsapp = '24977771111'), 'reuniao_diagnostico', 'card do app movido');
+select is((select proxima_acao from zh_leads where whatsapp = '24977771111'), 'Mandar proposta v2 até 21/11',
+  'ação escrita à mão não é trocada pelo lembrete');
+select is((select dados->>'proxima_acao_anterior' from zh_leads_eventos where chave_externa = 'neg-10'),
+  'Mandar proposta v2 até 21/11', 'a ação anterior fica na linha do tempo');
 
 select * from finish();
 rollback;
