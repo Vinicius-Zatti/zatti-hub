@@ -54,7 +54,7 @@ export const SUGESTAO_ETAPA: Record<Etapa, string> = {
   perdido: "Nutrição: voltar a falar num novo ciclo",
 };
 
-export const ORIGENS = ["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "prospeccao_fria", "outra"] as const;
+export const ORIGENS = ["instagram", "whatsapp", "ligacao", "site", "indicacao", "teste", "prospeccao_fria", "reforma", "outra"] as const;
 export type Origem = (typeof ORIGENS)[number];
 export const ROTULO_ORIGEM: Record<Origem, string> = {
   instagram: "Instagram",
@@ -64,6 +64,7 @@ export const ROTULO_ORIGEM: Record<Origem, string> = {
   indicacao: "Indicação",
   teste: "Teste",
   prospeccao_fria: "Prospecção fria",
+  reforma: "Raio-X da Reforma",
   outra: "Outra",
 };
 
