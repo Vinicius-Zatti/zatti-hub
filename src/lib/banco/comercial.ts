@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
+import { lerFalaMensagem } from "@/lib/comercial/conversa";
 import type { Etapa, EventoLead, Lead, Origem, TipoEvento, VendeDelivery } from "@/lib/comercial/funil";
 import type { LeadProspeccao } from "@/lib/comercial/prospeccao-fria";
 
@@ -55,6 +56,7 @@ const mapEvento = (r: Linha): EventoLead => ({
   valor: r.valor == null ? null : Number(r.valor),
   texto: s(r.texto),
   autor: r.autor as EventoLead["autor"],
+  mensagem: r.tipo === "mensagem" ? lerFalaMensagem(r.dados) : null,
 });
 
 /** Até 1000 leads (teto de leitura do app); o funil é recente e pequeno. */
@@ -73,6 +75,8 @@ export async function carregarProspeccaoFria(): Promise<LeadProspeccao[]> {
     .from("zh_leads")
     .select("*, zh_leads_eventos(em, para_etapa)")
     .eq("origem", "prospeccao_fria")
+    // Mensagens do SDR não mudam etapa: fora do painel, para não pesar a leitura.
+    .neq("zh_leads_eventos.tipo", "mensagem")
     .order("criado_em", { ascending: false })
     .limit(1000);
   if (error) falhou(error, "carregar prospecção fria");
@@ -89,14 +93,19 @@ export async function carregarLead(id: string): Promise<{ lead: Lead; eventos: E
   const { data, error } = await supabase.from("zh_leads").select("*").eq("id", id).maybeSingle();
   if (error) falhou(error, "carregar lead");
   if (!data) return null;
-  const { data: eventos, error: e } = await supabase
-    .from("zh_leads_eventos")
-    .select("id, em, tipo, de_etapa, para_etapa, produto, valor, texto, autor")
-    .eq("lead_id", id)
-    .order("em", { ascending: true })
-    .limit(1000);
+  // Linha do tempo e conversa do SDR em leituras separadas: uma conversa longa
+  // não empurra os eventos do funil para fora do teto de leitura. Da conversa
+  // vêm as 500 mensagens mais recentes.
+  const colunas = "id, em, tipo, de_etapa, para_etapa, produto, valor, texto, autor, dados";
+  const [{ data: eventos, error: e }, { data: mensagens, error: em }] = await Promise.all([
+    supabase.from("zh_leads_eventos").select(colunas).eq("lead_id", id).neq("tipo", "mensagem")
+      .order("em", { ascending: true }).limit(1000),
+    supabase.from("zh_leads_eventos").select(colunas).eq("lead_id", id).eq("tipo", "mensagem")
+      .order("em", { ascending: false }).limit(500),
+  ]);
   if (e) falhou(e, "carregar linha do tempo");
-  return { lead: mapLead(data), eventos: (eventos ?? []).map(mapEvento) };
+  if (em) falhou(em, "carregar conversa");
+  return { lead: mapLead(data), eventos: [...(eventos ?? []), ...(mensagens ?? []).reverse()].map(mapEvento) };
 }
 
 export type OrganizacaoOpcao = { id: string; nome: string };

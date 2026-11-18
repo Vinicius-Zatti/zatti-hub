@@ -1,16 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { rpcDoEvento } from "@/lib/comercial/conversa";
 
 // Entrada do Vini no Comercial (CRM de leads): formulário do site, pagamento
 // aprovado e, depois, etapas do SDR. Credencial própria no cabeçalho
 // Authorization (nunca na URL), cujo SHA-256 fica em `zh_leads_segredos`, sem
 // grant - mesmo padrão de /api/conciliacao/uso-ia. Toda regra (um lead por
 // WhatsApp, nada sobrescrito, etapa só para frente, idempotência pela chave
-// do evento) mora na RPC `zh_leads_registrar_evento`.
+// do evento) mora na RPC `zh_leads_registrar_evento`. Mensagens da conversa
+// do SDR (tipo "mensagem", 17/11) vão para `zh_leads_registrar_mensagem`, que
+// só arquiva na linha do tempo: não cria lead nem mexe em etapa.
 
 export const dynamic = "force-dynamic";
 
-const LIMITE_CORPO = 8 * 1024;
+// 16 KB: mensagem do SDR com até 1000 caracteres pode chegar com acentos e
+// emojis escapados (\uXXXX), que ocupam até 6 vezes mais no corpo.
+const LIMITE_CORPO = 16 * 1024;
 
 export async function POST(request: NextRequest) {
   const cabecalho = request.headers.get("authorization") ?? "";
@@ -34,10 +39,10 @@ export async function POST(request: NextRequest) {
   if (!url || !anon) return NextResponse.json({ erro: "indisponivel" }, { status: 503 });
   const supabase = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  const { data, error } = await supabase.rpc("zh_leads_registrar_evento", { p_token: token, p_evento: evento });
+  const { data, error } = await supabase.rpc(rpcDoEvento(evento), { p_token: token, p_evento: evento });
   if (error) {
     if (error.code === "42501") return NextResponse.json({ erro: "nao_autorizado" }, { status: 401 });
-    if (error.code === "22023" || error.code === "22007" || error.code === "22P02") {
+    if (error.code === "22023" || error.code === "22007" || error.code === "22008" || error.code === "22P02") {
       return NextResponse.json({ erro: "evento_invalido" }, { status: 400 });
     }
     return NextResponse.json({ erro: "indisponivel" }, { status: 503 });

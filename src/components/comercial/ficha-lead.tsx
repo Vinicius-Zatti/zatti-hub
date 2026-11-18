@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { acaoLeadAction } from "@/app/(app)/escritorio/comercial/actions";
 import { Campo, ModalFormulario, Secao, Selo, Vazio, classeBotao, classeBotaoLeve, classeCampo, useAcao } from "@/components/clientes/ui";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
@@ -20,6 +20,7 @@ import {
   type EventoLead,
   type Lead,
 } from "@/lib/comercial/funil";
+import { ROTULO_CANAL, ROTULO_FALA, falaDe, separarConversa } from "@/lib/comercial/conversa";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 
 const numeroBr = (v: number | null, decimais = 0) =>
@@ -66,7 +67,14 @@ export function FichaLead({
       aoAlterar?.();
     });
 
-  const linhas = descreverEventos(eventos).reverse();
+  // Mensagens do SDR ficam na seção "Conversa"; a linha do tempo segue só com o funil.
+  const { conversa, linhaDoTempo } = separarConversa(eventos);
+  const linhas = descreverEventos(linhaDoTempo).reverse();
+  // Conversa abre na mensagem mais recente (embaixo), como no WhatsApp.
+  const fimConversa = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    if (fimConversa.current) fimConversa.current.scrollTop = fimConversa.current.scrollHeight;
+  }, [conversa.length]);
   const orgNome = organizacoes.find((o) => o.id === lead.organizacaoId)?.nome;
 
   return (
@@ -172,6 +180,32 @@ export function FichaLead({
           )}
         </Secao>
       </div>
+
+      {conversa.length > 0 && (
+        <Secao titulo={`Conversa (${conversa.length})`}>
+          <ol ref={fimConversa} className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1">
+            {conversa.map((ev) => {
+              const de = falaDe(ev);
+              const doLead = de === "lead";
+              return (
+                <li key={ev.id} className={`flex flex-col text-sm ${doLead ? "items-start" : "items-end"}`}>
+                  <p
+                    className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 ${
+                      doLead ? "bg-off-white text-azul-noite" : "border border-ambar bg-branco text-azul-noite"
+                    }`}
+                  >
+                    {ev.texto || <span className="italic text-cinza-medio">(sem texto)</span>}
+                  </p>
+                  <p className="mt-0.5 text-xs text-cinza-medio">
+                    <strong className="font-semibold">{ROTULO_FALA[de]}</strong> · {formatarMomentoBr(ev.em)}
+                    {ev.mensagem && ` · ${ROTULO_CANAL[ev.mensagem.canal]}`}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        </Secao>
+      )}
 
       <Secao titulo="Linha do tempo">
         {linhas.length === 0 ? (
