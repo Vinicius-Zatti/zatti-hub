@@ -58,6 +58,15 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
 // Titular da organização (26/10/2026): cada teste escolhe; padrão = sem titular (reserva).
 let titularAtual: { vinculoId: string; userId: string } | null = null;
 vi.mock("@/lib/equipe/titular-servidor", () => ({ carregarTitularOrganizacao: vi.fn(async () => titularAtual) }));
+// Por qual número sai (18/11/2026): padrão = equipe (chip); o critério tem teste próprio em envio.test.ts.
+let remetenteAtual: "hub" | "vinicius" = "hub";
+const remetenteDoAcesso = vi.fn(async (...args: unknown[]) => {
+  void args;
+  return remetenteAtual;
+});
+vi.mock("@/lib/equipe/remetente-servidor", () => ({
+  remetenteDoAcesso: (a: unknown, u: string) => remetenteDoAcesso(a, u),
+}));
 
 
 const { mensagemGerarProvisoria, formatarValidadeProvisoria, whatsappTrocadoHaPouco } = await import("./regras");
@@ -73,6 +82,7 @@ const ALVO = "33333333-3333-4333-8333-333333333333";
 beforeEach(() => {
   vi.clearAllMocks();
   titularAtual = null;
+  remetenteAtual = "hub";
   respostaRpc = { data: "ok", error: null };
   linhas = {
     vinculos: {
@@ -181,6 +191,8 @@ describe("gerarSenhaProvisoriaMembroAction (Equipe)", () => {
     const envio = enviarAcessoPeloVini.mock.calls[0][0];
     expect(envio).toMatchObject({ tipo: "conta_nova", whatsapp: "+5531999990004", organizacaoNome: "Cliente A" });
     expect(String(envio.senhaTemporaria)).toMatch(/^[A-Za-z0-9]{12}$/);
+    // Equipe que o cliente cadastra: chip do Hub (o critério decide; aqui, conta de equipe).
+    expect(envio.remetente).toBe("hub");
     // A gestão nunca recebe a senha na resposta.
     expect(JSON.stringify(r)).not.toContain(String(envio.senhaTemporaria));
   });
@@ -250,6 +262,16 @@ describe("troca de WhatsApp e reenvio (Equipe)", () => {
     expect(await reenviarAcessoMembroAction(VINCULO)).toEqual({ ok: true, envio: "aceito" });
     expect(rpc.mock.calls[0][0]).toBe("rotacionar_senha_temporaria");
   });
+  it("reenvio ao comprador ou titular pendente sai pelo número de Vinícius; equipe, pelo chip (18/11)", async () => {
+    linhas.senhas_temporarias = { vinculo_id: VINCULO, origem: "cadastro", user_id: ALVO };
+    respostaRpc = { data: true, error: null };
+    await reenviarAcessoMembroAction(VINCULO);
+    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ tipo: "conta_nova", remetente: "hub" });
+    remetenteAtual = "vinicius";
+    await reenviarAcessoMembroAction(VINCULO);
+    expect(enviarAcessoPeloVini.mock.calls[1][0]).toMatchObject({ tipo: "conta_nova", remetente: "vinicius" });
+    expect(remetenteDoAcesso).toHaveBeenLastCalledWith(admin, ALVO);
+  });
 });
 
 describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
@@ -274,6 +296,14 @@ describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
     const r = await gerarSenhaProvisoriaAction(VINCULO, true);
     expect(r).toMatchObject({ ok: true, envio: "aceito" });
     expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ tipo: "conta_nova", organizacaoNome: "Cliente A" });
+  });
+  it("acesso de equipe sai pelo chip do Hub; o do comprador ou titular, pelo número de Vinícius (18/11)", async () => {
+    await gerarSenhaProvisoriaAction(VINCULO, true);
+    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ remetente: "hub" });
+    remetenteAtual = "vinicius";
+    await gerarSenhaProvisoriaAction(VINCULO, true);
+    expect(enviarAcessoPeloVini.mock.calls[1][0]).toMatchObject({ remetente: "vinicius" });
+    expect(remetenteDoAcesso).toHaveBeenLastCalledWith(admin, ALVO);
   });
   it("pedir envio sem WhatsApp cadastrado não troca a senha", async () => {
     linhas.vinculos = { ...(linhas.vinculos as object), whatsapp: null };

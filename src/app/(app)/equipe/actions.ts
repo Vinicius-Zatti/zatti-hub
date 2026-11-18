@@ -26,6 +26,7 @@ import { CHAVES, ehChavePermissao, ehNivel, mensagemSalvarPermissoes } from "@/l
 import { podeAdministrarPermissoes, podeMexerNaContaDe, podeMudarPermissoesDe } from "@/lib/permissoes/quem-administra";
 import { vinculoEhDono } from "@/lib/permissoes/dono";
 import { carregarTitularOrganizacao } from "@/lib/equipe/titular-servidor";
+import { remetenteDoAcesso } from "@/lib/equipe/remetente-servidor";
 import { enviarAcessoPeloVini, type ResultadoEnvio } from "@/lib/equipe/envio";
 import { cadastrarMembro, type SituacaoCadastro } from "@/lib/equipe/cadastrar-membro";
 
@@ -188,6 +189,7 @@ export async function reenviarAcessoMembroAction(
       nome,
       email: usuario.user.email,
       organizacaoNome: acesso.organizacaoNome,
+      remetente: await remetenteDoAcesso(admin, alvo.user_id),
     });
     await gravarResultadoEnvio(admin, alvo.id, envio);
     await registrarAuditoria({ acesso, acao: "equipe_reenviar_lembrete", entidade: "vinculo", entidadeId: alvo.id, dadosNovos: { envio } });
@@ -239,6 +241,7 @@ export async function reenviarAcessoMembroAction(
     organizacaoNome: acesso.organizacaoNome,
     senhaTemporaria: senha,
     validaAte,
+    remetente: await remetenteDoAcesso(admin, alvo.user_id),
   });
   await gravarResultadoEnvio(admin, alvo.id, envio);
   await registrarAuditoria({ acesso, acao: "equipe_reenviar_senha", entidade: "vinculo", entidadeId: alvo.id, dadosNovos: { envio } });
@@ -289,6 +292,7 @@ export async function gerarSenhaProvisoriaMembroAction(
     organizacaoNome: acesso.organizacaoNome,
     senhaTemporaria: gerado.senha,
     validaAte: gerado.validaAte,
+    remetente: await remetenteDoAcesso(admin, alvo.user_id),
   });
   await gravarResultadoEnvio(admin, alvo.id, envio);
   // A geração já foi auditada no banco; aqui, o que aconteceu com o envio.

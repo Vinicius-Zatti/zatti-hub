@@ -9,6 +9,11 @@ export type TipoEnvioAcesso = "conta_nova" | "conta_existente";
 
 export type ResultadoEnvio = "aceito" | "falhou" | "incerto";
 
+/** Por qual número o acesso sai (18/11/2026). "hub" = chip do Zatti Hub, para a equipe que o
+ * cliente cadastra. "vinicius" = WhatsApp de Vinícius, para titular e comprador do app, que são
+ * clientes diretos dele. Sem o campo, o Vini usa "hub". */
+export type RemetenteAcesso = "hub" | "vinicius";
+
 const TEMPO_LIMITE_MS = 15_000;
 
 export async function enviarAcessoPeloVini(dados: {
@@ -20,6 +25,7 @@ export async function enviarAcessoPeloVini(dados: {
   organizacaoNome: string;
   senhaTemporaria?: string;
   validaAte?: Date;
+  remetente?: RemetenteAcesso;
 }): Promise<ResultadoEnvio> {
   // trim: valor colado com quebra de linha no painel vira header inválido.
   const url = process.env.VINI_URL?.trim();
@@ -49,6 +55,7 @@ export async function enviarAcessoPeloVini(dados: {
         organizacao: dados.organizacaoNome,
         senha: dados.senhaTemporaria,
         validaAte: dados.validaAte?.toISOString(),
+        remetente: dados.remetente ?? "hub",
       }),
       signal: controle.signal,
       cache: "no-store",

@@ -198,6 +198,8 @@ export async function executarProvisionamento(admin: Admin, reg: Registro, aprov
       organizacaoNome: reg.restaurante,
       senhaTemporaria: senha,
       validaAte,
+      // Comprador do app é cliente direto de Vinícius: o acesso sai pelo número dele, nunca pelo chip (18/11).
+      remetente: "vinicius",
     });
     await admin.from("vinculos").update({ acesso_envio_status: envio, acesso_envio_em: new Date().toISOString() }).eq("id", vinculoId);
 
