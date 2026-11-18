@@ -77,7 +77,11 @@ export type TipoEvento =
   | "nota"
   | "proxima_acao"
   | "perdido"
-  | "virou_cliente";
+  | "virou_cliente"
+  | "mensagem";
+
+/** Quem falou numa mensagem da conversa do SDR (tipo "mensagem", 17/11). */
+export type FalaMensagem = { de: "lead" | "vinicius" | "sdr"; canal: "whatsapp" | "instagram" };
 
 export type EventoLead = {
   id: string;
@@ -89,6 +93,8 @@ export type EventoLead = {
   valor: number | null;
   texto: string;
   autor: "site" | "vini" | "sdr" | "vinicius";
+  /** Só nos eventos "mensagem": quem falou e por qual canal. */
+  mensagem?: FalaMensagem | null;
 };
 
 export const VENDE_DELIVERY = ["", "ifood", "proprio", "nao"] as const;
@@ -180,6 +186,8 @@ export function descreverEventos(eventos: EventoLead[]): { evento: EventoLead; t
         return { evento: ev, titulo: "Próxima ação definida", detalhe: ev.texto };
       case "virou_cliente":
         return { evento: ev, titulo: "Virou cliente", detalhe: ev.texto };
+      case "mensagem":
+        return { evento: ev, titulo: "Mensagem", detalhe: ev.texto };
       default:
         return { evento: ev, titulo: "Nota", detalhe: ev.texto };
     }
