@@ -108,7 +108,22 @@ begin
     or v_existente.proxima_acao = 'Chamar no WhatsApp e marcar a reunião de diagnóstico'
     or v_existente.proxima_acao like 'Oferecer o Zatti Hub%'
     or v_existente.proxima_acao like 'Oferecer a consultoria%'
-    or v_existente.proxima_acao like 'Registrar o combinado da reunião%';
+    or v_existente.proxima_acao like 'Registrar o combinado da reunião%'
+    -- Sugestões da etapa que a ficha já traz preenchidas (SUGESTAO_ETAPA em src/lib/comercial/funil.ts; o teste
+    -- conversa.test.ts confere que as duas listas batem).
+    or v_existente.proxima_acao in (
+      'Seguir o perfil no Instagram e passar para Mandar primeira mensagem',
+      'Mandar a primeira mensagem curta pelo Direct, sem link',
+      'Esperar resposta; retomar no 2º dia',
+      'Mandar o link da página com a origem do canal',
+      'Ver se abriu o link; retomar em 2 dias',
+      'Ver se concluiu o pagamento; se não, chamar no WhatsApp hoje',
+      'Oferecer o Zatti Hub (12x de R$59,90)',
+      'Oferecer a consultoria; se não fechar, acompanhamento mensal de R$497',
+      'Leitura do mês e oferecer a consultoria',
+      'Mandar a proposta da consultoria',
+      'Marcar ''Virou cliente'' e iniciar o acompanhamento',
+      'Nutrição: voltar a falar num novo ciclo');
 
   if v_existente.etapa in ('consultoria_fechada', 'perdido')
      or (v_existente.etapa = 'reuniao_diagnostico' and not v_acao_automatica) then
