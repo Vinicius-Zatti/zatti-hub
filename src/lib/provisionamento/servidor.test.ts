@@ -116,6 +116,8 @@ describe("executarProvisionamento", () => {
     expect(senha).toMatch(/^[A-Za-z0-9]{12}$/);
     expect(JSON.stringify(b.tabelas)).not.toContain(senha);
     expect(envios[0]).toMatchObject({ tipo: "conta_nova", whatsapp: "+5531999991111", email: "joana@exemplo.com", organizacaoNome: "Burger da Joana", idempotencia: "compra-9001-1" });
+    // Comprador do app é cliente direto de Vinícius: sai pelo número dele, nunca pelo chip (Murilo, 18/11).
+    expect(envios[0].remetente).toBe("vinicius");
     expect(b.tabelas.zh_provisionamentos[0]).toMatchObject({ status: "concluido", envio: "aceito", organizacao_id: "burger-da-joana", user_id: b.usuarios[0].id });
     expect(b.tabelas.zh_leads[0].organizacao_id).toBe("burger-da-joana");
     expect(b.tabelas.zh_leads_eventos[0]).toMatchObject({ tipo: "virou_cliente", autor: "vini", chave_externa: "prov-9001" });

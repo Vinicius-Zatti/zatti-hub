@@ -181,6 +181,8 @@ describe("gerarSenhaProvisoriaMembroAction (Equipe)", () => {
     const envio = enviarAcessoPeloVini.mock.calls[0][0];
     expect(envio).toMatchObject({ tipo: "conta_nova", whatsapp: "+5531999990004", organizacaoNome: "Cliente A" });
     expect(String(envio.senhaTemporaria)).toMatch(/^[A-Za-z0-9]{12}$/);
+    // Equipe que o cliente cadastra: nunca pelo número de Vinícius (sem remetente = chip do Hub).
+    expect(envio.remetente).not.toBe("vinicius");
     // A gestão nunca recebe a senha na resposta.
     expect(JSON.stringify(r)).not.toContain(String(envio.senhaTemporaria));
   });
@@ -274,6 +276,13 @@ describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
     const r = await gerarSenhaProvisoriaAction(VINCULO, true);
     expect(r).toMatchObject({ ok: true, envio: "aceito" });
     expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ tipo: "conta_nova", organizacaoNome: "Cliente A" });
+  });
+  it("acesso de equipe sai pelo chip do Hub; o do titular, pelo número de Vinícius (18/11)", async () => {
+    await gerarSenhaProvisoriaAction(VINCULO, true);
+    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ remetente: "hub" });
+    titularAtual = { vinculoId: VINCULO, userId: ALVO };
+    await gerarSenhaProvisoriaAction(VINCULO, true);
+    expect(enviarAcessoPeloVini.mock.calls[1][0]).toMatchObject({ remetente: "vinicius" });
   });
   it("pedir envio sem WhatsApp cadastrado não troca a senha", async () => {
     linhas.vinculos = { ...(linhas.vinculos as object), whatsapp: null };
