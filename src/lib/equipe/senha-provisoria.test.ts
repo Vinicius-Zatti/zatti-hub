@@ -66,6 +66,8 @@ const remetenteDoAcesso = vi.fn(async (...args: unknown[]) => {
 });
 vi.mock("@/lib/equipe/remetente-servidor", () => ({
   remetenteDoAcesso: (a: unknown, u: string) => remetenteDoAcesso(a, u),
+  remetenteDoEnvio: async (a: unknown, role: string, u: string) =>
+    role === "master" ? "vinicius" : remetenteDoAcesso(a, u),
 }));
 
 
@@ -272,6 +274,13 @@ describe("troca de WhatsApp e reenvio (Equipe)", () => {
     expect(enviarAcessoPeloVini.mock.calls[1][0]).toMatchObject({ tipo: "conta_nova", remetente: "vinicius" });
     expect(remetenteDoAcesso).toHaveBeenLastCalledWith(admin, ALVO);
   });
+  it("master mexendo pela tela Equipe: a mensagem é de Vinícius (18/11)", async () => {
+    requireEquipe.mockResolvedValueOnce(acessoMaster);
+    linhas.senhas_temporarias = { vinculo_id: VINCULO, origem: "cadastro", user_id: ALVO };
+    respostaRpc = { data: true, error: null };
+    await reenviarAcessoMembroAction(VINCULO);
+    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ remetente: "vinicius" });
+  });
 });
 
 describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
@@ -297,13 +306,9 @@ describe("gerarSenhaProvisoriaAction (Acessos, master)", () => {
     expect(r).toMatchObject({ ok: true, envio: "aceito" });
     expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ tipo: "conta_nova", organizacaoNome: "Cliente A" });
   });
-  it("acesso de equipe sai pelo chip do Hub; o do comprador ou titular, pelo número de Vinícius (18/11)", async () => {
+  it("na tela Acessos quem manda é Vinícius: sempre pelo número dele, mesmo para conta de equipe (18/11)", async () => {
     await gerarSenhaProvisoriaAction(VINCULO, true);
-    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ remetente: "hub" });
-    remetenteAtual = "vinicius";
-    await gerarSenhaProvisoriaAction(VINCULO, true);
-    expect(enviarAcessoPeloVini.mock.calls[1][0]).toMatchObject({ remetente: "vinicius" });
-    expect(remetenteDoAcesso).toHaveBeenLastCalledWith(admin, ALVO);
+    expect(enviarAcessoPeloVini.mock.calls[0][0]).toMatchObject({ remetente: "vinicius" });
   });
   it("pedir envio sem WhatsApp cadastrado não troca a senha", async () => {
     linhas.vinculos = { ...(linhas.vinculos as object), whatsapp: null };
