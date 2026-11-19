@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const { enviarAcessoPeloVini } = await import("./envio");
-const { remetenteDoAcesso } = await import("./remetente-servidor");
+const { remetenteDoAcesso, remetenteDoEnvio } = await import("./remetente-servidor");
 
 const BASE = {
   tipo: "conta_existente" as const,
@@ -76,6 +76,11 @@ describe("remetenteDoAcesso", () => {
   it("equipe do cliente vai pelo chip", async () => {
     const admin = bancoFalso({ vinculos: { data: [{ id: "v1" }], error: null } });
     expect(await remetenteDoAcesso(admin, "u1")).toBe("hub");
+  });
+  it("master (Vinícius ou o Vini a pedido dele) manda: sempre pelo número dele, até para equipe", async () => {
+    const admin = bancoFalso({ vinculos: { data: [{ id: "v1" }], error: null } });
+    expect(await remetenteDoEnvio(admin, "master", "u1")).toBe("vinicius");
+    expect(await remetenteDoEnvio(admin, "gestao", "u1")).toBe("hub");
   });
   it("consulta que falha nunca manda pelo chip", async () => {
     for (const tabela of ["zh_provisionamentos", "vinculos", "titulares_organizacao"]) {

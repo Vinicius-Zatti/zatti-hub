@@ -125,6 +125,8 @@ export async function cadastrarMembro(
       nome,
       email,
       organizacaoNome: concedente.organizacaoNome,
+      // Master (Vinícius, ou o Vini a pedido dele) cadastrando: a mensagem é dele (18/11).
+      remetente: concedente.role === "master" ? "vinicius" : "hub",
     });
     await gravarResultadoEnvio(admin, vinculoNovo.id, envio);
     return { ok: true, situacao: "conta_existente", envio, vinculoId: vinculoNovo.id };
@@ -199,6 +201,7 @@ export async function cadastrarMembro(
     organizacaoNome: concedente.organizacaoNome,
     senhaTemporaria: senha,
     validaAte,
+    remetente: concedente.role === "master" ? "vinicius" : "hub",
   });
   await gravarResultadoEnvio(admin, vinculoNovo.id, envio);
 
