@@ -41,8 +41,8 @@ export function CapturaNfe({ painel }: { painel: PainelSefaz }) {
           <h2 className="font-bold text-azul-noite">Captura de NF-e (SEFAZ)</h2>
           <p className="text-sm text-cinza-medio">
             Com o certificado A1 de cada CNPJ, o Zatti Hub busca sozinho, às 8h, às 12h e às 16h, as NF-e emitidas contra a empresa e
-            põe o XML na Caixa de Entrada. Ele só avisa a SEFAZ que viu a nota (Ciência da Operação); conferir e lançar continua
-            com a equipe. Cupom fiscal (NFC-e) de mercado e atacarejo não vem por aqui. Só a equipe Zatti vê esta parte.
+            põe o XML na Caixa de Entrada. Para liberar o XML, ele avisa a SEFAZ que viu a nota (Ciência da Operação); se a nota já
+            passou de 10 dias, prazo da Ciência, ele registra a Confirmação da Operação. Conferir e lançar continua com a equipe. Cupom fiscal (NFC-e) de mercado e atacarejo não vem por aqui. Só a equipe Zatti vê esta parte.
           </p>
         </div>
         <button
