@@ -8,6 +8,8 @@ describe("ehRotaPublica", () => {
     expect(ehRotaPublica("/primeiro-acesso/confirmar")).toBe(true);
     expect(ehRotaPublica("/api/equipe/acesso")).toBe(true);
     expect(ehRotaPublica("/avaliar/dom-quixote/salao")).toBe(true);
+    expect(ehRotaPublica("/freela/lucaskinhas-pinhal")).toBe(true);
+    expect(ehRotaPublica("/freelancers")).toBe(false);
     expect(ehRotaPublica("/api/avaliacoes/alertas")).toBe(true);
   });
 

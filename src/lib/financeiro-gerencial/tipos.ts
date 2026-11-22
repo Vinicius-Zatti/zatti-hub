@@ -101,11 +101,13 @@ export type Baixa = {
   criadoEm: string;
 };
 
-/** `liquidacao_provisao` = guia paga contra uma das 3 contas de provisão
+/** `freelancer` (22/11/2026) = diária conferida no módulo Freelancers (despesa na conta
+ * Freelancers, criada pelo servidor). Entra no caixa e na DRE como um lançamento comum.
+ * `liquidacao_provisao` = guia paga contra uma das 3 contas de provisão
  * (Férias, 13º salário, Provisão de multa do FGTS): entra no caixa pelas
  * parcelas/baixas, reduz o saldo da provisão e nunca entra na DRE (ver
  * `provisoes.ts`). O servidor decide a origem pela conta escolhida. */
-export type OrigemLancamento = "comum" | "recorrencia" | "liquidacao_provisao";
+export type OrigemLancamento = "comum" | "recorrencia" | "liquidacao_provisao" | "freelancer";
 
 export type Lancamento = {
   id: string;

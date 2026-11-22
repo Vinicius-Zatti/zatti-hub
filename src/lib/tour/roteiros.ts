@@ -17,6 +17,7 @@ export type ModuloTour =
   | "financeiro"
   | "cardapio"
   | "garante"
+  | "freelancers"
   | "equipe"
   | "relatorios"
   | "cadastros"
@@ -37,6 +38,7 @@ export const MODULO_TOUR_POR_ROTULO: Readonly<Record<string, ModuloTour>> = {
   Financeiro: "financeiro",
   Cardápio: "cardapio",
   Garante: "garante",
+  Freelancers: "freelancers",
   Equipe: "equipe",
   Relatórios: "relatorios",
   Cadastros: "cadastros",
@@ -186,6 +188,29 @@ export const ROTEIROS_TOUR: Readonly<Record<ModuloTour, readonly PassoTour[]>> =
       alvos: ABAS,
       titulo: "Planos e gestão",
       texto: "Em Planos de ação ficam as correções combinadas. A gestão também vê o Quadro do dia e a Nota.",
+    },
+    PASSO_REVER,
+  ],
+  freelancers: [
+    {
+      alvos: ['[data-tour="freela-lista"]'],
+      titulo: "Quem chegou hoje",
+      texto: "Quem lê o QR Code da loja aparece aqui. Em Conferir você confirma que a pessoa trabalhou e a diária.",
+    },
+    {
+      alvos: ['[data-tour="freela-resumo"]'],
+      titulo: "Diárias do dia",
+      texto: "Conferido, pago pelo caixa e a pagar. O (i) de cada número mostra a conta.",
+    },
+    {
+      alvos: ['[data-tour="freela-manual"]'],
+      titulo: "Esqueceu do QR?",
+      texto: "Lance a diária à mão. Ela entra para conferir, igual ao check-in.",
+    },
+    {
+      alvos: ['[data-tour="freela-cadastrar"]', '[data-tour="freela-qr"]'],
+      titulo: "Cadastro e QR Code",
+      texto: "Cadastre quem trabalha com você e baixe a arte do QR para pôr onde a equipe chega.",
     },
     PASSO_REVER,
   ],

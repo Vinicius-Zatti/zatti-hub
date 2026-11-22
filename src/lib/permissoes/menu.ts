@@ -25,6 +25,7 @@ export const TELAS_DE_EDICAO: Readonly<Record<string, ChaveModulo>> = {
   "/estoque/pedidos/cotacoes": "estoque",
   "/garante/modelos": "garante",
   "/avaliacoes/configurar": "avaliacoes",
+  "/freelancers/configurar": "freelancers",
   "/estoque/produtos/edicao": "cadastros",
   "/estoque/setores": "cadastros",
   "/estoque/fornecedores/edicao": "cadastros",
@@ -54,6 +55,7 @@ const MODULO_DO_ITEM: Readonly<Record<string, ChaveModulo>> = {
   Cardápio: "cardapio",
   Garante: "garante",
   Avaliações: "avaliacoes",
+  Freelancers: "freelancers",
   Equipe: "equipe",
   Relatórios: "relatorios",
   Cadastros: "cadastros",
@@ -97,6 +99,7 @@ export function destinoSemEdicao(caminho: string, permissoes: NiveisCompletos): 
   if (modulo === "estoque") return "/estoque/contagem/visualizacao";
   if (modulo === "garante") return "/garante";
   if (modulo === "avaliacoes") return "/avaliacoes";
+  if (modulo === "freelancers") return "/freelancers";
   if (modulo === "cadastros") return "/cadastros";
   return "/financeiro-gerencial/visao-geral";
 }

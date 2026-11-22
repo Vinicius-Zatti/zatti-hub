@@ -58,8 +58,8 @@ describe("módulo do tour", () => {
 });
 
 describe("roteiros", () => {
-  it("cobre os 10 módulos com 3 a 5 passos", () => {
-    expect(MODULOS_TOUR).toHaveLength(10);
+  it("cobre os 11 módulos com 3 a 5 passos", () => {
+    expect(MODULOS_TOUR).toHaveLength(11);
     for (const modulo of MODULOS_TOUR) {
       const passos = ROTEIROS_TOUR[modulo];
       expect(passos.length, modulo).toBeGreaterThanOrEqual(3);

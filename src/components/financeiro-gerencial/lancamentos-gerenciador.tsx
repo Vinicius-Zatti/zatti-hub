@@ -1228,6 +1228,11 @@ function LinhaParcela({
               Liquidação de provisão
             </span>
           )}
+          {lancamento.origem === "freelancer" && (
+            <span className="ml-1.5 rounded-full bg-azul-petroleo/10 px-1.5 py-0.5 text-[10px] font-semibold text-azul-petroleo" title="Diária conferida pelo gerente no módulo Freelancers">
+              Freelancer
+            </span>
+          )}
         </td>
         <td className="px-3 py-2 text-center">
           {parcela.numero}/{parcela.totalParcelas}

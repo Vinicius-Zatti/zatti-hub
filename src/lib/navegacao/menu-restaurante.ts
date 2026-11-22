@@ -19,6 +19,9 @@ export type ContextoMenuRestaurante = {
   /** Avaliações (12/11/2026): módulo ligado na unidade e sem "sem acesso" para a pessoa. Lido à
    * parte no layout (`lerAvaliacoesHabilitado`); ausente = não aparece. Só gestão/master. */
   avaliacoesHabilitado?: boolean;
+  /** Freelancers (22/11/2026): módulo ligado na unidade e a pessoa com acesso a ele (gestão,
+   * master ou a operação que o dono liberou). Lido à parte no layout; ausente = não aparece. */
+  freelancersVisivel?: boolean;
   /** Configurações do piloto: master, o dono (titular; sem titular, a gestão da
    * organização inteira) ou a gestão que recebeu "ver" em Configurações. Ausente = não vê. */
   podeConfigurar?: boolean;
@@ -184,6 +187,7 @@ function modulosComuns(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
       ],
     },
     ...itemAvaliacoes(ctx),
+    ...itemFreelancers(ctx),
     { label: "Marketing", href: "#", icone: "marketing", disabled: true },
     // Escritório e Acessos saíram daqui em 15/10/2026: ficam só na Zatti HUB
     // (`itensAreaInterna`), escolhida no seletor de organização.
@@ -209,6 +213,34 @@ function itemAvaliacoes(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
             { label: "Configurar", href: "/avaliacoes/configurar" },
             { label: "Arte do QR", href: "/avaliacoes/qr" },
             { label: "Cupons", href: "/avaliacoes/cupons" },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+/** Freelancers: check-in por QR, conferência da diária e título no Contas a Pagar (22/11/2026).
+ * Diferente das Avaliações, a operação também vê quando o dono liberou (`freelancersVisivel` já
+ * vem calculado com a permissão). A barreira é `requireFreelancers()` e o banco. */
+function itemFreelancers(ctx: ContextoMenuRestaurante): ItemNavegacao[] {
+  if (!ctx.freelancersVisivel) return [];
+  return [
+    {
+      label: "Freelancers",
+      href: "/freelancers",
+      icone: "freelancers",
+      activePrefix: "/freelancers",
+      disabled: false,
+      sections: [
+        {
+          label: "Freelancers",
+          items: [
+            { label: "Hoje", href: "/freelancers" },
+            { label: "Cadastro", href: "/freelancers/cadastro" },
+            { label: "Histórico", href: "/freelancers/historico" },
+            { label: "Arte do QR", href: "/freelancers/qr" },
+            { label: "Configurar", href: "/freelancers/configurar" },
           ],
         },
       ],
@@ -556,6 +588,7 @@ export function montarMenuRestaurantePiloto(ctx: ContextoMenuRestaurante): ItemN
       sections: secoesGarantePiloto(ctx),
     },
     ...itemAvaliacoes(ctx),
+    ...itemFreelancers(ctx),
     // Equipe: mesma regra de hoje (gestão + flag); a barreira é `requireEquipe()`.
     ...(ctx.podeGerir && ctx.equipeHabilitado
       ? [{ label: "Equipe", href: "/equipe", icone: "acessos" as const, activePrefix: "/equipe", disabled: false }]
