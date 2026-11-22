@@ -12,6 +12,7 @@ export type NomeIconeNavegacao =
   | "fichas"
   | "tarefas"
   | "avaliacoes"
+  | "freelancers"
   | "contagem"
   | "pedidos"
   | "marketing"
@@ -119,6 +120,15 @@ export function IconeNavegacao({
     ),
     // Avaliações (12/11/2026): estrela.
     avaliacoes: <path d="m12 3.5 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z" />,
+    // Freelancers (22/11/2026): crachá com a pessoa.
+    freelancers: (
+      <>
+        <rect x="5" y="3.5" width="14" height="17" rx="2" />
+        <path d="M10 3.5h4" />
+        <circle cx="12" cy="10.5" r="2.5" />
+        <path d="M8 17c.7-2 2.2-3 4-3s3.3 1 4 3" />
+      </>
+    ),
     // Barra inferior do celular (Navegação V2): prancheta da contagem e carrinho dos pedidos.
     contagem: (
       <>

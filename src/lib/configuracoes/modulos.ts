@@ -14,6 +14,7 @@ export type ColunaUnidade =
   | "fichas_tecnicas_habilitado"
   | "garante_habilitado"
   | "avaliacoes_habilitado"
+  | "freelancers_habilitado"
   | "extrato_estoque_habilitado"
   | "contagem_por_setor_habilitada";
 
@@ -25,6 +26,7 @@ export type ChaveModulo =
   | "cardapio"
   | "garante"
   | "avaliacoes"
+  | "freelancers"
   | "extrato"
   | "contagem_setor"
   | "equipe";
@@ -86,6 +88,12 @@ export const MODULOS: readonly DefinicaoModulo[] = [
     nome: "Avaliações",
     descricao: "Pesquisa de satisfação pelo QR Code com a marca do restaurante, arte do QR para imprimir, painel e alerta de nota baixa no WhatsApp.",
     ligadoPor: { tabela: "unidades", coluna: "avaliacoes_habilitado" },
+  },
+  {
+    chave: "freelancers",
+    nome: "Freelancers",
+    descricao: "Check-in do freelancer pelo QR Code na loja, conferência do gerente e diária lançada no Contas a Pagar.",
+    ligadoPor: { tabela: "unidades", coluna: "freelancers_habilitado" },
   },
   {
     chave: "extrato",

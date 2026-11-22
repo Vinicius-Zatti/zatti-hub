@@ -4,8 +4,9 @@ import { CABECALHO_CAMINHO } from "@/lib/area-interna/caminhos";
 
 // As rotas do relatório semanal de IA, dos eventos de leads e do Conteúdo se autenticam por token próprio (conferido
 // no banco), não por sessão: são chamadas pelo Vini, fora do navegador.
+// "/freela" (22/11/2026): check-in do freelancer pelo QR Code da loja, sem login.
 // "/avaliar" (12/11/2026): pesquisa de avaliação que o cliente final responde pelo QR Code, sem login.
-export const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas", "/avaliar"];
+export const ROTAS_PUBLICAS = ["/login", "/primeiro-acesso", "/auth/callback", "/auth/confirmar", "/sem-acesso", "/esqueci-senha", "/api/conciliacao/uso-ia/semanal", "/api/leads/eventos", "/api/conteudo/pecas", "/avaliar", "/freela"];
 // Financeiro V2 (11/10/2026): Caixa de Entrada e alerta diário, token com escopo próprio. Comparação
 // exata (não por prefixo): rota nova embaixo delas não fica sem sessão por acidente.
 export const ROTAS_PUBLICAS_EXATAS = new Set([

@@ -18,7 +18,12 @@ type Props = {
   logoDataUrl: string | null;
   /** Roleta ligada: a arte dos apps chama para o prêmio. */
   roleta?: boolean;
+  /** Textos próprios de outro módulo (Freelancers, 22/11/2026): trocam título, chamada,
+   * instrução e nome do arquivo que saem da origem. Mesmo desenho, mesma marca. */
+  textos?: TextosArte;
 };
+
+export type TextosArte = { titulo: string; chamada: string; subtitulo: string; arquivoPng: string; arquivoPdf: string };
 
 function quebrarLinhas(ctx: CanvasRenderingContext2D, texto: string, largura: number): string[] {
   const palavras = texto.split(/\s+/);
@@ -97,7 +102,7 @@ async function desenharArte(canvas: HTMLCanvasElement, p: Props): Promise<void> 
   // Chamada.
   ctx.fillStyle = texto;
   ctx.font = `700 92px ${fonte}`;
-  const linhasChamada = quebrarLinhas(ctx, CHAMADA_ARTE, W - margem * 2);
+  const linhasChamada = quebrarLinhas(ctx, p.textos?.chamada ?? CHAMADA_ARTE, W - margem * 2);
   linhasChamada.forEach((l, i) => ctx.fillText(l, W / 2, y + i * 104));
   y += linhasChamada.length * 104 + 10;
 
@@ -125,7 +130,7 @@ async function desenharArte(canvas: HTMLCanvasElement, p: Props): Promise<void> 
   // Instrução e endereço.
   ctx.fillStyle = texto;
   ctx.font = `500 46px ${fonte}`;
-  const linhasSub = quebrarLinhas(ctx, subtituloArte(p.origem, p.roleta === true), W - margem * 2);
+  const linhasSub = quebrarLinhas(ctx, p.textos?.subtitulo ?? subtituloArte(p.origem, p.roleta === true), W - margem * 2);
   linhasSub.forEach((l, i) => ctx.fillText(l, W / 2, y + i * 58));
   y += linhasSub.length * 58 + 30;
   ctx.font = `400 30px ${fonte}`;
@@ -142,19 +147,20 @@ function blobDoCanvas(canvas: HTMLCanvasElement, tipo: string, qualidade?: numbe
 export function ArteQr(p: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   // A arte está pronta quando o último desenho terminado é o do conteúdo atual.
-  const chave = [p.url, p.nome, p.corPrincipal, p.corFundo, p.logoDataUrl ?? "", p.origem, p.roleta ? "roleta" : ""].join("|");
+  const chave = [p.url, p.nome, p.corPrincipal, p.corFundo, p.logoDataUrl ?? "", p.origem, p.roleta ? "roleta" : "", p.textos?.chamada ?? "", p.textos?.subtitulo ?? ""].join("|");
   const [desenhada, setDesenhada] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Resultado guardado com a logo medida: trocar a logo não mostra o aviso da anterior.
   const [medida, setMedida] = useState<{ logo: string; baixa: boolean } | null>(null);
   const pronta = desenhada === chave;
-  const { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta } = p;
+  const { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta, textos } = p;
+  const titulo = textos?.titulo ?? rotuloArte(origem);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     let vivo = true;
-    desenharArte(canvas, { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta })
+    desenharArte(canvas, { url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta, textos })
       .then(() => {
         if (vivo) setDesenhada(chave);
       })
@@ -164,7 +170,7 @@ export function ArteQr(p: Props) {
     return () => {
       vivo = false;
     };
-  }, [chave, url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta]);
+  }, [chave, url, nome, corPrincipal, corFundo, logoDataUrl, origem, slug, roleta, textos]);
 
   // Logo pequena demais para 300 dpi: avisa antes de imprimir (13/11/2026).
   useEffect(() => {
@@ -184,7 +190,7 @@ export function ArteQr(p: Props) {
     if (!ref.current) return;
     setErro(null);
     try {
-      baixarArquivo(await blobDoCanvas(ref.current, "image/png"), nomeArquivoArte(p.slug, p.origem, "png"));
+      baixarArquivo(await blobDoCanvas(ref.current, "image/png"), p.textos?.arquivoPng ?? nomeArquivoArte(p.slug, p.origem, "png"));
     } catch {
       setErro("Não foi possível gerar o PNG.");
     }
@@ -196,7 +202,7 @@ export function ArteQr(p: Props) {
     try {
       const jpeg = new Uint8Array(await (await blobDoCanvas(ref.current, "image/jpeg", 0.95)).arrayBuffer());
       const pdf = pdfComImagemJpeg({ jpeg, larguraPx: ARTE.larguraPx, alturaPx: ARTE.alturaPx, larguraCm: ARTE.larguraCm, alturaCm: ARTE.alturaCm });
-      baixarArquivo(new Blob([pdf.buffer as ArrayBuffer], { type: "application/pdf" }), nomeArquivoArte(p.slug, p.origem, "pdf"));
+      baixarArquivo(new Blob([pdf.buffer as ArrayBuffer], { type: "application/pdf" }), p.textos?.arquivoPdf ?? nomeArquivoArte(p.slug, p.origem, "pdf"));
     } catch {
       setErro("Não foi possível gerar o PDF.");
     }
@@ -204,8 +210,8 @@ export function ArteQr(p: Props) {
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-cinza-claro bg-branco p-4">
-      <h2 className="font-display text-lg font-bold text-azul-noite">{rotuloArte(p.origem)}</h2>
-      <canvas ref={ref} className="w-full max-w-[280px] self-center rounded border border-cinza-claro shadow-sm" aria-label={`Arte do QR para ${rotuloArte(p.origem).toLowerCase()}`} />
+      <h2 className="font-display text-lg font-bold text-azul-noite">{titulo}</h2>
+      <canvas ref={ref} className="w-full max-w-[280px] self-center rounded border border-cinza-claro shadow-sm" aria-label={`Arte do QR: ${titulo.toLowerCase()}`} />
       <p className="break-all text-xs text-cinza-medio">O QR abre {p.url}</p>
       {logoDataUrl && medida?.logo === logoDataUrl && medida.baixa && <p className="rounded-md border border-ambar/40 bg-ambar/10 p-2 text-xs text-azul-noite">{AVISO_LOGO_BAIXA}</p>}
       <div className="flex flex-wrap gap-2">

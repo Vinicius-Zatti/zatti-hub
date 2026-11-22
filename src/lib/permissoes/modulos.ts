@@ -30,6 +30,7 @@ export type ChaveModulo =
   | "cardapio"
   | "garante"
   | "avaliacoes"
+  | "freelancers"
   | "equipe"
   | "relatorios"
   | "cadastros"
@@ -57,6 +58,8 @@ export const MODULOS: readonly DefinicaoModulo[] = [
   { chave: "garante", nome: "Garante", descricao: "Rotinas com foto, nota e planos de ação", liberado: true },
   // Avaliações (12/11/2026): só gestão; a operação fica sem acesso (cai no fim de `nivelPadrao`).
   { chave: "avaliacoes", nome: "Avaliações", descricao: "Pesquisa de satisfação pelo QR Code, painel e alerta de nota baixa", liberado: true },
+  // Freelancers (22/11/2026): gestão confere; a operação começa sem acesso e o dono pode liberar.
+  { chave: "freelancers", nome: "Freelancers", descricao: "Check-in por QR Code, conferência da diária e título no Contas a Pagar", liberado: true },
   { chave: "equipe", nome: "Equipe", descricao: "Quem usa o Zatti Hub e o que cada um acessa", liberado: true },
   { chave: "relatorios", nome: "Relatórios", descricao: "DRE, Fluxo de Caixa, DFC e Painel M.E.G.A.", liberado: true },
   { chave: "cadastros", nome: "Cadastros", descricao: "Produtos, setores e fornecedores", liberado: true },
@@ -128,6 +131,8 @@ export function nivelPadrao(role: PapelPermissao, ehDono: boolean, chave: ChaveP
 export function nivelMaximo(role: PapelPermissao, ehDono: boolean, chave: ChavePermissao): NivelModulo {
   if (role === "gestao" && chave === "configuracoes") return "ver";
   if (role === "operacional" && chave === MODULO_CHEF) return "chef";
+  // Freelancers (22/11/2026): o dono libera a conferência para o gerente que é operacional.
+  if (role === "operacional" && chave === "freelancers") return "editar";
   return nivelPadrao(role, ehDono, chave);
 }
 

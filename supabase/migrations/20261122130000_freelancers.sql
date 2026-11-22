@@ -227,6 +227,7 @@ security definer
 set search_path = ''
 as $$
   select p_nivel in ('ver', 'editar')
+    and public.sessao_vigente()
     and public.usuario_tem_acesso_unidade(p_unidade_id, array['gestao', 'operacional'])
     and exists (select 1 from public.unidades u where u.id = p_unidade_id and u.freelancers_habilitado)
     and public.pode_modulo('freelancers', p_nivel, p_unidade_id)

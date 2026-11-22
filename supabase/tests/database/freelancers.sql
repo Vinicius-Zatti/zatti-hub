@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(69);
+select plan(70);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -125,8 +125,8 @@ select is((select situacao from freelancers where whatsapp = '5516999990002'), '
 select ok((select aparelho_repetido from freela_checkins where id = pg_temp.checkin_de('5516999990001'))
   and (select aparelho_repetido from freela_checkins where id = pg_temp.checkin_de('5516999990002')),
   'mesmo aparelho com duas pessoas no dia marca as duas');
-select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990003', 'Ana', 'c') ->> 'ok')::boolean
-  and not (select aparelho_repetido from freela_checkins where id = pg_temp.checkin_de('5516999990003')),
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990003', 'Ana', 'c') ->> 'ok')::boolean, 'outra pessoa, outro celular, mesma rede');
+select ok(not (select aparelho_repetido from freela_checkins where id = pg_temp.checkin_de('5516999990003')),
   'aparelho próprio na mesma rede não marca');
 select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990004', 'Robô', 'd', 'b', 'preenchido') ->> 'descartado')::boolean
   and not exists (select 1 from freelancers where whatsapp = '5516999990004'), 'armadilha preenchida é descartada');

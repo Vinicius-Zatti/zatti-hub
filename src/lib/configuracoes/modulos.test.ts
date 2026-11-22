@@ -18,6 +18,7 @@ const tudoLigado: FlagsModulos = {
   fichas_tecnicas_habilitado: true,
   garante_habilitado: true,
   avaliacoes_habilitado: true,
+  freelancers_habilitado: true,
   extrato_estoque_habilitado: true,
   contagem_por_setor_habilitada: true,
   equipe_habilitado: true,
@@ -37,6 +38,7 @@ describe("Configurações > Módulos", () => {
       "cardapio",
       "garante",
       "avaliacoes",
+      "freelancers",
       "extrato",
       "contagem_setor",
       "equipe",
@@ -58,7 +60,7 @@ describe("Configurações > Módulos", () => {
     expect(dono.every((m) => !m.alteravel)).toBe(true);
     const master = porChave({}, true);
     expect(master.estoque.alteravel).toBe(false);
-    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "avaliacoes", "extrato", "contagem_setor", "equipe"]) {
+    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "avaliacoes", "freelancers", "extrato", "contagem_setor", "equipe"]) {
       expect(master[chave].alteravel, chave).toBe(true);
     }
   });
@@ -66,7 +68,7 @@ describe("Configurações > Módulos", () => {
   it("Contagem por setor: dono e gestão também trocam; os outros módulos seguem só master", () => {
     const gestao = Object.fromEntries(estadoDosModulos(tudoLigado, false, true).map((m) => [m.chave, m]));
     expect(gestao.contagem_setor.alteravel).toBe(true);
-    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "avaliacoes", "extrato", "equipe"]) {
+    for (const chave of ["vendas", "financeiro", "conciliacao", "cardapio", "garante", "avaliacoes", "freelancers", "extrato", "equipe"]) {
       expect(gestao[chave].alteravel, chave).toBe(false);
     }
     // Sem o papel de gestão (operacional nem chega à tela), nada.

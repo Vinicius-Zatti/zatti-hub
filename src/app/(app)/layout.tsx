@@ -26,6 +26,7 @@ import { faixaAssinatura } from "@/lib/assinatura/regras";
 import { lerToursVistos } from "@/lib/tour/banco";
 import { ConviteInstalarApp } from "@/components/convite-instalar-app";
 import { lerAvaliacoesHabilitado } from "@/lib/avaliacoes/servidor";
+import { lerFreelancersHabilitado } from "@/lib/freelancers/servidor";
 
 export default async function AppLayout({
   children,
@@ -42,7 +43,7 @@ export default async function AppLayout({
   // Vigência anual (15/10/2026): depois da carência o cliente trava, sem perder dado. O master
   // nunca trava (vê a faixa para saber a situação do cliente).
   const navegacaoV2 = usaNavegacaoV2(acesso);
-  const [assinatura, conciliacaoHabilitada, toursVistos, avaliacoesHabilitado] = await Promise.all([
+  const [assinatura, conciliacaoHabilitada, toursVistos, avaliacoesHabilitado, freelancersVisivel] = await Promise.all([
     acesso.areaInterna ? null : getAssinaturaAtual(acesso.organizacaoId),
     acesso.financeiroGerencialHabilitado && !acesso.areaInterna
       ? lerFlagsConciliacao(acesso.unidadeId).then((f) => f.habilitada)
@@ -52,6 +53,10 @@ export default async function AppLayout({
     // Avaliações (12/11/2026): chave lida à parte, só para quem poderia ver o módulo.
     !acesso.areaInterna && podeGerir && acesso.permissoes.avaliacoes !== "sem_acesso"
       ? lerAvaliacoesHabilitado(acesso.unidadeId)
+      : false,
+    // Freelancers (22/11/2026): gestão, master ou a operação que o dono liberou.
+    !acesso.areaInterna && acesso.permissoes.freelancers !== "sem_acesso"
+      ? lerFreelancersHabilitado(acesso.unidadeId)
       : false,
   ]);
   if (assinatura?.situacao.tipo === "bloqueada" && acesso.role !== "master") redirect("/assinatura-vencida");
@@ -113,7 +118,7 @@ export default async function AppLayout({
   // Menu do restaurante: mesmas regras de papel e flags nos dois menus
   // (`lib/navegacao/menu-restaurante.ts`). A unidade piloto da Navegação V2
   // (`lib/navegacao/piloto.ts`) vê o menu em sanfona; as demais, o atual.
-  const contextoMenu = { ...contextoMenuRestaurante(acesso, conciliacaoHabilitada), avaliacoesHabilitado };
+  const contextoMenu = { ...contextoMenuRestaurante(acesso, conciliacaoHabilitada), avaliacoesHabilitado, freelancersVisivel };
   const itensRestaurante = navegacaoV2
     ? aplicarPermissoesMenu(montarMenuRestaurantePiloto(contextoMenu), acesso.permissoes)
     : montarMenuRestaurante(contextoMenu);
