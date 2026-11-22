@@ -94,6 +94,9 @@ export function TabelaCheckins({
                       {c.situacaoFreelancer === "novo" && c.estado === "pendente" && (
                         <p className="mt-1 text-xs font-semibold text-ambar">Primeira vez: sem cadastro aprovado</p>
                       )}
+                      {c.situacaoFreelancer === "inativo" && c.estado === "pendente" && (
+                        <p className="mt-1 text-xs font-semibold text-vermelho">Cadastro marcado como não trabalha mais</p>
+                      )}
                       {diferente && <p className="mt-1 text-xs font-semibold text-vermelho">Digitou outro nome: {c.nomeDigitado}</p>}
                       {c.aparelhoRepetido && <p className="mt-1 text-xs font-semibold text-vermelho">Mesmo celular de outro check-in hoje</p>}
                     </td>
@@ -198,7 +201,7 @@ function ModalConferencia({ checkin: c, diariaPadrao, onFechar }: { checkin: Che
               <input type="checkbox" checked={pago} onChange={(e) => setPago(e.target.checked)} className="mt-1 h-4 w-4" />
               <span>
                 O caixa já pagou esta diária
-                <span className="block text-xs text-cinza-medio">O título entra no Contas a Pagar já quitado, saindo da conta do caixa. Sem marcar, fica em aberto com vencimento hoje.</span>
+                <span className="block text-xs text-cinza-medio">O título entra no Contas a Pagar já quitado, saindo da conta do caixa. Sem marcar, fica em aberto com vencimento no dia trabalhado.</span>
               </span>
             </label>
             <button
@@ -272,7 +275,7 @@ function ModalConferencia({ checkin: c, diariaPadrao, onFechar }: { checkin: Che
             >
               {pendente ? "Desfazendo..." : "Desfazer: volta para conferir de novo e tira o título do Contas a Pagar"}
             </button>
-            <p className="text-xs text-cinza-medio">Diária já paga não desfaz por aqui: o pagamento precisa ser estornado no Financeiro.</p>
+            <p className="text-xs text-cinza-medio">Diária já paga, de mês fechado ou alterada no Financeiro não desfaz por aqui: fale com quem cuida do Financeiro.</p>
           </>
         )}
 

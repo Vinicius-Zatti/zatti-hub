@@ -24,7 +24,9 @@
 -- regras que importam: conta-folha ativa, mês aberto, baixa só no caixa, status da parcela.
 --
 -- Desfazer conferência: o gerente volta a diária para pendente enquanto o título não tem
--- pagamento. Já paga (inclusive pelo caixa), o estorno fica com Vinícius no Financeiro.
+-- pagamento e o mês está aberto. Já paga (inclusive pelo caixa), em mês fechado ou editada no
+-- Financeiro, a diária fica como está e quem cuida do Financeiro resolve. O apagamento do título
+-- grava auditoria própria (o gatilho do Financeiro não age sem sessão).
 --
 -- Aditivo: nenhuma coluna existente muda. Funções existentes recriadas: `permissao_chave_liberada`,
 -- `permissao_nivel_maximo` (operacional + freelancers = editar) e `salvar_permissoes_modulo`
@@ -322,7 +324,7 @@ create table if not exists public.freela_checkins (
   titulo_a_remover uuid,
   -- Por que a diária conferida ainda não virou título.
   titulo_aviso text check (titulo_aviso is null or titulo_aviso in (
-    'financeiro_desligado', 'sem_conta_freelancers', 'mes_fechado', 'sem_conta_caixa', 'titulo_ja_pago')),
+    'financeiro_desligado', 'sem_conta_freelancers', 'mes_fechado', 'sem_conta_caixa', 'titulo_ja_pago', 'titulo_editado')),
   criado_por uuid references auth.users(id) on delete set null,
   criado_em timestamptz not null default now(),
   unique (freelancer_id, dia),
@@ -465,6 +467,8 @@ begin
     v_base := 'restaurante';
   end if;
   v_slug := v_base;
+  -- Duas unidades com o mesmo nome criadas juntas: a trava por nome evita o mesmo endereço.
+  perform pg_advisory_xact_lock(hashtextextended('freela_slug:' || v_base, 0));
   while exists (select 1 from public.freela_configuracoes where slug = v_slug) loop
     v_n := v_n + 1;
     v_slug := v_base || '-' || v_n::text;
@@ -618,6 +622,11 @@ begin
   if v_c.estado <> 'pendente' then
     return 'ja_conferido';
   end if;
+  -- Título de uma conferência desfeita ainda saindo do Financeiro: espera o servidor resolver
+  -- (apagar, ou devolver a diária se o título já foi pago ou o mês fechou), nunca dois títulos.
+  if exists (select 1 from public.freela_checkins where id = v_c.id and titulo_a_remover is not null) then
+    return 'aguarde';
+  end if;
   if p_valor is null or p_valor < 1 or p_valor > 10000 then
     return 'valor_invalido';
   end if;
@@ -657,12 +666,15 @@ declare
   v_c record;
   v_motivo text := btrim(coalesce(p_motivo, ''));
 begin
-  select c.id, c.unidade_id, c.estado into v_c from public.freela_checkins c where c.id = p_checkin_id for update;
+  select c.id, c.unidade_id, c.estado, c.titulo_a_remover into v_c from public.freela_checkins c where c.id = p_checkin_id for update;
   if not found or not public.usuario_pode_usar_freelancers(v_c.unidade_id, 'editar') then
     raise exception 'sem_permissao' using errcode = '42501';
   end if;
   if v_c.estado <> 'pendente' then
     return 'ja_conferido';
+  end if;
+  if v_c.titulo_a_remover is not null then
+    return 'aguarde';
   end if;
   if char_length(v_motivo) not between 2 and 200 then
     return 'motivo_invalido';
@@ -703,6 +715,14 @@ begin
      where p.lancamento_id = v_c.lancamento_id
   ) then
     return 'ja_pago';
+  end if;
+  -- Título num mês fechado do Financeiro não sai por aqui (o gatilho de período fechado não age
+  -- no servidor, então a regra fica aqui e de novo na sincronização).
+  if v_c.lancamento_id is not null and exists (
+    select 1 from public.fin_fechamentos f join public.fin_lancamentos l on l.id = v_c.lancamento_id
+     where f.unidade_id = v_c.unidade_id and f.competencia = date_trunc('month', l.data_competencia)::date and f.fechado
+  ) then
+    return 'mes_fechado';
   end if;
   if v_c.lancamento_id is null and v_c.titulo_gerado_em is not null then
     -- O título foi apagado no Financeiro: desfazer aqui não traz de volta.
@@ -747,6 +767,9 @@ begin
                   where id = p_freelancer_id and unidade_id = p_unidade_id and situacao <> 'inativo') then
     return 'nao_encontrado';
   end if;
+  -- Mesma trava do check-in pelo QR (mesma pessoa no mesmo instante pelos dois caminhos).
+  perform pg_advisory_xact_lock(hashtextextended('freela_whatsapp:' || p_unidade_id || ':'
+    || (select whatsapp from public.freelancers where id = p_freelancer_id), 0));
   insert into public.freela_checkins (unidade_id, freelancer_id, dia, entrada_em, origem, criado_por)
   values (p_unidade_id, p_freelancer_id, p_dia, now(), 'manual', auth.uid())
   on conflict (freelancer_id, dia) do nothing
@@ -820,7 +843,9 @@ begin
   if p_armadilha is not null and btrim(p_armadilha) <> '' then
     return jsonb_build_object('ok', true, 'descartado', true);
   end if;
-  if p_decorrido_ms is null or p_decorrido_ms < 1500 then
+  -- Tempo mínimo baixo: o celular lembra os dados e a pessoa só toca no botão. O app trata
+  -- 'descartado' como erro ("tente de novo"), nunca como sucesso.
+  if p_decorrido_ms is null or p_decorrido_ms < 800 then
     return jsonb_build_object('ok', true, 'descartado', true);
   end if;
   if p_hash_ip is null or p_hash_ip !~ '^[0-9a-f]{64}$' or p_hash_dispositivo is null or p_hash_dispositivo !~ '^[0-9a-f]{64}$' then
@@ -844,12 +869,12 @@ begin
   select id, situacao into v_freela from public.freelancers
    where unidade_id = v_cfg.unidade_id and whatsapp = p_whatsapp;
 
-  -- Já fez hoje: devolve a hora (não conta no limite).
+  -- Já fez hoje (não conta no limite). Sem a hora: quem digita um número qualquer não descobre
+  -- quando aquela pessoa chegou.
   if v_freela.id is not null then
     select entrada_em into v_existente from public.freela_checkins where freelancer_id = v_freela.id and dia = v_dia;
     if found then
-      return jsonb_build_object('ok', true, 'jaFeito', true,
-        'hora', to_char(v_existente.entrada_em at time zone 'America/Sao_Paulo', 'HH24:MI'));
+      return jsonb_build_object('ok', true, 'jaFeito', true);
     end if;
   end if;
 
@@ -869,15 +894,26 @@ begin
     if v_funcao is not null and char_length(v_funcao) not between 2 and 40 then
       return jsonb_build_object('ok', false, 'codigo', 'funcao_invalida');
     end if;
+    -- Cadastro novo pelo QR: no máximo 15 por rede por dia (freia quem tenta encher a lista).
+    if (select count(*) from public.freela_checkins c join public.freelancers f on f.id = c.freelancer_id
+         where c.unidade_id = v_cfg.unidade_id and c.dia = v_dia and c.hash_ip = p_hash_ip
+           and f.situacao = 'novo' and f.criado_por is null) >= 15 then
+      return jsonb_build_object('ok', false, 'codigo', 'limite');
+    end if;
     insert into public.freelancers (unidade_id, nome, whatsapp, funcao, situacao)
     values (v_cfg.unidade_id, v_nome, p_whatsapp, v_funcao, 'novo')
     returning id, situacao into v_freela;
   end if;
 
+  -- Lançamento à mão do mesmo dia no mesmo instante: vale o que chegou primeiro.
   insert into public.freela_checkins (unidade_id, freelancer_id, dia, entrada_em, origem, nome_digitado, hash_ip, hash_dispositivo)
   values (v_cfg.unidade_id, v_freela.id, v_dia, p_agora, 'qr',
           case when char_length(v_nome) between 2 and 80 then v_nome end, p_hash_ip, p_hash_dispositivo)
+  on conflict (freelancer_id, dia) do nothing
   returning id into v_id;
+  if v_id is null then
+    return jsonb_build_object('ok', true, 'jaFeito', true);
+  end if;
 
   -- Mesmo aparelho com mais de uma pessoa no dia: marca todas (a tela Hoje destaca).
   update public.freela_checkins
@@ -926,23 +962,48 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtextextended('freela_titulos:' || p_unidade_id, 0));
 
-  -- 1. Títulos de conferências desfeitas.
+  -- 1. Títulos de conferências desfeitas. Só apaga título sem pagamento, de mês aberto e que
+  -- ninguém mexeu no Financeiro. Senão o título fica e a diária volta a "conferida" ligada a ele,
+  -- com o motivo (a conferência fica bloqueada enquanto há título saindo, então ela está pendente).
   for v_c in
-    select c.id, c.titulo_a_remover from public.freela_checkins c
+    select c.id, c.titulo_a_remover, l.id as lancamento, l.criado_por, l.data_competencia,
+           (l.atualizado_em is distinct from l.criado_em
+              or exists (select 1 from public.fin_parcelas p where p.lancamento_id = l.id and p.atualizado_em is distinct from p.criado_em)) as editado,
+           (select sum(p.valor) from public.fin_parcelas p where p.lancamento_id = l.id) as valor
+      from public.freela_checkins c
+      left join public.fin_lancamentos l on l.id = c.titulo_a_remover and l.unidade_id = p_unidade_id and l.origem = 'freelancer'
      where c.unidade_id = p_unidade_id and c.titulo_a_remover is not null
-     for update
+     for update of c
   loop
-    if exists (select 1 from public.fin_parcelas p join public.fin_baixas b on b.parcela_id = p.id
-                where p.lancamento_id = v_c.titulo_a_remover) then
-      -- Pago no meio do caminho: o título fica e o estorno é com quem cuida do Financeiro.
-      update public.freela_checkins set titulo_a_remover = null, titulo_aviso = 'titulo_ja_pago' where id = v_c.id;
-    else
-      delete from public.fin_lancamentos
-       where id = v_c.titulo_a_remover and unidade_id = p_unidade_id and origem = 'freelancer';
-      if found then
-        v_apagados := v_apagados + 1;
-      end if;
+    if v_c.lancamento is null then
+      -- Já não existe (apagado no Financeiro): nada a fazer.
       update public.freela_checkins set titulo_a_remover = null where id = v_c.id;
+      continue;
+    end if;
+    v_aviso := case
+      when exists (select 1 from public.fin_parcelas p join public.fin_baixas b on b.parcela_id = p.id
+                    where p.lancamento_id = v_c.lancamento) then 'titulo_ja_pago'
+      when exists (select 1 from public.fin_fechamentos fe
+                    where fe.unidade_id = p_unidade_id and fe.competencia = date_trunc('month', v_c.data_competencia)::date and fe.fechado)
+        then 'mes_fechado'
+      when v_c.editado then 'titulo_editado'
+    end;
+    if v_aviso is not null then
+      update public.freela_checkins
+         set estado = 'conferido', valor = least(greatest(coalesce(v_c.valor, 1), 1), 10000), pago_no_caixa = false,
+             motivo_recusa = null, conferido_por = v_c.criado_por, conferido_em = now(),
+             lancamento_id = v_c.lancamento, titulo_gerado_em = now(), titulo_a_remover = null, titulo_aviso = v_aviso
+       where id = v_c.id;
+      insert into public.logs_auditoria (unidade_id, user_id, acao, entidade, entidade_id, dados_novos)
+      values (p_unidade_id, v_c.criado_por, 'freela_manter_titulo', 'fin_lancamento', v_c.lancamento::text,
+              jsonb_build_object('checkinId', v_c.id, 'motivo', v_aviso));
+    else
+      delete from public.fin_lancamentos where id = v_c.lancamento;
+      update public.freela_checkins set titulo_a_remover = null where id = v_c.id;
+      insert into public.logs_auditoria (unidade_id, user_id, acao, entidade, entidade_id, dados_antigos)
+      values (p_unidade_id, v_c.criado_por, 'freela_apagar_titulo', 'fin_lancamento', v_c.lancamento::text,
+              jsonb_build_object('checkinId', v_c.id, 'valor', v_c.valor, 'dataCompetencia', v_c.data_competencia));
+      v_apagados := v_apagados + 1;
     end if;
   end loop;
 

@@ -10,7 +10,8 @@ export function ConfigurarFreelancers({ configuracao, contas }: { configuracao: 
   const router = useRouter();
   const [pendente, startTransition] = useTransition();
   const [diaria, setDiaria] = useState<number | null>(configuracao.diariaPadrao);
-  const [conta, setConta] = useState(configuracao.contaCaixaId ?? "");
+  // Conta escolhida que foi desativada no Financeiro some da lista: volta para "nenhuma".
+  const [conta, setConta] = useState(contas.some((c) => c.id === configuracao.contaCaixaId) ? (configuracao.contaCaixaId ?? "") : "");
   const [ativa, setAtiva] = useState(configuracao.ativa);
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 

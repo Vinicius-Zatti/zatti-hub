@@ -95,6 +95,8 @@ export async function conferirAction(checkinId: string, valor: number | null, pa
   if (bloqueio) return { erro: bloqueio };
   if (!UUID.test(checkinId)) return { erro: mensagemCodigo("nao_encontrado") };
   if (!diariaValida(valor)) return { erro: mensagemCodigo("valor_invalido") };
+  // Título de uma conferência desfeita ainda saindo: resolve antes (o banco recusa conferir com ele).
+  await sincronizarTitulos(acesso.unidadeId);
   const { data, error } = await (await createClient()).rpc("freela_conferir", {
     p_checkin_id: checkinId,
     p_valor: valor,
@@ -111,9 +113,10 @@ export async function conferirAction(checkinId: string, valor: number | null, pa
 }
 
 export async function recusarAction(checkinId: string, motivo: string): Promise<Resultado> {
-  const { bloqueio } = await acessoEditar();
+  const { acesso, bloqueio } = await acessoEditar();
   if (bloqueio) return { erro: bloqueio };
   if (!UUID.test(checkinId)) return { erro: mensagemCodigo("nao_encontrado") };
+  await sincronizarTitulos(acesso.unidadeId);
   const { data, error } = await (await createClient()).rpc("freela_recusar", {
     p_checkin_id: checkinId,
     p_motivo: String(motivo ?? "").slice(0, 240),

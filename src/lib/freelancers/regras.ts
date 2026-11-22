@@ -5,7 +5,7 @@ export { normalizarWhatsapp } from "@/lib/avaliacoes/perguntas";
 
 export type SituacaoFreelancer = "novo" | "ativo" | "inativo";
 export type EstadoCheckin = "pendente" | "conferido" | "recusado";
-export type AvisoTitulo = "financeiro_desligado" | "sem_conta_freelancers" | "mes_fechado" | "sem_conta_caixa" | "titulo_ja_pago";
+export type AvisoTitulo = "financeiro_desligado" | "sem_conta_freelancers" | "mes_fechado" | "sem_conta_caixa" | "titulo_ja_pago" | "titulo_editado";
 
 export const LIMITE_NOME = 80;
 export const LIMITE_FUNCAO = 40;
@@ -76,7 +76,7 @@ export function diariaValida(valor: number | null): valor is number {
   return valor !== null && Number.isFinite(valor) && valor >= 1 && valor <= DIARIA_MAXIMA && Math.round(valor * 100) === valor * 100;
 }
 
-/** Nome do nome que a pessoa digitou no QR é diferente do cadastro (sem acento e caixa)? */
+/** O nome que a pessoa digitou no QR é diferente do cadastro (sem acento e caixa)? */
 export function nomeDiferente(cadastro: string, digitado: string | null): boolean {
   if (!digitado) return false;
   const limpar = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -129,7 +129,13 @@ export const DICAS = {
 export function situacaoTitulo(c: Pick<Checkin, "estado" | "lancamentoId" | "tituloGeradoEm" | "tituloAviso" | "pagoNoCaixa" | "tituloARemover">): string {
   if (c.estado === "pendente") return c.tituloARemover ? "Tirando o título do Contas a Pagar" : "Aguardando conferência";
   if (c.estado === "recusado") return "Recusado, sem título";
-  if (c.lancamentoId) return c.pagoNoCaixa ? "No Contas a Pagar, já pago pelo caixa" : "No Contas a Pagar, em aberto";
+  if (c.lancamentoId) {
+    // Desfazer não conseguiu tirar o título: ele ficou e a diária voltou a conferida.
+    if (c.tituloAviso === "titulo_ja_pago") return "No Contas a Pagar, já pago. Não deu para desfazer: fale com quem cuida do Financeiro";
+    if (c.tituloAviso === "mes_fechado") return "No Contas a Pagar, em mês fechado. Não deu para desfazer: fale com quem cuida do Financeiro";
+    if (c.tituloAviso === "titulo_editado") return "No Contas a Pagar, alterado no Financeiro. Não deu para desfazer: fale com quem cuida do Financeiro";
+    return c.pagoNoCaixa ? "No Contas a Pagar, já pago pelo caixa" : "No Contas a Pagar, em aberto";
+  }
   if (c.tituloGeradoEm) return "Título apagado no Financeiro";
   switch (c.tituloAviso) {
     case "financeiro_desligado":
@@ -140,8 +146,6 @@ export function situacaoTitulo(c: Pick<Checkin, "estado" | "lancamentoId" | "tit
       return "Conferida. O mês está fechado no Financeiro";
     case "sem_conta_caixa":
       return "Conferida. Escolha a conta do caixa em Configurar";
-    case "titulo_ja_pago":
-      return "O título já tinha sido pago: o estorno é no Financeiro";
     default:
       return "Conferida. Lançando no Contas a Pagar";
   }
@@ -166,9 +170,9 @@ export function mensagemCodigo(codigo: string): string {
     sem_conta_caixa: "Para marcar como pago pelo caixa, escolha antes a conta do caixa em Freelancers > Configurar.",
     motivo_invalido: "Escreva o motivo da recusa (de 2 a 200 letras).",
     ja_pendente: "Esse check-in já está aguardando conferência.",
-    ja_pago: "Essa diária já foi paga. Para desfazer, o pagamento precisa ser estornado no Financeiro.",
+    ja_pago: "Essa diária tem pagamento registrado no Financeiro e não desfaz por aqui. Fale com quem cuida do Financeiro.",
     titulo_apagado: "O título dessa diária foi apagado no Financeiro. Fale com quem cuida do Financeiro.",
-    aguarde: "O título anterior ainda está saindo do Contas a Pagar. Tente de novo em instantes.",
+    aguarde: "O título anterior ainda está saindo do Contas a Pagar. Recarregue a página e tente de novo.",
     dia_invalido: "Escolha um dia de hoje até 31 dias atrás.",
     ja_existe: "Essa pessoa já tem diária nesse dia.",
   };

@@ -84,7 +84,7 @@ export function FormularioCheckin(p: { slug: string; nome: string; logoUrl: stri
           </svg>
         </div>
         <p className="text-2xl font-bold">{estado.jaFeito ? "Você já fez o check-in hoje" : `Check-in feito, ${primeiroNome}!`}</p>
-        <p className="text-lg">Registrado às {estado.hora}. Bom trabalho!</p>
+        <p className="text-lg">{estado.hora ? `Registrado às ${estado.hora}. ` : ""}Bom trabalho!</p>
         <p className="text-sm opacity-75">O gerente confere a sua diária no fim do dia.</p>
       </main>
     );

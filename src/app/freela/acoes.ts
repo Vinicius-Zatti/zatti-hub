@@ -56,12 +56,14 @@ export async function registrarCheckinAction(_estado: EstadoCheckinPublico, form
   const r = data as { ok: boolean; codigo?: string; hora?: string; jaFeito?: boolean; descartado?: boolean };
   if (!r?.ok) {
     if (r?.codigo === "fechado") return { erro: "O check-in desta loja está fechado no momento. Fale com o gerente." };
-    if (r?.codigo === "limite") return { erro: "Muitos check-ins por este celular hoje. Fale com o gerente." };
+    if (r?.codigo === "limite") return { erro: "Não deu para registrar: muitos check-ins hoje por esta rede ou celular. Fale com o gerente." };
     if (r?.codigo === "nao_encontrado") return { erro: "Check-in não encontrado." };
     if (r?.codigo === "nome_invalido") return { erro: "Escreva seu nome (de 2 a 80 letras).", campo: "nome" };
     if (r?.codigo === "whatsapp_invalido") return { erro: mensagemCodigo("whatsapp_invalido"), campo: "whatsapp" };
     if (r?.codigo === "funcao_invalida") return { erro: mensagemCodigo("funcao_invalida"), campo: "funcao" };
     return { erro: MENSAGEM_GENERICA };
   }
+  // Descartado (rápido demais ou armadilha): nunca mostrar sucesso, a diária não entrou.
+  if (r.descartado) return { erro: "Não deu para registrar. Confira os dados e toque no botão de novo." };
   return { ok: true, hora: r.hora, jaFeito: r.jaFeito === true };
 }

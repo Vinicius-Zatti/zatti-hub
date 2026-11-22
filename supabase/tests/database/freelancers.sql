@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(70);
+select plan(85);
 
 -- ── Fixture ──────────────────────────────────────────────────────────────
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, aud, role) values
@@ -78,6 +78,9 @@ select ok(not has_function_privilege('anon', 'public.freela_registrar_checkin(te
   and not has_function_privilege('authenticated', 'public.freela_registrar_checkin(text,text,text,text,text,integer,text,text,timestamptz)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'public.freela_pagina_publica(text)', 'EXECUTE'),
   'check-in e página pública: só o servidor (que calcula os hashes)');
+select ok(has_function_privilege('service_role', 'public.freela_registrar_checkin(text,text,text,text,text,integer,text,text,timestamptz)', 'EXECUTE')
+  and has_function_privilege('service_role', 'public.freela_sincronizar_titulos(text)', 'EXECUTE')
+  and has_function_privilege('service_role', 'public.freela_pagina_publica(text)', 'EXECUTE'), 'o servidor (service role) executa as três');
 select ok(not has_function_privilege('authenticated', 'public.freela_sincronizar_titulos(text)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.freela_sincronizar_titulos(text)', 'EXECUTE'), 'títulos no Financeiro: só o servidor');
 select ok(not has_table_privilege('vini_operador', 'public.freela_checkins', 'UPDATE')
@@ -135,11 +138,12 @@ select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990004', 'Robô', 'd', 'b', 
 select is(pg_temp.ck('lucaskinhas-pinhal', '559999', 'Fulano') ->> 'codigo', 'whatsapp_invalido', 'WhatsApp inválido recusado');
 select is(pg_temp.ck('nao-existe', '5516999990005', 'Fulano') ->> 'codigo', 'nao_encontrado', 'endereço inexistente');
 select is(pg_temp.ck('lucaskinhas-pinhal', '5516999990005', 'F') ->> 'codigo', 'nome_invalido', 'sem cadastro precisa do nome');
-select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990011', 'Um', 'e') ->> 'ok')::boolean
-  and (pg_temp.ck('lucaskinhas-pinhal', '5516999990012', 'Dois', 'e') ->> 'ok')::boolean
-  and (pg_temp.ck('lucaskinhas-pinhal', '5516999990013', 'Três', 'e') ->> 'ok')::boolean
-  and (pg_temp.ck('lucaskinhas-pinhal', '5516999990014', 'Quatro', 'e') ->> 'ok')::boolean
-  and (pg_temp.ck('lucaskinhas-pinhal', '5516999990015', 'Cinco', 'e') ->> 'ok')::boolean, 'até 5 pessoas por aparelho no dia');
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990011', 'Um', 'e') ->> 'ok')::boolean, 'aparelho e: 1ª pessoa');
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990012', 'Dois', 'e') ->> 'ok')::boolean, 'aparelho e: 2ª pessoa');
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990013', 'Três', 'e') ->> 'ok')::boolean, 'aparelho e: 3ª pessoa');
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990014', 'Quatro', 'e') ->> 'ok')::boolean, 'aparelho e: 4ª pessoa');
+select ok((pg_temp.ck('lucaskinhas-pinhal', '5516999990015', 'Cinco', 'e') ->> 'ok')::boolean, 'até 5 pessoas por aparelho no dia');
+select ok(not ((pg_temp.ck('lucaskinhas-pinhal', '5516999990011', 'Um', 'e')) ? 'hora'), 'repetido no dia não revela a hora da primeira entrada');
 select is(pg_temp.ck('lucaskinhas-pinhal', '5516999990016', 'Seis', 'e') ->> 'codigo', 'limite', 'a sexta pessoa no mesmo aparelho para no limite');
 update unidades set freelancers_habilitado = false where id = 'org-fr-a-loja';
 select is(pg_temp.ck('lucaskinhas-pinhal', '5516999990017', 'Sete', 'f') ->> 'codigo', 'fechado', 'módulo desligado não grava');
@@ -213,15 +217,40 @@ select pg_temp.como('00000000-0000-0000-0000-0000000f1001');
 select is(public.freela_desfazer(pg_temp.checkin_de('5516999990001')), 'ja_pago', 'já pago não desfaz (estorno no Financeiro)');
 select is(public.freela_desfazer(pg_temp.checkin_de('5516999990002')), 'ok', 'sem pagamento desfaz');
 select is((select estado from freela_checkins where id = pg_temp.checkin_de('5516999990002')), 'pendente', 'e volta para pendente');
+select is(public.freela_conferir(pg_temp.checkin_de('5516999990002'), 150, false), 'aguarde',
+  'enquanto o título desfeito não sai, não confere de novo (nunca dois títulos)');
+select is(public.freela_recusar(pg_temp.checkin_de('5516999990002'), 'Teste'), 'aguarde', 'nem recusa');
 select pg_temp.servidor();
 select is(public.freela_sincronizar_titulos('org-fr-a-loja') ->> 'apagados', '1', 'o servidor apaga o título da conferência desfeita');
 select is((select count(*)::int from fin_lancamentos where unidade_id = 'org-fr-a-loja' and origem = 'freelancer'), 1, 'sobra só o título pago');
+select ok(exists (select 1 from logs_auditoria where acao = 'freela_apagar_titulo' and unidade_id = 'org-fr-a-loja'), 'apagar o título deixa auditoria');
 
--- Mês fechado.
+-- Pago no meio do caminho: desfez, alguém pagou antes do servidor apagar.
+select pg_temp.como('00000000-0000-0000-0000-0000000f1001');
+select is(public.freela_conferir(pg_temp.checkin_de('5516999990012'), 160, false), 'ok', 'confere outra diária, em aberto');
+select pg_temp.servidor();
+select public.freela_sincronizar_titulos('org-fr-a-loja');
+select pg_temp.como('00000000-0000-0000-0000-0000000f1001');
+select is(public.freela_desfazer(pg_temp.checkin_de('5516999990012')), 'ok', 'desfaz enquanto ainda sem pagamento');
+select pg_temp.servidor();
+insert into fin_baixas (unidade_id, parcela_id, tipo, conta_financeira_id, valor, data, criado_por)
+select 'org-fr-a-loja', p.id, 'baixa', '00000000-0000-0000-0000-0000000f3002', 160, public.freela_hoje(), '00000000-0000-0000-0000-0000000f1001'
+  from fin_parcelas p where p.lancamento_id = (select titulo_a_remover from freela_checkins where id = pg_temp.checkin_de('5516999990012'));
+select is(public.freela_sincronizar_titulos('org-fr-a-loja') ->> 'apagados', '0', 'título pago não é apagado');
+select ok((select estado = 'conferido' and lancamento_id is not null and titulo_aviso = 'titulo_ja_pago' and valor = 160
+             from freela_checkins where id = pg_temp.checkin_de('5516999990012')),
+  'a diária volta a conferida, ligada ao título pago, com o motivo');
+
+-- Mês fechado: confere uma diária em aberto antes de fechar.
+select pg_temp.como('00000000-0000-0000-0000-0000000f1001');
+select is(public.freela_conferir(pg_temp.checkin_de('5516999990013'), 150, false), 'ok', 'diária em aberto antes do fechamento');
+select pg_temp.servidor();
+select public.freela_sincronizar_titulos('org-fr-a-loja');
 insert into fin_fechamentos (unidade_id, competencia, fechado, atualizado_por)
 values ('org-fr-a-loja', date_trunc('month', public.freela_hoje())::date, true, '00000000-0000-0000-0000-0000000f1001');
 select pg_temp.como('00000000-0000-0000-0000-0000000f1001');
 select is(public.freela_conferir(pg_temp.checkin_de('5516999990003'), 150, false), 'mes_fechado', 'mês fechado no Financeiro não confere');
+select is(public.freela_desfazer(pg_temp.checkin_de('5516999990013')), 'mes_fechado', 'nem desfaz: o título de mês fechado fica');
 
 -- Lançar à mão.
 select is(public.freela_adicionar_manual('org-fr-a-loja', (select id from freelancers where whatsapp = '5516999990001'),
