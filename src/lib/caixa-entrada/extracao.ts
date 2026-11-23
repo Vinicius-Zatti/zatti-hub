@@ -161,6 +161,11 @@ export type Sugestao = {
   diferencaCentavos: number;
 };
 
+/** "Carne, Pão, Queijo e mais 2": descrição de uma linha que junta vários itens. */
+export function juntarNomes(nomes: string[]): string {
+  return (nomes.length > 3 ? `${nomes.slice(0, 3).join(", ")} e mais ${nomes.length - 3}` : nomes.join(", ")).slice(0, 200);
+}
+
 /** Agrupa os itens por Plano de Contas sugerido (rateio da nota) e fecha com o total da nota.
  * Desconto (item negativo) abate da maior linha. Diferença que sobra vira linha sem Plano de
  * Contas, para a pessoa decidir. Sem vencimento lido, um vencimento na emissão (ou `hoje`). */
@@ -180,11 +185,7 @@ export function sugerirDocumento(e: ExtracaoDocumento, hoje: string): Sugestao {
   }
   const linhas = Array.from(grupos.values())
     .sort((a, b) => b.valorCentavos - a.valorCentavos)
-    .map((g) => ({
-      planoContasCodigo: g.planoContasCodigo,
-      descricao: (g.nomes.length > 3 ? `${g.nomes.slice(0, 3).join(", ")} e mais ${g.nomes.length - 3}` : g.nomes.join(", ")).slice(0, 200),
-      valorCentavos: g.valorCentavos,
-    }));
+    .map((g) => ({ planoContasCodigo: g.planoContasCodigo, descricao: juntarNomes(g.nomes), valorCentavos: g.valorCentavos }));
   if (negativos < 0 && linhas.length > 0) linhas[0].valorCentavos = Math.max(1, linhas[0].valorCentavos + negativos);
 
   const somaItens = linhas.reduce((a, l) => a + l.valorCentavos, 0);
@@ -199,11 +200,71 @@ export function sugerirDocumento(e: ExtracaoDocumento, hoje: string): Sugestao {
     linhas.splice(0, linhas.length, { planoContasCodigo: null, descricao: "Itens não fecham com o total: revisar o rateio", valorCentavos: total });
   }
 
+  return { linhas, vencimentos: vencimentosDaNota(e, linhas, hoje), diferencaCentavos: diferenca };
+}
+
+/** Duplicatas lidas quando fecham com o total das linhas; senão, um vencimento só. */
+function vencimentosDaNota(e: ExtracaoDocumento, linhas: LinhaSugerida[], hoje: string) {
   const totalLinhas = linhas.reduce((a, l) => a + l.valorCentavos, 0);
   const somaVenc = e.vencimentos.reduce((a, v) => a + v.valorCentavos, 0);
-  const vencimentos =
-    e.vencimentos.length > 0 && somaVenc === totalLinhas
-      ? e.vencimentos
-      : [{ data: e.vencimentos[0]?.data ?? e.dataEmissao ?? hoje, valorCentavos: totalLinhas }];
-  return { linhas, vencimentos, diferencaCentavos: diferenca };
+  return e.vencimentos.length > 0 && somaVenc === totalLinhas
+    ? e.vencimentos
+    : [{ data: e.vencimentos[0]?.data ?? e.dataEmissao ?? hoje, valorCentavos: totalLinhas }];
+}
+
+/** Revisão item a item (23/11/2026): uma linha por item, na ordem da nota, com o Plano de Contas
+ * sugerido para cada item; a pessoa decide item por item. Fecha com o total da nota pela mesma
+ * regra da sugestão agrupada: itens que somam menos ganham a linha "Diferença" sem Plano de
+ * Contas, e desconto (item negativo ou não detalhado) abate do maior item. Quando o desconto não
+ * cabe no maior item, é rateado entre os itens na proporção do valor, para a lista de itens não
+ * virar uma linha só. Sem itens, devolve a sugestão agrupada. */
+export function sugerirPorItem(e: ExtracaoDocumento, hoje: string): Sugestao {
+  const linhas: LinhaSugerida[] = e.itens
+    .filter((i) => i.valorCentavos > 0)
+    .map((i) => ({ planoContasCodigo: i.planoContasCodigo, descricao: i.descricao.slice(0, 200), valorCentavos: i.valorCentavos }));
+  const brutos = linhas.reduce((a, l) => a + l.valorCentavos, 0);
+  const liquido = brutos + e.itens.reduce((a, i) => a + Math.min(0, i.valorCentavos), 0);
+  const total = e.valorTotalCentavos > 0 ? e.valorTotalCentavos : liquido;
+  if (linhas.length === 0 || total <= 0) return sugerirDocumento(e, hoje);
+
+  const abatimento = brutos - total;
+  if (abatimento < 0) {
+    linhas.push({ planoContasCodigo: null, descricao: "Diferença para fechar com o total da nota", valorCentavos: -abatimento });
+  } else if (abatimento > 0) {
+    const m = linhas.reduce((mi, l, i) => (l.valorCentavos > linhas[mi].valorCentavos ? i : mi), 0);
+    if (linhas[m].valorCentavos > abatimento) {
+      linhas[m].valorCentavos -= abatimento;
+    } else {
+      let resto = abatimento;
+      for (const l of linhas) {
+        const corte = Math.floor((abatimento * l.valorCentavos) / brutos);
+        l.valorCentavos -= corte;
+        resto -= corte;
+      }
+      // Centavos que sobram do arredondamento saem dos maiores itens, um por vez.
+      const ordem = linhas.map((_, i) => i).sort((a, b) => linhas[b].valorCentavos - linhas[a].valorCentavos);
+      for (let k = 0; resto > 0 && k < ordem.length * 2; k++) {
+        const l = linhas[ordem[k % ordem.length]];
+        if (l.valorCentavos > 1) {
+          l.valorCentavos -= 1;
+          resto -= 1;
+        }
+      }
+    }
+  }
+  const finais = linhas.filter((l) => l.valorCentavos > 0);
+  return { linhas: finais, vencimentos: vencimentosDaNota(e, finais, hoje), diferencaCentavos: total - liquido };
+}
+
+/** Na gravação, itens com o mesmo Plano de Contas viram uma linha só (como o documento sempre
+ * foi gravado): soma os valores e junta as descrições. Ordem da primeira aparição. */
+export function agruparLinhasPorPlano<T extends { categoriaId: string; descricao: string; valorCentavos: number }>(linhas: T[]) {
+  const grupos = new Map<string, { categoriaId: string; nomes: string[]; valorCentavos: number }>();
+  for (const l of linhas) {
+    const g = grupos.get(l.categoriaId) ?? { categoriaId: l.categoriaId, nomes: [], valorCentavos: 0 };
+    g.valorCentavos += l.valorCentavos;
+    if (l.descricao.trim()) g.nomes.push(l.descricao.trim());
+    grupos.set(l.categoriaId, g);
+  }
+  return Array.from(grupos.values()).map((g) => ({ categoriaId: g.categoriaId, descricao: juntarNomes(g.nomes), valorCentavos: g.valorCentavos }));
 }
