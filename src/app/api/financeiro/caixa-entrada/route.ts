@@ -6,8 +6,9 @@ import { lerEntrada, receberArquivo } from "@/lib/caixa-entrada/processar";
 import { chaveDaNfe } from "@/lib/caixa-entrada/nfe-xml";
 import { ErroPublico } from "@/lib/erros";
 
-// Entrada de notas, boletos e recibos vinda do Vini (WhatsApp de número cadastrado ou pasta do
-// Drive da unidade) e, desde 30/10/2026, o XML que o robô da SEFAZ baixou (canal "sefaz", token
+// Entrada de notas, boletos e recibos vinda do Vini (WhatsApp de número cadastrado, pasta do
+// Drive da unidade ou, desde 23/11/2026, e-mail encaminhado por remetente autorizado para
+// conta+apelido da unidade) e, desde 30/10/2026, o XML que o robô da SEFAZ baixou (canal "sefaz", token
 // próprio). Só guarda e lê; quem lança é uma pessoa na tela da Caixa de Entrada.
 // Corpo limitado pela Vercel (4,5 MB): o arquivo vai em base64 até ~3 MB.
 
@@ -20,6 +21,13 @@ const entrada = z.discriminatedUnion("canal", [
     canal: z.literal("drive"),
     unidadeId: z.string().min(1).max(80),
     pastaId: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/),
+    nomeArquivo: z.string().min(1).max(200),
+    base64: z.string().min(4),
+  }).strict(),
+  z.object({
+    canal: z.literal("email"),
+    apelido: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+    remetenteEmail: z.string().trim().toLowerCase().email().max(120),
     nomeArquivo: z.string().min(1).max(200),
     base64: z.string().min(4),
   }).strict(),
@@ -54,6 +62,23 @@ export async function POST(request: NextRequest) {
     if (!r) return NextResponse.json({ erro: "remetente_nao_cadastrado" }, { status: 404 });
     unidadeId = r.unidade_id;
     remetente = `${r.nome} (WhatsApp final ${tel.slice(-4)})`;
+  } else if (corpo.canal === "email") {
+    // Apelido desconhecido e remetente fora da lista respondem igual: não revela o que existe.
+    const { data: end } = await admin.from("fin_caixa_entrada_enderecos").select("unidade_id").eq("apelido", corpo.apelido).maybeSingle();
+    const u = (end as { unidade_id: string } | null)?.unidade_id;
+    const { data } = u
+      ? await admin
+          .from("fin_caixa_entrada_emails")
+          .select("nome")
+          .eq("unidade_id", u)
+          .eq("email", corpo.remetenteEmail)
+          .eq("ativo", true)
+          .maybeSingle()
+      : { data: null };
+    const r = data as { nome: string } | null;
+    if (!u || !r) return NextResponse.json({ erro: "remetente_nao_cadastrado" }, { status: 404 });
+    unidadeId = u;
+    remetente = `${r.nome} (${corpo.remetenteEmail})`;
   } else if (corpo.canal === "sefaz") {
     const { data } = await admin.from("fin_sefaz_certificados").select("unidade_id, cnpj").eq("id", corpo.certificadoId).eq("ativo", true).maybeSingle();
     const c = data as { unidade_id: string; cnpj: string } | null;

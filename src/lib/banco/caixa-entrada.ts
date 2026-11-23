@@ -14,7 +14,7 @@ export type SituacaoEntrada = "recebido" | "lendo" | "lido" | "falhou" | "lancad
 
 export type EntradaCaixa = {
   id: string;
-  canal: "upload" | "whatsapp" | "drive" | "sefaz";
+  canal: "upload" | "whatsapp" | "drive" | "sefaz" | "email";
   remetente: string | null;
   nomeArquivo: string;
   mime: string;
@@ -160,18 +160,37 @@ export async function tratarEntrada(entradaId: string, acao: "anexar" | "descart
 export type ConfigCaixa = {
   remetentes: { id: string; telefone: string; nome: string }[];
   pasta: { situacao: "solicitada" | "ativa" | "desligada"; link: string | null; emailCompartilhar: string | null } | null;
+  /** null = canal de e-mail desligado (sem CAIXA_EMAIL_BASE no servidor). */
+  email: { endereco: string | null; autorizados: { id: string; email: string; nome: string }[] } | null;
 };
+
+/** "notas.zattihub@gmail.com" + "betones" -> "notas.zattihub+betones@gmail.com". */
+export function enderecoCaixaEmail(base: string | undefined, apelido: string | null): string | null {
+  const m = /^([^@\s+]+)@([^@\s]+)$/.exec((base ?? "").trim());
+  if (!m || !apelido) return null;
+  return `${m[1]}+${apelido}@${m[2]}`;
+}
 
 export async function lerConfigCaixa(unidadeId: string): Promise<ConfigCaixa> {
   const supabase = await createClient();
-  const [rem, pasta] = await Promise.all([
+  const base = process.env.CAIXA_EMAIL_BASE;
+  const [rem, pasta, emails, endereco] = await Promise.all([
     supabase.from("fin_caixa_entrada_remetentes").select("id, telefone, nome").eq("unidade_id", unidadeId).eq("ativo", true).order("nome"),
     supabase.from("fin_caixa_entrada_pastas").select("situacao, link, email_compartilhar").eq("unidade_id", unidadeId).maybeSingle(),
+    supabase.from("fin_caixa_entrada_emails").select("id, email, nome").eq("unidade_id", unidadeId).eq("ativo", true).order("nome"),
+    supabase.from("fin_caixa_entrada_enderecos").select("apelido").eq("unidade_id", unidadeId).maybeSingle(),
   ]);
   const p = pasta.data as { situacao: "solicitada" | "ativa" | "desligada"; link: string | null; email_compartilhar: string | null } | null;
   return {
     remetentes: (rem.data as ConfigCaixa["remetentes"] | null) ?? [],
     pasta: p ? { situacao: p.situacao, link: p.link, emailCompartilhar: p.email_compartilhar } : null,
+    // Sem a conta de notas configurada (ou com valor fora do formato) o bloco nem aparece.
+    email: enderecoCaixaEmail(base, "teste")
+      ? {
+          endereco: enderecoCaixaEmail(base, (endereco.data as { apelido: string } | null)?.apelido ?? null),
+          autorizados: (emails.data as { id: string; email: string; nome: string }[] | null) ?? [],
+        }
+      : null,
   };
 }
 
@@ -179,7 +198,9 @@ export async function configurarCaixa(unidadeId: string, config: Record<string, 
   const supabase = await createClient();
   const { error } = await supabase.rpc("fin_caixa_entrada_configurar", { p_unidade: unidadeId, p_config: config });
   if (error) {
-    if (error.code === "23505") throw new ErroPublico("Este número já está cadastrado em uma unidade.");
+    if (error.code === "23505") {
+      throw new ErroPublico(config.acao === "adicionar_email" ? "Este e-mail já está autorizado nesta unidade." : "Este número já está cadastrado em uma unidade.");
+    }
     throw erroDeNegocio(error);
   }
 }
