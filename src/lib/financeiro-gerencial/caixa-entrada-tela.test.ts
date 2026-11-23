@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { descricaoSugerida, formatarDataHoraBr, totalLido, valoresIniciaisDaExtracao, type ExtracaoComSugestao } from "./caixa-entrada-tela";
+import {
+  contraparteDoDocumento,
+  descricaoSugerida,
+  formatarDataHoraBr,
+  formatarDocumento,
+  totalLido,
+  valoresIniciaisDaExtracao,
+  type ExtracaoComSugestao,
+} from "./caixa-entrada-tela";
 
 function extracao(p: Partial<ExtracaoComSugestao> = {}): ExtracaoComSugestao {
   return {
@@ -9,7 +17,7 @@ function extracao(p: Partial<ExtracaoComSugestao> = {}): ExtracaoComSugestao {
     numero: "123",
     dataEmissao: "2026-10-05",
     valorTotalCentavos: 15000,
-    vencimentos: [],
+    vencimentos: [{ data: "2026-11-05", valorCentavos: 15000 }],
     itens: [],
     fonte: "xml_nfe",
     observacao: null,
@@ -38,20 +46,25 @@ describe("caixa de entrada - tela", () => {
   });
 
   it("preenche novo fornecedor quando não achou contraparte e limpa Plano de Contas inválido", () => {
-    const v = valoresIniciaisDaExtracao(extracao(), "2026-10-11", new Set(["cat-1"]));
+    const itens = [
+      { descricao: "Carne", valorCentavos: 10000, planoContasCodigo: "cat-1" },
+    ];
+    const v = valoresIniciaisDaExtracao(extracao({ itens }), "2026-10-11", new Set(["cat-1"]));
+    expect(v.itemAItem).toBe(true);
+    expect(v.documentoLido).toBe("12345678000199");
     expect(v.contraparteId).toBeNull();
     expect(v.novaContraparte).toEqual({ nome: "Atacadão", documento: "12345678000199" });
     expect(v.dataCompetencia).toBe("2026-10-05");
     expect(v.linhas).toEqual([
       { categoriaId: "cat-1", descricao: "Carne", valor: 100 },
-      { categoriaId: "", descricao: "Diferença", valor: 50 },
+      { categoriaId: "", descricao: "Diferença para fechar com o total da nota", valor: 50 },
     ]);
     expect(v.vencimentos).toEqual([{ dataPrevista: "2026-11-05", valor: 150 }]);
-    const semValido = valoresIniciaisDaExtracao(extracao(), "2026-10-11", new Set());
+    const semValido = valoresIniciaisDaExtracao(extracao({ itens }), "2026-10-11", new Set());
     expect(semValido.linhas?.[0].categoriaId).toBe("");
   });
 
-  it("usa contraparte existente, hoje como competência e deixa vencimentos para o formulário", () => {
+  it("usa contraparte existente e hoje como competência; sem itens, uma linha com o total", () => {
     const v = valoresIniciaisDaExtracao(
       extracao({ contraparteId: "f1", dataEmissao: null, sugestao: { linhas: [], vencimentos: [], diferencaCentavos: 0 } }),
       "2026-10-11",
@@ -60,12 +73,41 @@ describe("caixa de entrada - tela", () => {
     expect(v.contraparteId).toBe("f1");
     expect(v.novaContraparte).toBeUndefined();
     expect(v.dataCompetencia).toBe("2026-10-11");
-    expect(v.linhas).toBeUndefined();
-    expect(v.vencimentos).toBeUndefined();
+    // Sem itens lidos: uma linha com o total da nota, sem Plano de Contas, e a duplicata lida.
+    expect(v.linhas).toEqual([{ categoriaId: "", descricao: "Atacadão", valor: 150 }]);
+    expect(v.vencimentos).toEqual([{ dataPrevista: "2026-11-05", valor: 150 }]);
   });
 
   it("total lido usa vencimentos ou o total impresso", () => {
     expect(totalLido(extracao())).toBe(150);
     expect(totalLido(extracao({ sugestao: { linhas: [], vencimentos: [], diferencaCentavos: 0 } }))).toBe(150);
+  });
+
+  it("lista um item por linha, cada um com o seu Plano de Contas, mesmo quando todos são do mesmo", () => {
+    const itens = [
+      { descricao: "Picanha", valorCentavos: 6000, planoContasCodigo: "cat-1" },
+      { descricao: "Fraldinha", valorCentavos: 4000, planoContasCodigo: "cat-1" },
+      { descricao: "Sacola", valorCentavos: 5000, planoContasCodigo: "cat-2" },
+    ];
+    const v = valoresIniciaisDaExtracao(extracao({ itens }), "2026-10-11", new Set(["cat-1", "cat-2"]));
+    expect(v.linhas).toEqual([
+      { categoriaId: "cat-1", descricao: "Picanha", valor: 60 },
+      { categoriaId: "cat-1", descricao: "Fraldinha", valor: 40 },
+      { categoriaId: "cat-2", descricao: "Sacola", valor: 50 },
+    ]);
+    expect(v.vencimentos).toEqual([{ dataPrevista: "2026-11-05", valor: 150 }]);
+  });
+
+  it("reconhece o fornecedor pelo CNPJ só com os dígitos", () => {
+    const lista = [
+      { id: "a", documento: null },
+      { id: "b", documento: "12345678000199" },
+    ];
+    expect(contraparteDoDocumento(lista, "12.345.678/0001-99")?.id).toBe("b");
+    expect(contraparteDoDocumento(lista, "99999999000199")).toBeNull();
+    expect(contraparteDoDocumento(lista, "123")).toBeNull();
+    expect(contraparteDoDocumento(lista, null)).toBeNull();
+    expect(formatarDocumento("12345678000199")).toBe("12.345.678/0001-99");
+    expect(formatarDocumento("12345678901")).toBe("123.456.789-01");
   });
 });

@@ -497,28 +497,13 @@ function CabecalhoRevisao({ entrada }: { entrada: EntradaCaixa }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-cinza-medio">
-        {ex.fonte === "xml_nfe" ? "Lido do XML da NF-e." : "Lido pela IA a partir da imagem ou PDF. Confira os valores."} Plano de Contas em branco
-        precisa ser escolhido.
+        {ex.fonte === "xml_nfe" ? "Lido do XML da NF-e." : "Lido pela IA a partir da imagem ou PDF. Confira os valores."} Cada item da nota aparece
+        abaixo com o seu Plano de Contas; o que estiver em branco precisa ser escolhido.
       </p>
       {diferenca !== 0 && (
         <p className="rounded-md bg-ambar/15 p-2 text-xs font-semibold text-azul-noite">
           Os itens não fecham com o total da nota, confira (diferença de R$ {formatarMoeda(diferenca / 100)}).
         </p>
-      )}
-      {ex.itens.length > 0 && (
-        <details className="rounded-md border border-cinza-claro bg-branco p-2 text-xs">
-          <summary className="cursor-pointer font-semibold text-azul-petroleo">Itens lidos ({ex.itens.length})</summary>
-          <ul className="mt-2 flex max-h-48 flex-col gap-1 overflow-auto">
-            {ex.itens.map((item, i) => (
-              <li key={i} className="flex justify-between gap-2">
-                <span className="truncate" title={item.descricao}>
-                  {item.descricao}
-                </span>
-                <span className="whitespace-nowrap">R$ {formatarMoeda(item.valorCentavos / 100)}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
       )}
     </div>
   );

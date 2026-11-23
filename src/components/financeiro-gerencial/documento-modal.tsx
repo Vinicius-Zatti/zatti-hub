@@ -14,6 +14,8 @@ import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-b
 import { listarContasComCaminho } from "@/lib/financeiro-gerencial/categorias";
 import { hojeIsoBrasil, somarMesesClampado } from "@/lib/financeiro-gerencial/datas";
 import { dividirEmVencimentos, paraCentavos } from "@/lib/financeiro-gerencial/rateio";
+import { agruparLinhasPorPlano } from "@/lib/caixa-entrada/extracao";
+import { contraparteDoDocumento, formatarDocumento, soDigitos } from "@/lib/financeiro-gerencial/caixa-entrada-tela";
 import type { Contraparte } from "@/lib/banco/financeiro-documentos";
 import type { CategoriaFinanceira, ContaFinanceira, TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
 
@@ -29,8 +31,14 @@ export type ValoresIniciaisDocumento = {
   observacao?: string;
   linhas?: { categoriaId: string; descricao: string; valor: number | null }[];
   vencimentos?: { dataPrevista: string; valor: number | null }[];
-  /** Sem `contraparteId`: abre o bloco de novo fornecedor/cliente já preenchido (ex.: lido da nota). */
+  /** Sem `contraparteId`: abre o bloco de novo fornecedor/cliente já preenchido (ex.: lido da nota).
+   * Se o CPF/CNPJ já estiver cadastrado, o cadastro é sugerido e o bloco fica fechado (23/11/2026). */
   novaContraparte?: { nome: string; documento: string };
+  /** CPF/CNPJ lido do documento: com ele a tela avisa que o fornecedor foi reconhecido. */
+  documentoLido?: string | null;
+  /** Uma linha por item da nota, cada uma com o seu Plano de Contas; ao salvar, itens do mesmo
+   * Plano de Contas viram uma linha só do documento. */
+  itemAItem?: boolean;
 };
 
 /** O que o formulário envia (formato de `documentoFinanceiroEntradaSchema`). */
@@ -177,7 +185,10 @@ function FormularioDocumento({
     vi.vencimentos && vi.vencimentos.length > 0 ? vi.vencimentos : null,
   );
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
-  const [criandoContraparte, setCriandoContraparte] = useState(Boolean(vi.novaContraparte && !vi.contraparteId));
+  // Com CPF/CNPJ lido, o bloco de novo cadastro só abre depois de conferir que ele não existe.
+  const documentoNovo = soDigitos(vi.novaContraparte?.documento);
+  const conferirDocumento = !vi.contraparteId && (documentoNovo.length === 11 || documentoNovo.length === 14);
+  const [criandoContraparte, setCriandoContraparte] = useState(Boolean(vi.novaContraparte && !vi.contraparteId && !conferirDocumento));
   const [novoNome, setNovoNome] = useState(vi.novaContraparte?.nome ?? "");
   const [novoDocumento, setNovoDocumento] = useState(vi.novaContraparte?.documento ?? "");
   const [erroContraparte, setErroContraparte] = useState<string | null>(null);
@@ -189,14 +200,29 @@ function FormularioDocumento({
     let ativo = true;
     listarContrapartesAction()
       .then((lista) => {
-        if (ativo) setContrapartes(lista);
+        if (!ativo) return;
+        setContrapartes(lista);
+        if (!conferirDocumento) return;
+        const existente = contraparteDoDocumento(lista, documentoNovo);
+        if (existente) {
+          // CNPJ já cadastrado: sugere o cadastro, sem abrir o quadro de novo fornecedor.
+          setContraparteId(existente.id);
+          setNovoNome("");
+          setNovoDocumento("");
+        } else {
+          setCriandoContraparte(true);
+        }
       })
       .catch(() => {
-        if (ativo) setErroContraparte("Não foi possível carregar fornecedores e clientes.");
+        if (!ativo) return;
+        setErroContraparte("Não foi possível carregar fornecedores e clientes.");
+        if (conferirDocumento) setCriandoContraparte(true);
       });
     return () => {
       ativo = false;
     };
+    // Roda só ao abrir: os valores lidos do documento não mudam com o formulário aberto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rotuloContraparte = tipo === "receita" ? "Cliente" : "Fornecedor";
@@ -208,6 +234,10 @@ function FormularioDocumento({
     [contrapartes, tipo, contraparteId],
   );
   const opcoesCategoria = useMemo(() => opcoesPlanoDeContas(categorias, tipo), [categorias, tipo]);
+  const selecionada = contrapartes.find((c) => c.id === contraparteId) ?? null;
+  const documentoLido = soDigitos(vi.documentoLido ?? vi.novaContraparte?.documento);
+  const reconhecidaPeloDocumento = selecionada !== null && documentoLido !== "" && soDigitos(selecionada.documento) === documentoLido;
+  const itemAItem = Boolean(vi.itemAItem);
   const opcoesConta = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
 
   const totalLinhasC = linhas.reduce((a, l) => a + paraCentavos(l.valor ?? 0), 0);
@@ -259,6 +289,12 @@ function FormularioDocumento({
     e.preventDefault();
     if (!podeSalvar) return;
     setErro(null);
+    const porLinha = linhas.map((l) => ({ categoriaId: l.categoriaId, descricao: l.descricao, valorCentavos: paraCentavos(l.valor ?? 0) }));
+    const linhasParaSalvar = itemAItem ? agruparLinhasPorPlano(porLinha) : porLinha;
+    if (linhasParaSalvar.length > 50) {
+      setErro("A nota passa de 50 Plano de Contas diferentes. Junte itens parecidos no mesmo Plano de Contas.");
+      return;
+    }
     startTransition(async () => {
       const documento: DocumentoParaSalvar = {
         chave,
@@ -270,7 +306,7 @@ function FormularioDocumento({
         dataCompetencia,
         contaFinanceiraId: contaFinanceiraId || null,
         observacao,
-        linhas: linhas.map((l) => ({ categoriaId: l.categoriaId, descricao: l.descricao, valorCentavos: paraCentavos(l.valor ?? 0) })),
+        linhas: linhasParaSalvar,
         vencimentos: vencimentos.map((v) => ({ dataPrevista: v.dataPrevista, valorCentavos: paraCentavos(v.valor ?? 0) })),
       };
       const r = aoSalvar ? await aoSalvar(documento) : await criarDocumentoAction(documento);
@@ -309,21 +345,33 @@ function FormularioDocumento({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className={ROTULO}>
-          <div className="flex items-center justify-between">
-            <span>{rotuloContraparte}</span>
+          <span>{rotuloContraparte}</span>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SeletorComBusca
+                value={contraparteId}
+                opcoes={opcoesContraparte}
+                onChange={setContraparteId}
+                placeholder="Selecionar..."
+                vazioLabel={`Sem ${rotuloContraparte.toLowerCase()}`}
+              />
+            </div>
             {!criandoContraparte && (
-              <button type="button" onClick={() => setCriandoContraparte(true)} className="text-xs font-semibold text-azul-petroleo">
-                + Novo {rotuloContraparte.toLowerCase()}
+              <button
+                type="button"
+                onClick={() => setCriandoContraparte(true)}
+                className="shrink-0 rounded-md border border-cinza-claro px-2 py-2 text-xs font-semibold text-azul-petroleo hover:bg-off-white"
+              >
+                Salvar novo {rotuloContraparte.toLowerCase()}
               </button>
             )}
           </div>
-          <SeletorComBusca
-            value={contraparteId}
-            opcoes={opcoesContraparte}
-            onChange={setContraparteId}
-            placeholder="Selecionar..."
-            vazioLabel={`Sem ${rotuloContraparte.toLowerCase()}`}
-          />
+          {reconhecidaPeloDocumento && (
+            <span className="text-xs font-normal text-verde">
+              Reconhecido pelo {documentoLido.length === 11 ? "CPF" : "CNPJ"} {formatarDocumento(documentoLido)} da nota. Se não for este, troque
+              na lista.
+            </span>
+          )}
         </div>
         <label className={ROTULO}>
           Número da nota
@@ -395,7 +443,15 @@ function FormularioDocumento({
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-cinza-claro p-3">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Plano de Contas da nota</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">
+          {itemAItem ? `Itens da nota (${linhas.length}) - Plano de Contas de cada item` : "Plano de Contas da nota"}
+        </div>
+        {itemAItem && (
+          <p className="text-xs text-cinza-medio">
+            O Plano de Contas de cada item veio sugerido. Confira item por item e troque o que precisar. Ao salvar, itens do mesmo Plano de
+            Contas são somados numa linha do lançamento.
+          </p>
+        )}
         {linhas.map((linha, i) => (
           <div key={i} className="grid items-end gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_auto]">
             <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
@@ -408,7 +464,7 @@ function FormularioDocumento({
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
-              Descrição (opcional)
+              {itemAItem ? "Item" : "Descrição (opcional)"}
               <input
                 value={linha.descricao}
                 onChange={(e) => atualizarLinha(i, { descricao: e.target.value })}
@@ -430,13 +486,13 @@ function FormularioDocumento({
             </button>
           </div>
         ))}
-        {linhas.length < 50 && (
+        {linhas.length < (itemAItem ? 300 : 50) && (
           <button
             type="button"
             onClick={() => setLinhas((atual) => [...atual, { categoriaId: "", descricao: "", valor: null }])}
             className="self-start text-xs font-semibold text-azul-petroleo"
           >
-            + Adicionar Plano de Contas
+            {itemAItem ? "+ Adicionar linha" : "+ Adicionar Plano de Contas"}
           </button>
         )}
       </div>

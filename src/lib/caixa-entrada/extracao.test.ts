@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { centavosDeReais, codigosDosItens, extracaoDaIa, sugerirDocumento, type ExtracaoDocumento } from "./extracao";
+import {
+  agruparLinhasPorPlano,
+  centavosDeReais,
+  codigosDosItens,
+  extracaoDaIa,
+  sugerirDocumento,
+  sugerirPorItem,
+  type ExtracaoDocumento,
+} from "./extracao";
 import { lerNfeXml } from "./nfe-xml";
 
 const XML = `<?xml version="1.0"?><nfeProc><NFe><infNFe Id="NFe1"><ide><nNF>4521</nNF><dhEmi>2026-10-05T10:00:00-03:00</dhEmi></ide>
@@ -60,6 +68,60 @@ describe("sugerirDocumento", () => {
     const s = sugerirDocumento({ ...base, valorTotalCentavos: 3000, itens }, "2026-10-11");
     expect(s.linhas).toEqual([{ planoContasCodigo: null, descricao: "Itens não fecham com o total: revisar o rateio", valorCentavos: 3000 }]);
     expect(s.vencimentos).toEqual([{ data: "2026-10-01", valorCentavos: 3000 }]);
+  });
+});
+
+describe("sugerirPorItem", () => {
+  it("uma linha por item na ordem da nota, mesmo com o mesmo Plano de Contas", () => {
+    const e = lerNfeXml(XML) as ExtracaoDocumento;
+    e.itens[0].planoContasCodigo = "c1";
+    e.itens[1].planoContasCodigo = "c2";
+    e.itens[2].planoContasCodigo = "c1";
+    const s = sugerirPorItem(e, "2026-10-11");
+    expect(s.linhas.map((l) => [l.planoContasCodigo, l.descricao, l.valorCentavos])).toEqual([
+      ["c1", "CARNE MOIDA 1KG", 30000],
+      ["c2", "CAIXA PIZZA 35CM", 9000],
+      ["c1", "Frete e outras despesas da nota", 1550],
+    ]);
+    expect(s.vencimentos).toHaveLength(2);
+    expect(s.diferencaCentavos).toBe(0);
+  });
+  it("diferença vira linha sem Plano de Contas e desconto que cabe abate do maior item", () => {
+    const mais = sugerirPorItem({ ...base, itens: [{ descricao: "Pão", valorCentavos: 900, planoContasCodigo: "c1" }] }, "2026-10-11");
+    expect(mais.linhas).toEqual([
+      { planoContasCodigo: "c1", descricao: "Pão", valorCentavos: 900 },
+      { planoContasCodigo: null, descricao: "Diferença para fechar com o total da nota", valorCentavos: 100 },
+    ]);
+    const itens = [
+      { descricao: "Queijo", valorCentavos: 500, planoContasCodigo: "c1" },
+      { descricao: "Presunto", valorCentavos: 800, planoContasCodigo: "c1" },
+    ];
+    const menos = sugerirPorItem({ ...base, itens }, "2026-10-11");
+    expect(menos.linhas.map((l) => l.valorCentavos)).toEqual([500, 500]);
+  });
+  it("desconto maior que o maior item é rateado e a lista de itens continua", () => {
+    const itens = Array.from({ length: 10 }, (_, i) => ({ descricao: `Item ${i + 1}`, valorCentavos: 1000, planoContasCodigo: "c1" }));
+    const s = sugerirPorItem({ ...base, valorTotalCentavos: 8500, itens }, "2026-10-11");
+    expect(s.linhas).toHaveLength(10);
+    expect(s.linhas.reduce((a, l) => a + l.valorCentavos, 0)).toBe(8500);
+    expect(s.vencimentos).toEqual([{ data: "2026-10-01", valorCentavos: 8500 }]);
+  });
+  it("sem itens cai na sugestão agrupada", () => {
+    expect(sugerirPorItem(base, "2026-10-11")).toEqual(sugerirDocumento(base, "2026-10-11"));
+  });
+});
+
+describe("agruparLinhasPorPlano", () => {
+  it("soma itens do mesmo Plano de Contas na gravação", () => {
+    const r = agruparLinhasPorPlano([
+      { categoriaId: "a", descricao: "Picanha", valorCentavos: 6000 },
+      { categoriaId: "b", descricao: "Sacola", valorCentavos: 500 },
+      { categoriaId: "a", descricao: "Fraldinha", valorCentavos: 4000 },
+    ]);
+    expect(r).toEqual([
+      { categoriaId: "a", descricao: "Picanha, Fraldinha", valorCentavos: 10000 },
+      { categoriaId: "b", descricao: "Sacola", valorCentavos: 500 },
+    ]);
   });
 });
 
