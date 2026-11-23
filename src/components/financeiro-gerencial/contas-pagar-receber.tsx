@@ -1,8 +1,15 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { registrarBaixaAction } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
-import { baixarVencimentoDocumentoAction } from "@/app/(app)/financeiro-gerencial/lancamentos/documentos-actions";
+import {
+  baixarVencimentoDocumentoAction,
+  criarContraparteAction,
+  listarContrapartesAction,
+  trocarContraparteAction,
+} from "@/app/(app)/financeiro-gerencial/lancamentos/documentos-actions";
+import { useRouter } from "next/navigation";
+import type { Contraparte } from "@/lib/banco/financeiro-documentos";
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
@@ -92,12 +99,15 @@ export function ContasPagarReceber({
   categorias,
   contas,
   hoje,
+  podeTrocarContraparte = false,
 }: {
   aPagar: Titulo[];
   aReceber: Titulo[];
   categorias: CategoriaFinanceira[];
   contas: ContaFinanceira[];
   hoje: string;
+  /** Gestão/master troca o fornecedor/cliente de conta já lançada (23/11/2026). */
+  podeTrocarContraparte?: boolean;
 }) {
   const [tipo, setTipo] = useState<TipoLancamento>("despesa");
   const [aba, setAba] = useState<AbaTitulo>("vencidos");
@@ -111,6 +121,7 @@ export function ContasPagarReceber({
   const [baixandoLote, setBaixandoLote] = useState(false);
   const [baixandoGrupo, setBaixandoGrupo] = useState<GrupoTitulo | null>(null);
   const [criandoDocumento, setCriandoDocumento] = useState(false);
+  const [trocandoContraparte, setTrocandoContraparte] = useState<GrupoTitulo | null>(null);
 
   const verbo = tipo === "receita" ? "Receber" : "Pagar";
   const rotuloContraparte = tipo === "receita" ? "Cliente" : "Fornecedor";
@@ -393,7 +404,18 @@ export function ContasPagarReceber({
                     </td>
                     <td className="whitespace-nowrap px-3 py-2">{formatarDataBr(g.dataPrevista)}</td>
                     <td className="max-w-[200px] truncate px-3 py-2" title={g.contraparteNome ?? ""}>
-                      {g.contraparteNome ?? <span className="text-cinza-medio">-</span>}
+                      {podeTrocarContraparte ? (
+                        <button
+                          type="button"
+                          onClick={() => setTrocandoContraparte(g)}
+                          title={`Trocar ${rotuloContraparte.toLowerCase()} desta conta`}
+                          className="max-w-full truncate text-left hover:underline"
+                        >
+                          {g.contraparteNome ?? <span className="font-semibold text-azul-petroleo">+ {rotuloContraparte}</span>}
+                        </button>
+                      ) : (
+                        (g.contraparteNome ?? <span className="text-cinza-medio">-</span>)
+                      )}
                     </td>
                     <td className="max-w-[260px] truncate px-3 py-2" title={g.descricao}>
                       {g.descricao}
@@ -559,6 +581,16 @@ export function ContasPagarReceber({
 
       <ModalFlutuante aberto={baixandoGrupo !== null} onFechar={() => setBaixandoGrupo(null)}>
         {baixandoGrupo && <BaixaIndividual grupo={baixandoGrupo} tipo={tipo} contas={contas} hoje={hoje} onFechar={() => setBaixandoGrupo(null)} />}
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={trocandoContraparte !== null} onFechar={() => setTrocandoContraparte(null)}>
+        {trocandoContraparte && (
+          <TrocarContraparte
+            grupo={trocandoContraparte}
+            tipo={tipo}
+            onFechar={() => setTrocandoContraparte(null)}
+          />
+        )}
       </ModalFlutuante>
 
       <DocumentoModal
@@ -788,6 +820,153 @@ function BaixaIndividual({
           className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
         >
           {isPending ? "Salvando..." : "Confirmar"}
+        </button>
+        <button
+          type="button"
+          onClick={onFechar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Trocar o fornecedor/cliente de uma conta já lançada (23/11/2026). Conta de nota troca a nota
+ * inteira, em todos os vencimentos; valores, datas e baixas não mudam. */
+function TrocarContraparte({ grupo, tipo, onFechar }: { grupo: GrupoTitulo; tipo: TipoLancamento; onFechar: () => void }) {
+  const router = useRouter();
+  const rotulo = tipo === "receita" ? "Cliente" : "Fornecedor";
+  const [lista, setLista] = useState<Contraparte[] | null>(null);
+  const [escolhido, setEscolhido] = useState(grupo.contraparteId ?? "");
+  const [criando, setCriando] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoDocumento, setNovoDocumento] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let ativo = true;
+    listarContrapartesAction()
+      .then((l) => {
+        if (ativo) setLista(l);
+      })
+      .catch(() => {
+        if (ativo) setErro(`Não foi possível carregar a lista de ${rotulo.toLowerCase()}s.`);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [rotulo]);
+
+  const opcoes = useMemo(
+    () =>
+      (lista ?? [])
+        .filter((c) => c.tipo === "ambos" || c.tipo === (tipo === "receita" ? "cliente" : "fornecedor") || c.id === escolhido)
+        .map((c) => ({ id: c.id, label: c.documento ? `${c.nome} (${c.documento})` : c.nome })),
+    [lista, tipo, escolhido],
+  );
+
+  function salvarNovo() {
+    setErro(null);
+    startTransition(async () => {
+      const r = await criarContraparteAction({ nome: novoNome, documento: novoDocumento, tipo: tipo === "receita" ? "cliente" : "fornecedor" });
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      setLista((atual) => (atual && !atual.some((c) => c.id === r.contraparte.id) ? [...atual, r.contraparte] : atual));
+      setEscolhido(r.contraparte.id);
+      setCriando(false);
+    });
+  }
+
+  function salvar(e: FormEvent) {
+    e.preventDefault();
+    const lancamentoId = grupo.titulos[0]?.lancamentoId;
+    if (!lancamentoId) return;
+    setErro(null);
+    startTransition(async () => {
+      const r = await trocarContraparteAction({ lancamentoId, contraparteId: escolhido || null });
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      router.refresh();
+      onFechar();
+    });
+  }
+
+  const campo = "w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza";
+  return (
+    <form onSubmit={salvar} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">{rotulo} desta conta</h2>
+      <p className="text-xs text-cinza-medio">
+        {grupo.descricao}
+        {grupo.documentoId ? ". É uma nota: o " + rotulo.toLowerCase() + " muda na nota inteira, em todos os vencimentos." : "."} Valores, datas e
+        baixas não mudam.
+      </p>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SeletorComBusca
+            value={escolhido}
+            opcoes={opcoes}
+            onChange={setEscolhido}
+            placeholder={lista === null ? "Carregando..." : "Selecionar..."}
+            vazioLabel={`Sem ${rotulo.toLowerCase()}`}
+          />
+        </div>
+        {!criando && (
+          <button
+            type="button"
+            onClick={() => setCriando(true)}
+            className="shrink-0 rounded-md border border-cinza-claro px-2 py-2 text-xs font-semibold text-azul-petroleo hover:bg-off-white"
+          >
+            Salvar novo {rotulo.toLowerCase()}
+          </button>
+        )}
+      </div>
+      {criando && (
+        <div className="flex flex-col gap-2 rounded-lg border border-ambar/60 bg-ambar/5 p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              Nome
+              <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} maxLength={160} className={campo} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+              CPF/CNPJ (opcional)
+              <input value={novoDocumento} onChange={(e) => setNovoDocumento(e.target.value)} maxLength={18} inputMode="numeric" className={campo} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={salvarNovo}
+              disabled={isPending || novoNome.trim() === ""}
+              className="rounded-md bg-azul-noite px-3 py-1.5 text-xs font-bold text-branco disabled:opacity-50"
+            >
+              Salvar {rotulo.toLowerCase()}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCriando(false)}
+              className="rounded-md border border-cinza-claro px-3 py-1.5 text-xs font-semibold text-cinza-medio"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending || lista === null || escolhido === (grupo.contraparteId ?? "")}
+          className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Salvando..." : "Salvar"}
         </button>
         <button
           type="button"

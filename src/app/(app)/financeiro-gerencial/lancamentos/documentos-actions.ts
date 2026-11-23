@@ -1,13 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
+import { z } from "zod";
+import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
 import {
   baixarVencimentoDocumento,
   criarContraparte,
   criarDocumento,
   listarContrapartes,
+  trocarContraparte,
   type Contraparte,
 } from "@/lib/banco/financeiro-documentos";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
@@ -69,6 +71,23 @@ export async function baixarVencimentoDocumentoAction(input: unknown): Promise<{
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível registrar o pagamento.") };
+  }
+}
+
+/** Contas a Pagar e Receber: trocar o fornecedor/cliente de conta já lançada (Gestão/master). */
+export async function trocarContraparteAction(input: unknown): Promise<{ ok: true } | { ok: false; mensagem: string }> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    exigirEdicao(acesso, "financeiro");
+    await exigirLimiteRequisicao("fin_lancamento_criar");
+    const e = z.object({ lancamentoId: z.string().uuid(), contraparteId: z.string().uuid().nullable() }).strict().parse(input);
+    await trocarContraparte(acesso.unidadeId, e.lancamentoId, e.contraparteId);
+    revalidatePath("/financeiro-gerencial/contas-pagar-receber");
+    revalidatePath("/financeiro-gerencial/lancamentos/despesas");
+    revalidatePath("/financeiro-gerencial/lancamentos/receitas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível trocar o fornecedor.") };
   }
 }
 

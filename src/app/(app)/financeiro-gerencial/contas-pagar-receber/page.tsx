@@ -17,5 +17,14 @@ export default async function ContasPagarReceberPage() {
     listarContasFinanceiras(acesso.unidadeId, true),
   ]);
 
-  return <ContasPagarReceber aPagar={aPagar} aReceber={aReceber} categorias={categorias} contas={contas} hoje={hojeIsoBrasil()} />;
+  return (
+    <ContasPagarReceber
+      aPagar={aPagar}
+      aReceber={aReceber}
+      categorias={categorias}
+      contas={contas}
+      hoje={hojeIsoBrasil()}
+      podeTrocarContraparte={acesso.role !== "operacional"}
+    />
+  );
 }
