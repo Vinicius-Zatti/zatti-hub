@@ -10,7 +10,8 @@ type Resposta = { ok: boolean; mensagem: string };
 const CAMPO = "w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza";
 
 /** Seção "Configurar" da Caixa de Entrada (só Gestão/master): números autorizados no WhatsApp,
- * pasta do Google Drive e quem recebe o alerta diário de contas a pagar. */
+ * e-mails autorizados (endereço da unidade), pasta do Google Drive e quem recebe o alerta diário
+ * de contas a pagar. */
 export function CaixaEntradaConfigurar({ config, alertas }: { config: ConfigCaixa; alertas: DestinatarioAlerta[] }) {
   const [aberta, setAberta] = useState(false);
   return (
@@ -33,6 +34,7 @@ export function CaixaEntradaConfigurar({ config, alertas }: { config: ConfigCaix
             adicionar={(nome, telefone) => configurarCaixaAction({ acao: "adicionar_remetente", nome, telefone })}
             remover={(id) => configurarCaixaAction({ acao: "remover_remetente", id })}
           />
+          {config.email && <PorEmail email={config.email} />}
           <PastaDrive pasta={config.pasta} />
           <ListaTelefones
             titulo="Alerta diário das 8h"
@@ -213,6 +215,105 @@ function PastaDrive({ pasta }: { pasta: ConfigCaixa["pasta"] }) {
           </button>
         </form>
       )}
+      {mensagem && <p className={`text-xs ${mensagem.ok ? "text-verde" : "text-vermelho"}`}>{mensagem.mensagem}</p>}
+    </div>
+  );
+}
+
+/** Bloco "Por e-mail" (23/11/2026): endereço conta+apelido da unidade e a lista de quem pode
+ * encaminhar nota. Mesmo desenho da lista de números do WhatsApp. */
+function PorEmail({ email }: { email: NonNullable<ConfigCaixa["email"]> }) {
+  const router = useRouter();
+  const [nome, setNome] = useState("");
+  const [endereco, setEndereco] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  const [mensagem, setMensagem] = useState<Resposta | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function executar(input: Record<string, unknown>, limpar: boolean) {
+    setMensagem(null);
+    startTransition(async () => {
+      const r = await configurarCaixaAction(input);
+      setMensagem(r);
+      if (r.ok) {
+        if (limpar) {
+          setNome("");
+          setEndereco("");
+        }
+        router.refresh();
+      }
+    });
+  }
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    executar({ acao: "adicionar_email", nome: nome.trim(), email: endereco.trim() }, true);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-sm font-bold text-azul-noite">Por e-mail</h3>
+      <p className="text-xs text-cinza-medio">
+        Encaminhe a nota para este endereço. Só entra e-mail vindo de quem está na lista abaixo. Aceita PDF, foto e XML até 3 MB.
+      </p>
+      {email.endereco ? (
+        <div className="flex items-center justify-between gap-2 rounded-md bg-verde/10 p-2 text-sm">
+          <code className="break-all text-xs font-semibold text-azul-noite">{email.endereco}</code>
+          <button
+            type="button"
+            onClick={() =>
+              navigator.clipboard?.writeText(email.endereco ?? "").then(
+                () => setCopiado(true),
+                () => setCopiado(false),
+              )
+            }
+            className="shrink-0 rounded-md border border-azul-petroleo px-3 py-1.5 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+          >
+            {copiado ? "Copiado" : "Copiar endereço"}
+          </button>
+        </div>
+      ) : (
+        <p className="rounded-md bg-ambar/10 p-2 text-xs text-cinza-medio">O endereço aparece quando você autorizar o primeiro e-mail.</p>
+      )}
+      <ul className="flex flex-col gap-1">
+        {email.autorizados.map((i) => (
+          <li key={i.id} className="flex items-center justify-between gap-2 rounded-md bg-off-white px-2 py-1.5 text-sm">
+            <span className="truncate" title={`${i.nome} - ${i.email}`}>
+              {i.nome} <span className="text-xs text-cinza-medio">{i.email}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => executar({ acao: "remover_email", id: i.id }, false)}
+              disabled={isPending}
+              className="shrink-0 text-xs font-semibold text-vermelho disabled:opacity-50"
+            >
+              Remover
+            </button>
+          </li>
+        ))}
+        {email.autorizados.length === 0 && <li className="text-xs text-cinza-medio">Nenhum e-mail autorizado.</li>}
+      </ul>
+      <form onSubmit={enviar} className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={80} placeholder="Nome" aria-label="Nome" className={CAMPO} />
+          <input
+            type="email"
+            value={endereco}
+            onChange={(e) => setEndereco(e.target.value)}
+            maxLength={120}
+            placeholder="nome@empresa.com"
+            aria-label="E-mail autorizado"
+            className={CAMPO}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={isPending || nome.trim() === "" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(endereco.trim())}
+          className="self-start rounded-md bg-azul-noite px-3 py-1.5 text-xs font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Salvando..." : "+ Autorizar e-mail"}
+        </button>
+      </form>
       {mensagem && <p className={`text-xs ${mensagem.ok ? "text-verde" : "text-vermelho"}`}>{mensagem.mensagem}</p>}
     </div>
   );
