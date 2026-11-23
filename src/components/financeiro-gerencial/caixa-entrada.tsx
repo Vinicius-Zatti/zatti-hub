@@ -10,6 +10,7 @@ import {
   lancarEntradaComoRecorrenteAction,
   lerDeNovoAction,
   linkOriginalAction,
+  mandarParaConciliacaoAction,
 } from "@/app/(app)/financeiro-gerencial/caixa-entrada/actions";
 import {
   listarLancamentosParaAnexarAction,
@@ -103,6 +104,7 @@ export function CaixaEntrada({
   // Vincular comprovante a pagamento já agendado: a mesma tela de anexar, só com contas em aberto.
   const [vinculando, setVinculando] = useState(false);
   const [recorrendo, setRecorrendo] = useState<EntradaCaixa | null>(null);
+  const [conciliando, setConciliando] = useState<EntradaCaixa | null>(null);
   const [descartando, setDescartando] = useState<EntradaCaixa | null>(null);
   const [transferindo, setTransferindo] = useState<EntradaCaixa | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -254,7 +256,7 @@ export function CaixaEntrada({
                     <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${situacao.classe}`}>
                       {situacao.rotulo}
                     </span>
-                    {e.situacao === "falhou" && (
+                    {(e.situacao === "falhou" || e.situacao === "lido") && (
                       <button
                         type="button"
                         onClick={() => lerDeNovo(e)}
@@ -277,7 +279,17 @@ export function CaixaEntrada({
                   <td className="px-3 py-2">
                     {aba === "pendentes" ? (
                       <div className="flex flex-wrap justify-center gap-1">
-                        {(e.situacao === "lido" || e.situacao === "falhou") && (
+                        {ex?.tipoDocumento === "extrato" && (
+                          <button
+                            type="button"
+                            onClick={() => setConciliando(e)}
+                            title="Extrato bancário não se lança aqui: ele vai para a Conciliação, linha a linha."
+                            className="rounded-md bg-ambar px-2 py-1 text-xs font-bold text-azul-noite hover:brightness-95"
+                          >
+                            Mandar para Conciliação
+                          </button>
+                        )}
+                        {(e.situacao === "lido" || e.situacao === "falhou") && ex?.tipoDocumento !== "extrato" && (
                           <button
                             type="button"
                             onClick={() => setRevisando(e)}
@@ -382,6 +394,20 @@ export function CaixaEntrada({
             onFeito={(mensagem) => {
               setAnexando(null);
               setVinculando(false);
+              setAviso({ ok: true, mensagem });
+            }}
+          />
+        )}
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={conciliando !== null} onFechar={() => setConciliando(null)}>
+        {conciliando && (
+          <MandarParaConciliacao
+            entrada={conciliando}
+            contas={contas.filter((c) => c.ativo && c.tipo !== "cartao_credito")}
+            onFechar={() => setConciliando(null)}
+            onFeito={(mensagem) => {
+              setConciliando(null);
               setAviso({ ok: true, mensagem });
             }}
           />
@@ -699,6 +725,71 @@ function AnexarLancamento({
           className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
         >
           {isPending ? (vincular ? "Vinculando..." : "Anexando...") : vincular ? "Vincular" : "Anexar"}
+        </button>
+        <button
+          type="button"
+          onClick={onFechar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Extrato bancário lido na Caixa de Entrada (23/11/2026): escolhe a conta e manda o arquivo para
+ * a Conciliação, onde cada movimentação é conciliada. */
+function MandarParaConciliacao({
+  entrada,
+  contas,
+  onFechar,
+  onFeito,
+}: {
+  entrada: EntradaCaixa;
+  contas: ContaFinanceira[];
+  onFechar: () => void;
+  onFeito: (mensagem: string) => void;
+}) {
+  const [contaId, setContaId] = useState(contas.length === 1 ? contas[0].id : "");
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const opcoes = useMemo(() => contas.map((c) => ({ id: c.id, label: c.nome })), [contas]);
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    if (!contaId) return;
+    setErro(null);
+    startTransition(async () => {
+      const r = await mandarParaConciliacaoAction({ entradaId: entrada.id, contaFinanceiraId: contaId });
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      onFeito(r.mensagem);
+    });
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Mandar para Conciliação</h2>
+      <p className="text-xs text-cinza-medio">
+        {entrada.nomeArquivo} foi lido como extrato bancário. Extrato não vira despesa nem receita: ele vai para a Conciliação, onde cada
+        movimentação é conciliada. Escolha de qual conta é o extrato.
+      </p>
+      <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
+        Conta do extrato
+        <SeletorComBusca value={contaId} opcoes={opcoes} onChange={setContaId} placeholder="Selecionar conta..." />
+      </label>
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={isPending || !contaId}
+          className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+        >
+          {isPending ? "Enviando..." : "Mandar para Conciliação"}
         </button>
         <button
           type="button"

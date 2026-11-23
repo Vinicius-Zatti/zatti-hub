@@ -119,6 +119,24 @@ export async function situacaoDaEntrada(unidadeId: string, entradaId: string): P
   return (data as { situacao: SituacaoEntrada } | null)?.situacao ?? null;
 }
 
+/** Original e nome de uma entrada da unidade (23/11/2026, mandar extrato para a Conciliação). A
+ * entrada é conferida pela sessão (RLS) antes de o servidor baixar o arquivo com o service role. */
+export async function originalDaEntrada(unidadeId: string, entradaId: string): Promise<{ bytes: Uint8Array; nome: string; situacao: SituacaoEntrada }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fin_caixa_entrada")
+    .select("nome_arquivo, caminho_arquivo, situacao")
+    .eq("unidade_id", unidadeId)
+    .eq("id", entradaId)
+    .maybeSingle();
+  if (error) throw erroDeNegocio(error);
+  const e = data as { nome_arquivo: string; caminho_arquivo: string; situacao: SituacaoEntrada } | null;
+  if (!e) throw new ErroPublico("Documento não encontrado. Atualize a página.");
+  const arquivo = await createAdminClient().storage.from(BUCKET_CAIXA_ENTRADA).download(e.caminho_arquivo);
+  if (arquivo.error || !arquivo.data) throw new ErroPublico("Não consegui abrir o arquivo original.");
+  return { bytes: new Uint8Array(await arquivo.data.arrayBuffer()), nome: e.nome_arquivo, situacao: e.situacao };
+}
+
 export async function tratarEntrada(entradaId: string, acao: "anexar" | "descartar", lancamentoId: string | null, motivo: string | null): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("fin_caixa_entrada_tratar", {

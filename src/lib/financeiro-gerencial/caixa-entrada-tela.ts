@@ -11,6 +11,7 @@ const ROTULO_TIPO: Record<TipoDocumentoLido, string> = {
   boleto: "Boleto",
   recibo: "Recibo",
   comprovante: "Comprovante",
+  extrato: "Extrato bancário",
   outro: "Documento",
 };
 
