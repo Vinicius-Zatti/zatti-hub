@@ -4,6 +4,7 @@ import {
   descricaoSugerida,
   formatarDataHoraBr,
   formatarDocumento,
+  resumoDoEnvio,
   totalLido,
   valoresIniciaisDaExtracao,
   type ExtracaoComSugestao,
@@ -109,5 +110,27 @@ describe("caixa de entrada - tela", () => {
     expect(contraparteDoDocumento(lista, null)).toBeNull();
     expect(formatarDocumento("12345678000199")).toBe("12.345.678/0001-99");
     expect(formatarDocumento("12345678901")).toBe("123.456.789-01");
+  });
+});
+
+describe("resumoDoEnvio", () => {
+  it("arquivo repetido já lançado diz onde está, em vez de 'já estava na Caixa'", () => {
+    expect(resumoDoEnvio([{ nome: "faturas (2).pdf", novo: false, situacao: "lancado" }])).toBe(
+      "faturas (2).pdf já foi lançado antes; está em Contas a Pagar e Receber.",
+    );
+  });
+  it("mistura novo, descartado e pendente na Caixa", () => {
+    expect(
+      resumoDoEnvio([
+        { nome: "a.pdf", novo: true, situacao: "recebido" },
+        { nome: "b.pdf", novo: false, situacao: "descartado" },
+        { nome: "c.pdf", novo: false, situacao: "lido" },
+      ]),
+    ).toBe("1 documento recebido, lendo agora; b.pdf já foi descartado antes; c.pdf já estava na Caixa de Entrada.");
+  });
+  it("dois novos no plural", () => {
+    expect(resumoDoEnvio([{ nome: "a", novo: true, situacao: "recebido" }, { nome: "b", novo: true, situacao: "recebido" }])).toBe(
+      "2 documentos recebidos, lendo agora.",
+    );
   });
 });
