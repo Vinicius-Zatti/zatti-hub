@@ -9,6 +9,7 @@ import {
   filtrarGrupos,
   formatarValorCsv,
   gerarCsvTitulos,
+  juntarPagamentos,
   resumirAbas,
   rotuloSituacao,
   SEM_CONTRAPARTE,
@@ -36,6 +37,7 @@ function titulo(p: Partial<Titulo> & { parcelaId: string }): Titulo {
     valorBaixado: 0,
     saldo: 100,
     status: "aberto",
+    pagamentos: [],
     ...p,
   };
 }
@@ -166,5 +168,19 @@ describe("CSV", () => {
     expect(csv.startsWith("﻿Vencimento;Fornecedor;Descrição")).toBe(true);
     const linha = csv.split("\r\n")[1];
     expect(linha).toBe('01/10/2026;Atacadão;"Nota ""A""; balcão";;Mercadorias;1234,50;0,00;1234,50;Vencido');
+  });
+});
+
+describe("juntarPagamentos", () => {
+  it("junta as baixas da nota por data e conta, mais recente primeiro", () => {
+    const r = juntarPagamentos([
+      titulo({ parcelaId: "a", pagamentos: [{ baixaId: "b1", data: "2026-10-20", contaFinanceiraId: "c1", valor: 100.1 }] }),
+      titulo({ parcelaId: "b", pagamentos: [{ baixaId: "b2", data: "2026-10-20", contaFinanceiraId: "c1", valor: 50.2 }] }),
+      titulo({ parcelaId: "c", pagamentos: [{ baixaId: "b3", data: "2026-10-25", contaFinanceiraId: "c2", valor: 10 }] }),
+    ]);
+    expect(r).toEqual([
+      { data: "2026-10-25", contaFinanceiraId: "c2", valor: 10, baixaIds: ["b3"] },
+      { data: "2026-10-20", contaFinanceiraId: "c1", valor: 150.3, baixaIds: ["b1", "b2"] },
+    ]);
   });
 });

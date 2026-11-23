@@ -4,7 +4,9 @@ import { Fragment, useEffect, useMemo, useState, useTransition, type FormEvent }
 import { registrarBaixaAction } from "@/app/(app)/financeiro-gerencial/lancamentos/actions";
 import {
   baixarVencimentoDocumentoAction,
+  corrigirPagamentoAction,
   criarContraparteAction,
+  obterLancamentoAction,
   listarContrapartesAction,
   trocarContraparteAction,
 } from "@/app/(app)/financeiro-gerencial/lancamentos/documentos-actions";
@@ -16,6 +18,7 @@ import { ModalFlutuante } from "@/components/modal-flutuante";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { DocumentoModal } from "@/components/financeiro-gerencial/documento-modal";
+import { EdicaoLancamento } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { rotuloContaComGrupo } from "@/lib/financeiro-gerencial/categorias";
 import {
@@ -36,7 +39,7 @@ import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
 import { paraCentavos } from "@/lib/financeiro-gerencial/rateio";
 import type { Titulo } from "@/lib/banco/financeiro-documentos";
 import { contasQuePagam } from "@/lib/financeiro-gerencial/cartao";
-import type { CategoriaFinanceira, ContaFinanceira, TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
+import type { CategoriaFinanceira, ContaFinanceira, Lancamento, TipoLancamento } from "@/lib/financeiro-gerencial/tipos";
 
 function formatarMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -122,6 +125,8 @@ export function ContasPagarReceber({
   const [baixandoGrupo, setBaixandoGrupo] = useState<GrupoTitulo | null>(null);
   const [criandoDocumento, setCriandoDocumento] = useState(false);
   const [trocandoContraparte, setTrocandoContraparte] = useState<GrupoTitulo | null>(null);
+  const [editandoConta, setEditandoConta] = useState<GrupoTitulo | null>(null);
+  const nomeConta = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
 
   const verbo = tipo === "receita" ? "Receber" : "Pagar";
   const rotuloContraparte = tipo === "receita" ? "Cliente" : "Fornecedor";
@@ -346,7 +351,7 @@ export function ContasPagarReceber({
       )}
 
       <TabelaRolavel className="max-h-[70vh] rounded-lg border border-cinza-claro bg-branco" ariaLabel={`Contas a ${tipo === "receita" ? "receber" : "pagar"}`}>
-        <table className="w-full min-w-[1080px] text-sm">
+        <table className="w-full min-w-[1300px] text-sm">
           <thead>
             <tr className="bg-azul-petroleo text-branco">
               <Th align="center" larguraFixa="40px">
@@ -376,6 +381,8 @@ export function ContasPagarReceber({
                   <DicaCalculo rotulo="Saldo" texto={`Valor do título menos o que já foi ${rotuloBaixado.toLowerCase()} (descontados os estornos).`} />
                 </span>
               </Th>
+              <Th larguraFixa="96px">{tipo === "receita" ? "Recebido em" : "Pago em"}</Th>
+              <Th larguraFixa="140px">Conta</Th>
               <Th align="center" larguraFixa="120px">
                 Situação
               </Th>
@@ -418,7 +425,18 @@ export function ContasPagarReceber({
                       )}
                     </td>
                     <td className="max-w-[260px] truncate px-3 py-2" title={g.descricao}>
-                      {g.descricao}
+                      {podeTrocarContraparte ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditandoConta(g)}
+                          title="Editar esta conta: fornecedor, dados do lançamento e pagamento"
+                          className="max-w-full truncate text-left font-semibold text-azul-petroleo hover:underline"
+                        >
+                          {g.descricao}
+                        </button>
+                      ) : (
+                        g.descricao
+                      )}
                       {g.documentoNumero && <span className="ml-1 text-xs text-cinza-medio">nº {g.documentoNumero}</span>}
                       {g.totalParcelas > 1 && (
                         <span className="ml-1 text-xs text-cinza-medio">
@@ -443,6 +461,16 @@ export function ContasPagarReceber({
                     <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(g.valor)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(g.valorBaixado)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">R$ {formatarMoeda(g.saldo)}</td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {g.pagamentos.length > 0 ? formatarDataBr(g.pagamentos[0].data) : <span className="text-cinza-medio">-</span>}
+                    </td>
+                    <td className="max-w-[160px] truncate px-3 py-2" title={[...new Set(g.pagamentos.map((p) => nomeConta.get(p.contaFinanceiraId) ?? ""))].join(", ")}>
+                      {g.pagamentos.length > 0 ? (
+                        [...new Set(g.pagamentos.map((p) => nomeConta.get(p.contaFinanceiraId) ?? "Conta"))].join(", ")
+                      ) : (
+                        <span className="text-cinza-medio">-</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${CLASSE_SITUACAO[situacaoAba]}`}>
                         {rotuloSituacao(g, hoje, tipo)}
@@ -470,7 +498,7 @@ export function ContasPagarReceber({
                         <td className="whitespace-nowrap px-3 py-1.5 text-right">R$ {formatarMoeda(t.valor)}</td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-right">R$ {formatarMoeda(t.valorBaixado)}</td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-right">R$ {formatarMoeda(t.saldo)}</td>
-                        <td colSpan={2}></td>
+                        <td colSpan={4}></td>
                       </tr>
                     ))}
                 </Fragment>
@@ -478,7 +506,7 @@ export function ContasPagarReceber({
             })}
             {daAba.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-4 text-center text-sm text-cinza-medio">
+                <td colSpan={12} className="p-4 text-center text-sm text-cinza-medio">
                   Nenhum título em {rotuloAba(aba, tipo).toLowerCase()}
                   {filtrosAtivos ? " com esses filtros" : ""}.
                 </td>
@@ -497,7 +525,7 @@ export function ContasPagarReceber({
                 <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(totais.valor)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(totais.baixado)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">R$ {formatarMoeda(totais.saldo)}</td>
-                <td colSpan={2}></td>
+                <td colSpan={4}></td>
               </tr>
             </tfoot>
           )}
@@ -581,6 +609,22 @@ export function ContasPagarReceber({
 
       <ModalFlutuante aberto={baixandoGrupo !== null} onFechar={() => setBaixandoGrupo(null)}>
         {baixandoGrupo && <BaixaIndividual grupo={baixandoGrupo} tipo={tipo} contas={contas} hoje={hoje} onFechar={() => setBaixandoGrupo(null)} />}
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={editandoConta !== null} onFechar={() => setEditandoConta(null)} larga>
+        {editandoConta && (
+          <EditarConta
+            grupo={editandoConta}
+            tipo={tipo}
+            categorias={categorias}
+            contas={contas}
+            onTrocarContraparte={() => {
+              setTrocandoContraparte(editandoConta);
+              setEditandoConta(null);
+            }}
+            onFechar={() => setEditandoConta(null)}
+          />
+        )}
       </ModalFlutuante>
 
       <ModalFlutuante aberto={trocandoContraparte !== null} onFechar={() => setTrocandoContraparte(null)}>
@@ -978,5 +1022,175 @@ function TrocarContraparte({ grupo, tipo, onFechar }: { grupo: GrupoTitulo; tipo
         </button>
       </div>
     </form>
+  );
+}
+
+/** Editar conta (23/11/2026): tudo de uma conta lançada num lugar só - fornecedor, dados de cada
+ * lançamento (mesmo formulário da tela Lançamentos) e data/conta de cada pagamento. */
+function EditarConta({
+  grupo,
+  tipo,
+  categorias,
+  contas,
+  onTrocarContraparte,
+  onFechar,
+}: {
+  grupo: GrupoTitulo;
+  tipo: TipoLancamento;
+  categorias: CategoriaFinanceira[];
+  contas: ContaFinanceira[];
+  onTrocarContraparte: () => void;
+  onFechar: () => void;
+}) {
+  const router = useRouter();
+  const rotulo = tipo === "receita" ? "Cliente" : "Fornecedor";
+  const verboPassado = tipo === "receita" ? "Recebido" : "Pago";
+  const [lancamento, setLancamento] = useState<Lancamento | null>(null);
+  const [corrigindo, setCorrigindo] = useState<number | null>(null);
+  const [data, setData] = useState("");
+  const [contaId, setContaId] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const nomeConta = new Map(contas.map((c) => [c.id, c.nome]));
+  const opcoesConta = contas.filter((c) => c.ativo && c.tipo !== "cartao_credito").map((c) => ({ id: c.id, label: c.nome }));
+  // Uma linha por lançamento (nota com vários Plano de Contas tem um lançamento por linha).
+  const lancamentos = [...new Map(grupo.titulos.map((t) => [t.lancamentoId, t])).values()];
+
+  if (lancamento) {
+    return (
+      <EdicaoLancamento
+        lancamento={lancamento}
+        categorias={categorias}
+        contas={contas}
+        onFechar={() => {
+          setLancamento(null);
+          router.refresh();
+          onFechar();
+        }}
+      />
+    );
+  }
+
+  function abrirLancamento(id: string) {
+    setErro(null);
+    startTransition(async () => {
+      const r = await obterLancamentoAction(id);
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      setLancamento(r.lancamento);
+    });
+  }
+
+  function salvarPagamento(i: number) {
+    const p = grupo.pagamentos[i];
+    setErro(null);
+    startTransition(async () => {
+      const r = await corrigirPagamentoAction({ baixaIds: p.baixaIds, data, contaFinanceiraId: contaId });
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      router.refresh();
+      onFechar();
+    });
+  }
+
+  const linha = "flex flex-wrap items-center justify-between gap-2 rounded-md border border-cinza-claro bg-branco px-3 py-2 text-sm";
+  const botao = "rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10 disabled:opacity-50";
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display text-lg font-bold text-azul-noite">Editar conta</h2>
+        <p className="text-xs text-cinza-medio">
+          {grupo.descricao} - vencimento {formatarDataBr(grupo.dataPrevista)} - R$ {formatarMoeda(grupo.valor)}
+        </p>
+      </div>
+
+      <section className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">{rotulo}</div>
+        <div className={linha}>
+          <span>{grupo.contraparteNome ?? <span className="text-cinza-medio">Sem {rotulo.toLowerCase()}</span>}</span>
+          <button type="button" onClick={onTrocarContraparte} className={botao}>
+            Trocar {rotulo.toLowerCase()}
+          </button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Dados do lançamento</div>
+        <p className="text-xs text-cinza-medio">Descrição, Plano de Contas, competência, valor, vencimento e conta prevista.</p>
+        {lancamentos.map((t) => (
+          <div key={t.lancamentoId} className={linha}>
+            <span className="min-w-0 flex-1 truncate" title={t.descricao}>
+              {t.categoriaNome} - {t.descricao}
+            </span>
+            <button type="button" onClick={() => abrirLancamento(t.lancamentoId)} disabled={isPending} className={botao}>
+              Editar
+            </button>
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">{tipo === "receita" ? "Recebimento" : "Pagamento"}</div>
+        {grupo.pagamentos.length === 0 && <p className="text-xs text-cinza-medio">Ainda não {tipo === "receita" ? "recebido" : "pago"}.</p>}
+        {grupo.pagamentos.map((p, i) => (
+          <div key={`${p.data}-${p.contaFinanceiraId}`} className="flex flex-col gap-2 rounded-md border border-cinza-claro bg-branco px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {verboPassado} em <strong>{formatarDataBr(p.data)}</strong> - {nomeConta.get(p.contaFinanceiraId) ?? "Conta"} - R$ {formatarMoeda(p.valor)}
+              </span>
+              {corrigindo !== i && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCorrigindo(i);
+                    setData(p.data);
+                    setContaId(p.contaFinanceiraId);
+                    setErro(null);
+                  }}
+                  className={botao}
+                >
+                  Corrigir data ou conta
+                </button>
+              )}
+            </div>
+            {corrigindo === i && (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                  Data
+                  <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza" />
+                </label>
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-semibold text-cinza-medio">
+                  Conta
+                  <SeletorComBusca value={contaId} opcoes={opcoesConta} onChange={setContaId} placeholder="Selecionar conta..." />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => salvarPagamento(i)}
+                  disabled={isPending || !data || !contaId || (data === p.data && contaId === p.contaFinanceiraId)}
+                  className="rounded-md bg-azul-noite px-3 py-2 text-xs font-bold text-branco disabled:opacity-50"
+                >
+                  {isPending ? "Salvando..." : "Salvar"}
+                </button>
+                <button type="button" onClick={() => setCorrigindo(null)} className="rounded-md border border-cinza-claro px-3 py-2 text-xs font-semibold text-cinza-medio">
+                  Cancelar
+                </button>
+                <p className="w-full text-xs text-cinza-medio">
+                  O valor não muda. O pagamento antigo fica no histórico como estornado e o certo é gravado no lugar.
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
+      </section>
+
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <button type="button" onClick={onFechar} className="rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio">
+        Fechar
+      </button>
+    </div>
   );
 }

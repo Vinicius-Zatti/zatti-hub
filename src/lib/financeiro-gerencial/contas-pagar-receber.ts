@@ -35,10 +35,29 @@ export type GrupoTitulo = {
   valor: number;
   valorBaixado: number;
   saldo: number;
+  /** Pagamentos do grupo juntos por data e conta (nota: um pagamento vira uma baixa por linha). */
+  pagamentos: { data: string; contaFinanceiraId: string; valor: number; baixaIds: string[] }[];
 };
 
 const centavos = (v: number) => Math.round(v * 100);
 const reais = (c: number) => c / 100;
+
+/** Junta os pagamentos das parcelas por data e conta, em centavos, mais recente primeiro. */
+export function juntarPagamentos(lista: Titulo[]): GrupoTitulo["pagamentos"] {
+  const porChave = new Map<string, { data: string; contaFinanceiraId: string; c: number; baixaIds: string[] }>();
+  for (const t of lista) {
+    for (const p of t.pagamentos ?? []) {
+      const k = `${p.data}|${p.contaFinanceiraId}`;
+      const g = porChave.get(k) ?? { data: p.data, contaFinanceiraId: p.contaFinanceiraId, c: 0, baixaIds: [] };
+      g.c += centavos(p.valor);
+      g.baixaIds.push(p.baixaId);
+      porChave.set(k, g);
+    }
+  }
+  return [...porChave.values()]
+    .sort((a, b) => b.data.localeCompare(a.data))
+    .map((g) => ({ data: g.data, contaFinanceiraId: g.contaFinanceiraId, valor: reais(g.c), baixaIds: g.baixaIds }));
+}
 
 /** Agrupa as parcelas do mesmo documento e do mesmo vencimento numa linha só. Parcela sem
  * documento continua sozinha. A ordem segue a primeira aparição (a lista já vem por data). */
@@ -74,6 +93,7 @@ export function agruparTitulos(titulos: Titulo[]): GrupoTitulo[] {
       valor: reais(valorC),
       valorBaixado: reais(baixadoC),
       saldo: reais(saldoC),
+      pagamentos: juntarPagamentos(lista),
     };
   });
 }
