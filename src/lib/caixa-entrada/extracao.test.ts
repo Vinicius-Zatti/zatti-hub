@@ -141,6 +141,14 @@ describe("saída da IA", () => {
     expect(e).toMatchObject({ contraparteDocumento: "12345678000190", valorTotalCentavos: 123456, vencimentos: [{ data: "2026-10-15", valorCentavos: 123456 }] });
     expect(e?.itens[0].planoContasCodigo).toBeNull();
   });
+  it("extrato bancário é reconhecido mesmo sem total e sem itens", () => {
+    const texto = JSON.stringify({
+      tipo_documento: "extrato", contraparte_nome: "Banco do Brasil", contraparte_documento: null, numero: null,
+      data_emissao: "2026-11-20", valor_total: "0,00", vencimentos: [], itens: [],
+    });
+    const e = extracaoDaIa(texto, new Set());
+    expect(e).toMatchObject({ tipoDocumento: "extrato", valorTotalCentavos: 0, itens: [] });
+  });
   it("recusa JSON fora do formato", () => {
     expect(extracaoDaIa('{"tipo_documento":"nota"}', new Set())).toBeNull();
     expect(extracaoDaIa("não é json", new Set())).toBeNull();

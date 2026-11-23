@@ -6,7 +6,11 @@ import { z } from "zod";
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { criarRecorrencia } from "@/lib/banco/financeiro-gerencial";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
-import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, situacaoDaEntrada, tratarEntrada } from "@/lib/banco/caixa-entrada";
+import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, originalDaEntrada, situacaoDaEntrada, tratarEntrada } from "@/lib/banco/caixa-entrada";
+import { listarContasFinanceiras } from "@/lib/banco/financeiro-gerencial";
+import { requireConciliacao } from "@/lib/conciliacao/acesso";
+import { TAMANHO_MAXIMO_BYTES } from "@/lib/conciliacao/arquivo";
+import { importarDocumento } from "@/lib/conciliacao/processar";
 import { lerEntrada, receberArquivo, TAMANHO_MAXIMO_CAIXA } from "@/lib/caixa-entrada/processar";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
@@ -137,6 +141,38 @@ export async function lancarEntradaComoRecorrenteAction(input: unknown): Promise
     return { ok: true, mensagem: `Conta recorrente cadastrada (${ocorrenciasGeradas} ocorrências) e documento anexado à 1ª.` };
   } catch (erro) {
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível cadastrar a conta recorrente.") };
+  }
+}
+
+/** Extrato bancário que chegou pela Caixa de Entrada (23/11/2026): importa o mesmo arquivo na
+ * Conciliação, na conta escolhida, e tira o documento de "Para lançar" com o motivo. */
+export async function mandarParaConciliacaoAction(input: unknown): Promise<Resposta> {
+  const ctx = await requireConciliacao();
+  try {
+    exigirEdicao(ctx.acesso, "financeiro");
+    await exigirLimiteRequisicao("fin_conciliacao_importar");
+    const e = z.object({ entradaId: uuid, contaFinanceiraId: uuid }).strict().parse(input);
+    const contas = await listarContasFinanceiras(ctx.acesso.unidadeId);
+    const conta = contas.find((c) => c.id === e.contaFinanceiraId);
+    if (!conta || conta.tipo === "cartao_credito") throw new ErroPublico("Escolha a conta bancária do extrato.");
+    const original = await originalDaEntrada(ctx.acesso.unidadeId, e.entradaId);
+    if (original.situacao !== "lido" && original.situacao !== "falhou" && original.situacao !== "recebido") {
+      throw new ErroPublico("Este documento já foi tratado ou ainda está sendo lido. Atualize a página.");
+    }
+    if (original.bytes.length > TAMANHO_MAXIMO_BYTES) {
+      throw new ErroPublico("O extrato passa de 4 MB, o limite da Conciliação. Baixe o original e importe em partes pela Conciliação.");
+    }
+    const r = await importarDocumento(ctx, { bytes: original.bytes, nomeOriginal: original.nome, contaFinanceiraId: conta.id, tipoDocumento: "extrato" });
+    if (r.tipo === "quarentena") throw new ErroPublico(`A Conciliação não aceitou este arquivo (${r.motivo}).`);
+    await tratarEntrada(e.entradaId, "descartar", null, `Extrato enviado para a Conciliação (${conta.nome})`.slice(0, 300));
+    revalidatePath(CAMINHO);
+    revalidatePath("/financeiro-gerencial/conciliacao");
+    return {
+      ok: true,
+      mensagem: r.tipo === "duplicada" ? "Este extrato já estava na Conciliação. Saiu da Caixa de Entrada." : `Extrato enviado para a Conciliação (${conta.nome}).`,
+    };
+  } catch (erro) {
+    return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível mandar o extrato para a Conciliação.") };
   }
 }
 
