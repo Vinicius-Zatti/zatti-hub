@@ -13,6 +13,7 @@ import { TAMANHO_MAXIMO_BYTES } from "@/lib/conciliacao/arquivo";
 import { importarDocumento } from "@/lib/conciliacao/processar";
 import { lerEntrada, receberArquivo, TAMANHO_MAXIMO_CAIXA } from "@/lib/caixa-entrada/processar";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
+import { resumoDoEnvio } from "@/lib/financeiro-gerencial/caixa-entrada-tela";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
 import { documentoFinanceiroEntradaSchema, recorrenciaFinanceiraEntradaSchema, validarEntrada } from "@/lib/validacao";
 
@@ -30,8 +31,7 @@ export async function enviarArquivosAction(formData: FormData): Promise<Resposta
     const arquivos = formData.getAll("arquivos").filter((a): a is File => a instanceof File && a.size > 0);
     if (arquivos.length === 0) throw new ErroPublico("Escolha pelo menos um arquivo.");
     if (arquivos.length > 20) throw new ErroPublico("Envie no máximo 20 arquivos por vez.");
-    let novos = 0;
-    let repetidos = 0;
+    const resultados: { nome: string; novo: boolean; situacao: string }[] = [];
     for (const arquivo of arquivos) {
       if (arquivo.size > TAMANHO_MAXIMO_CAIXA) throw new ErroPublico(`${arquivo.name} passa de 10 MB.`);
       const r = await receberArquivo({
@@ -42,14 +42,11 @@ export async function enviarArquivosAction(formData: FormData): Promise<Resposta
         bytes: new Uint8Array(await arquivo.arrayBuffer()),
         criadoPor: acesso.userId,
       });
-      if (r.novo) novos++;
-      else repetidos++;
+      resultados.push({ nome: arquivo.name, novo: r.novo, situacao: r.situacao });
       if (r.novo || r.situacao === "recebido") after(() => lerEntrada(r.id, acesso.userId).catch(() => undefined));
     }
     revalidatePath(CAMINHO);
-    const partes = [`${novos} documento${novos === 1 ? "" : "s"} recebido${novos === 1 ? "" : "s"}, lendo agora`];
-    if (repetidos) partes.push(`${repetidos} já estava${repetidos === 1 ? "" : "m"} na Caixa de Entrada`);
-    return { ok: true, mensagem: `${partes.join("; ")}.` };
+    return { ok: true, mensagem: resumoDoEnvio(resultados) };
   } catch (erro) {
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível receber os arquivos.") };
   }

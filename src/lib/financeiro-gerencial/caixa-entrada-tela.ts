@@ -106,3 +106,24 @@ export function formatarDocumento(d: string): string {
   if (d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
   return d;
 }
+
+/** Resumo do envio de arquivos (23/11/2026). Arquivo repetido que já foi lançado, anexado ou descartado
+ * não aparece mais na lista da Caixa; dizer só "já estava na Caixa de Entrada" fazia a pessoa procurar
+ * e achar que o envio falhou. Agora o aviso diz onde ele foi parar. */
+export function resumoDoEnvio(resultados: { nome: string; novo: boolean; situacao: string }[]): string {
+  const novos = resultados.filter((r) => r.novo).length;
+  const repetidos = resultados.filter((r) => !r.novo);
+  const partes: string[] = [];
+  if (novos) partes.push(`${novos} documento${novos === 1 ? "" : "s"} recebido${novos === 1 ? "" : "s"}, lendo agora`);
+  const grupo = (situacoes: string[]) => repetidos.filter((r) => situacoes.includes(r.situacao)).map((r) => r.nome);
+  const lista = (nomes: string[]) => nomes.join(", ");
+  const lancados = grupo(["lancado", "anexado"]);
+  const descartados = grupo(["descartado"]);
+  const naCaixa = repetidos.filter((r) => !["lancado", "anexado", "descartado"].includes(r.situacao)).map((r) => r.nome);
+  if (lancados.length) {
+    partes.push(`${lista(lancados)} já ${lancados.length === 1 ? "foi lançado" : "foram lançados"} antes; ${lancados.length === 1 ? "está" : "estão"} em Contas a Pagar e Receber`);
+  }
+  if (descartados.length) partes.push(`${lista(descartados)} já ${descartados.length === 1 ? "foi descartado" : "foram descartados"} antes`);
+  if (naCaixa.length) partes.push(`${lista(naCaixa)} já ${naCaixa.length === 1 ? "estava" : "estavam"} na Caixa de Entrada`);
+  return `${partes.join("; ")}.`;
+}
