@@ -67,6 +67,19 @@ export async function listarContrapartes(unidadeId: string): Promise<Contraparte
   return linhas;
 }
 
+/** Troca o fornecedor/cliente de uma conta já lançada (23/11/2026). Conta de nota troca a nota
+ * inteira (documento e todos os lançamentos dela). Só Gestão/master; a barreira é a RPC. */
+export async function trocarContraparte(unidadeId: string, lancamentoId: string, contraparteId: string | null): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fin_trocar_contraparte", {
+    p_unidade: unidadeId,
+    p_lancamento: lancamentoId,
+    p_contraparte: contraparteId,
+  });
+  if (error) throw erroDeNegocio(error);
+  return (data as number | null) ?? 0;
+}
+
 export async function criarContraparte(params: {
   unidadeId: string;
   nome: string;
