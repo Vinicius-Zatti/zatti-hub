@@ -31,8 +31,9 @@ begin
       from public.fin_baixas
      where unidade_id = p_unidade and id = any(p_baixas)
      order by id
-       for update
   loop
+    -- Sem "for update": fin_baixas não tem policy de update (security invoker não trava a linha).
+    -- Correção em dobro é barrada pelo índice único do estorno (uma baixa, um estorno).
     if v_b.tipo <> 'baixa' or exists (select 1 from public.fin_baixas e where e.estorno_de_baixa_id = v_b.id) then
       raise exception 'Pagamento ja desfeito' using errcode = '23514';
     end if;
