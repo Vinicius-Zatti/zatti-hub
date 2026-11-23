@@ -822,7 +822,7 @@ export async function criarRecorrencia(params: {
   dataCompetencia?: string;
   fim: FimRecorrencia;
   criadoPor: string;
-}): Promise<{ recorrencia: Recorrencia; ocorrenciasGeradas: number }> {
+}): Promise<{ recorrencia: Recorrencia; ocorrenciasGeradas: number; primeiroLancamentoId: string }> {
   const supabase = await createClient();
   await validarCategoriaParaLancamento(supabase, params.unidadeId, params.categoriaId, params.tipo);
 
@@ -890,6 +890,8 @@ export async function criarRecorrencia(params: {
   return {
     recorrencia: recorrenciaDaLinha(recorrenciaInserida as unknown as RecorrenciaRow),
     ocorrenciasGeradas: datas.length,
+    // O insert devolve na ordem enviada: o primeiro é a 1ª ocorrência (Caixa de Entrada anexa nela).
+    primeiroLancamentoId: lancamentosInseridos[0].id as string,
   };
 }
 

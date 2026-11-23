@@ -106,6 +106,19 @@ export async function lancarEntrada(entradaId: string, documento: DocumentoEntra
   return data as string;
 }
 
+/** Situação atual de uma entrada da unidade (leitura pela sessão, RLS). null = não existe. */
+export async function situacaoDaEntrada(unidadeId: string, entradaId: string): Promise<SituacaoEntrada | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("fin_caixa_entrada")
+    .select("situacao")
+    .eq("unidade_id", unidadeId)
+    .eq("id", entradaId)
+    .maybeSingle();
+  if (error) throw erroDeNegocio(error);
+  return (data as { situacao: SituacaoEntrada } | null)?.situacao ?? null;
+}
+
 export async function tratarEntrada(entradaId: string, acao: "anexar" | "descartar", lancamentoId: string | null, motivo: string | null): Promise<void> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("fin_caixa_entrada_tratar", {

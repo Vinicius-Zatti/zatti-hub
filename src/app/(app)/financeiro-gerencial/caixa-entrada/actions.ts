@@ -4,11 +4,13 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
-import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, tratarEntrada } from "@/lib/banco/caixa-entrada";
+import { criarRecorrencia } from "@/lib/banco/financeiro-gerencial";
+import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
+import { configurarAlerta, configurarCaixa, lancarEntrada, linkDoOriginal, situacaoDaEntrada, tratarEntrada } from "@/lib/banco/caixa-entrada";
 import { lerEntrada, receberArquivo, TAMANHO_MAXIMO_CAIXA } from "@/lib/caixa-entrada/processar";
 import { ErroPublico, mensagemErroPublica } from "@/lib/erros";
 import { exigirLimiteRequisicao } from "@/lib/rate-limit";
-import { documentoFinanceiroEntradaSchema, validarEntrada } from "@/lib/validacao";
+import { documentoFinanceiroEntradaSchema, recorrenciaFinanceiraEntradaSchema, validarEntrada } from "@/lib/validacao";
 
 // Caixa de Entrada (Financeiro V2, 11/10/2026). Limites reaproveitam chaves do Financeiro.
 
@@ -101,6 +103,40 @@ export async function anexarEntradaAction(input: unknown): Promise<Resposta> {
     return { ok: true, mensagem: "Documento anexado ao lançamento." };
   } catch (erro) {
     return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível anexar.") };
+  }
+}
+
+/** Comprovante de conta que ainda não era recorrente (23/11/2026): cadastra a conta recorrente e
+ * anexa o documento à 1ª ocorrência gerada. Confere antes que o documento ainda está para lançar,
+ * para não criar a recorrência e falhar no anexo. */
+export async function lancarEntradaComoRecorrenteAction(input: unknown): Promise<Resposta> {
+  const acesso = await requireFinanceiroGerencial();
+  try {
+    exigirEdicao(acesso, "financeiro");
+    await exigirLimiteRequisicao("fin_recorrencia_criar");
+    const bruto = z.object({ entradaId: uuid, recorrencia: z.unknown() }).strict().parse(input);
+    const r = validarEntrada(recorrenciaFinanceiraEntradaSchema, bruto.recorrencia);
+    const situacao = await situacaoDaEntrada(acesso.unidadeId, bruto.entradaId);
+    if (situacao === null) throw new ErroPublico("Documento não encontrado. Atualize a página.");
+    if (situacao !== "lido" && situacao !== "falhou" && situacao !== "recebido") {
+      throw new ErroPublico("Este documento já foi tratado ou ainda está sendo lido. Atualize a página.");
+    }
+    if (acesso.role === "operacional") {
+      const fechadas = await competenciasFechadas(acesso.unidadeId);
+      const bloqueada = [r.dataInicio, r.dataCompetencia ?? r.dataInicio].map((d) => d.slice(0, 7)).find((c) => fechadas.has(c));
+      if (bloqueada) {
+        const [ano, mes] = bloqueada.split("-");
+        throw new ErroPublico(`O mês ${mes}/${ano} está fechado. Só Gestão/master altera lançamentos desse período.`);
+      }
+    }
+    const { primeiroLancamentoId, ocorrenciasGeradas } = await criarRecorrencia({ ...r, unidadeId: acesso.unidadeId, criadoPor: acesso.userId });
+    await tratarEntrada(bruto.entradaId, "anexar", primeiroLancamentoId, null);
+    revalidatePath(CAMINHO);
+    revalidatePath("/financeiro-gerencial/contas-pagar-receber");
+    revalidatePath("/financeiro-gerencial/recorrencias");
+    return { ok: true, mensagem: `Conta recorrente cadastrada (${ocorrenciasGeradas} ocorrências) e documento anexado à 1ª.` };
+  } catch (erro) {
+    return { ok: false, mensagem: mensagemErroPublica(erro, "Não foi possível cadastrar a conta recorrente.") };
   }
 }
 
