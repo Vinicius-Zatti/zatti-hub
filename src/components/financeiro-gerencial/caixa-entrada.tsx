@@ -7,6 +7,7 @@ import {
   descartarEntradaAction,
   enviarArquivosAction,
   lancarEntradaAction,
+  lancarEntradaComoRecorrenteAction,
   lerDeNovoAction,
   linkOriginalAction,
 } from "@/app/(app)/financeiro-gerencial/caixa-entrada/actions";
@@ -14,14 +15,17 @@ import {
   listarLancamentosParaAnexarAction,
   type LancamentoParaAnexar,
 } from "@/app/(app)/financeiro-gerencial/caixa-entrada/busca-actions";
+import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { CaixaEntradaConfigurar } from "@/components/financeiro-gerencial/caixa-entrada-configurar";
 import { DocumentoModal, opcoesPlanoDeContas } from "@/components/financeiro-gerencial/documento-modal";
+import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { FormularioTransferencia } from "@/components/financeiro-gerencial/transferencia-modal";
 import {
+  descricaoSugerida,
   formatarDataHoraBr,
   rotuloTipoDocumento,
   totalLido,
@@ -96,6 +100,9 @@ export function CaixaEntrada({
   const [aviso, setAviso] = useState<{ ok: boolean; mensagem: string } | null>(null);
   const [revisando, setRevisando] = useState<EntradaCaixa | null>(null);
   const [anexando, setAnexando] = useState<EntradaCaixa | null>(null);
+  // Vincular comprovante a pagamento já agendado: a mesma tela de anexar, só com contas em aberto.
+  const [vinculando, setVinculando] = useState(false);
+  const [recorrendo, setRecorrendo] = useState<EntradaCaixa | null>(null);
   const [descartando, setDescartando] = useState<EntradaCaixa | null>(null);
   const [transferindo, setTransferindo] = useState<EntradaCaixa | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -338,18 +345,58 @@ export function CaixaEntrada({
           contas={contas}
           titulo={revisando.situacao === "lido" ? "Revisar e lançar" : "Lançar à mão"}
           valoresIniciais={revisando.extracao ? valoresIniciaisDaExtracao(revisando.extracao, hoje, idsPlanoDespesa) : { tipo: "despesa" }}
-          cabecalho={<CabecalhoRevisao entrada={revisando} />}
+          cabecalho={
+            <CabecalhoRevisao
+              entrada={revisando}
+              onVincular={() => {
+                setVinculando(true);
+                setAnexando(revisando);
+                setRevisando(null);
+              }}
+              onRecorrente={() => {
+                setRecorrendo(revisando);
+                setRevisando(null);
+              }}
+            />
+          }
           aoSalvar={(documento) => lancarEntradaAction({ entradaId: revisando.id, documento })}
         />
       )}
 
-      <ModalFlutuante aberto={anexando !== null} onFechar={() => setAnexando(null)} larga>
+      <ModalFlutuante
+        aberto={anexando !== null}
+        onFechar={() => {
+          setAnexando(null);
+          setVinculando(false);
+        }}
+        larga
+      >
         {anexando && (
           <AnexarLancamento
             entrada={anexando}
-            onFechar={() => setAnexando(null)}
+            vincular={vinculando}
+            onFechar={() => {
+              setAnexando(null);
+              setVinculando(false);
+            }}
             onFeito={(mensagem) => {
               setAnexando(null);
+              setVinculando(false);
+              setAviso({ ok: true, mensagem });
+            }}
+          />
+        )}
+      </ModalFlutuante>
+
+      <ModalFlutuante aberto={recorrendo !== null} onFechar={() => setRecorrendo(null)} larga>
+        {recorrendo && (
+          <CadastrarRecorrente
+            entrada={recorrendo}
+            categorias={categorias}
+            hoje={hoje}
+            onFechar={() => setRecorrendo(null)}
+            onFeito={(mensagem) => {
+              setRecorrendo(null);
               setAviso({ ok: true, mensagem });
             }}
           />
@@ -488,14 +535,42 @@ function AreaEnvio({ onResultado }: { onResultado: (r: { ok: boolean; mensagem: 
   );
 }
 
-function CabecalhoRevisao({ entrada }: { entrada: EntradaCaixa }) {
+function CabecalhoRevisao({ entrada, onVincular, onRecorrente }: { entrada: EntradaCaixa; onVincular: () => void; onRecorrente: () => void }) {
   const ex = entrada.extracao;
+  // Comprovante de conta que se repete: em vez de lançar avulso, vincula ao pagamento já agendado
+  // ou cadastra a conta recorrente (23/11/2026).
+  const atalhos = (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={onVincular}
+        title="Para comprovante de uma conta já cadastrada (recorrente ou agendada). O arquivo fica guardado junto dela."
+        className="rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+      >
+        Vincular a pagamento já agendado
+      </button>
+      <button
+        type="button"
+        onClick={onRecorrente}
+        title="Para conta que se repete todo mês e ainda não foi cadastrada. Cria a conta recorrente e guarda este arquivo na 1ª."
+        className="rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+      >
+        Cadastrar como conta recorrente
+      </button>
+    </div>
+  );
   if (!ex) {
-    return <p className="rounded-md bg-ambar/10 p-2 text-xs text-azul-noite">Não consegui ler este documento. Preencha à mão olhando o original.</p>;
+    return (
+      <div className="flex flex-col gap-2">
+        {atalhos}
+        <p className="rounded-md bg-ambar/10 p-2 text-xs text-azul-noite">Não consegui ler este documento. Preencha à mão olhando o original.</p>
+      </div>
+    );
   }
   const diferenca = ex.sugestao.diferencaCentavos;
   return (
     <div className="flex flex-col gap-2">
+      {atalhos}
       <p className="text-xs text-cinza-medio">
         {ex.fonte === "xml_nfe" ? "Lido do XML da NF-e." : "Lido pela IA a partir da imagem ou PDF. Confira os valores."} Cada item da nota aparece
         abaixo com o seu Plano de Contas; o que estiver em branco precisa ser escolhido.
@@ -509,9 +584,21 @@ function CabecalhoRevisao({ entrada }: { entrada: EntradaCaixa }) {
   );
 }
 
-function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaixa; onFechar: () => void; onFeito: (mensagem: string) => void }) {
+function AnexarLancamento({
+  entrada,
+  vincular = false,
+  onFechar,
+  onFeito,
+}: {
+  entrada: EntradaCaixa;
+  /** Só contas a pagar ainda em aberto, a de valor mais perto do documento primeiro. */
+  vincular?: boolean;
+  onFechar: () => void;
+  onFeito: (mensagem: string) => void;
+}) {
   const [lancamentos, setLancamentos] = useState<LancamentoParaAnexar[] | null>(null);
-  const [busca, setBusca] = useState(entrada.extracao?.contraparteNome ?? "");
+  const [busca, setBusca] = useState(vincular ? "" : (entrada.extracao?.contraparteNome ?? ""));
+  const alvo = entrada.extracao ? totalLido(entrada.extracao) : 0;
   const [escolhido, setEscolhido] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -532,14 +619,19 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
 
   const filtrados = useMemo(() => {
     const termo = normalizarBusca(busca);
-    const todos = lancamentos ?? [];
+    const base = lancamentos ?? [];
+    const todos = vincular
+      ? base
+          .filter((l) => l.tipo === "despesa" && !l.quitado)
+          .sort((a, b) => Math.abs(a.valor - alvo) - Math.abs(b.valor - alvo) || a.primeiraData.localeCompare(b.primeiraData))
+      : base;
     const lista = termo
       ? todos.filter((l) =>
           normalizarBusca([l.descricao, l.contraparteNome ?? "", l.categoriaNome, l.documentoNumero ?? "", formatarMoeda(l.valor)].join(" ")).includes(termo),
         )
       : todos;
     return lista.slice(0, 50);
-  }, [lancamentos, busca]);
+  }, [lancamentos, busca, vincular, alvo]);
 
   function confirmar(e: FormEvent) {
     e.preventDefault();
@@ -557,9 +649,11 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
 
   return (
     <form onSubmit={confirmar} className="flex flex-col gap-3">
-      <h2 className="font-display text-lg font-bold text-azul-noite">Anexar a lançamento existente</h2>
+      <h2 className="font-display text-lg font-bold text-azul-noite">{vincular ? "Vincular a pagamento já agendado" : "Anexar a lançamento existente"}</h2>
       <p className="text-xs text-cinza-medio">
-        Use para comprovante ou nota de algo que já foi lançado. O arquivo {entrada.nomeArquivo} fica guardado junto do lançamento.
+        {vincular
+          ? `Contas a pagar em aberto, a de valor mais perto de R$ ${formatarMoeda(alvo)} primeiro. O arquivo ${entrada.nomeArquivo} fica guardado junto da conta escolhida. A baixa do pagamento continua em Contas a Pagar e Receber.`
+          : `Use para comprovante ou nota de algo que já foi lançado. O arquivo ${entrada.nomeArquivo} fica guardado junto do lançamento.`}
       </p>
       <label className="flex flex-col gap-1 text-sm font-semibold text-cinza-medio">
         Buscar lançamento
@@ -604,7 +698,138 @@ function AnexarLancamento({ entrada, onFechar, onFeito }: { entrada: EntradaCaix
           disabled={isPending || !escolhido}
           className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
         >
-          {isPending ? "Anexando..." : "Anexar"}
+          {isPending ? (vincular ? "Vinculando..." : "Anexando...") : vincular ? "Vincular" : "Anexar"}
+        </button>
+        <button
+          type="button"
+          onClick={onFechar}
+          disabled={isPending}
+          className="flex-1 rounded-lg border border-cinza-claro px-4 py-2.5 text-sm font-semibold text-cinza-medio"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Comprovante de conta que se repete e ainda não foi cadastrada: cria a conta recorrente (mesma
+ * regra da tela de Despesas) e guarda o arquivo na 1ª ocorrência. */
+function CadastrarRecorrente({
+  entrada,
+  categorias,
+  hoje,
+  onFechar,
+  onFeito,
+}: {
+  entrada: EntradaCaixa;
+  categorias: CategoriaFinanceira[];
+  hoje: string;
+  onFechar: () => void;
+  onFeito: (mensagem: string) => void;
+}) {
+  const ex = entrada.extracao;
+  const opcoes = useMemo(() => opcoesPlanoDeContas(categorias, "despesa"), [categorias]);
+  const sugerida = ex?.sugestao.linhas.find((l) => l.planoContasCodigo && opcoes.some((o) => o.id === l.planoContasCodigo))?.planoContasCodigo ?? "";
+  const [categoriaId, setCategoriaId] = useState(sugerida);
+  const [descricao, setDescricao] = useState(ex ? descricaoSugerida(ex) : entrada.nomeArquivo.slice(0, 200));
+  const [valor, setValor] = useState<number | null>(ex ? totalLido(ex) || null : null);
+  const [dataPagamento, setDataPagamento] = useState(ex?.sugestao.vencimentos[0]?.data ?? ex?.dataEmissao ?? hoje);
+  const [dataCompetencia, setDataCompetencia] = useState(ex?.dataEmissao ?? hoje);
+  const [modoFim, setModoFim] = useState<"data" | "quantidade">("quantidade");
+  const [quantidade, setQuantidade] = useState(12);
+  const [dataFim, setDataFim] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const pode = !isPending && categoriaId !== "" && descricao.trim() !== "" && (valor ?? 0) > 0 && dataPagamento !== "" && (modoFim === "quantidade" || dataFim !== "");
+
+  function salvar(e: FormEvent) {
+    e.preventDefault();
+    if (!pode) return;
+    setErro(null);
+    startTransition(async () => {
+      const r = await lancarEntradaComoRecorrenteAction({
+        entradaId: entrada.id,
+        recorrencia: {
+          tipo: "despesa",
+          categoriaId,
+          descricao,
+          valor: valor ?? 0,
+          diaVencimento: Number(dataPagamento.slice(8, 10)),
+          dataInicio: dataPagamento,
+          dataCompetencia,
+          fim: modoFim === "data" ? { modo: "data", dataFim } : { modo: "quantidade", quantidadeOcorrencias: quantidade },
+        },
+      });
+      if (!r.ok) {
+        setErro(r.mensagem);
+        return;
+      }
+      onFeito(r.mensagem);
+    });
+  }
+
+  const campo = "w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza";
+  const rotulo = "flex flex-col gap-1 text-sm font-semibold text-cinza-medio";
+  return (
+    <form onSubmit={salvar} className="flex flex-col gap-3">
+      <h2 className="font-display text-lg font-bold text-azul-noite">Cadastrar como conta recorrente</h2>
+      <p className="text-xs text-cinza-medio">
+        Cria a conta que se repete todo mês a partir deste documento. A 1ª ocorrência é a deste comprovante e o arquivo {entrada.nomeArquivo} fica
+        guardado nela. As próximas aparecem em Contas a Pagar e Receber.
+      </p>
+      <label className={rotulo}>
+        Plano de Contas
+        <SeletorComBusca value={categoriaId} opcoes={opcoes} onChange={setCategoriaId} placeholder="Selecionar conta..." />
+      </label>
+      <label className={rotulo}>
+        Descrição
+        <input required value={descricao} onChange={(e) => setDescricao(e.target.value)} maxLength={200} className={campo} />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className={rotulo}>
+          Valor de cada mês
+          <CampoNumero value={valor} onChange={setValor} className="w-full" />
+        </label>
+        <label className={rotulo}>
+          Data de Pagamento (1ª)
+          <input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className={campo} />
+        </label>
+        <label className={rotulo}>
+          Data de Competência (1ª)
+          <input type="date" required value={dataCompetencia} onChange={(e) => setDataCompetencia(e.target.value)} className={campo} />
+        </label>
+      </div>
+      <div className="flex flex-col gap-1.5 rounded-lg border border-cinza-claro p-3">
+        <div className="text-xs font-semibold text-cinza-medio">Até quando</div>
+        <div className="flex gap-3 text-xs text-cinza-medio">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={modoFim === "quantidade"} onChange={() => setModoFim("quantidade")} />
+            Número de meses
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={modoFim === "data"} onChange={() => setModoFim("data")} />
+            Data final
+          </label>
+        </div>
+        {modoFim === "quantidade" ? (
+          <input
+            type="number"
+            min={1}
+            max={360}
+            value={quantidade}
+            onChange={(e) => setQuantidade(Math.max(1, Math.min(360, Number(e.target.value) || 1)))}
+            className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza"
+          />
+        ) : (
+          <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="w-full rounded-md border border-cinza-claro px-2 py-1.5 text-sm text-cinza" />
+        )}
+      </div>
+      {erro && <p className="text-sm text-vermelho">{erro}</p>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={!pode} className="flex-1 rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50">
+          {isPending ? "Salvando..." : "Cadastrar conta recorrente"}
         </button>
         <button
           type="button"
