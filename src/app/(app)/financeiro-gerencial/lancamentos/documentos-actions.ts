@@ -4,10 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
+import { obterLancamento } from "@/lib/banco/financeiro-gerencial";
+import type { Lancamento } from "@/lib/financeiro-gerencial/tipos";
 import {
   baixarVencimentoDocumento,
   criarContraparte,
   criarDocumento,
+  corrigirPagamento,
   listarContrapartes,
   trocarContraparte,
   type Contraparte,
@@ -88,6 +91,43 @@ export async function trocarContraparteAction(input: unknown): Promise<{ ok: tru
     return { ok: true };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível trocar o fornecedor.") };
+  }
+}
+
+/** Editar conta em Contas a Pagar e Receber: carrega o lançamento inteiro para o mesmo formulário
+ * de edição da tela Lançamentos (Gestão/master). */
+export async function obterLancamentoAction(lancamentoId: string): Promise<{ ok: true; lancamento: Lancamento } | { ok: false; mensagem: string }> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    const l = await obterLancamento(acesso.unidadeId, z.string().uuid().parse(lancamentoId));
+    if (!l) return { ok: false, mensagem: "Lançamento não encontrado. Atualize a página." };
+    return { ok: true, lancamento: l };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível abrir o lançamento.") };
+  }
+}
+
+/** Corrigir data e conta de um pagamento (estorna e regrava, mesmo valor). */
+export async function corrigirPagamentoAction(input: unknown): Promise<{ ok: true } | { ok: false; mensagem: string }> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    exigirEdicao(acesso, "financeiro");
+    await exigirLimiteRequisicao("fin_lancamento_editar");
+    const e = z
+      .object({
+        baixaIds: z.array(z.string().uuid()).min(1).max(100),
+        data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        contaFinanceiraId: z.string().uuid(),
+      })
+      .strict()
+      .parse(input);
+    await corrigirPagamento(acesso.unidadeId, e.baixaIds, e.data, e.contaFinanceiraId);
+    revalidatePath("/financeiro-gerencial/contas-pagar-receber");
+    revalidatePath("/financeiro-gerencial/lancamentos/despesas");
+    revalidatePath("/financeiro-gerencial/lancamentos/receitas");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível corrigir o pagamento.") };
   }
 }
 

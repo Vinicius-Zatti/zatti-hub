@@ -67,6 +67,23 @@ export async function listarContrapartes(unidadeId: string): Promise<Contraparte
   return linhas;
 }
 
+/** Corrige data e conta de pagamentos já registrados (23/11/2026): estorna e regrava, mesmo valor,
+ * numa transação (RPC). Só Gestão/master; pagamento da Conciliação é recusado pelo banco. */
+export async function corrigirPagamento(unidadeId: string, baixaIds: string[], data: string, contaFinanceiraId: string): Promise<number> {
+  const supabase = await createClient();
+  const { data: qtd, error } = await supabase.rpc("fin_corrigir_pagamento", {
+    p_unidade: unidadeId,
+    p_baixas: baixaIds,
+    p_data: data,
+    p_conta: contaFinanceiraId,
+  });
+  if (error) {
+    if (error.code === "P0001") throw new ErroPublico("Este pagamento veio da Conciliação. Para corrigir, desfaça a conciliação dele na tela Conciliação.");
+    throw erroDeNegocio(error);
+  }
+  return (qtd as number | null) ?? 0;
+}
+
 /** Troca o fornecedor/cliente de uma conta já lançada (23/11/2026). Conta de nota troca a nota
  * inteira (documento e todos os lançamentos dela). Só Gestão/master; a barreira é a RPC. */
 export async function trocarContraparte(unidadeId: string, lancamentoId: string, contraparteId: string | null): Promise<number> {
@@ -218,6 +235,8 @@ export type Titulo = {
   valorBaixado: number;
   saldo: number;
   status: "aberto" | "parcial" | "quitado" | "cancelado";
+  /** Pagamentos/recebimentos que valem (baixas sem estorno), com data e conta (23/11/2026). */
+  pagamentos: { baixaId: string; data: string; contaFinanceiraId: string; valor: number }[];
 };
 
 /** Todas as parcelas de um tipo (sem as canceladas), com saldo e vínculo de documento. */
@@ -261,10 +280,31 @@ export async function listarTitulos(unidadeId: string, tipo: TipoLancamento): Pr
   );
   const ids = parcelas.map((p) => p.id);
   const baixas = ids.length
-    ? await buscarTudoEmLotes<{ parcela_id: string; valor: number | string; tipo: "baixa" | "estorno" }>(ids, (lote, de, ate) =>
-        supabase.from("fin_baixas").select("id, parcela_id, valor, tipo").in("parcela_id", lote).order("id").range(de, ate),
+    ? await buscarTudoEmLotes<{
+        id: string;
+        parcela_id: string;
+        valor: number | string;
+        tipo: "baixa" | "estorno";
+        data: string;
+        conta_financeira_id: string;
+        estorno_de_baixa_id: string | null;
+      }>(ids, (lote, de, ate) =>
+        supabase
+          .from("fin_baixas")
+          .select("id, parcela_id, valor, tipo, data, conta_financeira_id, estorno_de_baixa_id")
+          .in("parcela_id", lote)
+          .order("id")
+          .range(de, ate),
       )
     : [];
+  const estornadas = new Set(baixas.filter((b) => b.tipo === "estorno").map((b) => b.estorno_de_baixa_id));
+  const pagamentos = new Map<string, Titulo["pagamentos"]>();
+  for (const b of baixas) {
+    if (b.tipo !== "baixa" || estornadas.has(b.id)) continue;
+    const lista = pagamentos.get(b.parcela_id) ?? [];
+    lista.push({ baixaId: b.id, data: b.data, contaFinanceiraId: b.conta_financeira_id, valor: Number(b.valor) });
+    pagamentos.set(b.parcela_id, lista);
+  }
   const baixado = new Map<string, number>();
   for (const b of baixas) {
     baixado.set(b.parcela_id, (baixado.get(b.parcela_id) ?? 0) + (b.tipo === "estorno" ? -1 : 1) * Number(b.valor));
@@ -276,6 +316,7 @@ export async function listarTitulos(unidadeId: string, tipo: TipoLancamento): Pr
     return {
       parcelaId: p.id,
       lancamentoId: p.lancamento_id,
+      pagamentos: pagamentos.get(p.id) ?? [],
       tipo: l.tipo,
       descricao: l.descricao,
       categoriaId: l.categoria_id,

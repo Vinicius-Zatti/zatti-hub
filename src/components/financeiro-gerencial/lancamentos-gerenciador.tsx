@@ -733,7 +733,7 @@ function FormularioLancamento({
  * pertence a uma recorrência pergunta ANTES o que editar - só este
  * lançamento ou o pagamento recorrente inteiro. Os dois caminhos ficam no
  * mesmo modal (padrão de confirmação de "Excluir lançamento"). */
-function EdicaoLancamento({
+export function EdicaoLancamento({
   lancamento,
   categorias,
   contas,
