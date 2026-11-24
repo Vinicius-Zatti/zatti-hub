@@ -279,7 +279,7 @@ export function CaixaEntrada({
                   <td className="max-w-[220px] truncate px-3 py-2" title={ex?.contraparteNome ?? ""}>
                     {ex?.contraparteNome ?? <span className="text-cinza-medio">-</span>}
                     {ex?.observacao && /^(Possível nota repetida|Nota repetida|Nota cancelada)/.test(ex.observacao) && (
-                      <span className={`block text-xs font-semibold text-vermelho ${ex.observacao.startsWith("Nota repetida") ? "whitespace-normal" : "truncate"}`} title={ex.observacao}>
+                      <span className={`block text-xs font-semibold text-vermelho ${ex.observacao.startsWith("Nota repetida") ? "whitespace-normal break-all" : "truncate"}`} title={ex.observacao}>
                         {ex.observacao.startsWith("Nota cancelada") ? "Nota cancelada na SEFAZ" : ex.observacao.startsWith("Nota repetida") ? ex.observacao : "Possível nota repetida"}
                       </span>
                     )}
