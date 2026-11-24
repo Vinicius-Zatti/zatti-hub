@@ -160,14 +160,23 @@ export function CaixaEntrada({
 
       <AreaEnvio onResultado={setAviso} />
 
+      {/* 23/11/2026: a faixa clara e pequena passava despercebida (Vinícius achou que o envio falhou).
+          O aviso fica em destaque até a pessoa clicar em "Lido". */}
       {aviso && (
         <div
           role="status"
-          className={`flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-sm ${aviso.ok ? "bg-verde/10 text-verde" : "bg-vermelho/10 text-vermelho"}`}
+          aria-live="polite"
+          className={`flex flex-col gap-3 rounded-xl border-2 px-4 py-3 text-base font-medium shadow-sm sm:flex-row sm:items-center sm:justify-between ${
+            aviso.ok ? "border-verde bg-verde/15 text-verde" : "border-vermelho bg-vermelho/15 text-vermelho"
+          }`}
         >
           <span>{aviso.mensagem}</span>
-          <button type="button" onClick={() => setAviso(null)} className="text-xs font-semibold">
-            Fechar
+          <button
+            type="button"
+            onClick={() => setAviso(null)}
+            className={`shrink-0 self-end rounded-lg px-4 py-1.5 text-sm font-semibold text-white sm:self-auto ${aviso.ok ? "bg-verde" : "bg-vermelho"}`}
+          >
+            Lido
           </button>
         </div>
       )}
