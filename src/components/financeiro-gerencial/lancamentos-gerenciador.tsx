@@ -803,7 +803,7 @@ export function EdicaoLancamento({
  * preenchido com o que existe. Antes de salvar mostra o que vai acontecer
  * (quantas parcelas mudam, são criadas ou canceladas) e avisa quando a regra
  * nova conflita com parcela já paga/recebida - essa nunca muda. */
-function FormularioEditarRecorrencia({
+export function FormularioEditarRecorrencia({
   recorrenciaId,
   tipo,
   categorias,
