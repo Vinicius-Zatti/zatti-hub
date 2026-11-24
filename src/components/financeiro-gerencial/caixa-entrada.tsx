@@ -158,7 +158,7 @@ export function CaixaEntrada({
         </p>
       </div>
 
-      <AreaEnvio onResultado={setAviso} />
+      <AreaEnvio onResultado={setAviso} emailCaixa={config?.email?.endereco ?? null} />
 
       {/* 23/11/2026: a faixa clara e pequena passava despercebida (Vinícius achou que o envio falhou).
           O aviso fica em destaque até a pessoa clicar em "Lido". */}
@@ -473,7 +473,8 @@ export function CaixaEntrada({
   );
 }
 
-function AreaEnvio({ onResultado }: { onResultado: (r: { ok: boolean; mensagem: string }) => void }) {
+/** emailCaixa (24/11/2026): endereço +apelido da unidade, para quem configura ver onde encaminhar. */
+function AreaEnvio({ onResultado, emailCaixa }: { onResultado: (r: { ok: boolean; mensagem: string }) => void; emailCaixa: string | null }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
@@ -564,6 +565,12 @@ function AreaEnvio({ onResultado }: { onResultado: (r: { ok: boolean; mensagem: 
         <p>
           <span className="font-semibold">Pasta do Drive:</span> solte o arquivo na pasta da unidade. A cada poucos minutos ele aparece aqui.
         </p>
+        {emailCaixa && (
+          <p>
+            <span className="font-semibold">E-mail:</span> do e-mail autorizado em Configurar, encaminhe a nota ou o boleto para{" "}
+            <span className="break-all font-semibold text-azul-noite">{emailCaixa}</span>. Em até 3 minutos ele aparece aqui.
+          </p>
+        )}
         <p className="text-xs text-cinza-medio">A leitura é automática e só sugere. Nada vira lançamento sem você revisar e confirmar.</p>
       </div>
     </div>
