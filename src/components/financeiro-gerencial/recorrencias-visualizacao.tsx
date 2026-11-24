@@ -8,8 +8,9 @@ import { ModalFlutuante } from "@/components/modal-flutuante";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
 import { formatarNumero } from "@/components/financeiro-gerencial/tabela-anual";
+import { FormularioEditarRecorrencia } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
 import { formatarDataBr } from "@/lib/financeiro-gerencial/datas";
-import type { RecorrenciaResumo } from "@/lib/financeiro-gerencial/tipos";
+import type { CategoriaFinanceira, ContaFinanceira, RecorrenciaResumo } from "@/lib/financeiro-gerencial/tipos";
 
 function FormularioEncerrar({ recorrencia, hoje, onFechar }: { recorrencia: RecorrenciaResumo; hoje: string; onFechar: () => void }) {
   const router = useRouter();
@@ -78,8 +79,29 @@ function FormularioEncerrar({ recorrencia, hoje, onFechar }: { recorrencia: Reco
   );
 }
 
-export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { recorrencias: RecorrenciaResumo[]; podeGerir: boolean; hoje: string }) {
+export function RecorrenciasVisualizacao({
+  recorrencias,
+  categoriasDespesa,
+  categoriasReceita,
+  contas,
+  podeGerir,
+  hoje,
+}: {
+  recorrencias: RecorrenciaResumo[];
+  categoriasDespesa: CategoriaFinanceira[];
+  categoriasReceita: CategoriaFinanceira[];
+  contas: ContaFinanceira[];
+  podeGerir: boolean;
+  hoje: string;
+}) {
+  const router = useRouter();
   const [encerrando, setEncerrando] = useState<RecorrenciaResumo | null>(null);
+  // Editar a recorrência daqui (24/11/2026): antes só abria pelo lançamento em Despesas/Receitas.
+  const [editando, setEditando] = useState<RecorrenciaResumo | null>(null);
+  const fecharEdicao = () => {
+    setEditando(null);
+    router.refresh();
+  };
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5 pb-10">
@@ -112,7 +134,7 @@ export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { re
               <Th align="right">Ocorrências</Th>
               <Th align="right">Em aberto</Th>
               <Th>Situação</Th>
-              {podeGerir && <Th larguraFixa="90px">Ação</Th>}
+              {podeGerir && <Th larguraFixa="170px">Ação</Th>}
             </tr>
           </thead>
           <tbody>
@@ -126,7 +148,13 @@ export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { re
               recorrencias.map((r) => (
                 <tr key={r.id} className="border-t border-cinza-claro">
                   <td className="max-w-[220px] truncate px-3 py-2" title={r.descricao}>
-                    {r.descricao}
+                    {podeGerir ? (
+                      <button type="button" onClick={() => setEditando(r)} className="max-w-full truncate text-left font-semibold text-azul-petroleo hover:underline">
+                        {r.descricao}
+                      </button>
+                    ) : (
+                      r.descricao
+                    )}
                   </td>
                   <td className="max-w-[180px] truncate px-3 py-2" title={r.categoriaNome}>
                     {r.categoriaNome}
@@ -147,6 +175,14 @@ export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { re
                   </td>
                   {podeGerir && (
                     <td className="px-3 py-2">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditando(r)}
+                          className="rounded-md border border-azul-petroleo px-3 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10"
+                        >
+                          Editar
+                        </button>
                       {r.ativa && (
                         <button
                           type="button"
@@ -156,6 +192,7 @@ export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { re
                           Encerrar
                         </button>
                       )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -164,6 +201,19 @@ export function RecorrenciasVisualizacao({ recorrencias, podeGerir, hoje }: { re
           </tbody>
         </table>
       </TabelaRolavel>
+
+      <ModalFlutuante aberto={editando !== null} onFechar={() => setEditando(null)} larga>
+        {editando && (
+          <FormularioEditarRecorrencia
+            recorrenciaId={editando.id}
+            tipo={editando.tipo}
+            categorias={editando.tipo === "receita" ? categoriasReceita : categoriasDespesa}
+            contas={contas}
+            onSalvo={fecharEdicao}
+            onCancelar={() => setEditando(null)}
+          />
+        )}
+      </ModalFlutuante>
 
       <ModalFlutuante aberto={encerrando !== null} onFechar={() => setEncerrando(null)}>
         {encerrando && <FormularioEncerrar recorrencia={encerrando} hoje={hoje} onFechar={() => setEncerrando(null)} />}
