@@ -16,6 +16,7 @@ import {
   type ExtracaoDocumento,
 } from "./extracao";
 import { chaveDaNfe, lerNfeXml, pareceNfeXml } from "./nfe-xml";
+import { chaveNoTexto, cnpjDaChave } from "./chave-acesso";
 
 // Caixa de Entrada (Financeiro V2, 11/10/2026): guardar o arquivo e ler. Usa o service role SÓ para
 // isso (o bucket é privado e a entrada pode vir do Vini, sem sessão). Nunca lança nem baixa nada:
@@ -158,9 +159,33 @@ async function contasDeDespesa(unidadeId: string): Promise<ContaPlano[]> {
     .map((c) => ({ id: c.id, nome: c.nome, caminho: caminho(c), papelDre: c.papel_dre as string }));
 }
 
-/** Mesma nota por dois caminhos (ex.: DANFE em PDF pelo WhatsApp e XML pela SEFAZ, 30/10/2026): a
- * chave de acesso só trava XML com XML. Aqui só avisa; quem descarta é a pessoa. */
-async function avisoRepetida(unidadeId: string, entradaId: string, ex: ExtracaoDocumento): Promise<string | null> {
+/** Mesma nota por dois caminhos (ex.: DANFE em PDF pelo WhatsApp e XML pela SEFAZ, 30/10/2026). Aqui só avisa;
+ * quem descarta é a pessoa. Com chave de acesso (24/11/2026) o aviso é certo: mesma chave = mesma nota. Sem
+ * outra entrada com a chave, ela fica gravada nesta, e a nota que vier depois pela SEFAZ não entra em dobro. */
+async function avisoRepetida(unidadeId: string, entradaId: string, ex: ExtracaoDocumento, chave: string | null, chaveGravada: boolean): Promise<string | null> {
+  if (chave) {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("fin_caixa_entrada")
+      .select("nome_arquivo, situacao, recebido_em")
+      .eq("unidade_id", unidadeId)
+      .eq("chave_acesso", chave)
+      .neq("id", entradaId)
+      .neq("situacao", "descartado")
+      .limit(1);
+    const outra = ((data as { nome_arquivo: string; situacao: string; recebido_em: string }[] | null) ?? [])[0];
+    if (outra) {
+      const dia = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date(outra.recebido_em));
+      const onde = ["lancado", "anexado"].includes(outra.situacao)
+        ? "e já foi lançada (está em Contas a Pagar e Receber). Descarte esta cópia."
+        : "e ainda está na Caixa de Entrada. Lance só uma e descarte a outra.";
+      return `Nota repetida: mesma chave de acesso de ${outra.nome_arquivo.slice(0, 60)}, que entrou em ${dia} ${onde}`;
+    }
+    if (!chaveGravada) {
+      // Corrida com outra leitura da mesma chave: o índice único recusa e segue sem gravar.
+      await admin.from("fin_caixa_entrada").update({ chave_acesso: chave }).eq("id", entradaId).is("chave_acesso", null);
+    }
+  }
   if (!ex.contraparteDocumento || (!ex.numero && !ex.dataEmissao)) return null;
   const { data } = await createAdminClient()
     .from("fin_caixa_entrada")
@@ -207,11 +232,11 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
   const admin = createAdminClient();
   const { data: ent } = await admin
     .from("fin_caixa_entrada")
-    .select("id, unidade_id, mime, caminho_arquivo")
+    .select("id, unidade_id, mime, caminho_arquivo, nome_arquivo, chave_acesso")
     .eq("id", entradaId)
     .single();
   if (!ent) throw new Error("entrada_sumiu");
-  const entrada = ent as { id: string; unidade_id: string; mime: MimeCaixa | "text/xml"; caminho_arquivo: string };
+  const entrada = ent as { id: string; unidade_id: string; mime: MimeCaixa | "text/xml"; caminho_arquivo: string; nome_arquivo: string; chave_acesso: string | null };
 
   const falhar = async (codigo: string) => {
     await admin
@@ -274,6 +299,11 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
 
   // Códigos curtos -> ids do Plano de Contas da unidade.
   extracao.itens = extracao.itens.map((i) => ({ ...i, planoContasCodigo: i.planoContasCodigo ? (idPorCodigo.get(i.planoContasCodigo) ?? null) : null }));
+  // Chave de acesso: a do XML, a impressa no DANFE ou a do nome do arquivo. O CNPJ do emitente sai dela (a
+  // leitura do PDF já trocou emitente por destinatário).
+  const chave = entrada.chave_acesso ?? extracao.chaveAcesso ?? chaveNoTexto(entrada.nome_arquivo);
+  const cnpjEmitente = chave ? cnpjDaChave(chave) : null;
+  if (cnpjEmitente && extracao.tipoDocumento === "nota_fiscal") extracao.contraparteDocumento = cnpjEmitente;
   const sugestao = sugerirDocumento(extracao, hojeIsoBrasil());
   let contraparteId: string | null = null;
   if (extracao.contraparteDocumento) {
@@ -285,7 +315,7 @@ async function lerTravada(entradaId: string, criadoPor: string | null, lendoDesd
       .maybeSingle();
     contraparteId = (cp as { id: string } | null)?.id ?? null;
   }
-  extracao.observacao = (await avisoRepetida(entrada.unidade_id, entradaId, extracao)) ?? extracao.observacao;
+  extracao.observacao = (await avisoRepetida(entrada.unidade_id, entradaId, extracao, chave, entrada.chave_acesso !== null)) ?? extracao.observacao;
   const { data: gravado, error: erroGravar } = await admin
     .from("fin_caixa_entrada")
     .update({
