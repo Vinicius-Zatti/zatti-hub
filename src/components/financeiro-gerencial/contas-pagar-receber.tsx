@@ -6,18 +6,21 @@ import {
   baixarVencimentoDocumentoAction,
   corrigirPagamentoAction,
   criarContraparteAction,
+  editarDocumentoAction,
+  linkArquivoDocumentoAction,
+  obterDocumentoParaEdicaoAction,
   obterLancamentoAction,
   listarContrapartesAction,
   trocarContraparteAction,
 } from "@/app/(app)/financeiro-gerencial/lancamentos/documentos-actions";
 import { useRouter } from "next/navigation";
-import type { Contraparte } from "@/lib/banco/financeiro-documentos";
+import type { Contraparte, DocumentoParaEdicao } from "@/lib/banco/financeiro-documentos";
 import { CampoNumero } from "@/components/campo-numero";
 import { DicaCalculo } from "@/components/dica-calculo";
 import { ModalFlutuante } from "@/components/modal-flutuante";
 import { Th } from "@/components/tabela";
 import { TabelaRolavel } from "@/components/tabela-rolavel";
-import { DocumentoModal } from "@/components/financeiro-gerencial/documento-modal";
+import { DocumentoModal, FormularioDocumento } from "@/components/financeiro-gerencial/documento-modal";
 import { EdicaoLancamento } from "@/components/financeiro-gerencial/lancamentos-gerenciador";
 import { SeletorComBusca } from "@/components/financeiro-gerencial/seletor-com-busca";
 import { rotuloContaComGrupo } from "@/lib/financeiro-gerencial/categorias";
@@ -1051,10 +1054,102 @@ function EditarConta({
   const [contaId, setContaId] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Nota (24/11/2026): a conta de uma nota abre a nota inteira, com os arquivos dela.
+  const [nota, setNota] = useState<DocumentoParaEdicao | null>(null);
+  const [erroNota, setErroNota] = useState<string | null>(null);
+  const [editandoNota, setEditandoNota] = useState(false);
+  const documentoId = grupo.documentoId;
+  useEffect(() => {
+    if (!documentoId) return;
+    let ativo = true;
+    obterDocumentoParaEdicaoAction(documentoId).then((r) => {
+      if (!ativo) return;
+      if (r.ok) setNota(r.documento);
+      else setErroNota(r.mensagem);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [documentoId]);
   const nomeConta = new Map(contas.map((c) => [c.id, c.nome]));
   const opcoesConta = contas.filter((c) => c.ativo && c.tipo !== "cartao_credito").map((c) => ({ id: c.id, label: c.nome }));
   // Uma linha por lançamento (nota com vários Plano de Contas tem um lançamento por linha).
   const lancamentos = [...new Map(grupo.titulos.map((t) => [t.lancamentoId, t])).values()];
+
+  function abrirArquivo(entradaId: string) {
+    setErro(null);
+    const janela = window.open("", "_blank");
+    startTransition(async () => {
+      const r = await linkArquivoDocumentoAction(entradaId);
+      if (!r.ok) {
+        janela?.close();
+        setErro(r.mensagem);
+        return;
+      }
+      if (janela) janela.location.href = r.url;
+      else window.open(r.url, "_blank", "noopener");
+    });
+  }
+
+  const listaArquivos = nota && (
+    <div className="flex flex-col gap-1">
+      {nota.arquivos.length === 0 && <p className="text-xs text-cinza-medio">Nenhum arquivo ligado a esta nota.</p>}
+      {nota.arquivos.map((a) => (
+        <div key={a.entradaId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-cinza-claro bg-branco px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 truncate" title={a.nome}>
+            {a.nome}
+          </span>
+          <button
+            type="button"
+            onClick={() => abrirArquivo(a.entradaId)}
+            disabled={isPending}
+            className="rounded-md border border-azul-petroleo px-2 py-1 text-xs font-semibold text-azul-petroleo hover:bg-azul-petroleo/10 disabled:opacity-50"
+          >
+            Abrir
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (nota && editandoNota) {
+    return (
+      <FormularioDocumento
+        titulo="Editar nota"
+        categorias={categorias}
+        contas={contas}
+        tipoFixo
+        valoresIniciais={{
+          tipo: nota.tipo,
+          contraparteId: nota.contraparteId,
+          numero: nota.numero,
+          descricao: nota.descricao,
+          dataEmissao: nota.dataEmissao,
+          dataCompetencia: nota.dataCompetencia,
+          contaFinanceiraId: nota.contaFinanceiraId,
+          observacao: nota.observacao,
+          linhas: nota.linhas,
+          vencimentos: nota.vencimentos,
+        }}
+        cabecalho={
+          <div className="flex flex-col gap-2">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Arquivos da nota</div>
+            {listaArquivos}
+            {nota.travado && (
+              <p className="rounded-md bg-ambar/10 px-3 py-2 text-xs text-cinza">
+                Esta nota já tem {tipo === "receita" ? "recebimento" : "pagamento"}: dá para mudar {rotulo.toLowerCase()}, dados e Plano de Contas,
+                mas valores e vencimentos ficam como estão.
+              </p>
+            )}
+            {erro && <p className="text-sm text-vermelho">{erro}</p>}
+          </div>
+        }
+        aoSalvar={(documento) => editarDocumentoAction({ documentoId: nota.documentoId, documento })}
+        onCancelar={() => setEditandoNota(false)}
+        onSalvo={() => onFechar()}
+      />
+    );
+  }
 
   if (lancamento) {
     return (
@@ -1108,6 +1203,32 @@ function EditarConta({
         </p>
       </div>
 
+      {documentoId && (
+        <section className="flex flex-col gap-2">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Nota</div>
+          <p className="text-xs text-cinza-medio">
+            Abre a nota no mesmo formulário da Caixa de Entrada: {rotulo.toLowerCase()}, número, datas, Plano de Contas, valores e vencimentos.
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditandoNota(true)}
+            disabled={!nota}
+            className="rounded-lg bg-azul-noite px-4 py-2.5 text-sm font-bold text-branco disabled:opacity-50"
+          >
+            {nota ? "Editar nota inteira" : erroNota ? "Não abriu" : "Abrindo a nota..."}
+          </button>
+          {erroNota && <p className="text-sm text-vermelho">{erroNota}</p>}
+          {nota && (
+            <>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">Arquivos da nota</div>
+              {listaArquivos}
+            </>
+          )}
+        </section>
+      )}
+
+      {!documentoId && (
+        <>
       <section className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">{rotulo}</div>
         <div className={linha}>
@@ -1132,6 +1253,8 @@ function EditarConta({
           </div>
         ))}
       </section>
+        </>
+      )}
 
       <section className="flex flex-col gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wide text-cinza-medio">{tipo === "receita" ? "Recebimento" : "Pagamento"}</div>

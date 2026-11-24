@@ -168,6 +168,120 @@ export function montarPayloadDocumento(entrada: DocumentoEntrada) {
   return { unidade: entrada.unidadeId, chave: entrada.chave, digest, ...conteudo };
 }
 
+/** Nota já lançada, para reabrir no formulário da Caixa de Entrada (24/11/2026). `travado` = já
+ * teve pagamento ou conciliação: valores e vencimentos não mudam (o banco confere de novo). */
+export type DocumentoParaEdicao = {
+  documentoId: string;
+  tipo: TipoLancamento;
+  contraparteId: string | null;
+  numero: string;
+  descricao: string;
+  dataEmissao: string | null;
+  dataCompetencia: string;
+  contaFinanceiraId: string | null;
+  observacao: string;
+  linhas: { categoriaId: string; descricao: string; valor: number }[];
+  vencimentos: { dataPrevista: string; valor: number }[];
+  travado: boolean;
+  arquivos: { entradaId: string; nome: string; mime: string }[];
+};
+
+export async function obterDocumentoParaEdicao(unidadeId: string, documentoId: string): Promise<DocumentoParaEdicao | null> {
+  const supabase = await createClient();
+  const { data: doc } = await supabase
+    .from("fin_documentos")
+    .select("id, tipo, contraparte_id, numero, descricao, data_emissao")
+    .eq("unidade_id", unidadeId)
+    .eq("id", documentoId)
+    .maybeSingle();
+  if (!doc) return null;
+  const d = doc as { id: string; tipo: TipoLancamento; contraparte_id: string | null; numero: string | null; descricao: string; data_emissao: string | null };
+  const { data: lancs, error } = await supabase
+    .from("fin_lancamentos")
+    .select("id, categoria_id, descricao, data_competencia, conta_financeira_id, observacao, criado_em, fin_parcelas(id, valor, data_prevista, vencimento_documento)")
+    .eq("unidade_id", unidadeId)
+    .eq("documento_id", documentoId)
+    .order("criado_em")
+    .order("id");
+  if (error) throw new Error(error.message);
+  type L = {
+    id: string;
+    categoria_id: string;
+    descricao: string;
+    data_competencia: string;
+    conta_financeira_id: string | null;
+    observacao: string;
+    fin_parcelas: { id: string; valor: number | string; data_prevista: string; vencimento_documento: number | null }[];
+  };
+  const linhas = (lancs ?? []) as unknown as L[];
+  if (linhas.length === 0) return null;
+  const centavos = (v: number | string) => Math.round(Number(v) * 100);
+  // Vencimento k do documento: data e soma de todas as linhas.
+  const porVencimento = new Map<number, { data: string; centavos: number }>();
+  for (const l of linhas) {
+    for (const pa of l.fin_parcelas) {
+      const k = pa.vencimento_documento ?? 1;
+      const atual = porVencimento.get(k) ?? { data: pa.data_prevista, centavos: 0 };
+      atual.centavos += centavos(pa.valor);
+      porVencimento.set(k, atual);
+    }
+  }
+  const parcelaIds = linhas.flatMap((l) => l.fin_parcelas.map((p) => p.id));
+  const lancIds = linhas.map((l) => l.id);
+  const [{ count: pagamentos }, { data: arquivos }] = await Promise.all([
+    parcelaIds.length
+      ? supabase.from("fin_baixas").select("id", { count: "exact", head: true }).in("parcela_id", parcelaIds)
+      : Promise.resolve({ count: 0 }),
+    supabase
+      .from("fin_caixa_entrada")
+      .select("id, nome_arquivo, mime, recebido_em")
+      .eq("unidade_id", unidadeId)
+      .or(`documento_id.eq.${documentoId},lancamento_id.in.(${lancIds.join(",")})`)
+      .order("recebido_em"),
+  ]);
+  const primeira = linhas[0];
+  return {
+    documentoId: d.id,
+    tipo: d.tipo,
+    contraparteId: d.contraparte_id,
+    numero: d.numero ?? "",
+    descricao: d.descricao,
+    dataEmissao: d.data_emissao,
+    dataCompetencia: primeira.data_competencia,
+    contaFinanceiraId: primeira.conta_financeira_id,
+    observacao: primeira.observacao ?? "",
+    linhas: linhas.map((l) => ({
+      categoriaId: l.categoria_id,
+      descricao: l.descricao === d.descricao ? "" : l.descricao,
+      valor: l.fin_parcelas.reduce((a, p) => a + centavos(p.valor), 0) / 100,
+    })),
+    vencimentos: [...porVencimento.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => ({ dataPrevista: v.data, valor: v.centavos / 100 })),
+    travado: (pagamentos ?? 0) > 0,
+    arquivos: ((arquivos ?? []) as { id: string; nome_arquivo: string; mime: string }[]).map((a) => ({ entradaId: a.id, nome: a.nome_arquivo, mime: a.mime })),
+  };
+}
+
+/** Regrava a nota inteira (24/11/2026). Mesmo rateio de `criarDocumento`; só Gestão/master. */
+export async function editarDocumento(documentoId: string, entrada: Omit<DocumentoEntrada, "origem">): Promise<string> {
+  const supabase = await createClient();
+  const { chave: _chave, digest: _digest, origem: _origem, tipo: _tipo, ...payload } = montarPayloadDocumento({ ...entrada, origem: "manual" });
+  void _chave;
+  void _digest;
+  void _origem;
+  void _tipo;
+  const { data, error } = await supabase.rpc("fin_documento_editar", { p: { ...payload, documento_id: documentoId } });
+  if (error) {
+    if (error.code === "P0001") {
+      throw new ErroPublico("Esta nota já tem pagamento: valor e vencimentos não mudam. Para mudar, estorne o pagamento antes (Editar conta > Pagamento).");
+    }
+    if (error.code === "PGRST202" || error.code === "42883") {
+      throw new ErroPublico("Editar a nota inteira ainda não está ligado no banco. Avise a Zatti.");
+    }
+    throw erroDeNegocio(error);
+  }
+  return data as string;
+}
+
 export async function criarDocumento(entrada: DocumentoEntrada): Promise<string> {
   const supabase = await createClient();
   const payload = montarPayloadDocumento(entrada);
