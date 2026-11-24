@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireFinanceiroGerencial, requireGestaoFinanceiroGerencial, exigirEdicao } from "@/lib/acesso";
+import { linkDoOriginal } from "@/lib/banco/caixa-entrada";
 import { competenciasFechadas } from "@/lib/banco/financeiro-gerencial-v1";
 import { obterLancamento } from "@/lib/banco/financeiro-gerencial";
 import type { Lancamento } from "@/lib/financeiro-gerencial/tipos";
@@ -11,6 +12,9 @@ import {
   criarContraparte,
   criarDocumento,
   corrigirPagamento,
+  editarDocumento,
+  obterDocumentoParaEdicao,
+  type DocumentoParaEdicao,
   listarContrapartes,
   trocarContraparte,
   type Contraparte,
@@ -151,5 +155,45 @@ export async function criarContraparteAction(input: unknown): Promise<ResultadoC
     return { ok: true, contraparte };
   } catch (err) {
     return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar o fornecedor ou cliente.") };
+  }
+}
+
+/** Editar a nota inteira (24/11/2026): carrega a nota lançada para o mesmo formulário da Caixa de
+ * Entrada, com os arquivos dela. Gestão/master, como o resto de "Editar conta". */
+export async function obterDocumentoParaEdicaoAction(
+  documentoId: string,
+): Promise<{ ok: true; documento: DocumentoParaEdicao } | { ok: false; mensagem: string }> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    const documento = await obterDocumentoParaEdicao(acesso.unidadeId, z.string().uuid().parse(documentoId));
+    if (!documento) return { ok: false, mensagem: "Nota não encontrada. Atualize a página." };
+    return { ok: true, documento };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível abrir a nota.") };
+  }
+}
+
+export async function editarDocumentoAction(input: unknown): Promise<ResultadoDocumento> {
+  const acesso = await requireGestaoFinanceiroGerencial();
+  try {
+    exigirEdicao(acesso, "financeiro");
+    await exigirLimiteRequisicao("fin_lancamento_criar");
+    const bruto = z.object({ documentoId: z.string().uuid(), documento: z.unknown() }).strict().parse(input);
+    const entrada = validarEntrada(documentoFinanceiroEntradaSchema, bruto.documento);
+    const documentoId = await editarDocumento(bruto.documentoId, { ...entrada, unidadeId: acesso.unidadeId });
+    revalidarFinanceiro();
+    return { ok: true, documentoId };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível salvar a nota.") };
+  }
+}
+
+/** Abre um arquivo da nota (XML, PDF ou foto que veio pela Caixa de Entrada). */
+export async function linkArquivoDocumentoAction(entradaId: string): Promise<{ ok: true; url: string } | { ok: false; mensagem: string }> {
+  const acesso = await requireFinanceiroGerencial();
+  try {
+    return { ok: true, url: await linkDoOriginal(acesso.unidadeId, z.string().uuid().parse(entradaId)) };
+  } catch (err) {
+    return { ok: false, mensagem: mensagemErroPublica(err, "Não foi possível abrir o arquivo.") };
   }
 }

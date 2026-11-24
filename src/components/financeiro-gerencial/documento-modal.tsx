@@ -142,7 +142,8 @@ export function DocumentoModal({
 const CAMPO = "w-full rounded-md border border-cinza-claro px-3 py-2 text-sm text-cinza";
 const ROTULO = "flex flex-col gap-1 text-sm font-semibold text-cinza-medio";
 
-function FormularioDocumento({
+/** Exportado para reabrir a nota já lançada dentro de "Editar conta" (24/11/2026). */
+export function FormularioDocumento({
   categorias,
   contas,
   valoresIniciais: vi = {},
