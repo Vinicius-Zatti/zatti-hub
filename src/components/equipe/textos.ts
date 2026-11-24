@@ -19,9 +19,13 @@ export function textoEnvio(
         "Cadastrado, mas não tivemos confirmação do envio no WhatsApp. Confira com a pessoa antes de reenviar.",
     };
   }
+  // Mesmo nome do botão do cartão (cartao-membro.tsx): conta nova fica "aguardando" e o botão é
+  // "Reenviar senha"; conta que já existia, "Reenviar acesso" (24/11/2026). "Falhou" também é o Vini
+  // reiniciando depois das tentativas: o número só entra como segunda hipótese.
+  const botao = contaExistente ? "Reenviar acesso" : "Reenviar senha";
   return {
     tom: "erro",
-    texto: "Cadastrado, mas o WhatsApp não saiu. Confira o número e use \"Reenviar acesso\".",
+    texto: `Cadastrado, mas o WhatsApp não saiu. Use "${botao}" no cartão da pessoa daqui a 2 minutos. Se falhar de novo, confira o número.`,
   };
 }
 
