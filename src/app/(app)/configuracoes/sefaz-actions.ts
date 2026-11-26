@@ -32,21 +32,35 @@ export async function salvarCertificadoAction(formData: FormData): Promise<Respo
     bytes.fill(0);
 
     const admin = createAdminClient();
-    const { data: existente } = await admin.from("fin_sefaz_certificados").select("id, unidade_id").eq("cnpj", dados.cnpj).maybeSingle();
-    const ex = existente as { id: string; unidade_id: string } | null;
-    if (ex && ex.unidade_id !== acesso.unidadeId) throw new ErroPublico("Este CNPJ já tem certificado em outra unidade do Zatti Hub.");
+    const { data: existente } = await admin.from("fin_sefaz_certificados").select("id, unidade_id, ativo").eq("cnpj", dados.cnpj).maybeSingle();
+    const ex = existente as { id: string; unidade_id: string; ativo: boolean } | null;
+    const deOutraUnidade = !!ex && ex.unidade_id !== acesso.unidadeId;
+    // Removido em outra unidade não prende o CNPJ (26/11: certificado do Visconde subido no Betones
+    // por engano e removido). Só trava se ainda está ativo lá, ou se lá já desceu XML (histórico real).
+    if (deOutraUnidade && ex.ativo) throw new ErroPublico("Este CNPJ já tem certificado em outra unidade do Zatti Hub.");
+    if (deOutraUnidade) {
+      const { count, error: erroNotas } = await admin.from("fin_sefaz_notas").select("id", { count: "exact", head: true })
+        .eq("certificado_id", ex.id).eq("situacao", "xml_salvo");
+      if (erroNotas) throw new Error("sefaz_certificado_historico");
+      if ((count ?? 0) > 0) throw new ErroPublico("Este CNPJ já trouxe notas em outra unidade do Zatti Hub. Fale com o Claude para mudar de unidade.");
+    }
     const linha = { uf: uf.data, titular: dados.titular, valido_ate: dados.validoAte, envelope, ativo: true, atualizado_em: new Date().toISOString() };
-    // Troca de certificado (renovação) mantém o NSU: a fila do CNPJ continua de onde parou.
-    const { data: gravado, error } = ex
-      ? await admin.from("fin_sefaz_certificados").update(linha).eq("id", ex.id).select("id").single()
-      : await admin.from("fin_sefaz_certificados").insert({ ...linha, unidade_id: acesso.unidadeId, cnpj: dados.cnpj, criado_por: acesso.userId }).select("id").single();
+    // Troca de certificado (renovação) na mesma unidade mantém o NSU: a fila continua de onde parou.
+    // Vindo de outra unidade, a fila recomeça do zero na unidade nova.
+    const { data: gravado, error } = !ex
+      ? await admin.from("fin_sefaz_certificados").insert({ ...linha, unidade_id: acesso.unidadeId, cnpj: dados.cnpj, criado_por: acesso.userId }).select("id").single()
+      : deOutraUnidade
+        ? await admin.from("fin_sefaz_certificados")
+            .update({ ...linha, unidade_id: acesso.unidadeId, criado_por: acesso.userId, ult_nsu: "0", max_nsu: null })
+            .eq("id", ex.id).eq("ativo", false).select("id").single()
+        : await admin.from("fin_sefaz_certificados").update(linha).eq("id", ex.id).eq("unidade_id", acesso.unidadeId).select("id").single();
     if (error || !gravado) throw new Error("sefaz_certificado_gravar");
     await registrarAuditoria({
       acesso,
-      acao: ex ? "trocar_certificado_sefaz" : "cadastrar_certificado_sefaz",
+      acao: !ex ? "cadastrar_certificado_sefaz" : deOutraUnidade ? "assumir_certificado_sefaz" : "trocar_certificado_sefaz",
       entidade: "fin_sefaz_certificados",
       entidadeId: (gravado as { id: string }).id,
-      dadosNovos: { cnpj: dados.cnpj, uf: uf.data, valido_ate: dados.validoAte },
+      dadosNovos: { cnpj: dados.cnpj, uf: uf.data, valido_ate: dados.validoAte, ...(deOutraUnidade ? { unidade_anterior: ex.unidade_id } : {}) },
     });
     revalidatePath("/configuracoes");
     return { ok: true, mensagem: `Certificado de ${dados.titular} guardado. A captura roda na próxima busca (8h, 12h ou 16h).` };
