@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { abaAtiva } from "@/components/escritorio/abas-escritorio";
 import {
+  buscarLeads,
   calcularIndicadores,
   chaveProduto,
   descreverEventos,
@@ -125,5 +126,32 @@ describe("funil comercial", () => {
       ev({ tipo: "criado", em: "2026-10-07T10:00:00Z", paraEtapa: "comecar_a_seguir", autor: "vinicius" }),
     ]);
     expect(l.titulo).toBe("Lead cadastrado em Começar a seguir");
+  });
+});
+
+describe("buscarLeads", () => {
+  const leads = [
+    lead({ id: "a", nome: "Açaí da Praça", negocio: "", instagram: "acaidapraca" }),
+    lead({ id: "b", nome: "João", negocio: "Pizzaria São Jorge", instagram: "" }),
+    lead({ id: "c", nome: "Marmitaria Bom Prato", instagram: "bom.prato_bh" }),
+  ];
+  const ids = (termo: string) => buscarLeads(leads, termo).map((l) => l.id);
+
+  it("acha pelo @ com ou sem o @ na frente", () => {
+    expect(ids("@bom.prato")).toEqual(["c"]);
+    expect(ids("bom.prato")).toEqual(["c"]);
+    expect(ids("  @@ACAIDA ")).toEqual(["a"]);
+  });
+
+  it("acha pelo nome do lead ou da loja, sem acento e sem caixa", () => {
+    expect(ids("acai da praca")).toEqual(["a"]);
+    expect(ids("SAO JORGE")).toEqual(["b"]);
+    expect(ids("joão")).toEqual(["b"]);
+  });
+
+  it("termo vazio ou só @ devolve tudo; sem resultado devolve vazio", () => {
+    expect(ids("")).toEqual(["a", "b", "c"]);
+    expect(ids("@")).toEqual(["a", "b", "c"]);
+    expect(ids("hamburgueria")).toEqual([]);
   });
 });

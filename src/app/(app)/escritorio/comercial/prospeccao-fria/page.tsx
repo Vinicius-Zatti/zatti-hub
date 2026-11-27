@@ -1,16 +1,12 @@
 import Link from "next/link";
-import { Selo } from "@/components/clientes/ui";
 import { DicaCalculo } from "@/components/dica-calculo";
-import { Th } from "@/components/tabela";
-import { TabelaRolavel } from "@/components/tabela-rolavel";
+import { TabelaProspeccaoFria } from "@/components/comercial/tabela-prospeccao-fria";
 import { requireEscritorio } from "@/lib/acesso";
 import { carregarProspeccaoFria } from "@/lib/banco/comercial";
-import { ROTULO_ETAPA, diasDesde, formatarWhatsapp, linkInstagram, linkWhatsapp } from "@/lib/comercial/funil";
 import {
   ETAPAS_PAINEL,
   PERIODOS_PROSPECCAO,
   ROTULO_PERIODO_PROSPECCAO,
-  chegouEm,
   inicioPeriodoProspeccao,
   lerPeriodoProspeccao,
   resumirProspeccao,
@@ -91,60 +87,7 @@ export default async function ProspeccaoFriaPage({ searchParams }: { searchParam
       {r.lojas.length === 0 ? (
         <p className="rounded-lg border border-cinza-claro bg-branco p-4 text-sm text-cinza-medio">Nenhuma loja contatada neste período.</p>
       ) : (
-        <TabelaRolavel ariaLabel="Lojas da prospecção fria">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-azul-petroleo text-branco">
-                <Th fixo>Loja</Th>
-                <Th>Contato</Th>
-                <Th larguraFixa="96px">Contatada em</Th>
-                {ETAPAS_PAINEL.slice(1).map((e) => (
-                  <Th key={e.chave} align="center" larguraFixa="88px">{e.rotulo}</Th>
-                ))}
-                <Th>Etapa atual</Th>
-                <Th larguraFixa="80px">Na etapa</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.lojas.map((l) => {
-                const dias = diasDesde(l.etapaDesde, hoje);
-                return (
-                  <tr key={l.id} className="border-b border-cinza-claro">
-                    <td className="sticky left-0 max-w-56 truncate bg-branco px-3 py-2" title={l.nome}>
-                      <Link href={`/escritorio/comercial/${l.id}`} className="font-semibold text-azul-noite hover:underline">
-                        {l.nome}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs">
-                      {l.instagram && (
-                        <a href={linkInstagram(l.instagram)} target="_blank" rel="noopener noreferrer" className="mr-2 font-semibold text-azul-petroleo hover:underline">
-                          @{l.instagram}
-                        </a>
-                      )}
-                      {l.whatsapp && (
-                        <a href={linkWhatsapp(l.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-azul-petroleo hover:underline">
-                          {formatarWhatsapp(l.whatsapp)}
-                        </a>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2">{formatarDataBr(l.contatoEm)}</td>
-                    {ETAPAS_PAINEL.slice(1).map((e) => (
-                      <td key={e.chave} className="px-3 py-2 text-center">
-                        {chegouEm(l, e.chave) ? <span className="font-semibold text-verde">Sim</span> : <span className="text-cinza-medio">-</span>}
-                      </td>
-                    ))}
-                    <td className="px-3 py-2">
-                      <Selo tom={l.etapa === "perdido" ? "critico" : chegouEm(l, "cliente") ? "bom" : "neutro"}>{ROTULO_ETAPA[l.etapa]}</Selo>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-cinza-medio">
-                      {dias === 0 ? "Hoje" : `${dias} dia${dias === 1 ? "" : "s"}`}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TabelaRolavel>
+        <TabelaProspeccaoFria lojas={r.lojas} hoje={hoje} />
       )}
     </div>
   );

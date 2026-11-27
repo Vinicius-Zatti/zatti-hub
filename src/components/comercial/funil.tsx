@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { acaoLeadAction } from "@/app/(app)/escritorio/comercial/actions";
 import { Selo, classeCampo } from "@/components/clientes/ui";
+import { BuscaLead, BuscaLeadSemResultado } from "@/components/comercial/busca-lead";
 import { ModalFichaLead } from "@/components/comercial/modal-ficha-lead";
 import { NovoLead } from "@/components/comercial/novo-lead";
 import { DicaCalculo } from "@/components/dica-calculo";
@@ -14,6 +15,7 @@ import {
   ROTULO_ETAPA,
   ROTULO_ORIGEM,
   SEM_PROSPECCAO_FRIA,
+  buscarLeads,
   calcularIndicadores,
   diasDesde,
   filtrarLeads,
@@ -54,7 +56,11 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
   );
   const visiveis = useMemo(() => filtrarLeads(leadsNaTela, filtro), [leadsNaTela, filtro]);
   const ind = calcularIndicadores(visiveis);
-  const porEtapa = ETAPAS.map((etapa) => ({ etapa, leads: visiveis.filter((l) => l.etapa === etapa) }));
+  // Busca pelo @ ou pelo nome (27/11/2026): só esconde cartões; os números do topo seguem os filtros.
+  const [termo, setTermo] = useState("");
+  const buscados = useMemo(() => buscarLeads(visiveis, termo), [visiveis, termo]);
+  const semResultadoBusca = termo.trim() !== "" && buscados.length === 0;
+  const porEtapa = ETAPAS.map((etapa) => ({ etapa, leads: buscados.filter((l) => l.etapa === etapa) }));
   const [leadAberto, setLeadAberto] = useState<string | null>(null);
   const fecharFicha = useCallback(() => setLeadAberto(null), []);
 
@@ -159,8 +165,11 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
         />
       </div>
 
+      <BuscaLead termo={termo} onChange={setTermo} encontrados={buscados.length} total={visiveis.length} />
+      {semResultadoBusca && <BuscaLeadSemResultado termo={termo} />}
+
       {/* Desktop: colunas por etapa */}
-      <div className="hidden md:block">
+      <div className={semResultadoBusca ? "hidden" : "hidden md:block"}>
         {avisoMover && (
           <p role="alert" className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-ambar bg-ambar/10 px-3 py-2 text-sm text-azul-noite">
             {avisoMover}
@@ -215,7 +224,7 @@ export function Funil({ leads, hoje }: { leads: Lead[]; hoje: string }) {
       </div>
 
       {/* Celular: lista agrupada por etapa */}
-      <div className="flex flex-col gap-4 md:hidden">
+      <div className={semResultadoBusca ? "hidden" : "flex flex-col gap-4 md:hidden"}>
         {porEtapa
           .filter((g) => g.leads.length > 0)
           .map(({ etapa, leads: lista }) => (

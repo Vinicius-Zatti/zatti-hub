@@ -3,6 +3,8 @@
  * `zh_leads_ordem_etapa` no banco: compra ou avanço automático nunca rebaixa
  * um lead. Decisões de Vinícius em 02/10/2026 (crm-leads-v1-desenho.md). */
 
+import { normalizarBusca } from "@/lib/busca";
+
 export const ETAPAS = [
   "comecar_a_seguir",
   "mandar_primeira_mensagem",
@@ -239,6 +241,15 @@ export function filtrarLeads(leads: Lead[], f: FiltroComercial): Lead[] {
       (!f.produto || chaveProduto(l.produtoInteresse) === f.produto) &&
       (!f.desde || l.criadoEm.slice(0, 10) >= f.desde),
   );
+}
+
+/** Busca de lead pelo @ do Instagram (com ou sem o @) ou pelo nome do lead ou
+ * da loja, sem acento e sem caixa (Vinícius, 27/11/2026). Só decide o que
+ * aparece. Termo vazio devolve tudo. */
+export function buscarLeads<T extends Pick<Lead, "nome" | "negocio" | "instagram">>(leads: readonly T[], termo: string): T[] {
+  const alvo = normalizarBusca(termo).replace(/^@+/, "").trim();
+  if (!alvo) return [...leads];
+  return leads.filter((l) => [l.nome, l.negocio, l.instagram].some((texto) => texto && normalizarBusca(texto).includes(alvo)));
 }
 
 /** Link do WhatsApp do lead (com 55 do Brasil). */
