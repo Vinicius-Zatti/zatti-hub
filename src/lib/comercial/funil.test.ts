@@ -149,6 +149,12 @@ describe("buscarLeads", () => {
     expect(ids("joão")).toEqual(["b"]);
   });
 
+  it("apóstrofo reto, curvo ou nenhum acha o mesmo nome", () => {
+    const comApostrofo = [lead({ id: "d", nome: "Brod’s Hamburgueria" })];
+    expect(buscarLeads(comApostrofo, "brod's hambúrgueria").map((l) => l.id)).toEqual(["d"]);
+    expect(buscarLeads(comApostrofo, "brods").map((l) => l.id)).toEqual(["d"]);
+  });
+
   it("termo vazio ou só @ devolve tudo; sem resultado devolve vazio", () => {
     expect(ids("")).toEqual(["a", "b", "c"]);
     expect(ids("@")).toEqual(["a", "b", "c"]);

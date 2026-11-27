@@ -245,11 +245,13 @@ export function filtrarLeads(leads: Lead[], f: FiltroComercial): Lead[] {
 
 /** Busca de lead pelo @ do Instagram (com ou sem o @) ou pelo nome do lead ou
  * da loja, sem acento e sem caixa (Vinícius, 27/11/2026). Só decide o que
- * aparece. Termo vazio devolve tudo. */
+ * aparece. Termo vazio devolve tudo. Apóstrofo não conta ("brods" e "brod's"
+ * acham "Brod’s", que vem com o apóstrofo curvo do Instagram). */
 export function buscarLeads<T extends Pick<Lead, "nome" | "negocio" | "instagram">>(leads: readonly T[], termo: string): T[] {
-  const alvo = normalizarBusca(termo).replace(/^@+/, "").trim();
+  const comparavel = (texto: string) => normalizarBusca(texto).replace(/['‘’`´]/g, "");
+  const alvo = comparavel(termo).replace(/^@+/, "").trim();
   if (!alvo) return [...leads];
-  return leads.filter((l) => [l.nome, l.negocio, l.instagram].some((texto) => texto && normalizarBusca(texto).includes(alvo)));
+  return leads.filter((l) => [l.nome, l.negocio, l.instagram].some((texto) => texto && comparavel(texto).includes(alvo)));
 }
 
 /** Link do WhatsApp do lead (com 55 do Brasil). */
