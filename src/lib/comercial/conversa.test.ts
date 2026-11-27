@@ -63,7 +63,7 @@ describe("separarConversa", () => {
 
 describe("zh_leads_registrar_negociacao", () => {
   it("trata como automáticas todas as sugestões de etapa da ficha (a ação de Vinícius é a que ele escreveu)", () => {
-    const sql = readFileSync("supabase/migrations/20261118130000_comercial_vini_reuniao_diagnostico.sql", "utf8");
+    const sql = readFileSync("supabase/migrations/20261126210000_comercial_mini_expert_diagnostico.sql", "utf8");
     for (const texto of Object.values(SUGESTAO_ETAPA)) expect(sql).toContain(`'${texto.replace(/'/g, "''")}'`);
   });
 });

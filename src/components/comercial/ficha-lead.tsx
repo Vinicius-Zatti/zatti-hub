@@ -16,6 +16,7 @@ import {
   formatarWhatsapp,
   linkInstagram,
   linkWhatsapp,
+  resumoAnuncio,
   type Etapa,
   type EventoLead,
   type Lead,
@@ -159,6 +160,14 @@ export function FichaLead({
             <dd>{lead.faturamentoDesejado || "-"}</dd>
             <dt className="text-cinza-medio">Dificuldade</dt>
             <dd>{lead.dificuldade || "-"}</dd>
+            {resumoAnuncio(lead.anuncio) && (
+              <>
+                <dt className="text-cinza-medio">Anúncio</dt>
+                <dd className="truncate" title={lead.anuncio?.pagina_url ?? resumoAnuncio(lead.anuncio)}>
+                  {resumoAnuncio(lead.anuncio)}
+                </dd>
+              </>
+            )}
             <dt className="text-cinza-medio">Entrou em</dt>
             <dd>{formatarMomentoBr(lead.criadoEm)}</dd>
             {lead.etapa === "perdido" && (

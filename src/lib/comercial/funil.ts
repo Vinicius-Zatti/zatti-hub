@@ -13,6 +13,8 @@ export const ETAPAS = [
   "link_enviado",
   "preencheu_formulario",
   "comprou_livro",
+  "comprou_raio_x",
+  "comprou_diagnostico",
   "comprou_app",
   "em_acompanhamento",
   "reuniao_diagnostico",
@@ -29,6 +31,8 @@ export const ROTULO_ETAPA: Record<Etapa, string> = {
   link_enviado: "Link enviado",
   preencheu_formulario: "Preencheu formulário",
   comprou_livro: "Comprou livro",
+  comprou_raio_x: "Comprou Mini Expert",
+  comprou_diagnostico: "Comprou diagnóstico",
   comprou_app: "Comprou app",
   em_acompanhamento: "Em acompanhamento",
   reuniao_diagnostico: "Reunião de diagnóstico",
@@ -49,6 +53,8 @@ export const SUGESTAO_ETAPA: Record<Etapa, string> = {
   link_enviado: "Ver se abriu o link; retomar em 2 dias",
   preencheu_formulario: "Ver se concluiu o pagamento; se não, chamar no WhatsApp hoje",
   comprou_livro: "Oferecer o Zatti Hub (12x de R$59,90)",
+  comprou_raio_x: "Oferecer o Zatti Hub (12x de R$59,90)",
+  comprou_diagnostico: "Conferir se a loja liberou o acesso no Portal do Parceiro do iFood",
   comprou_app: "Oferecer a consultoria; se não fechar, acompanhamento mensal de R$497",
   em_acompanhamento: "Leitura do mês e oferecer a consultoria",
   reuniao_diagnostico: "Mandar a proposta da consultoria",
@@ -136,9 +142,40 @@ export type Lead = {
   criadoEm: string;
   etapaDesde: string;
   ultimoEventoEm: string;
+  /** Origem do anúncio do primeiro toque (zh_leads.rastreio, 26/11): só UTMs e página. */
+  anuncio?: AnuncioLead | null;
 };
 
-const PRODUTO_PAGAMENTO: Record<string, string> = { livro: "Livro", "zatti-hub": "Zatti Hub" };
+/** UTMs e página que o Vini manda no `rastreio` do evento; o banco já descarta o que não está no formato. */
+export type AnuncioLead = {
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  utm_term?: string;
+  pagina_url?: string;
+};
+
+/** Linha curta da origem do anúncio na ficha ("" sem anúncio). O mesmo texto do resumo do Vini
+ * (rastreio-anuncio.js): "origem facebook/paid, campanha X, anúncio Y, termo Z". */
+export function resumoAnuncio(a: AnuncioLead | null | undefined): string {
+  if (!a) return "";
+  return [
+    a.utm_source && `origem ${a.utm_source}${a.utm_medium ? `/${a.utm_medium}` : ""}`,
+    a.utm_campaign && `campanha ${a.utm_campaign}`,
+    a.utm_content && `anúncio ${a.utm_content}`,
+    a.utm_term && `termo ${a.utm_term}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+const PRODUTO_PAGAMENTO: Record<string, string> = {
+  livro: "Livro",
+  "zatti-hub": "Zatti Hub",
+  "raio-x-delivery": "Mini Expert iFood",
+  "diagnostico-delivery": "Diagnóstico de Delivery",
+};
 
 /** Produto do formulário ("Zatti Hub - plano anual", "Livro Restaurante no
  * Controle") e do pagamento ("zatti-hub", "livro") caem na mesma chave. */
