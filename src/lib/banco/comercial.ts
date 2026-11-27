@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ErroPublico } from "@/lib/erros";
 import { lerFalaMensagem } from "@/lib/comercial/conversa";
-import type { Etapa, EventoLead, Lead, Origem, TipoEvento, VendeDelivery } from "@/lib/comercial/funil";
+import type { AnuncioLead, Etapa, EventoLead, Lead, Origem, TipoEvento, VendeDelivery } from "@/lib/comercial/funil";
 import type { LeadProspeccao } from "@/lib/comercial/prospeccao-fria";
 
 /** Acesso ao banco do Comercial (CRM de leads). O RLS (`usuario_e_master()`)
@@ -44,7 +44,19 @@ const mapLead = (r: Linha): Lead => ({
   criadoEm: s(r.criado_em),
   etapaDesde: s(r.etapa_desde),
   ultimoEventoEm: s(r.ultimo_evento_em),
+  anuncio: lerAnuncio(r.rastreio),
 });
+
+/** zh_leads.rastreio: o banco só guarda strings conhecidas; aqui só confere a forma. */
+function lerAnuncio(v: unknown): AnuncioLead | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const a: AnuncioLead = {};
+  for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "pagina_url"] as const) {
+    if (typeof o[k] === "string" && o[k]) a[k] = o[k] as string;
+  }
+  return Object.keys(a).length ? a : null;
+}
 
 const mapEvento = (r: Linha): EventoLead => ({
   id: s(r.id),

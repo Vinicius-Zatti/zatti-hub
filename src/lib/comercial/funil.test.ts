@@ -12,6 +12,7 @@ import {
   linkWhatsapp,
   normalizarInstagram,
   ordemEtapa,
+  resumoAnuncio,
   ROTULO_ETAPA,
   SUGESTAO_ETAPA,
   type EventoLead,
@@ -35,6 +36,31 @@ describe("funil comercial", () => {
     expect(ordemEtapa("comprou_livro")).toBeGreaterThan(ordemEtapa("preencheu_formulario"));
     expect(ordemEtapa("comprou_app")).toBeGreaterThan(ordemEtapa("comprou_livro"));
     expect(ordemEtapa("perdido")).toBe(0);
+  });
+
+  it("Mini Expert e Diagnóstico ficam entre o livro e o app (a mesma ordem de zh_leads_ordem_etapa)", () => {
+    expect(ordemEtapa("comprou_livro")).toBe(7);
+    expect(ordemEtapa("comprou_raio_x")).toBe(8);
+    expect(ordemEtapa("comprou_diagnostico")).toBe(9);
+    expect(ordemEtapa("comprou_app")).toBe(10);
+    expect(ordemEtapa("consultoria_fechada")).toBe(13);
+    expect(ROTULO_ETAPA.comprou_raio_x).toBe("Comprou Mini Expert");
+  });
+
+  it("pagamento do Mini Expert e do Diagnóstico aparece com o nome do produto", () => {
+    const linhas = descreverEventos([
+      ev({ tipo: "pagamento", em: "2026-11-26T10:00:00Z", produto: "raio-x-delivery", valor: 47 }),
+      ev({ tipo: "comprou_de_novo", em: "2026-11-27T10:00:00Z", produto: "diagnostico-delivery", valor: 47.9 }),
+    ]);
+    expect(linhas[0].titulo).toContain("Comprou Mini Expert iFood");
+    expect(linhas[1].titulo).toContain("Comprou de novo: Diagnóstico de Delivery");
+  });
+
+  it("origem do anúncio vira uma linha curta; sem UTM, nada", () => {
+    expect(resumoAnuncio({ utm_source: "facebook", utm_medium: "paid", utm_campaign: "mini-expert", utm_content: "video-1" }))
+      .toBe("origem facebook/paid, campanha mini-expert, anúncio video-1");
+    expect(resumoAnuncio({ pagina_url: "https://zatticonsultoria.com.br/raio-x-delivery/" })).toBe("");
+    expect(resumoAnuncio(null)).toBe("");
   });
 
   it("formulário e pagamento do mesmo produto caem na mesma chave", () => {
